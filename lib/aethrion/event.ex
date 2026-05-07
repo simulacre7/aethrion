@@ -17,4 +17,14 @@ defmodule Aethrion.Event do
   def time_tick(now, opts \\ []) do
     %{type: :time_tick, now: now, hours: Keyword.get(opts, :hours, 1)}
   end
+
+  def apology_offered(from, to, reason, opts \\ []) do
+    %{
+      type: :apology_offered,
+      from: from,
+      to: to,
+      reason: reason,
+      at: Keyword.get(opts, :at, "demo:t0")
+    }
+  end
 end

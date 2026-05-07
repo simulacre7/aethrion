@@ -31,6 +31,7 @@ mix deps.get
 mix test
 mix demo.drama
 mix demo.interactive
+mix demo.branches
 ```
 
 interactive demo를 바로 볼 수 있습니다.
@@ -116,6 +117,12 @@ mix demo.drama
 mix demo.interactive
 ```
 
+브랜치 시나리오 데모:
+
+```bash
+mix demo.branches
+```
+
 출력 예시:
 
 ```txt
@@ -184,6 +191,7 @@ mix demo.drama
 - fake LLM adapter
 - CLI drama demo
 - interactive CLI demo
+- branched scenario demo
 - JSON file persistence
 - supervised runtime server
 - `time_tick` 이벤트를 위한 scheduler process

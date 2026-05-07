@@ -18,6 +18,7 @@ defmodule Aethrion.CLI.Display do
       [:bright, "Commands"],
       "  gift <from> <to> <item>",
       "  gift <from> <to> <item> observed_by <character_id[,character_id]>",
+      "  apologize <from> <to> <reason>",
       "  tick <hours>",
       "  status",
       "  memories",
@@ -110,6 +111,10 @@ defmodule Aethrion.CLI.Display do
 
   def event(%{type: :time_tick, hours: hours}) do
     print_tagged("EVENT", :blue, "time passes +#{hours}h")
+  end
+
+  def event(%{type: :apology_offered, from: from, to: to, reason: reason}) do
+    print_tagged("EVENT", :blue, "#{from} apologizes to #{to}: #{reason}")
   end
 
   def log(line) do

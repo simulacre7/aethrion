@@ -18,8 +18,10 @@ Implemented:
 - in-memory runtime state
 - `Aethrion.Runtime.dispatch/2`
 - deterministic gift, jealousy, and loneliness rules
+- deterministic apology and reconciliation rules
 - fake LLM adapter
 - `mix demo.drama`
+- `mix demo.branches`
 - ExUnit scenario and invariant tests
 - structured validation errors
 - interactive CLI demo
@@ -65,7 +67,7 @@ TODO:
 - [x] Add `mix demo.interactive`.
 - [x] Support simple CLI commands such as `gift`, `tick`, `status`, and `memories`.
 - [x] Print relationship and character state summaries after each command.
-- [ ] Add a richer scripted scenario with at least two social branches.
+- [x] Add a richer scripted scenario with at least two social branches.
 - [x] Add a README section that shows the full demo output.
 - [x] Add small architecture diagrams using plain Markdown or Mermaid.
 
@@ -165,9 +167,8 @@ Success criteria:
 
 Recommended next tasks:
 
-1. Add a richer scripted scenario with at least two social branches.
-2. Define the first real LLM adapter behaviour without adding provider lock-in.
-3. Add a richer memory retrieval layer.
-4. Explore per-character processes only after the runtime API settles.
+1. Define the first real LLM adapter behaviour without adding provider lock-in.
+2. Add a richer memory retrieval layer.
+3. Explore per-character processes only after the runtime API settles.
 
 The project should avoid Phoenix, vector databases, distributed BEAM, and real LLM providers until the core runtime interface is clearer.

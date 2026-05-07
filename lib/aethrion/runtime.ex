@@ -3,7 +3,7 @@ defmodule Aethrion.Runtime do
   Deterministic runtime entry point.
   """
 
-  alias Aethrion.Rules.{GiftRules, JealousyRules, LonelinessRules}
+  alias Aethrion.Rules.{GiftRules, JealousyRules, LonelinessRules, ReconciliationRules}
   alias Aethrion.{State, Validator}
 
   def demo_state, do: State.demo()
@@ -26,6 +26,12 @@ defmodule Aethrion.Runtime do
     end
   end
 
+  def dispatch(%State{} = state, %{type: :apology_offered} = event) do
+    with :ok <- Validator.validate_dispatch(state, event) do
+      do_dispatch_apology(state, event)
+    end
+  end
+
   def dispatch(state, event) do
     Validator.validate_dispatch(state, event)
   end
@@ -44,5 +50,12 @@ defmodule Aethrion.Runtime do
     {state, proactive_outputs, proactive_log} = JealousyRules.apply_thresholds(state)
 
     {:ok, state, time_outputs ++ proactive_outputs, time_log ++ proactive_log}
+  end
+
+  defp do_dispatch_apology(state, event) do
+    {state, apology_outputs, apology_log} = ReconciliationRules.apply_apology(state, event)
+    {state, proactive_outputs, proactive_log} = JealousyRules.apply_thresholds(state)
+
+    {:ok, state, apology_outputs ++ proactive_outputs, apology_log ++ proactive_log}
   end
 end

@@ -31,6 +31,7 @@ mix deps.get
 mix test
 mix demo.drama
 mix demo.interactive
+mix demo.branches
 ```
 
 Watch the interactive demo:
@@ -116,6 +117,12 @@ Run the interactive demo:
 mix demo.interactive
 ```
 
+Run the branched scenario demo:
+
+```bash
+mix demo.branches
+```
+
 Example transcript:
 
 ```txt
@@ -184,6 +191,7 @@ Recommended local versions:
 - fake LLM adapter
 - CLI drama demo
 - interactive CLI demo
+- branched scenario demo
 - JSON file persistence
 - supervised runtime server
 - scheduler process for `time_tick` events

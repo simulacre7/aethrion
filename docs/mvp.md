@@ -13,6 +13,7 @@ The first demo includes:
 - proactive messaging
 - fake LLM adapter
 - CLI scenario demo
+- branched scenario demo
 
 Out of scope for v0:
 
@@ -39,6 +40,33 @@ Run it with:
 
 ```bash
 mix demo.drama
+```
+
+## Branch Scenario
+
+The branch demo shows the same social setup diverging after the user's next choice:
+
+```txt
+Shared setup:
+1. The user gives Mina a flower.
+2. Yuna observes it and becomes jealous.
+
+Branch A:
+3. The user ignores Yuna.
+4. Time passes.
+5. Yuna proactively messages the user.
+
+Branch B:
+3. The user apologizes to Yuna.
+4. Yuna stores a reconciliation memory.
+5. Yuna's jealousy decreases and trust toward the user increases.
+6. Time passes without a jealous proactive message.
+```
+
+Run it with:
+
+```bash
+mix demo.branches
 ```
 
 ## Acceptance Criteria

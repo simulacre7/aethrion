@@ -83,6 +83,15 @@ Aethrion.Event.gift_received("user", "mina", "flower",
 Aethrion.Event.time_tick("demo:t2", hours: 2)
 ```
 
+```elixir
+Aethrion.Event.apology_offered(
+  "user",
+  "yuna",
+  "I should have checked in with you too.",
+  at: "demo:t3"
+)
+```
+
 ## Outputs
 
 Supported alpha outputs:

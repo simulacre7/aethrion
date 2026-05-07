@@ -8,7 +8,7 @@ I'm building **Aethrion**, an early alpha Elixir runtime for persistent AI chara
 
 The core idea: **LLMs express the drama, but deterministic state creates it.**
 
-Aethrion models memory, emotion, relationships, and proactive behavior as an event-driven social simulation layer. The runtime owns state transitions; LLMs are treated as expression adapters rather than the authority over what happened.
+Aethrion models memory, emotion, relationships, reconciliation, and proactive behavior as an event-driven social simulation layer. The runtime owns state transitions; LLMs are treated as expression adapters rather than the authority over what happened.
 
 Repo: https://github.com/simulacre7/aethrion
 
@@ -21,6 +21,8 @@ I'm building Aethrion, an early alpha Elixir runtime for persistent AI character
 The idea: LLMs express the drama, but deterministic state creates it.
 
 It models memory, emotion, relationships, and proactive behavior as an event-driven social simulation layer.
+
+The latest branch demo compares what happens when the user ignores a jealous character versus apologizes to her.
 
 Repo: https://github.com/simulacre7/aethrion
 
@@ -41,9 +43,11 @@ That means the runtime owns relationship changes, memory creation, emotional sta
 The current alpha includes:
 
 - scripted and interactive CLI demos
+- branched scenario demo
 - public runtime API
 - structured errors
 - JSON persistence
+- supervised GenServer runtime and scheduler
 - fake LLM adapter
 - tests and CI
 - English/Korean README
@@ -58,7 +62,7 @@ Demo: https://github.com/simulacre7/aethrion/blob/main/assets/demo/interactive-d
 
 I built an early alpha of Aethrion, an Elixir runtime for persistent social agents.
 
-The project is an experiment in modeling AI characters as deterministic social simulation entities rather than prompt-only chatbots. A character can accumulate memory, relationships, emotional state, and proactive outputs through events such as gifts, observations, and time ticks.
+The project is an experiment in modeling AI characters as deterministic social simulation entities rather than prompt-only chatbots. A character can accumulate memory, relationships, emotional state, reconciliation state, and proactive outputs through events such as gifts, observations, apologies, and time ticks.
 
 The current core loop is:
 
@@ -72,7 +76,8 @@ Current features:
 
 - `Aethrion.Runtime.dispatch/2`
 - structured runtime errors
-- scripted and interactive Mix demos
+- scripted, interactive, and branched Mix demos
+- supervised GenServer runtime and scheduler
 - JSON persistence
 - ExUnit tests
 - GitHub Actions CI

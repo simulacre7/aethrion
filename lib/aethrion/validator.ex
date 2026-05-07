@@ -27,6 +27,14 @@ defmodule Aethrion.Validator do
     end
   end
 
+  def validate_dispatch(%State{} = state, %{type: :apology_offered} = event) do
+    with :ok <- require_string(event, :from),
+         :ok <- require_character(state, event.to, :to),
+         :ok <- require_string(event, :reason) do
+      :ok
+    end
+  end
+
   def validate_dispatch(%State{}, %{type: type}) do
     {:error, error(:unsupported_event, "unsupported event type: #{inspect(type)}", %{type: type})}
   end

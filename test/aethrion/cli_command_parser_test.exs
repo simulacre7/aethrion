@@ -23,6 +23,16 @@ defmodule Aethrion.CLI.CommandParserTest do
     assert {:ok, %{type: :time_tick, hours: 2}} = CommandParser.parse("tick 2")
   end
 
+  test "parses apology command" do
+    assert {:ok,
+            %{
+              type: :apology_offered,
+              from: "user",
+              to: "yuna",
+              reason: "I should have checked in too"
+            }} = CommandParser.parse("apologize user yuna I should have checked in too")
+  end
+
   test "rejects invalid tick command" do
     assert {:error, _message} = CommandParser.parse("tick nope")
   end

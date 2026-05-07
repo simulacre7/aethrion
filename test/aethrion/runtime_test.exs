@@ -38,6 +38,33 @@ defmodule Aethrion.RuntimeTest do
     assert state.characters["haru"].state.loneliness == 16
   end
 
+  test "apology reduces social pressure and creates reconciliation memory" do
+    state = Runtime.demo_state()
+
+    {:ok, state, _outputs, _log} =
+      Runtime.dispatch(
+        state,
+        Event.gift_received("user", "mina", "flower", observed_by: ["yuna"], at: "demo:t1")
+      )
+
+    {:ok, state, outputs, _log} =
+      Runtime.dispatch(
+        state,
+        Event.apology_offered("user", "yuna", "I should have checked in with you too.",
+          at: "demo:t2"
+        )
+      )
+
+    assert state.characters["yuna"].state.jealousy == 0
+    assert state.characters["yuna"].state.loneliness == 20
+    assert State.get_relationship(state, "yuna", "user").trust == 28
+
+    assert [%{character_id: "yuna", content: "user apologized to yuna: " <> _}, _gift_memory] =
+             state.memories
+
+    assert Enum.any?(outputs, &match?(%{type: :memory_created}, &1))
+  end
+
   test "jealousy threshold emits a proactive message" do
     state = Runtime.demo_state()
 
@@ -81,6 +108,38 @@ defmodule Aethrion.RuntimeTest do
     assert state.characters["yuna"].state.loneliness == 34
     assert length(state.memories) == 3
     assert Enum.count(outputs, &(&1.type == :proactive_message)) == 1
+  end
+
+  test "branched scenario diverges after apology choice" do
+    base_state = Runtime.demo_state()
+
+    {:ok, base_state, _outputs, _log} =
+      Runtime.dispatch(
+        base_state,
+        Event.gift_received("user", "mina", "flower", observed_by: ["yuna"], at: "branch:t1")
+      )
+
+    {:ok, ignored_state, ignored_outputs, _log} =
+      Runtime.dispatch(base_state, Event.time_tick("branch:ignored:t2", hours: 2))
+
+    {:ok, apology_state, _outputs, _log} =
+      Runtime.dispatch(
+        base_state,
+        Event.apology_offered("user", "yuna", "I should have checked in with you too.",
+          at: "branch:apology:t2"
+        )
+      )
+
+    {:ok, apology_state, apology_outputs, _log} =
+      Runtime.dispatch(apology_state, Event.time_tick("branch:apology:t3", hours: 2))
+
+    assert ignored_state.characters["yuna"].state.jealousy == 15
+    assert ignored_state.characters["yuna"].state.loneliness == 34
+    assert Enum.any?(ignored_outputs, &(&1.type == :proactive_message))
+
+    assert apology_state.characters["yuna"].state.jealousy == 0
+    assert apology_state.characters["yuna"].state.loneliness == 28
+    refute Enum.any?(apology_outputs, &(&1.type == :proactive_message))
   end
 
   test "relationship values stay clamped" do
@@ -131,6 +190,15 @@ defmodule Aethrion.RuntimeTest do
 
     assert {:error, %{code: :unknown_character, message: message}} =
              Runtime.dispatch(state, Event.gift_received("user", "unknown", "flower"))
+
+    assert message =~ "unknown character"
+  end
+
+  test "unknown apology receiver returns structured error" do
+    state = Runtime.demo_state()
+
+    assert {:error, %{code: :unknown_character, message: message}} =
+             Runtime.dispatch(state, Event.apology_offered("user", "unknown", "sorry"))
 
     assert message =~ "unknown character"
   end

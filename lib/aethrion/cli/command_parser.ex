@@ -39,6 +39,11 @@ defmodule Aethrion.CLI.CommandParser do
     {:ok, Event.gift_received(from, to, item, observed_by: observed_by, at: "interactive:gift")}
   end
 
+  defp do_parse(["apologize", from, to | reason_parts]) when reason_parts != [] do
+    reason = Enum.join(reason_parts, " ")
+    {:ok, Event.apology_offered(from, to, reason, at: "interactive:apology")}
+  end
+
   defp do_parse(_tokens) do
     {:error, "unknown command. Type help for available commands."}
   end
