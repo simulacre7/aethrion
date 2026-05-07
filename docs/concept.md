@@ -52,3 +52,11 @@ The long-term runtime model maps naturally to Elixir and BEAM:
 - message passing fits event-driven simulation
 
 The v0 implementation starts as a small pure library. It intentionally avoids Phoenix, distributed Erlang, persistent databases, and real LLM providers until the simulation loop is proven.
+
+## Related Influence
+
+Aethrion is not built on Jido and does not depend on it today.
+
+[Jido](https://jido.run/ecosystem/jido) is adjacent inspiration for thinking about long-running autonomous agents on the BEAM, especially the separation between deterministic agent logic, explicit effects, and supervised runtime execution.
+
+Aethrion applies similar BEAM-friendly ideas to a narrower domain: persistent social simulation for AI characters. The current focus is not general-purpose agent orchestration. It is the social substrate underneath characters: memory, emotion, relationship state, events, and proactive outputs.

@@ -92,6 +92,12 @@ Aethrion is not:
 - a vector database project
 - a framework where the LLM owns authoritative state
 
+## Why Elixir?
+
+Aethrion starts as a small pure Elixir library, but the long-term runtime model maps naturally to the BEAM: persistent character processes, supervised schedulers, event-driven coordination, and fault-tolerant long-running social worlds.
+
+The current alpha keeps the simulation core deterministic and process-free so it can be tested without a running supervision tree. OTP can enter later where it has practical value: character lifecycles, scheduled events, background memory work, and runtime supervision.
+
 ## Demo
 
 Run the scripted demo:

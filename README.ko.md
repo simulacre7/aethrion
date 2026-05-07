@@ -92,6 +92,12 @@ Aethrion은 다음이 아닙니다.
 - 벡터 데이터베이스 프로젝트
 - LLM이 권위 있는 상태를 소유하는 프레임워크
 
+## 왜 Elixir인가?
+
+Aethrion은 현재 작은 순수 Elixir 라이브러리로 시작하지만, 장기적인 런타임 모델은 BEAM과 자연스럽게 맞습니다. 지속되는 캐릭터 프로세스, supervision을 받는 스케줄러, 이벤트 기반 조정, 오래 실행되는 소셜 월드의 fault tolerance가 모두 BEAM/OTP가 강한 영역입니다.
+
+현재 alpha는 시뮬레이션 core를 결정론적이고 process-free한 형태로 유지합니다. 그래서 supervision tree 없이도 쉽게 테스트할 수 있습니다. OTP는 나중에 실질적인 가치가 있는 지점, 예를 들어 캐릭터 생명주기, 예약 이벤트, 백그라운드 memory 작업, 런타임 supervision에 도입할 수 있습니다.
+
 ## 데모
 
 스크립트 데모:
