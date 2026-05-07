@@ -33,11 +33,11 @@ mix demo.drama
 mix demo.interactive
 ```
 
-컨트롤이 있는 비디오로 interactive demo를 볼 수 있습니다.
+프리뷰를 클릭하면 재생 컨트롤이 있는 MP4 demo가 열립니다.
 
-<video src="assets/demo/interactive-demo.mp4" controls muted playsinline width="100%" title="Aethrion interactive demo"></video>
+[![Aethrion interactive demo](assets/demo/interactive-demo-poster.png)](https://github.com/simulacre7/aethrion/releases/download/v0.1.0-alpha/interactive-demo.mp4)
 
-Markdown viewer에서 비디오 플레이어가 보이지 않는다면 [MP4 demo](assets/demo/interactive-demo.mp4), [animated SVG fallback](assets/demo/interactive-demo-readable.svg), 또는 [plain-text transcript](assets/demo/interactive-demo.txt)를 열어보세요.
+[MP4 demo](https://github.com/simulacre7/aethrion/releases/download/v0.1.0-alpha/interactive-demo.mp4), [animated SVG fallback](assets/demo/interactive-demo-readable.svg), 또는 [plain-text transcript](assets/demo/interactive-demo.txt)를 열어볼 수 있습니다.
 
 ## 왜 필요한가
 

@@ -31,3 +31,11 @@ ffmpeg \
   -pix_fmt yuv420p \
   -vf "scale=trunc(iw/2)*2:trunc(ih/2)*2" \
   assets/demo/interactive-demo.mp4
+
+ffmpeg \
+  -loglevel error \
+  -y \
+  -ss 16 \
+  -i assets/demo/interactive-demo.mp4 \
+  -vframes 1 \
+  assets/demo/interactive-demo-poster.png

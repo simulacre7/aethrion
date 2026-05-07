@@ -33,11 +33,11 @@ mix demo.drama
 mix demo.interactive
 ```
 
-Watch the interactive demo with controls:
+Click the preview to open the MP4 demo with playback controls:
 
-<video src="assets/demo/interactive-demo.mp4" controls muted playsinline width="100%" title="Aethrion interactive demo"></video>
+[![Aethrion interactive demo](assets/demo/interactive-demo-poster.png)](https://github.com/simulacre7/aethrion/releases/download/v0.1.0-alpha/interactive-demo.mp4)
 
-If the video player is not shown in your Markdown viewer, open the [MP4 demo](assets/demo/interactive-demo.mp4), [animated SVG fallback](assets/demo/interactive-demo-readable.svg), or [plain-text transcript](assets/demo/interactive-demo.txt).
+Open the [MP4 demo](https://github.com/simulacre7/aethrion/releases/download/v0.1.0-alpha/interactive-demo.mp4), [animated SVG fallback](assets/demo/interactive-demo-readable.svg), or [plain-text transcript](assets/demo/interactive-demo.txt).
 
 ## Why This Exists
 
