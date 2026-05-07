@@ -2,6 +2,8 @@
 
 [English](README.md) | [한국어](README.ko.md)
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 **Pronunciation:** 에이트리온 / ay-three-on
 
 **A shared social layer for persistent AI characters.**
@@ -48,24 +50,78 @@ The runtime owns:
 
 The LLM layer only helps express the result in natural language. The v0 demo uses a fake LLM adapter to prove the simulation works without a real model.
 
-## Demo Preview
+## What Aethrion Is / Is Not
 
-```txt
-[Event] user gives Mina a flower
-[Rule] Mina affinity toward user +10
-[Memory] Mina remembers the flower
-[Rule] Yuna notices the gift
-[State] Yuna jealousy +15
+Aethrion is:
 
-[Event] time passes
-[Rule] Yuna loneliness +8
-[Output] Yuna proactively messages the user
-```
+- a deterministic social simulation runtime
+- an event-driven model for persistent AI characters
+- a place to model memory, emotion, relationships, and proactive outputs
+- LLM-agnostic by design
 
-Run it with:
+Aethrion is not:
+
+- a chatbot prompt collection
+- a visual novel engine
+- a Phoenix web app
+- a vector database project
+- a framework where the LLM owns authoritative state
+
+## Quick Demo
+
+Run the scripted demo:
 
 ```bash
 mix demo.drama
+```
+
+Run the interactive demo:
+
+```bash
+mix demo.interactive
+```
+
+Example transcript:
+
+```txt
+[World] Characters loaded: Haru, Mina, Yuna
+
+[Event] user gives mina a flower
+[Rule] Mina affinity toward user +10
+[Memory] Mina remembers: "user gave mina a flower."
+[Rule] Yuna noticed the gift to Mina
+[State] Yuna jealousy +15
+[State] Yuna tension toward Mina +8
+
+[Event] time_tick +2h
+[Rule] time_tick increased loneliness +8 for active characters
+[Output] Yuna -> user: "You seemed really happy with Mina earlier. I guess I was just wondering if you forgot about me."
+```
+
+## Embedding Aethrion
+
+```elixir
+alias Aethrion.{Event, Runtime}
+
+state = Runtime.demo_state()
+event = Event.gift_received("user", "mina", "flower", observed_by: ["yuna"])
+
+{:ok, next_state, outputs, log} = Runtime.dispatch(state, event)
+```
+
+`outputs` are structured effects. The host application decides how to render, store, or deliver them.
+
+## Architecture
+
+```mermaid
+flowchart TD
+    Host["Host app / game / CLI"] --> Runtime["Aethrion Runtime"]
+    Runtime --> Rules["Deterministic Rules"]
+    Runtime --> State["Memory / Emotion / Relationships"]
+    Runtime --> Outputs["Structured Outputs"]
+    Outputs --> Host
+    Runtime --> LLM["LLM Adapter"]
+    LLM --> Outputs
 ```
 
 ## Local Setup
@@ -92,5 +148,7 @@ Recommended local versions:
 - proactive messaging
 - fake LLM adapter
 - CLI drama demo
+- interactive CLI demo
+- JSON file persistence
 
-See [docs/concept.md](docs/concept.md), [docs/mvp.md](docs/mvp.md), and [docs/roadmap.md](docs/roadmap.md) for more detail.
+See [docs/concept.md](docs/concept.md), [docs/mvp.md](docs/mvp.md), [docs/api.md](docs/api.md), and [docs/roadmap.md](docs/roadmap.md) for more detail.

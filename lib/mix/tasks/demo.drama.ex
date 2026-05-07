@@ -23,7 +23,7 @@ defmodule Mix.Tasks.Demo.Drama do
       Mix.shell().info("")
       Mix.shell().info(format_event(event))
 
-      {state, outputs, log} = Runtime.dispatch(state, event)
+      {:ok, state, outputs, log} = Runtime.dispatch(state, event)
 
       Enum.each(log, fn line -> Mix.shell().info(line) end)
       print_outputs(outputs)

@@ -18,4 +18,9 @@ defmodule Aethrion do
   Builds the default demo state with Mina, Yuna, and Haru.
   """
   defdelegate demo_state(), to: Runtime
+
+  @doc """
+  Builds a runtime state from explicit characters and relationships.
+  """
+  defdelegate new_state(opts), to: Aethrion.State, as: :new
 end

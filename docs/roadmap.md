@@ -21,14 +21,15 @@ Implemented:
 - fake LLM adapter
 - `mix demo.drama`
 - ExUnit scenario and invariant tests
+- structured validation errors
+- interactive CLI demo
+- JSON file persistence
+- CI, MIT license, contribution guide, and example script
 
 Not implemented yet:
 
-- stable public API
-- persistence adapters
 - actor/process runtime
 - scheduler process
-- interactive CLI
 - real LLM adapters
 - memory retrieval or summarization
 - package publishing
@@ -39,14 +40,14 @@ Goal: turn the PoC into a small but coherent library surface.
 
 TODO:
 
-- [ ] Define the public API around `Aethrion.Runtime.dispatch/2`.
-- [ ] Add explicit `Aethrion.State.new/1` or scenario builders instead of relying only on demo state.
-- [ ] Normalize event and output shapes.
-- [ ] Add validation for unknown characters and unsupported events.
-- [ ] Return structured errors instead of relying on crashes for normal invalid input.
-- [ ] Document the supported v0 event types.
-- [ ] Document the supported v0 output types.
-- [ ] Add examples for embedding Aethrion in another Elixir app.
+- [x] Define the public API around `Aethrion.Runtime.dispatch/2`.
+- [x] Add explicit `Aethrion.State.new/1` or scenario builders instead of relying only on demo state.
+- [x] Normalize event and output shapes.
+- [x] Add validation for unknown characters and unsupported events.
+- [x] Return structured errors instead of relying on crashes for normal invalid input.
+- [x] Document the supported v0 event types.
+- [x] Document the supported v0 output types.
+- [x] Add examples for embedding Aethrion in another Elixir app.
 
 Success criteria:
 
@@ -60,12 +61,12 @@ Goal: make the core idea easy to understand in under 15 minutes.
 
 TODO:
 
-- [ ] Add `mix demo.interactive`.
-- [ ] Support simple CLI commands such as `gift`, `tick`, `status`, and `memories`.
-- [ ] Print relationship and character state summaries after each command.
+- [x] Add `mix demo.interactive`.
+- [x] Support simple CLI commands such as `gift`, `tick`, `status`, and `memories`.
+- [x] Print relationship and character state summaries after each command.
 - [ ] Add a richer scripted scenario with at least two social branches.
-- [ ] Add a README section that shows the full demo output.
-- [ ] Add small architecture diagrams using plain Markdown or Mermaid.
+- [x] Add a README section that shows the full demo output.
+- [x] Add small architecture diagrams using plain Markdown or Mermaid.
 
 Success criteria:
 
@@ -78,11 +79,11 @@ Goal: make runtime state durable without changing the simulation model.
 
 TODO:
 
-- [ ] Define a persistence behaviour.
-- [ ] Add an in-memory adapter as the reference implementation.
-- [ ] Add JSON file persistence for local experiments.
-- [ ] Add serialization tests for characters, relationships, memories, and emitted outputs.
-- [ ] Keep persistence separate from rule logic.
+- [x] Define a persistence behaviour.
+- [x] Add an in-memory adapter as the reference implementation.
+- [x] Add JSON file persistence for local experiments.
+- [x] Add serialization tests for characters, relationships, memories, and emitted outputs.
+- [x] Keep persistence separate from rule logic.
 
 Success criteria:
 
@@ -146,13 +147,13 @@ Goal: make the project approachable as an early open-source runtime.
 
 TODO:
 
-- [ ] Add license.
-- [ ] Add contribution guide.
-- [ ] Add code of conduct if the project becomes public-facing.
+- [x] Add license.
+- [x] Add contribution guide.
+- [x] Add code of conduct if the project becomes public-facing.
 - [ ] Add CI for formatting and tests.
 - [ ] Add Hex package metadata when the API is stable enough.
-- [ ] Add examples directory.
-- [ ] Add issue templates for bugs, ideas, and demo scenarios.
+- [x] Add examples directory.
+- [x] Add issue templates for bugs, ideas, and demo scenarios.
 
 Success criteria:
 
@@ -163,10 +164,10 @@ Success criteria:
 
 Recommended next tasks:
 
-1. Stabilize the public API and event/output shapes.
-2. Add `mix demo.interactive`.
-3. Add JSON persistence.
-4. Add CI for `mix format --check-formatted` and `mix test`.
-5. Add a license and contribution basics.
+1. Add a richer scripted scenario with at least two social branches.
+2. Add GitHub Actions CI once the repo token has `workflow` scope.
+3. Explore a supervised runtime process.
+4. Define the first real LLM adapter behaviour without adding provider lock-in.
+5. Add a richer memory retrieval layer.
 
 The project should avoid Phoenix, vector databases, distributed BEAM, and real LLM providers until the core runtime interface is clearer.

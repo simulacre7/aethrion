@@ -2,6 +2,8 @@
 
 [English](README.md) | [한국어](README.ko.md)
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 **발음:** 에이트리온 / ay-three-on
 
 **지속형 AI 캐릭터를 위한 공유 소셜 레이어.**
@@ -48,24 +50,78 @@ Deterministic simulation core
 
 LLM 레이어는 결과를 자연스러운 언어로 표현하는 일을 돕습니다. v0 데모는 실제 모델 없이도 시뮬레이션이 동작한다는 것을 보이기 위해 fake LLM adapter를 사용합니다.
 
-## 데모 미리보기
+## Aethrion이 하는 것 / 하지 않는 것
 
-```txt
-[Event] user gives Mina a flower
-[Rule] Mina affinity toward user +10
-[Memory] Mina remembers the flower
-[Rule] Yuna notices the gift
-[State] Yuna jealousy +15
+Aethrion은 다음을 지향합니다.
 
-[Event] time passes
-[Rule] Yuna loneliness +8
-[Output] Yuna proactively messages the user
-```
+- 결정론적 소셜 시뮬레이션 런타임
+- 지속형 AI 캐릭터를 위한 이벤트 기반 모델
+- 기억, 감정, 관계, 선제 출력을 모델링하는 레이어
+- LLM provider에 종속되지 않는 구조
 
-실행:
+Aethrion은 다음이 아닙니다.
+
+- 챗봇 프롬프트 모음
+- 비주얼 노벨 엔진
+- Phoenix 웹 앱
+- 벡터 데이터베이스 프로젝트
+- LLM이 권위 있는 상태를 소유하는 프레임워크
+
+## 빠른 데모
+
+스크립트 데모:
 
 ```bash
 mix demo.drama
+```
+
+인터랙티브 데모:
+
+```bash
+mix demo.interactive
+```
+
+출력 예시:
+
+```txt
+[World] Characters loaded: Haru, Mina, Yuna
+
+[Event] user gives mina a flower
+[Rule] Mina affinity toward user +10
+[Memory] Mina remembers: "user gave mina a flower."
+[Rule] Yuna noticed the gift to Mina
+[State] Yuna jealousy +15
+[State] Yuna tension toward Mina +8
+
+[Event] time_tick +2h
+[Rule] time_tick increased loneliness +8 for active characters
+[Output] Yuna -> user: "You seemed really happy with Mina earlier. I guess I was just wondering if you forgot about me."
+```
+
+## Elixir 앱에서 사용하기
+
+```elixir
+alias Aethrion.{Event, Runtime}
+
+state = Runtime.demo_state()
+event = Event.gift_received("user", "mina", "flower", observed_by: ["yuna"])
+
+{:ok, next_state, outputs, log} = Runtime.dispatch(state, event)
+```
+
+`outputs`는 구조화된 effect입니다. 실제 렌더링, 저장, 전달은 host application이 결정합니다.
+
+## 구조
+
+```mermaid
+flowchart TD
+    Host["Host app / game / CLI"] --> Runtime["Aethrion Runtime"]
+    Runtime --> Rules["Deterministic Rules"]
+    Runtime --> State["Memory / Emotion / Relationships"]
+    Runtime --> Outputs["Structured Outputs"]
+    Outputs --> Host
+    Runtime --> LLM["LLM Adapter"]
+    LLM --> Outputs
 ```
 
 ## 로컬 설정
@@ -92,5 +148,7 @@ mix demo.drama
 - 선제 메시지
 - fake LLM adapter
 - CLI drama demo
+- interactive CLI demo
+- JSON file persistence
 
-자세한 내용은 [docs/concept.md](docs/concept.md), [docs/mvp.md](docs/mvp.md), [docs/roadmap.md](docs/roadmap.md)를 참고하세요.
+자세한 내용은 [docs/concept.md](docs/concept.md), [docs/mvp.md](docs/mvp.md), [docs/api.md](docs/api.md), [docs/roadmap.md](docs/roadmap.md)를 참고하세요.

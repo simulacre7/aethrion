@@ -8,7 +8,7 @@ defmodule Aethrion.RuntimeTest do
     state = Runtime.demo_state()
     event = Event.gift_received("user", "mina", "flower", observed_by: [], at: "demo:test")
 
-    {state, outputs, _log} = Runtime.dispatch(state, event)
+    {:ok, state, outputs, _log} = Runtime.dispatch(state, event)
 
     relationship = State.get_relationship(state, "mina", "user")
 
@@ -21,7 +21,7 @@ defmodule Aethrion.RuntimeTest do
     state = Runtime.demo_state()
     event = Event.gift_received("user", "mina", "flower", observed_by: ["yuna"], at: "demo:test")
 
-    {state, _outputs, _log} = Runtime.dispatch(state, event)
+    {:ok, state, _outputs, _log} = Runtime.dispatch(state, event)
 
     assert state.characters["yuna"].state.jealousy == 15
     assert State.get_relationship(state, "yuna", "mina").tension == 8
@@ -31,7 +31,7 @@ defmodule Aethrion.RuntimeTest do
     state = Runtime.demo_state()
     event = Event.time_tick("demo:t2", hours: 2)
 
-    {state, _outputs, _log} = Runtime.dispatch(state, event)
+    {:ok, state, _outputs, _log} = Runtime.dispatch(state, event)
 
     assert state.characters["mina"].state.loneliness == 20
     assert state.characters["yuna"].state.loneliness == 34
@@ -41,13 +41,13 @@ defmodule Aethrion.RuntimeTest do
   test "jealousy threshold emits a proactive message" do
     state = Runtime.demo_state()
 
-    {state, _outputs, _log} =
+    {:ok, state, _outputs, _log} =
       Runtime.dispatch(
         state,
         Event.gift_received("user", "mina", "flower", observed_by: ["yuna"], at: "demo:t1")
       )
 
-    {_state, outputs, _log} = Runtime.dispatch(state, Event.time_tick("demo:t2", hours: 2))
+    {:ok, _state, outputs, _log} = Runtime.dispatch(state, Event.time_tick("demo:t2", hours: 2))
 
     assert [
              %{
@@ -71,7 +71,7 @@ defmodule Aethrion.RuntimeTest do
 
     {state, outputs} =
       Enum.reduce(events, {state, []}, fn event, {state, outputs} ->
-        {state, next_outputs, _log} = Runtime.dispatch(state, event)
+        {:ok, state, next_outputs, _log} = Runtime.dispatch(state, event)
         {state, outputs ++ next_outputs}
       end)
 
@@ -96,7 +96,7 @@ defmodule Aethrion.RuntimeTest do
 
     {state, _outputs} =
       Enum.reduce(events, {state, []}, fn event, {state, outputs} ->
-        {state, next_outputs, _log} = Runtime.dispatch(state, event)
+        {:ok, state, next_outputs, _log} = Runtime.dispatch(state, event)
         {state, outputs ++ next_outputs}
       end)
 
@@ -114,7 +114,7 @@ defmodule Aethrion.RuntimeTest do
         %{character_state | blocked?: true, jealousy: 50}
       end)
 
-    {_state, outputs, _log} = Runtime.dispatch(state, Event.time_tick("demo:t1", hours: 1))
+    {:ok, _state, outputs, _log} = Runtime.dispatch(state, Event.time_tick("demo:t1", hours: 1))
 
     refute Enum.any?(outputs, &(&1.type == :proactive_message))
   end
@@ -124,5 +124,20 @@ defmodule Aethrion.RuntimeTest do
 
     assert FakeAdapter.proactive_message("yuna", :jealous) =~ "Mina"
     assert state == Runtime.demo_state()
+  end
+
+  test "unknown gift receiver returns structured error" do
+    state = Runtime.demo_state()
+
+    assert {:error, %{code: :unknown_character, message: message}} =
+             Runtime.dispatch(state, Event.gift_received("user", "unknown", "flower"))
+
+    assert message =~ "unknown character"
+  end
+
+  test "unsupported event returns structured error" do
+    state = Runtime.demo_state()
+
+    assert {:error, %{code: :unsupported_event}} = Runtime.dispatch(state, %{type: :story_event})
   end
 end
