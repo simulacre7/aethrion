@@ -150,7 +150,7 @@ TODO:
 - [x] Add license.
 - [x] Add contribution guide.
 - [x] Add code of conduct if the project becomes public-facing.
-- [ ] Add CI for formatting and tests.
+- [x] Add CI for formatting and tests.
 - [ ] Add Hex package metadata when the API is stable enough.
 - [x] Add examples directory.
 - [x] Add issue templates for bugs, ideas, and demo scenarios.
@@ -165,9 +165,9 @@ Success criteria:
 Recommended next tasks:
 
 1. Add a richer scripted scenario with at least two social branches.
-2. Add GitHub Actions CI once the repo token has `workflow` scope.
-3. Explore a supervised runtime process.
-4. Define the first real LLM adapter behaviour without adding provider lock-in.
-5. Add a richer memory retrieval layer.
+2. Explore a supervised runtime process.
+3. Define the first real LLM adapter behaviour without adding provider lock-in.
+4. Add a richer memory retrieval layer.
+5. Add a richer scripted scenario with at least two social branches.
 
 The project should avoid Phoenix, vector databases, distributed BEAM, and real LLM providers until the core runtime interface is clearer.
