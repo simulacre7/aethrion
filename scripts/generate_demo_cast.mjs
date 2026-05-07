@@ -4,10 +4,21 @@ const outputPath = "assets/demo/interactive-demo.cast";
 const events = [];
 let time = 0;
 
+const ansi = {
+  reset: "\x1b[0m",
+  bold: "\x1b[1m",
+  dim: "\x1b[2m",
+  cyan: "\x1b[36m",
+  blue: "\x1b[34m",
+  green: "\x1b[32m",
+  yellow: "\x1b[33m",
+  magenta: "\x1b[35m",
+};
+
 const header = {
   version: 2,
-  width: 120,
-  height: 34,
+  width: 112,
+  height: 30,
   timestamp: 0,
   title: "Aethrion interactive demo",
   env: {
@@ -16,112 +27,131 @@ const header = {
   },
 };
 
-function write(text, delay = 0.35) {
+function write(text, delay = 0.3) {
   time += delay;
   events.push([Number(time.toFixed(3)), "o", text]);
 }
 
-function writeBlock(text, delay = 0.35) {
-  write(`${text.replace(/\n/g, "\r\n")}\r\n`, delay);
+function line(text = "", delay = 0.2) {
+  write(`${text}\r\n`, delay);
+}
+
+function block(lines, delay = 0.35) {
+  write(`${lines.join("\r\n")}\r\n`, delay);
+}
+
+function prompt() {
+  write(`${ansi.bold}${ansi.cyan}aethrion${ansi.reset}${ansi.dim}> ${ansi.reset}`, 0.35);
 }
 
 function typeCommand(command) {
   for (const char of command) {
-    write(char, 0.035);
+    write(char, 0.025);
   }
 
   write("\r\n", 0.08);
 }
 
-writeBlock("Aethrion interactive demo\nType help for commands, quit to exit.");
-writeBlock(
+function tag(label, color, text) {
+  return `${color}${ansi.bold}${label.padEnd(9)}${ansi.reset}${text}${ansi.reset}`;
+}
+
+function section(title) {
+  return `${ansi.bold}${title}${ansi.reset}`;
+}
+
+function faint(text) {
+  return `${ansi.dim}${text}${ansi.reset}`;
+}
+
+block([
+  `${ansi.bold}${ansi.cyan}Aethrion${ansi.reset}${ansi.dim}  early alpha${ansi.reset}`,
+  faint("A shared social layer for persistent AI characters."),
+  `${ansi.yellow}LLMs express the drama, but deterministic state creates it.${ansi.reset}`,
+]);
+
+line("Type help for commands, quit to exit.", 0.3);
+block(
   [
-    "[Status]",
-    "  Haru: mood=neutral loneliness=8 jealousy=0",
-    "  Mina: mood=neutral loneliness=12 jealousy=0",
-    "  Yuna: mood=neutral loneliness=26 jealousy=0",
-    "[Relationships]",
-    "  mina->user: affinity=40 trust=25 tension=0",
-    "  yuna->mina: affinity=10 trust=10 tension=0",
-    "  yuna->user: affinity=38 trust=20 tension=0",
-  ].join("\n"),
-  0.45,
+    section("Characters"),
+    faint("  name       mood       lonely  jealous"),
+    faint("  ---------  ---------  ------  -------"),
+    "  Haru     neutral    8       0",
+    "  Mina     neutral    12      0",
+    "  Yuna     neutral    26      0",
+    "",
+    section("Relationships"),
+    faint("  edge         affinity  trust  tension"),
+    faint("  -----------  --------  -----  -------"),
+    "  mina->user   40        25     0",
+    "  yuna->mina   10        10     0",
+    "  yuna->user   38        20     0",
+  ],
+  0.4,
 );
 
-write("> ", 0.35);
-typeCommand("status");
-writeBlock(
-  [
-    "[Status]",
-    "  Haru: mood=neutral loneliness=8 jealousy=0",
-    "  Mina: mood=neutral loneliness=12 jealousy=0",
-    "  Yuna: mood=neutral loneliness=26 jealousy=0",
-    "[Relationships]",
-    "  mina->user: affinity=40 trust=25 tension=0",
-    "  yuna->mina: affinity=10 trust=10 tension=0",
-    "  yuna->user: affinity=38 trust=20 tension=0",
-  ].join("\n"),
-  0.45,
-);
-
-write("> ", 0.4);
+prompt();
 typeCommand("gift user mina flower observed_by yuna");
-writeBlock(
+block(
   [
-    "[Rule] Mina affinity toward user +10",
-    '[Memory] Mina remembers: "user gave mina a flower."',
-    "[Rule] Yuna noticed the gift to Mina",
-    "[State] Yuna jealousy +15",
-    "[State] Yuna tension toward Mina +8",
-    "[Output] relationship_changed mina->user %{affinity: 10}",
-    "[Output] memory_created memory:mina:gift:flower:interactive:gift",
-    "[Output] relationship_changed yuna->mina %{tension: 8}",
-  ].join("\n"),
-  0.5,
+    tag("RULE", ansi.magenta, "Mina affinity toward user +10"),
+    tag("MEMORY", ansi.green, 'Mina remembers: "user gave mina a flower."'),
+    tag("RULE", ansi.magenta, "Yuna noticed the gift to Mina"),
+    tag("STATE", ansi.yellow, "Yuna jealousy +15"),
+    tag("STATE", ansi.yellow, "Yuna tension toward Mina +8"),
+    tag("EFFECT", ansi.cyan, "relationship_changed mina->user %{affinity: 10}"),
+    tag("EFFECT", ansi.cyan, "memory_created memory:mina:gift:flower:interactive:gift"),
+    tag("EFFECT", ansi.cyan, "relationship_changed yuna->mina %{tension: 8}"),
+  ],
+  0.45,
 );
-writeBlock(
+block(
   [
-    "[Status]",
-    "  Haru: mood=neutral loneliness=8 jealousy=0",
-    "  Mina: mood=neutral loneliness=12 jealousy=0",
-    "  Yuna: mood=neutral loneliness=26 jealousy=15",
-    "[Relationships]",
-    "  mina->user: affinity=50 trust=25 tension=0",
-    "  yuna->mina: affinity=10 trust=10 tension=8",
-    "  yuna->user: affinity=38 trust=20 tension=0",
-  ].join("\n"),
-  0.5,
+    section("Characters"),
+    faint("  name       mood       lonely  jealous"),
+    faint("  ---------  ---------  ------  -------"),
+    "  Haru     neutral    8       0",
+    "  Mina     neutral    12      0",
+    "  Yuna     neutral    26      15",
+    "",
+    section("Relationships"),
+    faint("  edge         affinity  trust  tension"),
+    faint("  -----------  --------  -----  -------"),
+    "  mina->user   50        25     0",
+    "  yuna->mina   10        10     8",
+    "  yuna->user   38        20     0",
+  ],
+  0.45,
 );
 
-write("> ", 0.45);
+prompt();
 typeCommand("tick 2");
-writeBlock(
+block(
   [
-    "[Rule] time_tick increased loneliness +8 for active characters",
-    '[Output] Yuna -> user: "You seemed really happy with Mina earlier. I guess I was just wondering if you forgot about me."',
-  ].join("\n"),
-  0.55,
+    tag("RULE", ansi.magenta, "time_tick increased loneliness +8 for active characters"),
+    tag("OUTPUT", ansi.cyan, 'Yuna -> user: "You looked happy with Mina earlier. I wondered if you forgot about me."'),
+    tag("EFFECT", ansi.cyan, "proactive_message yuna->user reason=jealous"),
+  ],
+  0.45,
 );
-writeBlock(
+block(
   [
-    "[Status]",
-    "  Haru: mood=neutral loneliness=16 jealousy=0",
-    "  Mina: mood=neutral loneliness=20 jealousy=0",
-    "  Yuna: mood=neutral loneliness=34 jealousy=15",
-    "[Relationships]",
-    "  mina->user: affinity=50 trust=25 tension=0",
-    "  yuna->mina: affinity=10 trust=10 tension=8",
-    "  yuna->user: affinity=38 trust=20 tension=0",
-  ].join("\n"),
-  0.5,
+    section("Characters"),
+    faint("  name       mood       lonely  jealous"),
+    faint("  ---------  ---------  ------  -------"),
+    "  Haru     neutral    16      0",
+    "  Mina     neutral    20      0",
+    "  Yuna     neutral    34      15",
+  ],
+  0.45,
 );
 
-write("> ", 0.45);
+prompt();
 typeCommand("memories");
-writeBlock("[Memories]\n  mina: user gave mina a flower. importance=60", 0.45);
+block([section("Memories"), `  ${ansi.bold}mina${ansi.reset} remembers "user gave mina a flower." ${faint("importance=60")}`], 0.35);
 
-write("> ", 0.45);
+prompt();
 typeCommand("quit");
-writeBlock("bye", 0.25);
+line("bye", 0.25);
 
 fs.writeFileSync(outputPath, `${JSON.stringify(header)}\n${events.map(JSON.stringify).join("\n")}\n`);

@@ -1,60 +1,63 @@
 $ mix demo.interactive
-Aethrion interactive demo
+Aethrion  early alpha
+A shared social layer for persistent AI characters.
+LLMs express the drama, but deterministic state creates it.
+
 Type help for commands, quit to exit.
 
-[Status]
-  Haru: mood=neutral loneliness=8 jealousy=0
-  Mina: mood=neutral loneliness=12 jealousy=0
-  Yuna: mood=neutral loneliness=26 jealousy=0
-[Relationships]
-  mina->user: affinity=40 trust=25 tension=0
-  yuna->mina: affinity=10 trust=10 tension=0
-  yuna->user: affinity=38 trust=20 tension=0
+Characters
+  name       mood       lonely  jealous
+  ---------  ---------  ------  -------
+  Haru       neutral    8       0
+  Mina       neutral    12      0
+  Yuna       neutral    26      0
 
-> status
-[Status]
-  Haru: mood=neutral loneliness=8 jealousy=0
-  Mina: mood=neutral loneliness=12 jealousy=0
-  Yuna: mood=neutral loneliness=26 jealousy=0
-[Relationships]
-  mina->user: affinity=40 trust=25 tension=0
-  yuna->mina: affinity=10 trust=10 tension=0
-  yuna->user: affinity=38 trust=20 tension=0
+Relationships
+  edge         affinity  trust  tension
+  -----------  --------  -----  -------
+  mina->user   40        25     0
+  yuna->mina   10        10     0
+  yuna->user   38        20     0
 
-> gift user mina flower observed_by yuna
-[Rule] Mina affinity toward user +10
-[Memory] Mina remembers: "user gave mina a flower."
-[Rule] Yuna noticed the gift to Mina
-[State] Yuna jealousy +15
-[State] Yuna tension toward Mina +8
-[Output] relationship_changed mina->user %{affinity: 10}
-[Output] memory_created memory:mina:gift:flower:interactive:gift
-[Output] relationship_changed yuna->mina %{tension: 8}
-[Status]
-  Haru: mood=neutral loneliness=8 jealousy=0
-  Mina: mood=neutral loneliness=12 jealousy=0
-  Yuna: mood=neutral loneliness=26 jealousy=15
-[Relationships]
-  mina->user: affinity=50 trust=25 tension=0
-  yuna->mina: affinity=10 trust=10 tension=8
-  yuna->user: affinity=38 trust=20 tension=0
+aethrion> gift user mina flower observed_by yuna
+RULE     Mina affinity toward user +10
+MEMORY   Mina remembers: "user gave mina a flower."
+RULE     Yuna noticed the gift to Mina
+STATE    Yuna jealousy +15
+STATE    Yuna tension toward Mina +8
+EFFECT   relationship_changed mina->user %{affinity: 10}
+EFFECT   memory_created memory:mina:gift:flower:interactive:gift
+EFFECT   relationship_changed yuna->mina %{tension: 8}
 
-> tick 2
-[Rule] time_tick increased loneliness +8 for active characters
-[Output] Yuna -> user: "You seemed really happy with Mina earlier. I guess I was just wondering if you forgot about me."
-[Output] yuna -> user reason=jealous: "You seemed really happy with Mina earlier. I guess I was just wondering if you forgot about me."
-[Status]
-  Haru: mood=neutral loneliness=16 jealousy=0
-  Mina: mood=neutral loneliness=20 jealousy=0
-  Yuna: mood=neutral loneliness=34 jealousy=15
-[Relationships]
-  mina->user: affinity=50 trust=25 tension=0
-  yuna->mina: affinity=10 trust=10 tension=8
-  yuna->user: affinity=38 trust=20 tension=0
+Characters
+  name       mood       lonely  jealous
+  ---------  ---------  ------  -------
+  Haru       neutral    8       0
+  Mina       neutral    12      0
+  Yuna       neutral    26      15
 
-> memories
-[Memories]
-  mina: user gave mina a flower. importance=60
+Relationships
+  edge         affinity  trust  tension
+  -----------  --------  -----  -------
+  mina->user   50        25     0
+  yuna->mina   10        10     8
+  yuna->user   38        20     0
 
-> quit
+aethrion> tick 2
+RULE     time_tick increased loneliness +8 for active characters
+OUTPUT   Yuna -> user: "You looked happy with Mina earlier. I wondered if you forgot about me."
+EFFECT   proactive_message yuna->user reason=jealous
+
+Characters
+  name       mood       lonely  jealous
+  ---------  ---------  ------  -------
+  Haru       neutral    16      0
+  Mina       neutral    20      0
+  Yuna       neutral    34      15
+
+aethrion> memories
+Memories
+  mina remembers "user gave mina a flower." importance=60
+
+aethrion> quit
 bye

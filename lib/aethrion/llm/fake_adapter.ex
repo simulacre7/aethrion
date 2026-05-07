@@ -7,7 +7,7 @@ defmodule Aethrion.LLM.FakeAdapter do
   """
 
   def proactive_message("yuna", :jealous) do
-    "You seemed really happy with Mina earlier. I guess I was just wondering if you forgot about me."
+    "You looked happy with Mina earlier. I wondered if you forgot about me."
   end
 
   def proactive_message(character_id, reason) do

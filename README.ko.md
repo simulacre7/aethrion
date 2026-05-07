@@ -120,7 +120,7 @@ mix demo.interactive
 
 [Event] time_tick +2h
 [Rule] time_tick increased loneliness +8 for active characters
-[Output] Yuna -> user: "You seemed really happy with Mina earlier. I guess I was just wondering if you forgot about me."
+[Output] Yuna -> user: "You looked happy with Mina earlier. I wondered if you forgot about me."
 ```
 
 ## Elixir 앱에서 사용하기
