@@ -71,6 +71,7 @@ block([
 ]);
 
 line("Type help for commands, quit to exit.", 0.55);
+line("", 0.35);
 block(
   [
     section("Characters"),
