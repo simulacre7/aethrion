@@ -33,9 +33,11 @@ mix demo.drama
 mix demo.interactive
 ```
 
-CLI 흐름은 [interactive demo transcript](assets/demo/interactive-demo.txt)에서 빠르게 확인할 수 있습니다.
+컨트롤이 있는 비디오로 interactive demo를 볼 수 있습니다.
 
-![Aethrion interactive demo](assets/demo/interactive-demo-readable.svg)
+<video src="assets/demo/interactive-demo.mp4" controls muted playsinline width="100%" title="Aethrion interactive demo"></video>
+
+Markdown viewer에서 비디오 플레이어가 보이지 않는다면 [MP4 demo](assets/demo/interactive-demo.mp4), [animated SVG fallback](assets/demo/interactive-demo-readable.svg), 또는 [plain-text transcript](assets/demo/interactive-demo.txt)를 열어보세요.
 
 ## 왜 필요한가
 

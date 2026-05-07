@@ -12,7 +12,7 @@ Aethrion models memory, emotion, relationships, and proactive behavior as an eve
 
 Repo: https://github.com/simulacre7/aethrion
 
-Demo: https://github.com/simulacre7/aethrion/blob/main/assets/demo/interactive-demo-readable.svg
+Demo: https://github.com/simulacre7/aethrion/blob/main/assets/demo/interactive-demo.mp4
 
 ## X / Short Social Post
 
@@ -24,7 +24,7 @@ It models memory, emotion, relationships, and proactive behavior as an event-dri
 
 Repo: https://github.com/simulacre7/aethrion
 
-Demo: https://github.com/simulacre7/aethrion/blob/main/assets/demo/interactive-demo-readable.svg
+Demo: https://github.com/simulacre7/aethrion/blob/main/assets/demo/interactive-demo.mp4
 
 ## LinkedIn / Longer Post
 
@@ -52,7 +52,7 @@ It is not production-ready yet, but it is ready for feedback from people interes
 
 Repo: https://github.com/simulacre7/aethrion
 
-Demo: https://github.com/simulacre7/aethrion/blob/main/assets/demo/interactive-demo-readable.svg
+Demo: https://github.com/simulacre7/aethrion/blob/main/assets/demo/interactive-demo.mp4
 
 ## Elixir Forum / Technical Post
 

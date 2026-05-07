@@ -33,9 +33,11 @@ mix demo.drama
 mix demo.interactive
 ```
 
-See the [interactive demo transcript](assets/demo/interactive-demo.txt) for a quick look at the CLI flow.
+Watch the interactive demo with controls:
 
-![Aethrion interactive demo](assets/demo/interactive-demo-readable.svg)
+<video src="assets/demo/interactive-demo.mp4" controls muted playsinline width="100%" title="Aethrion interactive demo"></video>
+
+If the video player is not shown in your Markdown viewer, open the [MP4 demo](assets/demo/interactive-demo.mp4), [animated SVG fallback](assets/demo/interactive-demo-readable.svg), or [plain-text transcript](assets/demo/interactive-demo.txt).
 
 ## Why This Exists
 
