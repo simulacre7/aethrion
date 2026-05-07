@@ -35,7 +35,7 @@ mix demo.interactive
 
 CLI 흐름은 [interactive demo transcript](assets/demo/interactive-demo.txt)에서 빠르게 확인할 수 있습니다.
 
-![Aethrion interactive demo](assets/demo/interactive-demo.svg)
+![Aethrion interactive demo](assets/demo/interactive-demo-readable.svg)
 
 ## 왜 필요한가
 

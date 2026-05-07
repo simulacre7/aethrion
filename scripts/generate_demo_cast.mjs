@@ -103,10 +103,10 @@ block(
     tag("EFFECT", ansi.cyan, "relationship_changed mina->user %{affinity: 10}"),
     tag("EFFECT", ansi.cyan, "memory_created memory:mina:gift:flower:interactive:gift"),
     tag("EFFECT", ansi.cyan, "relationship_changed yuna->mina %{tension: 8}"),
-    "",
   ],
   1.1,
 );
+line("", 0.45);
 block(
   [
     section("Characters"),
@@ -134,10 +134,10 @@ block(
     tag("RULE", ansi.magenta, "time_tick increased loneliness +8 for active characters"),
     tag("OUTPUT", ansi.cyan, 'Yuna -> user: "You looked happy with Mina earlier. I wondered if you forgot about me."'),
     tag("EFFECT", ansi.cyan, "proactive_message yuna->user reason=jealous"),
-    "",
   ],
   1,
 );
+line("", 0.45);
 block(
   [
     section("Characters"),
