@@ -93,4 +93,4 @@ Recommended local versions:
 - fake LLM adapter
 - CLI drama demo
 
-See [docs/concept.md](docs/concept.md) and [docs/mvp.md](docs/mvp.md) for more detail.
+See [docs/concept.md](docs/concept.md), [docs/mvp.md](docs/mvp.md), and [docs/roadmap.md](docs/roadmap.md) for more detail.

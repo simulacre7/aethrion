@@ -93,4 +93,4 @@ mix demo.drama
 - fake LLM adapter
 - CLI drama demo
 
-자세한 내용은 [docs/concept.md](docs/concept.md)와 [docs/mvp.md](docs/mvp.md)를 참고하세요.
+자세한 내용은 [docs/concept.md](docs/concept.md), [docs/mvp.md](docs/mvp.md), [docs/roadmap.md](docs/roadmap.md)를 참고하세요.
