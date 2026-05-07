@@ -1,5 +1,7 @@
 # Aethrion
 
+[English](README.md) | [한국어](README.ko.md)
+
 **Pronunciation:** 에이트리온 / ay-three-on
 
 **A shared social layer for persistent AI characters.**
