@@ -11,7 +11,29 @@
 
 Aethrion은 기억하고, 관계를 맺고, 시간에 따라 스스로 행동하는 AI 캐릭터를 위한 지속형 소셜 시뮬레이션 런타임입니다.
 
+> LLMs express the drama, but deterministic state creates it.
+
 이름은 고대의 "aether" 개념에서 영감을 받았습니다. 하늘을 채우고 서로를 연결한다고 여겨졌던 보이지 않는 매질처럼, Aethrion은 기억, 관계, 자율 상호작용을 하나의 공유 소셜 레이어로 다룹니다.
+
+## Alpha Status
+
+Aethrion은 현재 **early alpha** 단계입니다.
+
+- API는 바뀔 수 있습니다.
+- production-ready 상태가 아닙니다.
+- 실제 LLM provider는 아직 구현하지 않았습니다.
+- 런타임 모델, API 형태, 데모 시나리오에 대한 피드백을 환영합니다.
+
+## 바로 실행해보기
+
+```bash
+mix deps.get
+mix test
+mix demo.drama
+mix demo.interactive
+```
+
+CLI 흐름은 [interactive demo transcript](assets/demo/interactive-demo.txt)에서 빠르게 확인할 수 있습니다.
 
 ## 왜 필요한가
 
@@ -68,7 +90,7 @@ Aethrion은 다음이 아닙니다.
 - 벡터 데이터베이스 프로젝트
 - LLM이 권위 있는 상태를 소유하는 프레임워크
 
-## 빠른 데모
+## 데모
 
 스크립트 데모:
 

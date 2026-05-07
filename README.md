@@ -11,7 +11,29 @@
 
 Aethrion is a persistent social simulation runtime for AI characters that remember, relate, and act over time.
 
+> LLMs express the drama, but deterministic state creates it.
+
 Inspired by the ancient idea of aether, Aethrion treats memory, relationships, and autonomous interaction as a shared social layer where persistent agents can live, change, and respond to each other.
+
+## Alpha Status
+
+Aethrion is currently **early alpha**.
+
+- API may change.
+- Not production-ready.
+- Real LLM providers are not implemented yet.
+- Feedback on the runtime model, API shape, and demo scenarios is welcome.
+
+## Try It
+
+```bash
+mix deps.get
+mix test
+mix demo.drama
+mix demo.interactive
+```
+
+See the [interactive demo transcript](assets/demo/interactive-demo.txt) for a quick look at the CLI flow.
 
 ## Why This Exists
 
@@ -68,7 +90,7 @@ Aethrion is not:
 - a vector database project
 - a framework where the LLM owns authoritative state
 
-## Quick Demo
+## Demo
 
 Run the scripted demo:
 
