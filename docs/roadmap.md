@@ -144,6 +144,24 @@ Success criteria:
 - Proactive outputs can reference relevant past events.
 - Memory behavior remains explainable and testable.
 
+## Phase 6.5: Rule Organization
+
+Goal: keep deterministic rules explicit and manageable as event types grow.
+
+TODO:
+
+- [ ] Introduce a small rule behaviour before considering a generic DSL.
+- [ ] Add a rule pipeline that makes event-to-rule mapping visible.
+- [ ] Keep rule ordering, outputs, and logs explicit.
+- [ ] Add tests for rule ordering and non-mutation on invalid events.
+- [ ] Defer a DSL until repeated rule patterns are proven.
+
+Success criteria:
+
+- New event rules can be added without bloating `Aethrion.Runtime.dispatch/2`.
+- Rule modules remain deterministic and easy to test in isolation.
+- The runtime can explain which rules produced each state transition.
+
 ## Phase 7: Packaging And Community Readiness
 
 Goal: make the project approachable as an early open-source runtime.
@@ -169,6 +187,7 @@ Recommended next tasks:
 
 1. Define the first real LLM adapter behaviour without adding provider lock-in.
 2. Add a richer memory retrieval layer.
-3. Explore per-character processes only after the runtime API settles.
+3. Introduce a small rule behaviour and rule pipeline when rule count grows.
+4. Explore per-character processes only after the runtime API settles.
 
 The project should avoid Phoenix, vector databases, distributed BEAM, and real LLM providers until the core runtime interface is clearer.
