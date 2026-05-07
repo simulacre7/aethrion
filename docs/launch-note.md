@@ -12,6 +12,8 @@ Aethrion models memory, emotion, relationships, and proactive behavior as an eve
 
 Repo: https://github.com/simulacre7/aethrion
 
+Demo: https://github.com/simulacre7/aethrion/blob/main/assets/demo/interactive-demo.svg
+
 ## X / Short Social Post
 
 I'm building Aethrion, an early alpha Elixir runtime for persistent AI characters.
@@ -21,6 +23,8 @@ The idea: LLMs express the drama, but deterministic state creates it.
 It models memory, emotion, relationships, and proactive behavior as an event-driven social simulation layer.
 
 Repo: https://github.com/simulacre7/aethrion
+
+Demo: https://github.com/simulacre7/aethrion/blob/main/assets/demo/interactive-demo.svg
 
 ## LinkedIn / Longer Post
 
@@ -47,6 +51,8 @@ The current alpha includes:
 It is not production-ready yet, but it is ready for feedback from people interested in Elixir, AI agents, social simulation, and narrative systems.
 
 Repo: https://github.com/simulacre7/aethrion
+
+Demo: https://github.com/simulacre7/aethrion/blob/main/assets/demo/interactive-demo.svg
 
 ## Elixir Forum / Technical Post
 

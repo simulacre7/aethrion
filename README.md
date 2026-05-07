@@ -35,6 +35,8 @@ mix demo.interactive
 
 See the [interactive demo transcript](assets/demo/interactive-demo.txt) for a quick look at the CLI flow.
 
+![Aethrion interactive demo](assets/demo/interactive-demo.svg)
+
 ## Why This Exists
 
 Most AI character systems are built around a simple loop:

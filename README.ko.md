@@ -35,6 +35,8 @@ mix demo.interactive
 
 CLI 흐름은 [interactive demo transcript](assets/demo/interactive-demo.txt)에서 빠르게 확인할 수 있습니다.
 
+![Aethrion interactive demo](assets/demo/interactive-demo.svg)
+
 ## 왜 필요한가
 
 대부분의 AI 캐릭터 시스템은 단순한 루프를 중심으로 만들어집니다.
