@@ -41,15 +41,15 @@ function block(lines, delay = 0.35) {
 }
 
 function prompt() {
-  write(`${ansi.bold}${ansi.green}user${ansi.reset}${ansi.dim}> ${ansi.reset}`, 0.35);
+  write(`${ansi.bold}${ansi.green}user${ansi.reset}${ansi.dim}> ${ansi.reset}`, 0.7);
 }
 
 function typeCommand(command) {
   for (const char of command) {
-    write(char, 0.025);
+    write(char, 0.055);
   }
 
-  write("\r\n", 0.08);
+  write("\r\n", 0.2);
 }
 
 function tag(label, color, text) {
@@ -70,7 +70,7 @@ block([
   `${ansi.yellow}LLMs express the drama, but deterministic state creates it.${ansi.reset}`,
 ]);
 
-line("Type help for commands, quit to exit.", 0.3);
+line("Type help for commands, quit to exit.", 0.55);
 block(
   [
     section("Characters"),
@@ -88,7 +88,7 @@ block(
     "  yuna->user   38        20     0",
     "",
   ],
-  0.4,
+  0.9,
 );
 
 prompt();
@@ -104,7 +104,7 @@ block(
     tag("EFFECT", ansi.cyan, "memory_created memory:mina:gift:flower:interactive:gift"),
     tag("EFFECT", ansi.cyan, "relationship_changed yuna->mina %{tension: 8}"),
   ],
-  0.45,
+  1.1,
 );
 block(
   [
@@ -123,7 +123,7 @@ block(
     "  yuna->user   38        20     0",
     "",
   ],
-  0.45,
+  1.1,
 );
 
 prompt();
@@ -134,7 +134,7 @@ block(
     tag("OUTPUT", ansi.cyan, 'Yuna -> user: "You looked happy with Mina earlier. I wondered if you forgot about me."'),
     tag("EFFECT", ansi.cyan, "proactive_message yuna->user reason=jealous"),
   ],
-  0.45,
+  1,
 );
 block(
   [
@@ -146,7 +146,7 @@ block(
     "  Yuna     neutral    34      15",
     "",
   ],
-  0.45,
+  1,
 );
 
 prompt();
@@ -157,11 +157,11 @@ block(
     `  ${ansi.bold}mina${ansi.reset} remembers "user gave mina a flower." ${faint("importance=60")}`,
     "",
   ],
-  0.35,
+  0.8,
 );
 
 prompt();
 typeCommand("quit");
-line("bye", 0.25);
+line("bye", 0.5);
 
 fs.writeFileSync(outputPath, `${JSON.stringify(header)}\n${events.map(JSON.stringify).join("\n")}\n`);
