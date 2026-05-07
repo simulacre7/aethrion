@@ -27,7 +27,7 @@ defmodule Aethrion.CLI.Display do
   end
 
   def prompt do
-    IO.ANSI.format([:bright, :cyan, "aethrion", :reset, :faint, "> "], true)
+    IO.ANSI.format([:bright, :green, "user", :reset, :faint, "> "], true)
     |> IO.chardata_to_string()
   end
 

@@ -41,7 +41,7 @@ function block(lines, delay = 0.35) {
 }
 
 function prompt() {
-  write(`${ansi.bold}${ansi.cyan}aethrion${ansi.reset}${ansi.dim}> ${ansi.reset}`, 0.35);
+  write(`${ansi.bold}${ansi.green}user${ansi.reset}${ansi.dim}> ${ansi.reset}`, 0.35);
 }
 
 function typeCommand(command) {
