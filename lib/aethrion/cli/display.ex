@@ -150,7 +150,7 @@ defmodule Aethrion.CLI.Display do
   def message(message), do: print(message)
 
   defp print_section(title) do
-    print(["\n", :bright, title])
+    print(["\n\n", :bright, title])
   end
 
   defp print_tagged(tag, color, message) do
