@@ -196,5 +196,6 @@ block(
 prompt();
 typeCommand("quit");
 line("bye", 0.35);
+write("", 4.0);
 
 fs.writeFileSync(outputPath, `${JSON.stringify(header)}\n${events.map(JSON.stringify).join("\n")}\n`);
