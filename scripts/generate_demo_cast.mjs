@@ -86,6 +86,7 @@ block(
     "  mina->user   40        25     0",
     "  yuna->mina   10        10     0",
     "  yuna->user   38        20     0",
+    "",
   ],
   0.4,
 );
@@ -120,6 +121,7 @@ block(
     "  mina->user   50        25     0",
     "  yuna->mina   10        10     8",
     "  yuna->user   38        20     0",
+    "",
   ],
   0.45,
 );
@@ -142,13 +144,21 @@ block(
     "  Haru     neutral    16      0",
     "  Mina     neutral    20      0",
     "  Yuna     neutral    34      15",
+    "",
   ],
   0.45,
 );
 
 prompt();
 typeCommand("memories");
-block([section("Memories"), `  ${ansi.bold}mina${ansi.reset} remembers "user gave mina a flower." ${faint("importance=60")}`], 0.35);
+block(
+  [
+    section("Memories"),
+    `  ${ansi.bold}mina${ansi.reset} remembers "user gave mina a flower." ${faint("importance=60")}`,
+    "",
+  ],
+  0.35,
+);
 
 prompt();
 typeCommand("quit");

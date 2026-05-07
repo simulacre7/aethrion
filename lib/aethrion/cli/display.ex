@@ -72,12 +72,15 @@ defmodule Aethrion.CLI.Display do
       ])
     end)
 
+    print("")
+
     state
   end
 
   def memories([]) do
     print_section("Memories")
     print([:faint, "  none"])
+    print("")
   end
 
   def memories(memories) do
@@ -97,6 +100,8 @@ defmodule Aethrion.CLI.Display do
         " importance=#{memory.importance}"
       ])
     end)
+
+    print("")
   end
 
   def event(%{type: :gift_received, from: from, to: to, item: item}) do
