@@ -36,20 +36,47 @@ function line(text = "", delay = 0.2) {
   write(`${text}\r\n`, delay);
 }
 
-function block(lines, delay = 0.35) {
-  write(`${lines.join("\r\n")}\r\n`, delay);
+function streamLine(text = "", options = {}) {
+  const tokenDelay = options.tokenDelay ?? 0.035;
+  const lineDelay = options.lineDelay ?? 0.12;
+  const parts = text.split(/(\x1b\[[0-9;]*m)/g).filter(Boolean);
+
+  for (const part of parts) {
+    if (part.startsWith("\x1b[")) {
+      write(part, 0);
+      continue;
+    }
+
+    for (const token of part.match(/\s+|\S+/g) ?? []) {
+      write(token, tokenDelay);
+    }
+  }
+
+  write("\r\n", lineDelay);
+}
+
+function block(lines, options = {}) {
+  const beforeDelay = options.beforeDelay ?? 0.25;
+  const lineDelay = options.lineDelay ?? 0.1;
+  const tokenDelay = options.tokenDelay ?? 0.03;
+
+  write("", beforeDelay);
+
+  for (const item of lines) {
+    streamLine(item, { tokenDelay, lineDelay });
+  }
 }
 
 function prompt() {
-  write(`${ansi.bold}${ansi.green}user${ansi.reset}${ansi.dim}> ${ansi.reset}`, 0.7);
+  write(`${ansi.bold}${ansi.green}user${ansi.reset}${ansi.dim}> ${ansi.reset}`, 0.55);
 }
 
 function typeCommand(command) {
   for (const char of command) {
-    write(char, 0.055);
+    write(char, 0.04);
   }
 
-  write("\r\n", 0.2);
+  write("\r\n", 0.15);
 }
 
 function tag(label, color, text) {
@@ -64,14 +91,17 @@ function faint(text) {
   return `${ansi.dim}${text}${ansi.reset}`;
 }
 
-block([
-  `${ansi.bold}${ansi.cyan}Aethrion${ansi.reset}${ansi.dim}  early alpha${ansi.reset}`,
-  faint("A shared social layer for persistent AI characters."),
-  `${ansi.yellow}LLMs express the drama, but deterministic state creates it.${ansi.reset}`,
-]);
+block(
+  [
+    `${ansi.bold}${ansi.cyan}Aethrion${ansi.reset}${ansi.dim}  early alpha${ansi.reset}`,
+    faint("A shared social layer for persistent AI characters."),
+    `${ansi.yellow}LLMs express the drama, but deterministic state creates it.${ansi.reset}`,
+  ],
+  { beforeDelay: 0.15, tokenDelay: 0.035, lineDelay: 0.1 },
+);
 
-line("Type help for commands, quit to exit.", 0.55);
-line("", 0.35);
+line("Type help for commands, quit to exit.", 0.45);
+line("", 0.25);
 block(
   [
     section("Characters"),
@@ -89,7 +119,7 @@ block(
     "  yuna->user   38        20     0",
     "",
   ],
-  0.9,
+  { beforeDelay: 0.15, tokenDelay: 0.01, lineDelay: 0.04 },
 );
 
 prompt();
@@ -105,9 +135,9 @@ block(
     tag("EFFECT", ansi.cyan, "memory_created memory:mina:gift:flower:interactive:gift"),
     tag("EFFECT", ansi.cyan, "relationship_changed yuna->mina %{tension: 8}"),
   ],
-  1.1,
+  { beforeDelay: 0.25, tokenDelay: 0.02, lineDelay: 0.08 },
 );
-line("", 0.45);
+line("", 0.3);
 block(
   [
     section("Characters"),
@@ -125,7 +155,7 @@ block(
     "  yuna->user   38        20     0",
     "",
   ],
-  1.1,
+  { beforeDelay: 0.18, tokenDelay: 0.01, lineDelay: 0.04 },
 );
 
 prompt();
@@ -136,9 +166,9 @@ block(
     tag("OUTPUT", ansi.cyan, 'Yuna -> user: "You looked happy with Mina earlier. I wondered if you forgot about me."'),
     tag("EFFECT", ansi.cyan, "proactive_message yuna->user reason=jealous"),
   ],
-  1,
+  { beforeDelay: 0.25, tokenDelay: 0.02, lineDelay: 0.08 },
 );
-line("", 0.45);
+line("", 0.3);
 block(
   [
     section("Characters"),
@@ -149,7 +179,7 @@ block(
     "  Yuna     neutral    34      15",
     "",
   ],
-  1,
+  { beforeDelay: 0.18, tokenDelay: 0.01, lineDelay: 0.04 },
 );
 
 prompt();
@@ -160,11 +190,11 @@ block(
     `  ${ansi.bold}mina${ansi.reset} remembers "user gave mina a flower." ${faint("importance=60")}`,
     "",
   ],
-  0.8,
+  { beforeDelay: 0.2, tokenDelay: 0.02, lineDelay: 0.08 },
 );
 
 prompt();
 typeCommand("quit");
-line("bye", 0.5);
+line("bye", 0.35);
 
 fs.writeFileSync(outputPath, `${JSON.stringify(header)}\n${events.map(JSON.stringify).join("\n")}\n`);
