@@ -51,7 +51,7 @@ The long-term runtime model maps naturally to Elixir and BEAM:
 - supervision can recover long-lived runtime components
 - message passing fits event-driven simulation
 
-The v0 implementation starts as a small pure library. It intentionally avoids Phoenix, distributed Erlang, persistent databases, and real LLM providers until the simulation loop is proven.
+The v0 implementation starts as a small Elixir library with a deterministic, process-free simulation core. It intentionally avoids Phoenix, distributed Erlang, persistent databases, and real LLM providers until the simulation loop is proven.
 
 ## Related Influence
 
