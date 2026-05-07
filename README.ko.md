@@ -98,6 +98,8 @@ Aethrion은 현재 결정론적이고 process-free한 simulation core를 가진 
 
 현재 alpha는 시뮬레이션 core를 결정론적이고 process-free한 형태로 유지합니다. 그래서 supervision tree 없이도 쉽게 테스트할 수 있습니다. OTP는 나중에 실질적인 가치가 있는 지점, 예를 들어 캐릭터 생명주기, 예약 이벤트, 백그라운드 memory 작업, 런타임 supervision에 도입할 수 있습니다.
 
+현재 alpha에는 이 방향을 보여주는 얇은 OTP layer도 포함되어 있습니다. `Aethrion.RuntimeServer`는 GenServer 아래에서 long-running state를 보관하고, `Aethrion.Scheduler`는 예약된 `time_tick` 이벤트를 보낼 수 있습니다. 결정론적 core는 여전히 단독으로 사용할 수 있습니다.
+
 ## 데모
 
 스크립트 데모:
@@ -181,5 +183,7 @@ mix demo.drama
 - CLI drama demo
 - interactive CLI demo
 - JSON file persistence
+- supervised runtime server
+- `time_tick` 이벤트를 위한 scheduler process
 
 자세한 내용은 [docs/concept.md](docs/concept.md), [docs/mvp.md](docs/mvp.md), [docs/api.md](docs/api.md), [docs/roadmap.md](docs/roadmap.md)를 참고하세요.

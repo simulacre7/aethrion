@@ -17,6 +17,46 @@ Returns:
 
 `outputs` are structured effects for the host application to handle. `log` is human-readable demo/debug text.
 
+## OTP Runtime Server
+
+The deterministic runtime can also run behind a supervised GenServer:
+
+```elixir
+{:ok, server} =
+  Aethrion.RuntimeServer.start_link(initial_state: Aethrion.Runtime.demo_state())
+
+event = Aethrion.Event.gift_received("user", "mina", "flower", observed_by: ["yuna"])
+
+{:ok, next_state, outputs, log} = Aethrion.RuntimeServer.dispatch(server, event)
+```
+
+Invalid events return the same structured errors as `Aethrion.Runtime.dispatch/2` and do not mutate the server state.
+
+For supervision:
+
+```elixir
+children = [
+  {Aethrion.RuntimeServer, initial_state: Aethrion.Runtime.demo_state(), name: :aethrion_runtime}
+]
+
+Supervisor.start_link(children, strategy: :one_for_one)
+```
+
+## Scheduler
+
+`Aethrion.Scheduler` is a small OTP process that emits `time_tick` events into a runtime server.
+
+```elixir
+children = [
+  {Aethrion.RuntimeServer, initial_state: Aethrion.Runtime.demo_state(), name: :aethrion_runtime},
+  {Aethrion.Scheduler, runtime: :aethrion_runtime, interval_ms: 60_000, tick_hours: 1}
+]
+
+Supervisor.start_link(children, strategy: :one_for_one)
+```
+
+The scheduler is intentionally thin. It does not own simulation rules; it only sends events into the runtime server.
+
 ## State
 
 ```elixir

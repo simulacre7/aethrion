@@ -98,6 +98,8 @@ Aethrion starts as a small Elixir library with a deterministic, process-free sim
 
 The current alpha keeps the simulation core deterministic and process-free so it can be tested without a running supervision tree. OTP can enter later where it has practical value: character lifecycles, scheduled events, background memory work, and runtime supervision.
 
+The alpha now includes a thin OTP layer for that path: `Aethrion.RuntimeServer` stores long-running state under a GenServer, and `Aethrion.Scheduler` can emit scheduled `time_tick` events into it. The deterministic core remains usable on its own.
+
 ## Demo
 
 Run the scripted demo:
@@ -181,5 +183,7 @@ Recommended local versions:
 - CLI drama demo
 - interactive CLI demo
 - JSON file persistence
+- supervised runtime server
+- scheduler process for `time_tick` events
 
 See [docs/concept.md](docs/concept.md), [docs/mvp.md](docs/mvp.md), [docs/api.md](docs/api.md), and [docs/roadmap.md](docs/roadmap.md) for more detail.

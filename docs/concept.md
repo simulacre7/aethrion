@@ -53,6 +53,14 @@ The long-term runtime model maps naturally to Elixir and BEAM:
 
 The v0 implementation starts as a small Elixir library with a deterministic, process-free simulation core. It intentionally avoids Phoenix, distributed Erlang, persistent databases, and real LLM providers until the simulation loop is proven.
 
+The alpha also includes a minimal OTP layer:
+
+- `Aethrion.RuntimeServer` keeps runtime state inside a GenServer
+- `Aethrion.Scheduler` emits scheduled `time_tick` events
+- both delegate state transitions back to the deterministic core
+
+This keeps the BEAM value concrete without making every character a process too early.
+
 ## Related Influence
 
 Aethrion is not built on Jido and does not depend on it today.

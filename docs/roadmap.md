@@ -24,12 +24,13 @@ Implemented:
 - structured validation errors
 - interactive CLI demo
 - JSON file persistence
+- supervised runtime process
+- scheduler process
 - CI, MIT license, contribution guide, and example script
 
 Not implemented yet:
 
-- actor/process runtime
-- scheduler process
+- per-character actor runtime
 - real LLM adapters
 - memory retrieval or summarization
 - package publishing
@@ -96,11 +97,11 @@ Goal: start using Elixir/BEAM strengths where they actually help.
 
 TODO:
 
-- [ ] Introduce a supervised runtime process.
-- [ ] Add a scheduler process that emits `time_tick` events.
+- [x] Introduce a supervised runtime process.
+- [x] Add a scheduler process that emits `time_tick` events.
 - [ ] Explore character or relationship processes only after the library API is stable.
-- [ ] Add crash/restart tests for supervised runtime components.
-- [ ] Keep pure deterministic rule functions testable without processes.
+- [x] Add crash/restart tests for supervised runtime components.
+- [ ] Keep deterministic rule functions testable without processes.
 
 Success criteria:
 
@@ -165,9 +166,8 @@ Success criteria:
 Recommended next tasks:
 
 1. Add a richer scripted scenario with at least two social branches.
-2. Explore a supervised runtime process.
-3. Define the first real LLM adapter behaviour without adding provider lock-in.
-4. Add a richer memory retrieval layer.
-5. Add a richer scripted scenario with at least two social branches.
+2. Define the first real LLM adapter behaviour without adding provider lock-in.
+3. Add a richer memory retrieval layer.
+4. Explore per-character processes only after the runtime API settles.
 
 The project should avoid Phoenix, vector databases, distributed BEAM, and real LLM providers until the core runtime interface is clearer.
