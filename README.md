@@ -56,6 +56,10 @@ character <-> world
 character <-> user
 ```
 
+The target use case is a social simulation layer for narrative agents, such as games, TRPG assistants, visual-novel-like character systems, or long-running AI companion apps.
+
+Facts like "Yuna saw the gift" or "Yuna's trust changed after an apology" should be inspectable, testable, persistent state transitions, not facts improvised by an LLM every time.
+
 The goal is not to make an LLM improvise every fact. The goal is to make relationships, memories, emotions, and proactive behavior emerge from deterministic state transitions.
 
 ## How It Differs From A Chatbot

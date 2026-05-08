@@ -56,6 +56,10 @@ character <-> world
 character <-> user
 ```
 
+목표 사용처는 narrative agent를 위한 social simulation layer입니다. 예를 들어 게임, TRPG assistant, 비주얼 노벨형 캐릭터 시스템, 오래 지속되는 AI companion app 아래에 들어갈 수 있는 레이어입니다.
+
+"Yuna가 선물을 봤다" 또는 "사과 이후 Yuna의 trust가 바뀌었다" 같은 사실은 LLM이 매번 즉흥적으로 만들어내는 것이 아니라, inspect/test/persist/replay 가능한 상태 전이여야 합니다.
+
 목표는 LLM이 모든 사실과 사건을 즉흥적으로 정하게 만드는 것이 아닙니다. 관계, 기억, 감정, 선제 행동이 결정론적 상태 전이에서 발생하도록 만드는 것입니다.
 
 ## 챗봇과의 차이
