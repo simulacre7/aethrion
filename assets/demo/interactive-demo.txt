@@ -1,7 +1,7 @@
 $ mix demo.interactive
 Aethrion  early alpha
 A shared social layer for persistent AI characters.
-LLMs express the drama, but deterministic state creates it.
+LLMs generate expression; deterministic rules drive the simulation.
 
 Type help for commands, quit to exit.
 

@@ -95,7 +95,7 @@ block(
   [
     `${ansi.bold}${ansi.cyan}Aethrion${ansi.reset}${ansi.dim}  early alpha${ansi.reset}`,
     faint("A shared social layer for persistent AI characters."),
-    `${ansi.yellow}LLMs express the drama, but deterministic state creates it.${ansi.reset}`,
+    `${ansi.yellow}LLMs generate expression; deterministic rules drive the simulation.${ansi.reset}`,
   ],
   { beforeDelay: 0.15, tokenDelay: 0.035, lineDelay: 0.1 },
 );

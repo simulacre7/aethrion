@@ -1,6 +1,6 @@
 # Aethrion MVP
 
-The v0 goal is to prove that a small social drama can emerge from deterministic state transitions.
+The v0 goal is to prove that a small social scenario can emerge from deterministic rules over inspectable state.
 
 ## Scope
 

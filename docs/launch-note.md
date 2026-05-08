@@ -6,9 +6,9 @@ This is a draft for lightweight public sharing. The intended tone is early alpha
 
 I'm building **Aethrion**, an early alpha Elixir runtime for persistent AI characters.
 
-The core idea: **LLMs express the drama, but deterministic state creates it.**
+The core design principle: **LLMs can describe what happens, but deterministic rules decide what actually changes.**
 
-Aethrion models memory, emotion, relationships, reconciliation, and proactive behavior as an event-driven social simulation layer. The runtime owns state transitions; LLMs are treated as expression adapters rather than the authority over what happened.
+Aethrion models memory, emotion, relationships, reconciliation, and proactive behavior as an event-driven social simulation layer. The runtime owns state and rule outcomes; LLMs are treated as expression adapters rather than the authority over what happened.
 
 Repo: https://github.com/simulacre7/aethrion
 
@@ -18,7 +18,7 @@ Demo: https://github.com/simulacre7/aethrion/blob/main/assets/demo/interactive-d
 
 I'm building Aethrion, an early alpha Elixir runtime for persistent AI characters.
 
-The idea: LLMs express the drama, but deterministic state creates it.
+The idea: LLMs can describe what happens, but deterministic rules decide what actually changes.
 
 It models memory, emotion, relationships, and proactive behavior as an event-driven social simulation layer.
 
@@ -36,9 +36,9 @@ Most AI character systems are centered on a simple loop: user message in, charac
 
 The main design principle is simple:
 
-> LLMs express the drama, but deterministic state creates it.
+> LLMs can describe what happens, but deterministic rules decide what actually changes.
 
-That means the runtime owns relationship changes, memory creation, emotional state, and structured outputs. LLMs can make the final expression more natural, but they do not directly mutate authoritative state.
+That means the runtime owns relationship changes, memory creation, emotional state, and structured outputs. A character does not gain trust, store a memory, send a proactive message, or die because an LLM improvised it. Those changes come from explicit rules over inspectable state.
 
 The current alpha includes:
 

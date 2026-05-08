@@ -7,7 +7,7 @@ defmodule Aethrion.CLI.Display do
     [
       [:bright, :cyan, "Aethrion", :reset, :faint, "  early alpha"],
       [:faint, "A shared social layer for persistent AI characters."],
-      [:yellow, "LLMs express the drama, but deterministic state creates it."],
+      [:yellow, "LLMs generate expression; deterministic rules drive the simulation."],
       ""
     ]
     |> print_lines()

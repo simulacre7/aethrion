@@ -73,7 +73,7 @@ TODO:
 
 Success criteria:
 
-- The demo clearly shows drama emerging from state transitions.
+- The demo clearly shows social behavior emerging from deterministic rules.
 - Users can experiment without reading the code first.
 
 ## Phase 3: Persistence

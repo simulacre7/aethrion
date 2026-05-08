@@ -11,7 +11,7 @@
 
 Aethrion is a persistent social simulation runtime for AI characters that remember, relate, and act over time.
 
-> LLMs express the drama, but deterministic state creates it.
+> LLMs generate expression; deterministic rules drive the simulation.
 
 Inspired by the ancient idea of aether, Aethrion treats memory, relationships, and autonomous interaction as a shared social layer where persistent agents can live, change, and respond to each other.
 
@@ -58,9 +58,9 @@ character <-> user
 
 The target use case is a social simulation layer for narrative agents, such as games, TRPG assistants, visual-novel-like character systems, or long-running AI companion apps.
 
-Facts like "Yuna saw the gift" or "Yuna's trust changed after an apology" should be inspectable, testable, persistent state transitions, not facts improvised by an LLM every time.
+Facts like "Yuna saw the gift", "Yuna's trust changed after an apology", or "a character dies when health reaches zero" should be inspectable, testable, persistent rule outcomes, not facts improvised by an LLM every time.
 
-The goal is not to make an LLM improvise every fact. The goal is to make relationships, memories, emotions, and proactive behavior emerge from deterministic state transitions.
+The goal is not to make an LLM improvise every fact or state change. The goal is to make relationships, memories, emotions, and proactive behavior emerge from explicit deterministic rules over inspectable state.
 
 ## How It Differs From A Chatbot
 
