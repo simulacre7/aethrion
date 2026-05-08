@@ -99,9 +99,39 @@ Aethrion은 다음이 아닙니다.
 - 벡터 데이터베이스 프로젝트
 - LLM이 권위 있는 상태를 소유하는 프레임워크
 
+## Runtime vs LLM Server
+
+Aethrion은 BEAM 안에서 모델 추론을 직접 실행하지 않습니다.
+
+실제 배포에서는 Aethrion이 외부 LLM provider 또는 model server와 네트워크 경계 너머로 통신합니다.
+
+```txt
+Aethrion Runtime
+  |
+  | HTTP JSON / OpenAI-compatible API / gRPC
+  v
+External LLM Provider or Model Server
+  |
+  | natural language expression
+  v
+Aethrion Runtime / Client App
+```
+
+LLM 서버는 OpenAI, Anthropic, vLLM, Ollama, llama.cpp server, 또는 OpenAI-compatible endpoint가 될 수 있습니다.
+
+이 경계는 의도적인 설계입니다.
+
+- LLM 추론은 보통 시스템에서 가장 느린 부분입니다.
+- Aethrion은 권위 있는 simulation state를 LLM 서버 밖에 둡니다.
+- LLM 호출은 timeout, retry, rate limit, cache, fallback 대상으로 다룰 수 있습니다.
+- LLM 호출이 실패해도 deterministic state는 계속 진행될 수 있습니다.
+- LLM 응답이 세계에 영향을 줘야 한다면, 다시 event로 들어와 rule을 통과해야 합니다.
+
+BEAM/OTP는 LLM 추론 자체를 빠르게 만들기 위해 쓰는 것이 아닙니다. long-running agent, state transition, scheduled behavior, 실패 처리, 외부 LLM 호출을 안정적으로 조율하기 위해 사용합니다.
+
 ## 왜 Elixir인가?
 
-Aethrion은 현재 결정론적이고 process-free한 simulation core를 가진 작은 Elixir 라이브러리로 시작하지만, 장기적인 런타임 모델은 BEAM과 자연스럽게 맞습니다. 지속되는 캐릭터 프로세스, supervision을 받는 스케줄러, 이벤트 기반 조정, 오래 실행되는 소셜 월드의 fault tolerance가 모두 BEAM/OTP가 강한 영역입니다.
+Aethrion은 현재 결정론적이고 process-free한 simulation core를 가진 작은 Elixir 라이브러리로 시작하지만, 장기적인 런타임 모델은 BEAM과 자연스럽게 맞습니다. 지속되는 캐릭터 프로세스, supervision을 받는 스케줄러, 이벤트 기반 조정, 외부 호출 격리, 오래 실행되는 소셜 월드의 fault tolerance가 모두 BEAM/OTP가 강한 영역입니다.
 
 현재 alpha는 시뮬레이션 core를 결정론적이고 process-free한 형태로 유지합니다. 그래서 supervision tree 없이도 쉽게 테스트할 수 있습니다. OTP는 나중에 실질적인 가치가 있는 지점, 예를 들어 캐릭터 생명주기, 예약 이벤트, 백그라운드 memory 작업, 런타임 supervision에 도입할 수 있습니다.
 

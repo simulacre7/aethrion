@@ -72,6 +72,8 @@ event -> deterministic rules -> updated state -> structured outputs
 
 LLMs are deliberately kept outside the authoritative state path. The fake LLM adapter in the current alpha exists to prove that the runtime works without a real model.
 
+Aethrion is not trying to make LLM inference faster. In a real deployment, the LLM provider or model server would be an external network service, likely the slowest part of the system. The role of BEAM/OTP is to coordinate long-running agents, state transitions, scheduled behavior, failures, and external LLM calls reliably.
+
 Current features:
 
 - `Aethrion.Runtime.dispatch/2`
@@ -82,6 +84,6 @@ Current features:
 - ExUnit tests
 - GitHub Actions CI
 
-I'm sharing it as early alpha and would welcome feedback on the runtime shape, public API, and where Elixir/BEAM processes should enter the design.
+I'm sharing it as early alpha and would welcome feedback on the runtime shape, public API, external LLM boundary, and where Elixir/BEAM processes should enter the design.
 
 Repo: https://github.com/simulacre7/aethrion

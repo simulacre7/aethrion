@@ -99,9 +99,39 @@ Aethrion is not:
 - a vector database project
 - a framework where the LLM owns authoritative state
 
+## Runtime vs LLM Server
+
+Aethrion does not run model inference inside the BEAM.
+
+In a real deployment, Aethrion would communicate with an external LLM provider or model server over a network boundary:
+
+```txt
+Aethrion Runtime
+  |
+  | HTTP JSON / OpenAI-compatible API / gRPC
+  v
+External LLM Provider or Model Server
+  |
+  | natural language expression
+  v
+Aethrion Runtime / Client App
+```
+
+The LLM server may be OpenAI, Anthropic, vLLM, Ollama, llama.cpp server, or another OpenAI-compatible endpoint.
+
+This boundary is intentional:
+
+- LLM inference is usually the slowest part of the system.
+- Aethrion keeps authoritative simulation state outside the LLM server.
+- LLM calls can be timed out, retried, rate-limited, cached, or skipped.
+- If an LLM call fails, deterministic state can still advance.
+- If an LLM response should affect the world, it must return as a new event and pass through rules again.
+
+BEAM/OTP is not used to make LLM inference faster. It is used to coordinate long-running agents, state transitions, scheduled behavior, failures, and external LLM calls reliably.
+
 ## Why Elixir?
 
-Aethrion starts as a small Elixir library with a deterministic, process-free simulation core, but the long-term runtime model maps naturally to the BEAM: persistent character processes, supervised schedulers, event-driven coordination, and fault-tolerant long-running social worlds.
+Aethrion starts as a small Elixir library with a deterministic, process-free simulation core, but the long-term runtime model maps naturally to the BEAM: persistent character processes, supervised schedulers, event-driven coordination, external call isolation, and fault-tolerant long-running social worlds.
 
 The current alpha keeps the simulation core deterministic and process-free so it can be tested without a running supervision tree. OTP can enter later where it has practical value: character lifecycles, scheduled events, background memory work, and runtime supervision.
 
