@@ -101,20 +101,29 @@ Aethrion is not:
 
 ## Runtime vs LLM Server
 
-Aethrion does not run model inference inside the BEAM.
+Aethrion does not run model inference inside the BEAM, and most runtime events do not call an LLM.
 
-In a real deployment, Aethrion would communicate with an external LLM provider or model server over a network boundary:
+Aethrion can update state, evaluate rules, create memories, emit structured outputs, and schedule future events without model inference. LLM calls happen only when a host application chooses to render a structured output into natural language, summarize non-authoritative context, or otherwise use a model as an expression layer.
+
+In a real deployment, that optional expression step would communicate with an external LLM provider or model server over a network boundary:
 
 ```txt
+event
+  |
+  v
 Aethrion Runtime
   |
-  | HTTP JSON / OpenAI-compatible API / gRPC
+  | deterministic rules
   v
-External LLM Provider or Model Server
+updated state + structured outputs
   |
-  | natural language expression
-  v
-Aethrion Runtime / Client App
+  +--> no LLM call needed
+  |
+  +--> optional expression rendering
+         |
+         | HTTP JSON / OpenAI-compatible API / gRPC
+         v
+       External LLM Provider or Model Server
 ```
 
 The LLM server may be OpenAI, Anthropic, vLLM, Ollama, llama.cpp server, or another OpenAI-compatible endpoint.
@@ -123,6 +132,7 @@ This boundary is intentional:
 
 - LLM inference is usually the slowest part of the system.
 - Aethrion keeps authoritative simulation state outside the LLM server.
+- Many state transitions require no LLM round trip at all.
 - LLM calls can be timed out, retried, rate-limited, cached, or skipped.
 - If an LLM call fails, deterministic state can still advance.
 - If an LLM response should affect the world, it must return as a new event and pass through rules again.

@@ -101,20 +101,29 @@ Aethrion은 다음이 아닙니다.
 
 ## Runtime vs LLM Server
 
-Aethrion은 BEAM 안에서 모델 추론을 직접 실행하지 않습니다.
+Aethrion은 BEAM 안에서 모델 추론을 직접 실행하지 않으며, 대부분의 runtime event는 LLM 호출을 필요로 하지 않습니다.
 
-실제 배포에서는 Aethrion이 외부 LLM provider 또는 model server와 네트워크 경계 너머로 통신합니다.
+Aethrion은 모델 추론 없이도 상태를 갱신하고, rule을 평가하고, memory를 만들고, structured output을 만들고, future event를 예약할 수 있습니다. LLM 호출은 host application이 structured output을 자연어 표현으로 렌더링하거나, 권위 없는 context 요약을 만들거나, 모델을 expression layer로 사용하기로 선택한 경우에만 발생합니다.
+
+실제 배포에서는 이 optional expression 단계가 외부 LLM provider 또는 model server와 네트워크 경계 너머로 통신합니다.
 
 ```txt
+event
+  |
+  v
 Aethrion Runtime
   |
-  | HTTP JSON / OpenAI-compatible API / gRPC
+  | deterministic rules
   v
-External LLM Provider or Model Server
+updated state + structured outputs
   |
-  | natural language expression
-  v
-Aethrion Runtime / Client App
+  +--> no LLM call needed
+  |
+  +--> optional expression rendering
+         |
+         | HTTP JSON / OpenAI-compatible API / gRPC
+         v
+       External LLM Provider or Model Server
 ```
 
 LLM 서버는 OpenAI, Anthropic, vLLM, Ollama, llama.cpp server, 또는 OpenAI-compatible endpoint가 될 수 있습니다.
@@ -123,6 +132,7 @@ LLM 서버는 OpenAI, Anthropic, vLLM, Ollama, llama.cpp server, 또는 OpenAI-c
 
 - LLM 추론은 보통 시스템에서 가장 느린 부분입니다.
 - Aethrion은 권위 있는 simulation state를 LLM 서버 밖에 둡니다.
+- 많은 상태 전이는 LLM round trip 없이 처리됩니다.
 - LLM 호출은 timeout, retry, rate limit, cache, fallback 대상으로 다룰 수 있습니다.
 - LLM 호출이 실패해도 deterministic state는 계속 진행될 수 있습니다.
 - LLM 응답이 세계에 영향을 줘야 한다면, 다시 event로 들어와 rule을 통과해야 합니다.
