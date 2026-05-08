@@ -172,7 +172,8 @@ TODO:
 - [x] Add contribution guide.
 - [x] Add code of conduct if the project becomes public-facing.
 - [x] Add CI for formatting and tests.
-- [ ] Add Hex package metadata when the API is stable enough.
+- [x] Add Hex package metadata before publishing.
+- [ ] Publish to Hex when the API is stable enough.
 - [x] Add examples directory.
 - [x] Add issue templates for bugs, ideas, and demo scenarios.
 
