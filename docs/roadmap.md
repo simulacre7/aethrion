@@ -97,18 +97,24 @@ Success criteria:
 
 Goal: start using Elixir/BEAM strengths where they actually help.
 
+Design direction: keep the simulation model data-first. Characters, relationships, memories, and rules should remain plain data advanced by deterministic functions. Use processes to model runtime behavior such as sessions, schedulers, external calls, persistence boundaries, and supervision. Do not default to "one character = one process" unless a concrete runtime boundary proves it is useful.
+
 TODO:
 
 - [x] Introduce a supervised runtime process.
 - [x] Add a scheduler process that emits `time_tick` events.
-- [ ] Explore character or relationship processes only after the library API is stable.
+- [ ] Keep character, relationship, memory, and rule state as data by default.
+- [ ] Use processes for runtime behavior, not as the primary simulation model.
+- [ ] Explore character or relationship processes only if a concrete runtime boundary requires them.
 - [x] Add crash/restart tests for supervised runtime components.
 - [ ] Keep deterministic rule functions testable without processes.
+- [ ] Document tradeoffs around process message passing before adding finer-grained actor processes.
 
 Success criteria:
 
 - Long-lived runtime components can run under supervision.
 - The pure simulation core remains testable without a running process tree.
+- The runtime does not introduce per-character process bottlenecks without measured need.
 
 ## Phase 5: LLM Adapter Layer
 
@@ -189,6 +195,7 @@ Recommended next tasks:
 1. Define the first real LLM adapter behaviour without adding provider lock-in.
 2. Add a richer memory retrieval layer.
 3. Introduce a small rule behaviour and rule pipeline when rule count grows.
-4. Explore per-character processes only after the runtime API settles.
+4. Keep the simulation core data-first and use OTP processes only around runtime boundaries.
+5. Explore per-character processes only if a concrete runtime need appears.
 
 The project should avoid Phoenix, vector databases, distributed BEAM, and real LLM providers until the core runtime interface is clearer.
