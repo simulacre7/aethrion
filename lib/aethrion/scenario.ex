@@ -58,7 +58,7 @@ defmodule Aethrion.Scenario do
   shorthand for `equals` on the count).
   """
 
-  alias Aethrion.{Event, Runtime, State}
+  alias Aethrion.{Error, Event, Runtime, State}
 
   @type t :: %__MODULE__{
           name: String.t(),
@@ -117,22 +117,49 @@ defmodule Aethrion.Scenario do
     defstruct [:scenario, :state, steps: [], outputs: [], checks: [], branches: []]
   end
 
-  @doc "Loads a scenario from a JSON file."
+  @doc """
+  Loads a scenario from a JSON file. Errors are `%Aethrion.Error{}` with code
+  `:not_found`, `:io_error`, or those of `from_data/2`.
+  """
   def load(path, opts \\ []) do
-    with {:ok, json} <- File.read(path),
-         {:ok, data} <- Jason.decode(json),
+    with {:ok, json} <- read(path),
+         {:ok, data} <- decode(json),
          {:ok, scenario} <- from_data(data, opts) do
       {:ok, %{scenario | path: path}}
-    else
-      {:error, %Jason.DecodeError{} = error} ->
-        {:error, {:invalid_json, Exception.message(error)}}
-
-      {:error, reason} ->
-        {:error, reason}
     end
   end
 
-  @doc "Builds a scenario from decoded JSON data."
+  defp read(path) do
+    case File.read(path) do
+      {:ok, json} ->
+        {:ok, json}
+
+      {:error, :enoent} ->
+        {:error, Error.new(:not_found, "no scenario at #{path}", %{path: path})}
+
+      {:error, reason} ->
+        {:error,
+         Error.new(:io_error, "could not read #{path}: #{inspect(reason)}", %{reason: reason})}
+    end
+  end
+
+  defp decode(json) do
+    case Jason.decode(json) do
+      {:ok, data} ->
+        {:ok, data}
+
+      {:error, error} ->
+        {:error, invalid([], "invalid JSON: #{Exception.message(error)}")}
+    end
+  end
+
+  @doc """
+  Builds a scenario from decoded JSON data. Errors are `%Aethrion.Error{}`;
+  `details.path` points at the offending part of the document (for example
+  `["events", 2]` or `["branches", 0, "expect", 1]`). Malformed structure uses
+  code `:invalid_scenario`; problems found by other modules keep their codes
+  (`:invalid_state` for the world, `:invalid_tuning`, `:unsupported_event`).
+  """
   def from_data(data, opts \\ [])
 
   def from_data(%{} = data, opts) do
@@ -141,9 +168,9 @@ defmodule Aethrion.Scenario do
     with :ok <- string_field(data, "name"),
          :ok <- string_field(data, "description"),
          {:ok, state} <- world(Map.get(data, "world", "demo"), pipeline),
-         {:ok, tuning} <- Aethrion.Tuning.from_data(Map.get(data, "tuning"), pipeline),
-         {:ok, events} <- events(Map.get(data, "events", []), pipeline),
-         {:ok, expectations} <- expectations(Map.get(data, "expect", [])),
+         {:ok, tuning} <- tuning(Map.get(data, "tuning"), pipeline),
+         {:ok, events} <- events(Map.get(data, "events", []), pipeline, ["events"]),
+         {:ok, expectations} <- expectations(Map.get(data, "expect", []), ["expect"]),
          {:ok, branches} <- branches(Map.get(data, "branches", []), pipeline) do
       {:ok,
        %__MODULE__{
@@ -160,14 +187,14 @@ defmodule Aethrion.Scenario do
     end
   end
 
-  def from_data(_data, _opts), do: {:error, :invalid_scenario}
+  def from_data(_data, _opts), do: {:error, invalid([], "a scenario must be a JSON object")}
 
   @doc """
   Runs the scenario and evaluates its expectations.
 
-  Returns `{:ok, %Result{}}`, or `{:error, {index, error}}` when a shared
-  event is rejected by validation (`{:error, {{branch_name, index}, error}}`
-  for a branch event). Options are passed to `Aethrion.Runtime.step/3`.
+  Returns `{:ok, %Result{}}`, or `{:error, %Aethrion.Error{}}` when an event is
+  rejected; `details` holds its `:index` and, for a branch event, the
+  `:branch` name. Options are passed to `Aethrion.Runtime.step/3`.
   """
   def run(%__MODULE__{} = scenario, opts \\ []) do
     case Runtime.run(scenario.state, scenario.events, opts) do
@@ -187,8 +214,8 @@ defmodule Aethrion.Scenario do
            }}
         end
 
-      {:error, {index, error, _steps}} ->
-        {:error, {index, error}}
+      {:error, error} ->
+        {:error, %{error | details: Map.delete(error.details, :steps)}}
     end
   end
 
@@ -209,8 +236,9 @@ defmodule Aethrion.Scenario do
 
           {:cont, {:ok, [result | acc]}}
 
-        {:error, {index, error, _steps}} ->
-          {:halt, {:error, {{branch.name, index}, error}}}
+        {:error, error} ->
+          details = error.details |> Map.delete(:steps) |> Map.put(:branch, branch.name)
+          {:halt, {:error, %{error | details: details}}}
       end
     end)
     |> case do
@@ -294,24 +322,41 @@ defmodule Aethrion.Scenario do
 
   ## Parsing
 
+  defp invalid(path, message, details \\ %{}) do
+    Error.new(:invalid_scenario, message, Map.put(details, :path, path))
+  end
+
+  defp at(%Error{} = error, path) do
+    Error.add_details(error, %{path: path ++ Map.get(error.details, :path, [])})
+  end
+
   defp world("demo", _pipeline), do: {:ok, State.demo()}
 
   defp world(%{"characters" => characters} = data, pipeline) when is_list(characters) do
     case State.parse(data, pipeline: pipeline) do
       {:ok, state} -> {:ok, state}
-      {:error, {:invalid_state_data, path, reason}} -> {:error, {:invalid_world, path, reason}}
+      {:error, error} -> {:error, at(error, ["world"])}
     end
   end
 
-  defp world(other, _pipeline), do: {:error, {:invalid_world, other}}
+  defp world(_other, _pipeline) do
+    {:error, invalid(["world"], "world must be \"demo\" or an object with characters")}
+  end
 
-  defp events(list, pipeline) when is_list(list) do
+  defp tuning(data, pipeline) do
+    case Aethrion.Tuning.from_data(data, pipeline: pipeline) do
+      {:ok, tuning} -> {:ok, tuning}
+      {:error, error} -> {:error, at(error, ["tuning"])}
+    end
+  end
+
+  defp events(list, pipeline, path) when is_list(list) do
     list
     |> Enum.with_index()
     |> Enum.reduce_while({:ok, []}, fn {data, index}, {:ok, events} ->
       case Event.from_data(data, pipeline: pipeline) do
         {:ok, event} -> {:cont, {:ok, [event | events]}}
-        {:error, reason} -> {:halt, {:error, {:invalid_event, index, reason}}}
+        {:error, error} -> {:halt, {:error, at(error, path ++ [index])}}
       end
     end)
     |> case do
@@ -320,13 +365,13 @@ defmodule Aethrion.Scenario do
     end
   end
 
-  defp events(_list, _pipeline), do: {:error, :events_must_be_a_list}
+  defp events(_list, _pipeline, path), do: {:error, invalid(path, "events must be a list")}
 
-  defp string_field(data, key) do
+  defp string_field(data, key, path \\ []) do
     case Map.get(data, key) do
       nil -> :ok
       value when is_binary(value) -> :ok
-      value -> {:error, {:invalid_field, key, value}}
+      value -> {:error, invalid(path ++ [key], "#{key} must be a string", %{value: value})}
     end
   end
 
@@ -334,11 +379,13 @@ defmodule Aethrion.Scenario do
     list
     |> Enum.with_index()
     |> Enum.reduce_while({:ok, []}, fn {data, index}, {:ok, acc} ->
-      with %{} <- data,
-           :ok <- string_field(data, "name"),
-           :ok <- string_field(data, "description"),
-           {:ok, events} <- events(Map.get(data, "events", []), pipeline),
-           {:ok, expectations} <- expectations(Map.get(data, "expect", [])) do
+      path = ["branches", index]
+
+      with :ok <- object(data, path),
+           :ok <- string_field(data, "name", path),
+           :ok <- string_field(data, "description", path),
+           {:ok, events} <- events(Map.get(data, "events", []), pipeline, path ++ ["events"]),
+           {:ok, expectations} <- expectations(Map.get(data, "expect", []), path ++ ["expect"]) do
         branch = %{
           name: Map.get(data, "name", "Branch #{index + 1}"),
           description: Map.get(data, "description", ""),
@@ -348,8 +395,7 @@ defmodule Aethrion.Scenario do
 
         {:cont, {:ok, [branch | acc]}}
       else
-        {:error, reason} -> {:halt, {:error, {:invalid_branch, index, reason}}}
-        _other -> {:halt, {:error, {:invalid_branch, index, :not_an_object}}}
+        {:error, error} -> {:halt, {:error, error}}
       end
     end)
     |> case do
@@ -358,16 +404,23 @@ defmodule Aethrion.Scenario do
     end
   end
 
-  defp branches(_list, _pipeline), do: {:error, :branches_must_be_a_list}
+  defp branches(_list, _pipeline), do: {:error, invalid(["branches"], "branches must be a list")}
 
-  defp expectations(list) when is_list(list) do
-    case Enum.find(list, &(not valid_expectation?(&1))) do
-      nil -> {:ok, list}
-      invalid -> {:error, {:invalid_expectation, invalid}}
+  defp object(data, _path) when is_map(data), do: :ok
+  defp object(_data, path), do: {:error, invalid(path, "expected an object")}
+
+  defp expectations(list, path) when is_list(list) do
+    case Enum.find_index(list, &(not valid_expectation?(&1))) do
+      nil ->
+        {:ok, list}
+
+      index ->
+        {:error,
+         invalid(path ++ [index], "unsupported expectation", %{expectation: Enum.at(list, index)})}
     end
   end
 
-  defp expectations(_list), do: {:error, :expect_must_be_a_list}
+  defp expectations(_list, path), do: {:error, invalid(path, "expect must be a list")}
 
   defp valid_expectation?(%{"character" => id, "field" => field}) when is_binary(id),
     do: is_binary(field)

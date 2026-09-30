@@ -23,7 +23,7 @@ defmodule Aethrion.Journal do
   replayed when the same pipeline is passed (`pipeline:`).
   """
 
-  alias Aethrion.{Event, Runtime, Scenario, State}
+  alias Aethrion.{Error, Event, Runtime, Scenario, State}
 
   @version 1
 
@@ -38,7 +38,7 @@ defmodule Aethrion.Journal do
 
     cond do
       File.exists?(path) ->
-        {:error, :already_exists}
+        {:error, Error.new(:already_exists, "a journal already exists at #{path}", %{path: path})}
 
       true ->
         with :ok <- File.mkdir_p(Path.dirname(path)),
@@ -48,14 +48,14 @@ defmodule Aethrion.Journal do
         else
           {:error, reason} ->
             File.rm(tmp)
-            {:error, reason}
+            {:error, io_error(path, reason)}
         end
     end
   end
 
   @doc """
   Encodes a processed host event as a journal line, or returns
-  `{:error, {:not_replayable, reason}}` if the event would not come back
+  `{:error, %Aethrion.Error{code: :invalid_event}}` if the event would not come back
   unchanged from JSON (for example a tuple or DateTime in a field, or a custom
   field value that is an atom). Pass the world's `pipeline:` for custom events.
   """
@@ -68,20 +68,40 @@ defmodule Aethrion.Journal do
          true <- Map.put(replayed, :id, Map.get(event, :id)) == event do
       {:ok, json}
     else
-      false -> {:error, {:not_replayable, :changes_through_json}}
-      {:error, reason} -> {:error, {:not_replayable, reason}}
+      false -> {:error, not_replayable(:changes_through_json)}
+      {:error, reason} -> {:error, not_replayable(reason)}
     end
   end
 
   @doc "Appends one processed host event (with its assigned `:id`)."
   def append(path, %{type: _type} = event, opts \\ []) do
     with {:ok, line} <- encode(event, opts) do
-      append_line(path, line)
+      case File.write(path, line <> "\n", [:append, :utf8]) do
+        :ok -> :ok
+        {:error, reason} -> {:error, io_error(path, reason)}
+      end
     end
   end
 
-  @doc false
-  def append_line(path, line), do: File.write(path, line <> "\n", [:append, :utf8])
+  defp not_replayable(reason) do
+    Error.new(:invalid_event, "event cannot be journaled faithfully: #{inspect(reason)}", %{
+      reason: reason
+    })
+  end
+
+  defp io_error(path, reason) do
+    Error.new(:io_error, "could not write #{path}: #{inspect(reason)}", %{
+      path: path,
+      reason: reason
+    })
+  end
+
+  defp invalid_journal(line, reason) do
+    Error.new(:invalid_journal, "invalid journal at line #{line}: #{inspect(reason)}", %{
+      line: line,
+      reason: reason
+    })
+  end
 
   defp safe_encode(event) do
     event |> Event.to_data() |> Jason.encode()
@@ -91,12 +111,13 @@ defmodule Aethrion.Journal do
 
   @doc """
   Reads a journal. Returns `{:ok, starting_state, events}` or
-  `{:error, {:invalid_journal, line_number, reason}}`.
+  `{:error, %Aethrion.Error{}}` with code `:not_found`, `:io_error`, or
+  `:invalid_journal` (with the 1-based `:line` in `details`).
 
   Options: `:pipeline`, used to keep tuning for custom rules.
   """
   def read(path, opts \\ []) do
-    with {:ok, contents} <- File.read(path) do
+    with {:ok, contents} <- read_file(path) do
       lines =
         contents
         |> String.split("\n")
@@ -105,7 +126,7 @@ defmodule Aethrion.Journal do
 
       case lines do
         [] ->
-          {:error, {:invalid_journal, 1, :empty}}
+          {:error, invalid_journal(1, :empty)}
 
         [{header, 1} | events] ->
           with {:ok, state} <- parse_header(header, opts),
@@ -114,18 +135,33 @@ defmodule Aethrion.Journal do
           end
 
         [{_line, number} | _rest] ->
-          {:error, {:invalid_journal, number, :missing_header}}
+          {:error, invalid_journal(number, :missing_header)}
       end
+    end
+  end
+
+  defp read_file(path) do
+    case File.read(path) do
+      {:ok, contents} ->
+        {:ok, contents}
+
+      {:error, :enoent} ->
+        {:error, Error.new(:not_found, "no journal at #{path}", %{path: path})}
+
+      {:error, reason} ->
+        {:error,
+         Error.new(:io_error, "could not read #{path}: #{inspect(reason)}", %{reason: reason})}
     end
   end
 
   @doc """
   Rebuilds the world by replaying the journal. Returns
-  `{:ok, state, steps}`, or an error if the journal cannot be read, an event
-  is rejected, or a replayed event gets a different id than the one recorded
-  (which means the journal does not match its starting state).
+  `{:ok, state, steps}` or `{:error, %Aethrion.Error{}}`: the read errors of
+  `read/2`, the error of a rejected event (with its `:index`), or
+  `:journal_mismatch` when a replayed event gets a different id than the one
+  recorded, which means the journal does not match its starting state.
 
-  Options: `:pipeline` (use the same pipeline the world ran with).
+  Options: `:pipeline`, `:max_depth`, `:max_events` (use the ones the world ran with).
   """
   def replay(path, opts \\ []) do
     with {:ok, state, events} <- read(path, opts) do
@@ -162,10 +198,15 @@ defmodule Aethrion.Journal do
 
         {:ok, step} ->
           {:halt,
-           {:error, {:journal_mismatch, index, expected: recorded_id, replayed: step.event.id}}}
+           {:error,
+            Error.new(
+              :journal_mismatch,
+              "replayed event #{index} got id #{step.event.id}, but the journal recorded #{recorded_id}",
+              %{index: index, expected: recorded_id, replayed: step.event.id}
+            )}}
 
         {:error, error} ->
-          {:halt, {:error, {:rejected, index, error}}}
+          {:halt, {:error, Error.add_details(error, %{index: index})}}
       end
     end)
     |> case do
@@ -180,16 +221,19 @@ defmodule Aethrion.Journal do
       {:ok, state}
     else
       {:ok, %{"aethrion_journal" => @version}} ->
-        {:error, {:invalid_journal, 1, :missing_state}}
+        {:error, invalid_journal(1, :missing_state)}
 
       {:ok, %{"aethrion_journal" => version}} ->
-        {:error, {:invalid_journal, 1, {:unsupported_version, version}}}
+        {:error, invalid_journal(1, {:unsupported_version, version})}
+
+      {:error, %Error{} = error} ->
+        {:error, invalid_journal(1, error.message)}
 
       {:error, reason} ->
-        {:error, {:invalid_journal, 1, reason}}
+        {:error, invalid_journal(1, reason)}
 
       _other ->
-        {:error, {:invalid_journal, 1, :missing_header}}
+        {:error, invalid_journal(1, :missing_header)}
     end
   end
 
@@ -206,7 +250,8 @@ defmodule Aethrion.Journal do
 
         {:cont, {:ok, [event | events]}}
       else
-        {:error, reason} -> {:halt, {:error, {:invalid_journal, number, reason}}}
+        {:error, %Error{} = error} -> {:halt, {:error, invalid_journal(number, error.message)}}
+        {:error, reason} -> {:halt, {:error, invalid_journal(number, reason)}}
       end
     end)
     |> case do

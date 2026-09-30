@@ -20,10 +20,10 @@ defmodule Aethrion.EventTest do
   end
 
   test "unknown event types are rejected without creating atoms" do
-    assert {:error, {:unsupported_event, "summon_dragon"}} =
+    assert {:error, %{code: :unsupported_event, details: %{type: "summon_dragon"}}} =
              Event.from_data(%{"type" => "summon_dragon"})
 
-    assert {:error, {:invalid_event, %{}}} = Event.from_data(%{})
+    assert {:error, %{code: :invalid_event}} = Event.from_data(%{})
   end
 
   test "unknown tones stay strings so validation can reject them" do

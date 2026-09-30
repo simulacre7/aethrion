@@ -5,6 +5,8 @@ defmodule Aethrion.Persistence.InMemory do
 
   @behaviour Aethrion.Persistence
 
+  alias Aethrion.Error
+
   @impl true
   def save(%Aethrion.State{}, _opts \\ []) do
     :ok
@@ -14,7 +16,7 @@ defmodule Aethrion.Persistence.InMemory do
   def load(opts \\ []) do
     case Keyword.fetch(opts, :state) do
       {:ok, %Aethrion.State{} = state} -> {:ok, state}
-      :error -> {:error, :missing_state}
+      _ -> {:error, Error.new(:not_found, "no state was given")}
     end
   end
 end

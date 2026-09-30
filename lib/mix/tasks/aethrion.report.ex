@@ -52,7 +52,7 @@ defmodule Mix.Tasks.Aethrion.Report do
         File.write!(out, Report.html(result))
         Mix.shell().info("#{scenario.name} -> #{out}")
       else
-        {:error, reason} -> Mix.raise("could not render #{path}: #{inspect(reason)}")
+        {:error, error} -> Mix.raise("could not render #{path}: #{error.message}")
       end
     end)
   end

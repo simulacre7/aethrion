@@ -52,18 +52,9 @@ defmodule Mix.Tasks.Aethrion.Scenario do
 
       Scenario.passed?(result)
     else
-      {:error, {{branch, index}, %Aethrion.Error{} = error}} ->
+      {:error, %Aethrion.Error{} = error} ->
         Display.error(error)
-        Mix.shell().error("event #{index} of branch #{inspect(branch)} in #{path} was rejected")
-        false
-
-      {:error, {index, %Aethrion.Error{} = error}} ->
-        Display.error(error)
-        Mix.shell().error("event #{index} in #{path} was rejected")
-        false
-
-      {:error, reason} ->
-        Mix.shell().error("could not load #{path}: #{inspect(reason)}")
+        Mix.shell().error("in #{path}#{location(error.details)}")
         false
     end
   end
@@ -97,6 +88,13 @@ defmodule Mix.Tasks.Aethrion.Scenario do
       step.state
     end)
   end
+
+  defp location(%{branch: branch, index: index}),
+    do: ", branch #{inspect(branch)}, event #{index}"
+
+  defp location(%{index: index}), do: ", event #{index}"
+  defp location(%{path: [_ | _] = path}), do: " at " <> Enum.map_join(path, ".", &to_string/1)
+  defp location(_details), do: ""
 
   defp json(result) do
     %{

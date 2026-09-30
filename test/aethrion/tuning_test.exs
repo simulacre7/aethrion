@@ -54,12 +54,13 @@ defmodule Aethrion.TuningTest do
     assert {:ok, %{gift: %{importance: 80}}} =
              Tuning.from_data(%{"gift" => %{"importance" => 80}})
 
-    assert {:error, {:unknown_rule, "magic"}} = Tuning.from_data(%{"magic" => %{}})
+    assert {:error, %{code: :invalid_tuning, details: %{rule: "magic"}}} =
+             Tuning.from_data(%{"magic" => %{}})
 
-    assert {:error, {:unknown_parameter, "gift.sparkle"}} =
+    assert {:error, %{code: :invalid_tuning, details: %{rule: :gift, parameter: "sparkle"}}} =
              Tuning.from_data(%{"gift" => %{"sparkle" => 1}})
 
-    assert {:error, {:invalid_value, "gift.importance", "high"}} =
+    assert {:error, %{code: :invalid_tuning, details: %{parameter: "importance", value: "high"}}} =
              Tuning.from_data(%{"gift" => %{"importance" => "high"}})
   end
 
@@ -74,7 +75,7 @@ defmodule Aethrion.TuningTest do
 
     assert scenario.state.tuning == %{proactive: %{cooldown_hours: 6}}
 
-    assert {:error, {:unknown_parameter, _}} =
+    assert {:error, %{code: :invalid_tuning, details: %{path: ["tuning"]}}} =
              Scenario.from_data(%{"tuning" => %{"proactive" => %{"patience" => 6}}})
   end
 

@@ -69,15 +69,20 @@ defmodule Aethrion.Runtime do
   @doc """
   Dispatches `events` in order, stopping at the first invalid event.
 
-  Returns `{:ok, final_state, steps}` or `{:error, {index, error, steps_so_far}}`.
+  Returns `{:ok, final_state, steps}`, or `{:error, error}` where
+  `error.details` includes the `:index` of the rejected event and the `:steps`
+  completed before it.
   """
-  def run(%State{} = state, events, opts \\ []) when is_list(events) do
+  def run(state, events, opts \\ []) when is_list(events) do
     events
     |> Enum.with_index()
     |> Enum.reduce_while({:ok, state, []}, fn {event, index}, {:ok, state, steps} ->
       case step(state, event, opts) do
-        {:ok, step} -> {:cont, {:ok, step.state, [step | steps]}}
-        {:error, error} -> {:halt, {:error, {index, error, Enum.reverse(steps)}}}
+        {:ok, step} ->
+          {:cont, {:ok, step.state, [step | steps]}}
+
+        {:error, error} ->
+          {:halt, {:error, Error.add_details(error, %{index: index, steps: Enum.reverse(steps)})}}
       end
     end)
     |> case do

@@ -214,14 +214,24 @@ defmodule Aethrion.State do
 
   @doc """
   Validates and rebuilds state from untrusted data (a save file, a scenario
-  world). Returns `{:ok, state}` or `{:error, {:invalid_state_data, path, reason}}`
-  instead of raising, and never creates atoms.
+  world). Returns `{:ok, state}` or `{:error, %Aethrion.Error{code: :invalid_state}}`
+  with the `:path` of the first problem in `details`, instead of raising, and
+  never creates atoms.
 
   Pass `pipeline:` when the world uses custom rules, so their tuning is kept.
   """
   def parse(data, opts \\ []) do
-    with :ok <- validate_data(data) do
-      {:ok, from_data(data, opts)}
+    case validate_data(data) do
+      :ok ->
+        {:ok, from_data(data, opts)}
+
+      {:error, {:invalid_state_data, path, reason}} ->
+        {:error,
+         Aethrion.Error.new(
+           :invalid_state,
+           "invalid state data at #{format_path(path)}: #{reason}",
+           %{path: path, reason: reason}
+         )}
     end
   end
 
@@ -247,7 +257,7 @@ defmodule Aethrion.State do
   # the load; scenarios validate tuning strictly instead.
   defp tuning_from_data(%{"tuning" => tuning}, pipeline) when is_map(tuning) do
     Enum.reduce(tuning, %{}, fn {rule, params}, acc ->
-      case Aethrion.Tuning.from_data(%{rule => params}, pipeline) do
+      case Aethrion.Tuning.from_data(%{rule => params}, pipeline: pipeline) do
         {:ok, parsed} -> Map.merge(acc, parsed)
         {:error, _reason} -> acc
       end
@@ -487,6 +497,9 @@ defmodule Aethrion.State do
   defp check(false, key), do: invalid([key], "has an invalid value")
 
   defp invalid(path, reason), do: {:error, {:invalid_state_data, path, reason}}
+
+  defp format_path([]), do: "the top level"
+  defp format_path(path), do: Enum.map_join(path, ".", &to_string/1)
 
   defp prefix({:error, {:invalid_state_data, path, reason}}, parents),
     do: {:error, {:invalid_state_data, parents ++ path, reason}}

@@ -22,7 +22,10 @@ defmodule Aethrion.SocialCascadeTest do
     assert "haru" not in heard.related_characters
     assert original.shared_with == ["haru"]
 
-    assert [%{kind: :gossip, character_id: "yuna", to: "haru", memory_refs: [_]}, %{kind: :comfort}] =
+    assert [
+             %{kind: :gossip, character_id: "yuna", to: "haru", memory_refs: [_]},
+             %{kind: :comfort}
+           ] =
              of_type(outputs, :character_interaction)
   end
 

@@ -23,10 +23,14 @@ defmodule Aethrion.Tuning do
   @type t :: %{optional(atom()) => %{optional(atom()) => integer()}}
 
   @doc """
-  The value of `key` for `rule` (a module) in `state`: the override if present,
-  otherwise the rule's default.
+  The value of `key` for `rule` (a rule module, or the id of a rule in the
+  default pipeline) in `state`: the override if present, otherwise the rule's
+  default.
   """
   def get(%State{tuning: tuning}, rule, key) when is_atom(rule) do
+    rule =
+      resolve(rule) || raise ArgumentError, "unknown rule #{inspect(rule)}"
+
     defaults = rule.params()
     rule_id = rule.id()
 
@@ -56,10 +60,12 @@ defmodule Aethrion.Tuning do
   end
 
   @doc """
-  All rule parameters in `pipeline`, as `[{rule_id, [{key, default, current}]}]`.
+  All rule parameters, as `[{rule_id, [{key, default, current}]}]`. Options:
+  `pipeline:` (default `Aethrion.Pipeline.default/0`).
   """
-  def describe(%State{} = state, pipeline \\ Pipeline.default()) do
-    pipeline
+  def describe(%State{} = state, opts \\ []) do
+    opts
+    |> Keyword.get(:pipeline, Pipeline.default())
     |> rules()
     |> Enum.filter(&(&1.params() != []))
     |> Enum.map(fn rule ->
@@ -78,13 +84,15 @@ defmodule Aethrion.Tuning do
 
   @doc """
   Parses JSON-style tuning (`%{"rule" => %{"param" => integer}}`) against the
-  rules in `pipeline`. Returns `{:ok, tuning}` or `{:error, reason}`.
+  rules in `pipeline:` (default `Aethrion.Pipeline.default/0`). Returns
+  `{:ok, tuning}` or `{:error, %Aethrion.Error{code: :invalid_tuning}}`.
   """
-  def from_data(data, pipeline \\ Pipeline.default())
+  def from_data(data, opts \\ [])
 
-  def from_data(nil, _pipeline), do: {:ok, %{}}
+  def from_data(nil, _opts), do: {:ok, %{}}
 
-  def from_data(data, pipeline) when is_map(data) do
+  def from_data(data, opts) when is_map(data) do
+    pipeline = Keyword.get(opts, :pipeline, Pipeline.default())
     known = Map.new(rules(pipeline), &{Atom.to_string(&1.id()), &1})
 
     Enum.reduce_while(data, {:ok, %{}}, fn {rule_name, params}, {:ok, acc} ->
@@ -92,17 +100,17 @@ defmodule Aethrion.Tuning do
            {:ok, parsed} <- parse_params(rule, params) do
         {:cont, {:ok, Map.put(acc, rule.id(), parsed)}}
       else
-        {:error, reason} -> {:halt, {:error, reason}}
+        {:error, error} -> {:halt, {:error, error}}
       end
     end)
   end
 
-  def from_data(other, _pipeline), do: {:error, {:invalid_tuning, other}}
+  def from_data(other, _opts), do: invalid("tuning must be an object", %{tuning: other})
 
   defp fetch_rule(known, name) do
     case Map.fetch(known, name) do
       {:ok, rule} -> {:ok, rule}
-      :error -> {:error, {:unknown_rule, name}}
+      :error -> invalid("unknown rule #{inspect(name)}", %{rule: name})
     end
   end
 
@@ -111,14 +119,30 @@ defmodule Aethrion.Tuning do
 
     Enum.reduce_while(params, {:ok, %{}}, fn {name, value}, {:ok, acc} ->
       case {Map.fetch(declared, name), value} do
-        {{:ok, key}, value} when is_integer(value) -> {:cont, {:ok, Map.put(acc, key, value)}}
-        {{:ok, _key}, value} -> {:halt, {:error, {:invalid_value, "#{rule.id()}.#{name}", value}}}
-        {:error, _value} -> {:halt, {:error, {:unknown_parameter, "#{rule.id()}.#{name}"}}}
+        {{:ok, key}, value} when is_integer(value) ->
+          {:cont, {:ok, Map.put(acc, key, value)}}
+
+        {{:ok, _key}, value} ->
+          {:halt,
+           invalid("#{rule.id()}.#{name} must be an integer", %{
+             rule: rule.id(),
+             parameter: name,
+             value: value
+           })}
+
+        {:error, _value} ->
+          {:halt,
+           invalid("unknown parameter #{rule.id()}.#{name}", %{rule: rule.id(), parameter: name})}
       end
     end)
   end
 
-  defp parse_params(rule, params), do: {:error, {:invalid_params, rule.id(), params}}
+  defp parse_params(rule, params),
+    do:
+      invalid("parameters for #{rule.id()} must be an object", %{rule: rule.id(), value: params})
+
+  defp invalid(message, details),
+    do: {:error, Aethrion.Error.new(:invalid_tuning, message, details)}
 
   defp rules(%Pipeline{} = pipeline) do
     pipeline.event_rules

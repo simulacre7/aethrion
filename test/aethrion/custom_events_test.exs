@@ -35,7 +35,8 @@ defmodule Aethrion.CustomEventsTest do
       "unknown_field_xyz_123" => 1
     }
 
-    assert {:error, {:unsupported_event, "tip_left_test"}} = Event.from_data(data)
+    assert {:error, %{code: :unsupported_event, details: %{type: "tip_left_test"}}} =
+             Event.from_data(data)
 
     assert {:ok, %{type: :tip_left_test, from: "user", to: "mina", amount: 2} = event} =
              Event.from_data(data, pipeline: pipeline)
@@ -49,7 +50,7 @@ defmodule Aethrion.CustomEventsTest do
       "expect" => [%{"character" => "mina", "field" => "joy", "equals" => 24}]
     }
 
-    assert {:error, {:invalid_event, 0, {:unsupported_event, "tip_left_test"}}} =
+    assert {:error, %{code: :unsupported_event, details: %{path: ["events", 0]}}} =
              Scenario.from_data(data)
 
     assert {:ok, scenario} = Scenario.from_data(data, pipeline: pipeline)
@@ -73,7 +74,7 @@ defmodule Aethrion.CustomEventsTest do
 
     GenServer.stop(server)
 
-    assert {:error, {:invalid_journal, 2, {:unsupported_event, "tip_left_test"}}} =
+    assert {:error, %{code: :invalid_journal, details: %{line: 2}}} =
              Journal.replay(path)
 
     assert {:ok, ^state, _steps} = Journal.replay(path, pipeline: pipeline)

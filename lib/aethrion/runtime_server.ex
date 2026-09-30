@@ -163,7 +163,13 @@ defmodule Aethrion.RuntimeServer do
   def handle_call(:get_state, _from, server), do: {:reply, server.world, server}
 
   def handle_call({:put_state, _state}, _from, %{journal: path} = server) when is_binary(path) do
-    {:reply, {:error, :journal_enabled}, server}
+    error =
+      Aethrion.Error.new(
+        :journal_enabled,
+        "put_state/2 is not allowed while journaling; the journal would no longer replay"
+      )
+
+    {:reply, {:error, error}, server}
   end
 
   def handle_call({:put_state, state}, _from, server) do
@@ -260,7 +266,9 @@ defmodule Aethrion.RuntimeServer do
 
   defp check_storage(opts) do
     if Keyword.get(opts, :journal) && Keyword.get(opts, :persistence),
-      do: {:error, :journal_and_persistence},
+      do:
+        {:error,
+         Aethrion.Error.new(:invalid_options, "use either :journal or :persistence, not both")},
       else: :ok
   end
 
@@ -287,9 +295,9 @@ defmodule Aethrion.RuntimeServer do
         {:ok, state, _steps} ->
           {:ok, state}
 
-        {:error, reason} ->
-          Logger.error("Aethrion.RuntimeServer could not replay its journal: #{inspect(reason)}")
-          {:error, {:invalid_journal, reason}}
+        {:error, error} ->
+          Logger.error("Aethrion.RuntimeServer could not replay its journal: #{error.message}")
+          {:error, error}
       end
     else
       with {:ok, state} <- validate_state(fallback),
@@ -309,10 +317,7 @@ defmodule Aethrion.RuntimeServer do
             {:ok, state}
 
           # No snapshot yet: start fresh.
-          {:error, :enoent} ->
-            validate_state(fallback)
-
-          {:error, :missing_state} ->
+          {:error, %Aethrion.Error{code: :not_found}} ->
             validate_state(fallback)
 
           # A snapshot exists but cannot be read. Refuse to start rather than
@@ -322,7 +327,10 @@ defmodule Aethrion.RuntimeServer do
               "Aethrion.RuntimeServer could not restore its snapshot: #{inspect(reason)}"
             )
 
-            {:error, {:invalid_snapshot, reason}}
+            {:error,
+             Aethrion.Error.new(:invalid_snapshot, "the saved snapshot cannot be loaded", %{
+               error: reason
+             })}
         end
 
       nil ->
@@ -331,7 +339,13 @@ defmodule Aethrion.RuntimeServer do
   end
 
   defp validate_state(%State{} = state), do: {:ok, state}
-  defp validate_state(other), do: {:error, {:invalid_initial_state, other}}
+
+  defp validate_state(other) do
+    {:error,
+     Aethrion.Error.new(:invalid_state, "initial state must be an Aethrion.State", %{
+       state: other
+     })}
+  end
 
   defp expression_config(nil), do: {:ok, nil}
 
@@ -381,23 +395,21 @@ defmodule Aethrion.RuntimeServer do
       :ok ->
         :ok
 
-      {:error, {:not_replayable, reason}} ->
-        {:error,
-         %Aethrion.Error{
-           code: :invalid_event,
-           message: "event cannot be journaled faithfully: #{inspect(reason)}",
-           details: %{reason: reason}
-         }}
+      # The event itself cannot be stored faithfully: reject it.
+      {:error, %Aethrion.Error{code: :invalid_event} = error} ->
+        {:error, error}
 
-      {:error, reason} ->
-        Logger.error("Aethrion.RuntimeServer could not append to its journal: #{inspect(reason)}")
+      {:error, %Aethrion.Error{} = error} ->
+        Logger.error("Aethrion.RuntimeServer could not append to its journal: #{error.message}")
 
         {:error,
-         %Aethrion.Error{
-           code: :journal_failed,
-           message: "could not append to the journal: #{inspect(reason)}",
-           details: %{reason: reason}
-         }}
+         Aethrion.Error.new(
+           :journal_failed,
+           "could not append to the journal: #{error.message}",
+           %{
+             error: error
+           }
+         )}
     end
   end
 

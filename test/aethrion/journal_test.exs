@@ -40,20 +40,24 @@ defmodule Aethrion.JournalTest do
 
   test "journals cannot be created twice", %{path: path} do
     :ok = Journal.create(path, Runtime.demo_state())
-    assert {:error, :already_exists} = Journal.create(path, Runtime.demo_state())
+    assert {:error, %{code: :already_exists}} = Journal.create(path, Runtime.demo_state())
   end
 
   test "malformed journals report the line", %{path: path} do
     File.write!(path, "")
-    assert {:error, {:invalid_journal, 1, :empty}} = Journal.read(path)
+
+    assert {:error, %{code: :invalid_journal, details: %{line: 1, reason: :empty}}} =
+             Journal.read(path)
 
     File.write!(path, ~s({"type": "time_tick", "hours": 1}\n))
-    assert {:error, {:invalid_journal, 1, :missing_header}} = Journal.read(path)
+
+    assert {:error, %{code: :invalid_journal, details: %{line: 1, reason: :missing_header}}} =
+             Journal.read(path)
 
     File.rm!(path)
     :ok = Journal.create(path, Runtime.demo_state())
     File.write!(path, ~s({"type": "dance"}\n), [:append])
-    assert {:error, {:invalid_journal, 2, {:unsupported_event, "dance"}}} = Journal.read(path)
+    assert {:error, %{code: :invalid_journal, details: %{line: 2}}} = Journal.read(path)
   end
 
   test "a journal that does not match its starting state is detected", %{path: path} do
@@ -63,7 +67,9 @@ defmodule Aethrion.JournalTest do
     contents = path |> File.read!() |> String.replace(~s("id":"e1"), ~s("id":"e9"))
     File.write!(path, contents)
 
-    assert {:error, {:journal_mismatch, 0, expected: "e9", replayed: "e1"}} = Journal.replay(path)
+    assert {:error,
+            %{code: :journal_mismatch, details: %{index: 0, expected: "e9", replayed: "e1"}}} =
+             Journal.replay(path)
   end
 
   test "journals convert to passing scenarios", %{path: path} do
@@ -87,7 +93,10 @@ defmodule Aethrion.JournalTest do
 
       {:ok, second} = RuntimeServer.start_link(journal: path)
       assert RuntimeServer.get_state(second) == state
-      assert {:error, :journal_enabled} = RuntimeServer.put_state(second, Runtime.demo_state())
+
+      assert {:error, %{code: :journal_enabled}} =
+               RuntimeServer.put_state(second, Runtime.demo_state())
+
       GenServer.stop(second)
     end
 
@@ -115,7 +124,7 @@ defmodule Aethrion.JournalTest do
     test "journal and snapshot persistence cannot be combined", %{path: path} do
       Process.flag(:trap_exit, true)
 
-      assert {:error, :journal_and_persistence} =
+      assert {:error, %{code: :invalid_options}} =
                RuntimeServer.start_link(
                  journal: path,
                  persistence: {Aethrion.Persistence.JsonFile, path: path <> ".json"}

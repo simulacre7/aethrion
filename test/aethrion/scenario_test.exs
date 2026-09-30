@@ -61,18 +61,20 @@ defmodule Aethrion.ScenarioTest do
     }
 
     assert {:ok, scenario} = Scenario.from_data(data)
-    assert {:error, {1, %{code: :invalid_event}}} = Scenario.run(scenario)
+    assert {:error, %{code: :invalid_event, details: %{index: 1}}} = Scenario.run(scenario)
   end
 
   test "malformed scenarios are rejected" do
-    assert {:error, {:invalid_event, 0, {:unsupported_event, "dance"}}} =
+    assert {:error, %{code: :unsupported_event, details: %{path: ["events", 0]}}} =
              Scenario.from_data(%{"events" => [%{"type" => "dance"}]})
 
-    assert {:error, {:invalid_expectation, %{"nope" => 1}}} =
+    assert {:error, %{code: :invalid_scenario, details: %{path: ["expect", 0]}}} =
              Scenario.from_data(%{"expect" => [%{"nope" => 1}]})
 
-    assert {:error, {:invalid_world, "mars"}} = Scenario.from_data(%{"world" => "mars"})
-    assert {:error, :enoent} = Scenario.load("/nonexistent.json")
+    assert {:error, %{code: :invalid_scenario, details: %{path: ["world"]}}} =
+             Scenario.from_data(%{"world" => "mars"})
+
+    assert {:error, %{code: :not_found}} = Scenario.load("/nonexistent.json")
   end
 
   test "recorded sessions replay as passing scenarios" do
@@ -203,12 +205,13 @@ defmodule Aethrion.ScenarioTest do
       scenario =
         branching([%{"name" => "bad", "events" => [%{"type" => "time_tick", "hours" => 0}]}])
 
-      assert {:error, {{"bad", 0}, %{code: :invalid_event}}} = Scenario.run(scenario)
+      assert {:error, %{code: :invalid_event, details: %{branch: "bad", index: 0}}} =
+               Scenario.run(scenario)
 
-      assert {:error, {:invalid_branch, 0, :not_an_object}} =
+      assert {:error, %{code: :invalid_scenario, details: %{path: ["branches", 0]}}} =
                Scenario.from_data(%{"branches" => ["x"]})
 
-      assert {:error, {:invalid_branch, 0, {:invalid_event, 0, _}}} =
+      assert {:error, %{code: :unsupported_event, details: %{path: ["branches", 0, "events", 0]}}} =
                Scenario.from_data(%{"branches" => [%{"events" => [%{"type" => "dance"}]}]})
     end
   end

@@ -188,7 +188,7 @@ defmodule Aethrion.RuntimeServerTest do
   test "invalid initial state stops the server" do
     Process.flag(:trap_exit, true)
 
-    assert {:error, {:invalid_initial_state, :nope}} =
+    assert {:error, %{code: :invalid_state, details: %{state: :nope}}} =
              RuntimeServer.start_link(initial_state: :nope)
   end
 

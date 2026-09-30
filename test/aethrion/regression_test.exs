@@ -87,7 +87,7 @@ defmodule Aethrion.RegressionTest do
       ]
 
       for {data, path} <- cases do
-        assert {:error, {:invalid_state_data, ^path, _reason}} = State.parse(data)
+        assert {:error, %{code: :invalid_state, details: %{path: ^path}}} = State.parse(data)
       end
     end
 
@@ -99,7 +99,7 @@ defmodule Aethrion.RegressionTest do
       Process.flag(:trap_exit, true)
 
       capture_log(fn ->
-        assert {:error, {:invalid_snapshot, {:invalid_state_data, _path, _reason}}} =
+        assert {:error, %{code: :invalid_snapshot, details: %{error: %{code: :invalid_state}}}} =
                  RuntimeServer.start_link(persistence: {JsonFile, path: path})
       end)
 
@@ -107,9 +107,11 @@ defmodule Aethrion.RegressionTest do
     end
 
     test "odd scenario values produce errors or readable descriptions, not crashes" do
-      assert {:error, {:invalid_field, "name", 1.5}} = Scenario.from_data(%{"name" => 1.5})
+      assert {:error, %{code: :invalid_scenario, details: %{path: ["name"], value: 1.5}}} =
+               Scenario.from_data(%{"name" => 1.5})
 
-      assert {:error, {:invalid_world, ["characters", 0, "traits"], _}} =
+      assert {:error,
+              %{code: :invalid_state, details: %{path: ["world", "characters", 0, "traits"]}}} =
                Scenario.from_data(%{
                  "world" => %{"characters" => [%{"id" => "a", "name" => "A", "traits" => "x"}]}
                })
@@ -332,7 +334,7 @@ defmodule Aethrion.RegressionTest do
     end
 
     test "non-string branch names are rejected" do
-      assert {:error, {:invalid_branch, 0, {:invalid_field, "name", %{"x" => 1}}}} =
+      assert {:error, %{code: :invalid_scenario, details: %{path: ["branches", 0, "name"]}}} =
                Scenario.from_data(%{"branches" => [%{"name" => %{"x" => 1}}]})
     end
 
@@ -434,11 +436,13 @@ defmodule Aethrion.RegressionTest do
 
     test "journal headers are written atomically and validated", %{path: path} do
       :ok = Journal.create(path, Runtime.demo_state())
-      assert {:error, :already_exists} = Journal.create(path, Runtime.demo_state())
+      assert {:error, %{code: :already_exists}} = Journal.create(path, Runtime.demo_state())
       refute File.exists?(path <> ".tmp")
 
       File.write!(path, ~s({"aethrion_journal": 1}\n))
-      assert {:error, {:invalid_journal, 1, :missing_state}} = Journal.read(path)
+
+      assert {:error, %{code: :invalid_journal, details: %{line: 1, reason: :missing_state}}} =
+               Journal.read(path)
     end
 
     test "impressions form the same way however time is split, even across forgetting" do

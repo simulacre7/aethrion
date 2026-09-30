@@ -43,8 +43,8 @@ defmodule Mix.Tasks.Aethrion.Journal do
         Display.status(state)
         export(path, opts)
 
-      {:error, reason} ->
-        Mix.raise("could not replay #{path}: #{inspect(reason)}")
+      {:error, error} ->
+        Mix.raise("could not replay #{path}: #{error.message}")
     end
   end
 

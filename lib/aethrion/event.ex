@@ -204,14 +204,19 @@ defmodule Aethrion.Event do
     end
   end
 
-  def from_data(data, _opts), do: {:error, {:invalid_event, data}}
+  def from_data(data, _opts) do
+    {:error,
+     Aethrion.Error.new(:invalid_event, "event must be an object with a string \"type\"", %{
+       event: data
+     })}
+  end
 
-  defp custom_from_data(type, _data, nil), do: {:error, {:unsupported_event, type}}
+  defp custom_from_data(type, _data, nil), do: unsupported(type)
 
   defp custom_from_data(type, data, pipeline) do
     case Enum.find(Aethrion.Pipeline.event_types(pipeline), &(Atom.to_string(&1) == type)) do
       nil ->
-        {:error, {:unsupported_event, type}}
+        unsupported(type)
 
       type ->
         fields =
@@ -223,6 +228,13 @@ defmodule Aethrion.Event do
 
         {:ok, Map.put(fields, :type, type)}
     end
+  end
+
+  defp unsupported(type) do
+    {:error,
+     Aethrion.Error.new(:unsupported_event, "unsupported event type: #{inspect(type)}", %{
+       type: type
+     })}
   end
 
   defp existing_atom(key) when is_binary(key) do

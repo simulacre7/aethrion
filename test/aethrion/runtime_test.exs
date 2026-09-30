@@ -278,7 +278,7 @@ defmodule Aethrion.RuntimeTest do
       assert second.event.id == "e2"
       assert state == second.state
 
-      assert {:error, {1, %{code: :unknown_character}, [_first]}} =
+      assert {:error, %{code: :unknown_character, details: %{index: 1, steps: [_first]}}} =
                Runtime.run(Runtime.demo_state(), [
                  flower_for_mina(),
                  Event.gift_received("user", "nobody", "rock")

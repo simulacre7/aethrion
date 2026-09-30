@@ -17,7 +17,7 @@ defmodule Aethrion.PersistenceTest do
 
     assert :ok = InMemory.save(state)
     assert {:ok, ^state} = InMemory.load(state: state)
-    assert {:error, :missing_state} = InMemory.load([])
+    assert {:error, %{code: :not_found}} = InMemory.load([])
   end
 
   test "json file adapter round-trips the full state", %{path: path} do
@@ -90,8 +90,8 @@ defmodule Aethrion.PersistenceTest do
   end
 
   test "json adapter reports missing paths and files" do
-    assert {:error, :missing_path} = JsonFile.save(Runtime.demo_state(), [])
-    assert {:error, :missing_path} = JsonFile.load([])
-    assert {:error, :enoent} = JsonFile.load(path: "/nonexistent/aethrion.json")
+    assert {:error, %{code: :invalid_options}} = JsonFile.save(Runtime.demo_state(), [])
+    assert {:error, %{code: :invalid_options}} = JsonFile.load([])
+    assert {:error, %{code: :not_found}} = JsonFile.load(path: "/nonexistent/aethrion.json")
   end
 end

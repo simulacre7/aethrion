@@ -349,6 +349,7 @@ defmodule Aethrion.Transition do
 
   defp output_detail(%{character_id: id, to: to} = output),
     do: " #{id}->#{to}" <> reason_detail(output)
+
   defp output_detail(_output), do: ""
 
   defp reason_detail(%{reason: reason}), do: " reason=#{reason}"

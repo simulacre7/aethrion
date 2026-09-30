@@ -30,7 +30,7 @@ step.log      # log lines
 step.trace    # [%Aethrion.Trace{}] - every change, by rule, with before/after values
 ```
 
-`run/3` dispatches a list of events and returns `{:ok, state, steps}` or `{:error, {index, error, steps_so_far}}`.
+`run/3` dispatches a list of events and returns `{:ok, state, steps}`, or `{:error, error}` with the failing event's `:index` and the completed `:steps` in `error.details`.
 
 Options for all three:
 
@@ -97,6 +97,8 @@ Every expressive output names the speaking character `character_id` and the othe
 
 ## Errors
 
+Every public function that can fail returns `{:error, %Aethrion.Error{}}`:
+
 ```elixir
 %Aethrion.Error{
   code: :unknown_character,
@@ -105,15 +107,27 @@ Every expressive output names the speaking character `character_id` and the othe
 }
 ```
 
+`code` says what went wrong; `details` says where. Location keys are shared across the library: `:index` (0-based event position), `:branch` (scenario branch), `:line` (1-based journal line), `:path` (position in a JSON document), and `:field`. `Aethrion.Runtime.run/3` also puts the `:steps` completed before the failure in `details`.
+
 | code | meaning |
 | --- | --- |
-| `:invalid_state` | the state is not an `Aethrion.State` |
-| `:invalid_event` | a field is missing or has the wrong type or value |
+| `:invalid_state` | the state, or state data being loaded, is malformed |
+| `:invalid_event` | an event field is missing or has the wrong type or value |
 | `:unknown_character` | an id does not name a character in the world |
 | `:unavailable_character` | an inactive or blocked character was asked to comfort, gossip, or spend time together |
 | `:unsupported_event` | no rules are registered for the event type |
-| `:rule_failed` | (RuntimeServer only) a rule raised; the event was rejected and state kept |
-| `:journal_failed` | (RuntimeServer only) the journal could not be written; the event was rejected and state kept |
+| `:rule_failed` | (RuntimeServer) a rule raised; the event was rejected and state kept |
+| `:invalid_tuning` | a tuning override names an unknown rule or parameter, or is not an integer |
+| `:invalid_scenario` | a scenario file is malformed |
+| `:invalid_journal` | a journal file is malformed |
+| `:journal_mismatch` | replaying a journal assigned a different event id than recorded |
+| `:journal_failed` | (RuntimeServer) the journal could not be written; the event was rejected and state kept |
+| `:journal_enabled` | (RuntimeServer) `put_state/2` was called while journaling |
+| `:invalid_snapshot` | a saved snapshot exists but cannot be loaded |
+| `:invalid_options` | required options are missing or conflict |
+| `:already_exists` | a file that must be new already exists |
+| `:not_found` | a file or saved state does not exist |
+| `:io_error` | reading or writing a file failed |
 
 Optional fields may be omitted from hand-built event maps: `:at` and `:now` default to `"unspecified"`, `:observed_by` to `[]`, and `:tone` to `:neutral`. When given, `:at` and `:now` must be strings. A journaling runtime server also rejects events that would not come back unchanged from JSON (for example an atom or tuple in a custom field).
 
@@ -146,6 +160,7 @@ Rule parameters are data. Override them per world:
 state = Aethrion.Tuning.put(state, :proactive, :cooldown_hours, 8)
 Aethrion.Tuning.get(state, Aethrion.Rules.Proactive, :cooldown_hours)  #=> 8
 Aethrion.Tuning.describe(state)  #=> [{rule_id, [{key, default, current}]}]
+Aethrion.Tuning.from_data(%{"gift" => %{"importance" => 70}}, pipeline: pipeline)
 ```
 
 Tuning lives in `state.tuning`, persists with the state, and can be set in a scenario's `"tuning"` block.

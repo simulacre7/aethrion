@@ -189,7 +189,7 @@ defmodule Mix.Tasks.Demo.Interactive do
   defp handle({:ok, {:save, path}}, session) do
     case JsonFile.save(session.state, path: path) do
       :ok -> Display.message("saved to #{path}")
-      {:error, reason} -> Display.message("ERROR could not save: #{inspect(reason)}")
+      {:error, error} -> Display.error(error)
     end
 
     loop(session)
@@ -246,8 +246,8 @@ defmodule Mix.Tasks.Demo.Interactive do
             outputs: []
         })
 
-      {:error, reason} ->
-        Display.message("ERROR could not load: #{inspect(reason)}")
+      {:error, error} ->
+        Display.error(error)
         loop(session)
     end
   end
