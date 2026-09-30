@@ -1,7 +1,7 @@
 {
   "$schema": "../scenario.schema.json",
   "name": "Company",
-  "description": "The user goes quiet for three days. Haru, who looks out for Yuna, keeps inviting her to spend the afternoon; Yuna likes Haru but not yet enough to ask first. Mina has no friend that close. Friendship buffers loneliness: Mina ends up the loneliest, and three afternoons together bring Yuna close enough to Haru to invite him herself next time.",
+  "description": "The user goes quiet for three days. Haru, who looks out for Yuna, keeps inviting Yuna to spend the afternoon; Yuna likes Haru but not yet enough to ask first. Mina has no friend that close. Friendship buffers loneliness: Mina ends up the loneliest, and three afternoons together bring Yuna close enough to Haru to be the one who asks next time.",
   "tuning": {
     "time_passage": {
       "loneliness_per_hour": 1

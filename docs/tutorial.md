@@ -34,7 +34,7 @@ A few details already matter:
 
 - `traits` are read by rules. `:sensitive` makes Ivy more easily jealous, `:calm` makes Sol less so, and `:talkative` makes Tae pass news along.
 - Relationships are directed. `ivy -> user` is how Ivy feels about the user; `user` is not a character, just an actor id.
-- Ivy cares about the user (affinity 35 >= 30), so she will be jealous if she sees the user favor someone else. Ivy trusts Tae (40 >= 30), so she will confide in Tae when she is struggling.
+- Ivy cares about the user (affinity 35 >= 30), so seeing the user favor someone else makes Ivy jealous. Ivy trusts Tae (40 >= 30), so a struggling Ivy confides in Tae.
 
 ## 2. Add a rule
 
@@ -96,7 +96,7 @@ Three host events come back as five processed events. The log shows why:
 [Mood] Ivy jealous -> neutral
 ```
 
-Nobody scripted the last four lines. Ivy was jealous, trusted Tae, and confided; Tae cared about Ivy and comforted her. Each `step.trace` records which rule made every change, from what value to what value.
+Nobody scripted the last four lines. Ivy was jealous, trusted Tae, and confided; Tae cared about Ivy and offered comfort. Each `step.trace` records which rule made every change, from what value to what value.
 
 ## 4. Compare two futures
 
