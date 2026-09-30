@@ -339,6 +339,7 @@ flowchart TD
 - [docs/expression.md](docs/expression.md) - LLM 경계와 adapter
 - [docs/scenarios.md](docs/scenarios.md) - 시나리오 형식
 - [docs/api.md](docs/api.md) - 공개 API
+- [docs/cookbook.md](docs/cookbook.md) - 컴패니언 앱, 게임 NPC, 여러 사람이 있는 세계, 직접 만든 규칙 패턴 (영문)
 - [docs/architecture.md](docs/architecture.md) - 내부 구조 (기여자용, 영문)
 - [docs/faq.md](docs/faq.md) - 왜 LLM이 아닌 규칙인가, 왜 캐릭터당 프로세스가 아닌가, 규모 (영문)
 - [docs/roadmap.md](docs/roadmap.md) - 다음 계획

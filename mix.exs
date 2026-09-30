@@ -14,6 +14,7 @@ defmodule Aethrion.MixProject do
     docs/expression.md
     docs/scenarios.md
     docs/api.md
+    docs/cookbook.md
     docs/faq.md
     docs/roadmap.md
     CHANGELOG.md

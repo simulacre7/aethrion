@@ -343,6 +343,7 @@ Recommended local versions:
 - [docs/expression.md](docs/expression.md) - the LLM boundary and adapters
 - [docs/scenarios.md](docs/scenarios.md) - the scenario format
 - [docs/api.md](docs/api.md) - the public API
+- [docs/cookbook.md](docs/cookbook.md) - patterns for companion apps, game NPCs, multiplayer worlds, custom rules
 - [docs/architecture.md](docs/architecture.md) - how it is built, for contributors
 - [docs/faq.md](docs/faq.md) - why rules and not the LLM, why not a process per character, scale
 - [docs/roadmap.md](docs/roadmap.md) - what's next
