@@ -1,4 +1,5 @@
 {
+  "$schema": "../scenario.schema.json",
   "name": "Crossroads",
   "description": "Yuna has just watched the user give Mina a flower. Four ways the next two hours could go, from the same moment. Only the user's choice differs; everything else follows from the rules.",
   "world": "demo",

@@ -1,0 +1,200 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/simulacre7/aethrion/blob/main/priv/scenario.schema.json",
+  "title": "Aethrion scenario",
+  "description": "A world, a script of events, and expectations. See docs/scenarios.md.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {"type": "string"},
+    "name": {"type": "string"},
+    "description": {"type": "string"},
+    "world": {
+      "description": "\"demo\" for Mina, Yuna, and Haru, or a world in the persistence format.",
+      "oneOf": [{"const": "demo"}, {"$ref": "#/definitions/world"}]
+    },
+    "tuning": {
+      "description": "Rule parameter overrides: {rule_id: {parameter: integer}}. Run `mix aethrion.rules` for every parameter.",
+      "type": "object",
+      "additionalProperties": {"type": "object", "additionalProperties": {"type": "integer"}}
+    },
+    "events": {"type": "array", "items": {"$ref": "#/definitions/event"}},
+    "expect": {"type": "array", "items": {"$ref": "#/definitions/expectation"}},
+    "branches": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": {"type": "string"},
+          "description": {"type": "string"},
+          "events": {"type": "array", "items": {"$ref": "#/definitions/event"}},
+          "expect": {"type": "array", "items": {"$ref": "#/definitions/expectation"}}
+        }
+      }
+    }
+  },
+  "definitions": {
+    "id": {"type": "string", "minLength": 1},
+    "unit": {"type": "integer", "minimum": 0, "maximum": 100},
+    "signed": {"type": "integer", "minimum": -100, "maximum": 100},
+    "world": {
+      "type": "object",
+      "required": ["characters"],
+      "properties": {
+        "characters": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "name"],
+            "properties": {
+              "id": {"$ref": "#/definitions/id"},
+              "name": {"type": "string"},
+              "profile": {"type": "string"},
+              "traits": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Rules understand sensitive, calm, playful, and talkative; others are descriptive."
+              },
+              "state": {
+                "type": "object",
+                "properties": {
+                  "loneliness": {"$ref": "#/definitions/unit"},
+                  "jealousy": {"$ref": "#/definitions/unit"},
+                  "joy": {"$ref": "#/definitions/unit"},
+                  "stress": {"$ref": "#/definitions/unit"},
+                  "energy": {"$ref": "#/definitions/unit"},
+                  "active": {"type": "boolean"},
+                  "blocked": {"type": "boolean"}
+                }
+              }
+            }
+          }
+        },
+        "relationships": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["from", "to"],
+            "properties": {
+              "from": {"$ref": "#/definitions/id"},
+              "to": {"$ref": "#/definitions/id"},
+              "affinity": {"$ref": "#/definitions/signed"},
+              "trust": {"$ref": "#/definitions/signed"},
+              "tension": {"$ref": "#/definitions/signed"}
+            }
+          }
+        }
+      }
+    },
+    "event": {
+      "type": "object",
+      "required": ["type"],
+      "oneOf": [
+        {
+          "properties": {
+            "type": {"const": "gift_received"},
+            "from": {"$ref": "#/definitions/id"},
+            "to": {"$ref": "#/definitions/id"},
+            "item": {"type": "string"},
+            "observed_by": {"type": "array", "items": {"$ref": "#/definitions/id"}},
+            "at": {"type": "string"}
+          },
+          "required": ["type", "from", "to", "item"]
+        },
+        {
+          "properties": {
+            "type": {"const": "message_sent"},
+            "from": {"$ref": "#/definitions/id"},
+            "to": {"$ref": "#/definitions/id"},
+            "text": {"type": "string", "minLength": 1},
+            "tone": {"enum": ["warm", "neutral", "cold", "hostile"]},
+            "at": {"type": "string"}
+          },
+          "required": ["type", "from", "to", "text"]
+        },
+        {
+          "properties": {
+            "type": {"const": "apology_offered"},
+            "from": {"$ref": "#/definitions/id"},
+            "to": {"$ref": "#/definitions/id"},
+            "reason": {"type": "string", "minLength": 1},
+            "at": {"type": "string"}
+          },
+          "required": ["type", "from", "to", "reason"]
+        },
+        {
+          "properties": {
+            "type": {"const": "time_tick"},
+            "hours": {"type": "integer", "minimum": 1},
+            "now": {"type": "string"}
+          },
+          "required": ["type"]
+        },
+        {
+          "properties": {
+            "type": {"const": "gossip_shared"},
+            "from": {"$ref": "#/definitions/id"},
+            "to": {"$ref": "#/definitions/id"},
+            "memory_id": {"type": "string"},
+            "at": {"type": "string"}
+          },
+          "required": ["type", "from", "to", "memory_id"]
+        },
+        {
+          "properties": {
+            "type": {"const": "comfort_offered"},
+            "from": {"$ref": "#/definitions/id"},
+            "to": {"$ref": "#/definitions/id"},
+            "at": {"type": "string"}
+          },
+          "required": ["type", "from", "to"]
+        }
+      ]
+    },
+    "comparison": {
+      "properties": {
+        "equals": {},
+        "at_least": {"type": "number"},
+        "at_most": {"type": "number"},
+        "count": {"type": "integer", "minimum": 0}
+      }
+    },
+    "expectation": {
+      "type": "object",
+      "allOf": [{"$ref": "#/definitions/comparison"}],
+      "oneOf": [
+        {
+          "required": ["character", "field"],
+          "properties": {
+            "character": {"$ref": "#/definitions/id"},
+            "field": {"enum": ["mood", "loneliness", "jealousy", "joy", "stress", "energy", "active", "blocked"]}
+          }
+        },
+        {
+          "required": ["relationship", "field"],
+          "properties": {
+            "relationship": {"type": "array", "items": {"type": "string"}, "minItems": 2, "maxItems": 2},
+            "field": {"enum": ["affinity", "trust", "tension"]}
+          }
+        },
+        {
+          "required": ["output"],
+          "properties": {
+            "output": {
+              "enum": ["proactive_message", "reply", "character_interaction", "mood_changed", "relationship_changed", "memory_created"]
+            }
+          }
+        },
+        {
+          "required": ["memory"],
+          "properties": {"memory": {"type": "object"}}
+        },
+        {
+          "required": ["clock"],
+          "properties": {"clock": {"type": "integer", "minimum": 0}}
+        }
+      ]
+    }
+  }
+}

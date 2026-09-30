@@ -25,6 +25,12 @@ mix aethrion.report priv/scenarios/01_the_flower.json     # HTML report in tmp/
 
 ## Format
 
+A JSON Schema for editor completion and validation ships at `priv/scenario.schema.json`. Point a scenario at it with `"$schema"`:
+
+```json
+{"$schema": "../scenario.schema.json", "name": "..."}
+```
+
 ```json
 {
   "name": "The flower",

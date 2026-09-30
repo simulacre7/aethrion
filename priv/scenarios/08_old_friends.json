@@ -1,4 +1,5 @@
 {
+  "$schema": "../scenario.schema.json",
   "name": "Old friends",
   "description": "The user is kind to Mina again and again over a few days, then goes quiet. This world is tuned for days rather than hours (loneliness grows 1 per hour). Every individual conversation eventually fades, but the pattern does not: Mina consolidates them into lasting impressions, and when she finally reaches out, it is the impression she remembers.",
   "tuning": {

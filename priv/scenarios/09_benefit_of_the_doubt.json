@@ -1,4 +1,5 @@
 {
+  "$schema": "../scenario.schema.json",
   "name": "Benefit of the doubt",
   "description": "Over three days the user is warm to Mina every day and never speaks to Yuna. The details fade into an impression. Then the user has a bad day and snaps. Mina, with a record of kindness to weigh against it, takes half the hurt. Yuna, with no such history, takes all of it.",
   "tuning": {
