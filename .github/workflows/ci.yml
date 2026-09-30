@@ -48,3 +48,4 @@ jobs:
           mix run examples/embed_runtime.exs
           mix run examples/custom_rule.exs
           mix run examples/supervised_world.exs
+          mix run examples/tutorial_cafe.exs

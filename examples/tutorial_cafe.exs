@@ -3,14 +3,32 @@
 # The code from docs/tutorial.md: a small cafe with its own cast, a custom rule
 # for a regular customer, a what-if comparison, and an HTML report.
 
-alias Aethrion.{Character, CharacterState, Event, Pipeline, Relationship, Runtime, State, Transition}
+alias Aethrion.{
+  Character,
+  CharacterState,
+  Event,
+  Pipeline,
+  Relationship,
+  Runtime,
+  State
+}
 
 # 1. A world: three people who work at a cafe.
 state =
   State.new(
     characters: [
-      %Character{id: "sol", name: "Sol", profile: "Owner. Remembers every regular's order.", traits: [:calm]},
-      %Character{id: "ivy", name: "Ivy", profile: "Barista. Loves attention from the regulars.", traits: [:sensitive]},
+      %Character{
+        id: "sol",
+        name: "Sol",
+        profile: "Owner. Remembers every regular's order.",
+        traits: [:calm]
+      },
+      %Character{
+        id: "ivy",
+        name: "Ivy",
+        profile: "Barista. Loves attention from the regulars.",
+        traits: [:sensitive]
+      },
       %Character{
         id: "tae",
         name: "Tae",
@@ -41,7 +59,12 @@ defmodule Cafe.Rules.Tip do
   def apply(%Transition{event: event} = transition) do
     transition
     |> Transition.adjust_character(event.to, :joy, Transition.param(transition, :joy_delta))
-    |> Transition.adjust_relationship("sol", event.from, :trust, Transition.param(transition, :owner_trust))
+    |> Transition.adjust_relationship(
+      "sol",
+      event.from,
+      :trust,
+      Transition.param(transition, :owner_trust)
+    )
     |> Transition.note("#{Transition.name(transition, event.to)} got a tip from #{event.from}")
   end
 end
@@ -60,20 +83,29 @@ run = fn state, events -> Runtime.run(state, events, pipeline: pipeline) end
 IO.puts("== the morning")
 steps |> Enum.flat_map(& &1.log) |> Enum.each(&IO.puts/1)
 
-# 4. What if the user had thanked Ivy too?
-{:ok, thanked, _steps} =
+# 4. What if the user had noticed Ivy and apologized before leaving?
+{:ok, noticed, noticed_steps} =
   run.(state, [
     %{type: :tip_left, from: "user", to: "ivy"},
     Event.gift_received("user", "sol", "pastry box", observed_by: ["ivy"], at: "09:10"),
-    Event.message_sent("user", "ivy", "Your latte art made my day.", tone: :warm, at: "09:12"),
+    Event.apology_offered("user", "ivy", "I didn't mean to leave you out.", at: "09:12"),
     Event.time_tick("11:00", hours: 2)
   ])
 
-IO.puts("\n== what if the user had thanked Ivy too?")
+IO.puts("\n== what if the user had apologized to Ivy?")
 
-for {label, world} <- [{"as it happened", morning}, {"with thanks", thanked}] do
+for {label, world, steps} <- [
+      {"as it happened", morning, steps},
+      {"with apology", noticed, noticed_steps}
+    ] do
   ivy = world.characters["ivy"].state
-  IO.puts("#{String.pad_trailing(label, 15)} Ivy mood=#{ivy.mood} jealousy=#{ivy.jealousy} loneliness=#{ivy.loneliness}")
+
+  confided? =
+    Enum.any?(steps, fn step -> Enum.any?(step.events, &(&1.type == :gossip_shared)) end)
+
+  IO.puts(
+    "#{String.pad_trailing(label, 15)} Ivy jealousy=#{ivy.jealousy} trust->user=#{Aethrion.State.get_relationship(world, "ivy", "user").trust} confided_in_tae=#{confided?}"
+  )
 end
 
 # 5. The same morning as a scenario report. Custom event types are not part of

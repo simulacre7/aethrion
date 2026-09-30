@@ -59,6 +59,7 @@ defmodule Aethrion.MixProject do
       skip_undefined_reference_warnings_on: ["README.md"],
       extras: [
         "README.md",
+        "docs/tutorial.md",
         "docs/concept.md",
         "docs/rules.md",
         "docs/expression.md",
