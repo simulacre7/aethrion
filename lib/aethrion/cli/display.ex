@@ -54,6 +54,7 @@ defmodule Aethrion.CLI.Display do
       "  why <character>                             every traced change to a character, by rule",
       "  why <character> <field>                     how one value got here, e.g. why yuna jealousy",
       "  why <from>-><to> <field>                    the same for a relationship, e.g. why yuna->haru trust",
+      "                                              (field: affinity | trust | tension | bond)",
       "  context <character>                         what an LLM would see for a proactive line",
       "  timeline                                    events dispatched this session",
       "  rules                                       the rule pipeline",
