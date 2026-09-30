@@ -275,7 +275,7 @@ defmodule Aethrion.CLI.Display do
   end
 
   def error(error) do
-    print([:red, :bright, "ERROR", :reset, " #{error.code}: #{error.message}"])
+    print([:red, :bright, "ERROR", :reset, " #{error.code}: #{Aethrion.Error.format(error)}"])
   end
 
   def message(message), do: print(message)

@@ -54,7 +54,7 @@ defmodule Mix.Tasks.Aethrion.Scenario do
     else
       {:error, %Aethrion.Error{} = error} ->
         Display.error(error)
-        Mix.shell().error("in #{path}#{location(error.details)}")
+        Mix.shell().error("in #{path}")
         false
     end
   end
@@ -89,13 +89,6 @@ defmodule Mix.Tasks.Aethrion.Scenario do
     end)
   end
 
-  defp location(%{branch: branch, index: index}),
-    do: ", branch #{inspect(branch)}, event #{index}"
-
-  defp location(%{index: index}), do: ", event #{index}"
-  defp location(%{path: [_ | _] = path}), do: " at " <> Enum.map_join(path, ".", &to_string/1)
-  defp location(_details), do: ""
-
   defp json(result) do
     %{
       name: result.scenario.name,
@@ -104,9 +97,7 @@ defmodule Mix.Tasks.Aethrion.Scenario do
       outputs:
         result.outputs
         |> Enum.filter(&Output.expressive?/1)
-        |> Enum.map(
-          &Map.take(&1, [:type, :character_id, :from, :to, :reason, :kind, :text, :event_id])
-        ),
+        |> Enum.map(&Map.take(&1, [:type, :character_id, :to, :reason, :kind, :text, :event_id])),
       branches:
         Enum.map(result.branches, fn branch ->
           %{name: branch.name, state: State.to_data(branch.state)}

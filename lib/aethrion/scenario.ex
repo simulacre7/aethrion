@@ -176,8 +176,8 @@ defmodule Aethrion.Scenario do
          {:ok, branches} <- branches(Map.get(data, "branches", []), pipeline) do
       {:ok,
        %__MODULE__{
-         name: Map.get(data, "name", "Untitled scenario"),
-         description: Map.get(data, "description", ""),
+         name: data["name"] || "Untitled scenario",
+         description: data["description"] || "",
          state: %{
            state
            | tuning: Map.merge(state.tuning, tuning, fn _rule, a, b -> Map.merge(a, b) end)

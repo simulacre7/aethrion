@@ -43,6 +43,47 @@ defmodule Aethrion.Error do
     %__MODULE__{code: code, message: message, details: details}
   end
 
+  @doc """
+  Formats an error for people: its message, followed by where it happened
+  when the details say so.
+
+      iex> Aethrion.Error.new(:unknown_character, "unknown character", %{branch: "B", index: 1})
+      ...> |> Aethrion.Error.format()
+      ~s[unknown character (branch "B", event 1)]
+  """
+  @spec format(t()) :: String.t()
+  def format(%__MODULE__{message: message, details: details}) do
+    case location(details) do
+      nil -> message
+      where -> "#{message} (#{where})"
+    end
+  end
+
+  @doc """
+  Describes the location in an error's details (`:branch`, `:index`, `:line`,
+  `:path`), or returns `nil` when there is none.
+  """
+  @spec location(map()) :: String.t() | nil
+  def location(details) when is_map(details) do
+    [
+      branch: &"branch #{inspect(&1)}",
+      index: &"event #{&1}",
+      line: &"line #{&1}",
+      path: &"at #{Enum.map_join(&1, ".", fn key -> to_string(key) end)}"
+    ]
+    |> Enum.flat_map(fn {key, describe} ->
+      case Map.get(details, key) do
+        nil -> []
+        [] -> []
+        value -> [describe.(value)]
+      end
+    end)
+    |> case do
+      [] -> nil
+      parts -> Enum.join(parts, ", ")
+    end
+  end
+
   @doc "Merges location or context into an error's details."
   @spec add_details(t(), map()) :: t()
   def add_details(%__MODULE__{} = error, details) when is_map(details) do

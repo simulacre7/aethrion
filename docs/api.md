@@ -301,6 +301,8 @@ See [scenarios.md](scenarios.md).
 
 ## Mix tasks
 
+The `demo.*` tasks live in `dev/` and run only from a checkout of this repository.
+
 | task | purpose |
 | --- | --- |
 | `mix demo.drama` | two host events and everything they cascade into |

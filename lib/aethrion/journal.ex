@@ -85,6 +85,12 @@ defmodule Aethrion.Journal do
     end
   end
 
+  defp not_replayable(%Error{} = error) do
+    Error.new(:invalid_event, "event cannot be journaled faithfully: #{Error.format(error)}", %{
+      reason: error
+    })
+  end
+
   defp not_replayable(reason) do
     Error.new(:invalid_event, "event cannot be journaled faithfully: #{inspect(reason)}", %{
       reason: reason

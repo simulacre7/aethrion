@@ -44,7 +44,7 @@ defmodule Mix.Tasks.Aethrion.Journal do
         export(path, opts)
 
       {:error, error} ->
-        Mix.raise("could not replay #{path}: #{error.message}")
+        Mix.raise("could not replay #{path}: #{Aethrion.Error.format(error)}")
     end
   end
 

@@ -4,6 +4,21 @@ defmodule Aethrion.MixProject do
   @version "0.2.0-alpha"
   @source_url "https://github.com/simulacre7/aethrion"
 
+  @extras ~w(
+    README.md
+    docs/tutorial.md
+    docs/tutorial.ko.md
+    docs/concept.md
+    docs/architecture.md
+    docs/rules.md
+    docs/expression.md
+    docs/scenarios.md
+    docs/api.md
+    docs/faq.md
+    docs/roadmap.md
+    CHANGELOG.md
+  )
+
   def project do
     [
       app: :aethrion,
@@ -47,7 +62,7 @@ defmodule Aethrion.MixProject do
   defp package do
     [
       licenses: ["MIT"],
-      files: ~w(lib priv docs mix.exs README.md README.ko.md CHANGELOG.md LICENSE),
+      files: ~w(lib priv mix.exs README.ko.md LICENSE) ++ @extras,
       links: %{
         "GitHub" => @source_url,
         "Changelog" => "#{@source_url}/blob/main/CHANGELOG.md"
@@ -60,20 +75,7 @@ defmodule Aethrion.MixProject do
       main: "readme",
       source_ref: "main",
       skip_undefined_reference_warnings_on: ["README.md"],
-      extras: [
-        "README.md",
-        "docs/tutorial.md",
-        "docs/tutorial.ko.md",
-        "docs/concept.md",
-        "docs/architecture.md",
-        "docs/rules.md",
-        "docs/expression.md",
-        "docs/scenarios.md",
-        "docs/api.md",
-        "docs/faq.md",
-        "docs/roadmap.md",
-        "CHANGELOG.md"
-      ],
+      extras: @extras,
       groups_for_modules: [
         Runtime: [
           Aethrion,

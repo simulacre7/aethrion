@@ -14,7 +14,7 @@ defmodule Aethrion.Persistence.JsonFile do
   def save(%State{} = state, opts \\ []) do
     with {:ok, path} <- fetch_path(opts),
          :ok <- io(File.mkdir_p(Path.dirname(path)), path),
-         {:ok, json} <- Jason.encode(State.to_data(state), pretty: true),
+         {:ok, json} <- encode(state),
          :ok <- io(File.write(path, json), path) do
       :ok
     end
@@ -49,6 +49,17 @@ defmodule Aethrion.Persistence.JsonFile do
 
       error ->
         io(error, path)
+    end
+  end
+
+  defp encode(state) do
+    case Jason.encode(State.to_data(state), pretty: true) do
+      {:ok, json} ->
+        {:ok, json}
+
+      {:error, error} ->
+        {:error,
+         Error.new(:invalid_state, "state cannot be saved as JSON: #{Exception.message(error)}")}
     end
   end
 

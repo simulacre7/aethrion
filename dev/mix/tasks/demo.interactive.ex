@@ -115,7 +115,7 @@ defmodule Mix.Tasks.Demo.Interactive do
   end
 
   defp handle({:ok, :status}, session) do
-    if session.status?, do: Display.status(session.state)
+    Display.status(session.state)
     loop(session)
   end
 
@@ -205,7 +205,7 @@ defmodule Mix.Tasks.Demo.Interactive do
           "Replay with: mix aethrion.scenario #{path}"
       )
     else
-      {:error, reason} -> Display.message("ERROR could not record: #{inspect(reason)}")
+      {:error, reason} -> Display.message("ERROR could not record: #{:file.format_error(reason)}")
     end
 
     loop(session)
@@ -224,7 +224,8 @@ defmodule Mix.Tasks.Demo.Interactive do
          :ok <- File.write(path, Aethrion.Report.html(result)) do
       Display.message("wrote #{path}")
     else
-      {:error, reason} -> Display.message("ERROR could not write report: #{inspect(reason)}")
+      {:error, %Aethrion.Error{} = error} -> Display.error(error)
+      {:error, reason} -> Display.message("ERROR could not write report: #{:file.format_error(reason)}")
     end
 
     loop(session)
