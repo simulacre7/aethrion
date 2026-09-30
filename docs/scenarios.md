@@ -96,6 +96,10 @@ Output and memory expectations without a comparison pass when at least one match
 {"relationship": ["yuna", "haru"], "field": "trust", "at_least": 45}
 ```
 
+## Recording a session
+
+Play in `mix demo.interactive`, then `record path.json`. The file contains the world you started from, every host event you sent (not the ones they cascaded into), and expectations that snapshot the outcome: each character's final mood and how many proactive messages and scenes each character produced. `mix aethrion.scenario path.json` replays it; if a rule change alters the story, the replay fails and shows what moved.
+
 ## From Elixir
 
 ```elixir

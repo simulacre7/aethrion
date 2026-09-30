@@ -20,7 +20,7 @@ defmodule Mix.Tasks.Demo.Interactive do
   use Mix.Task
 
   alias Aethrion.CLI.{CommandParser, Display}
-  alias Aethrion.{Expression, Intent, Pipeline, Runtime, State}
+  alias Aethrion.{Expression, Intent, Pipeline, Runtime, Scenario, State}
   alias Aethrion.LLM.{Anthropic, FakeAdapter, OpenAICompatible}
   alias Aethrion.Persistence.JsonFile
 
@@ -35,9 +35,12 @@ defmodule Mix.Tasks.Demo.Interactive do
 
     session = %{
       state: Runtime.demo_state(),
+      origin: "demo",
       undo: [],
       trace: [],
       events: [],
+      host_events: [],
+      outputs: [],
       adapter: adapter(opts[:llm]),
       effects?: Keyword.get(opts, :effects, false)
     }
@@ -150,13 +153,7 @@ defmodule Mix.Tasks.Demo.Interactive do
     Display.message("undone")
     Display.status(previous.state)
 
-    loop(%{
-      session
-      | state: previous.state,
-        trace: previous.trace,
-        events: previous.events,
-        undo: rest
-    })
+    session |> Map.merge(previous) |> Map.put(:undo, rest) |> loop()
   end
 
   defp handle({:ok, {:save, path}}, session) do
@@ -168,12 +165,35 @@ defmodule Mix.Tasks.Demo.Interactive do
     loop(session)
   end
 
+  defp handle({:ok, {:record, path}}, session) do
+    data = Scenario.record(session.origin, session.host_events, session.state, session.outputs)
+
+    with :ok <- File.mkdir_p(Path.dirname(path)),
+         :ok <- File.write(path, Jason.encode!(data, pretty: true)) do
+      Display.message(
+        "recorded #{length(session.host_events)} events and #{length(data["expect"])} expectations to #{path}. " <>
+          "Replay with: mix aethrion.scenario #{path}"
+      )
+    else
+      {:error, reason} -> Display.message("ERROR could not record: #{inspect(reason)}")
+    end
+
+    loop(session)
+  end
+
   defp handle({:ok, {:load, path}}, session) do
     case JsonFile.load(path: path) do
       {:ok, state} ->
         Display.message("loaded #{path}")
         Display.status(state)
-        loop(%{remember(session) | state: state})
+
+        loop(%{
+          remember(session)
+          | state: state,
+            origin: state,
+            host_events: [],
+            outputs: []
+        })
 
       {:error, reason} ->
         Display.message("ERROR could not load: #{inspect(reason)}")
@@ -227,7 +247,9 @@ defmodule Mix.Tasks.Demo.Interactive do
         |> Map.merge(%{
           state: step.state,
           trace: session.trace ++ step.trace,
-          events: Enum.reverse(step.events, session.events)
+          events: Enum.reverse(step.events, session.events),
+          host_events: session.host_events ++ [event],
+          outputs: session.outputs ++ step.outputs
         })
         |> loop()
 
@@ -238,7 +260,7 @@ defmodule Mix.Tasks.Demo.Interactive do
   end
 
   defp remember(session) do
-    snapshot = Map.take(session, [:state, :trace, :events])
+    snapshot = Map.take(session, [:state, :origin, :trace, :events, :host_events, :outputs])
     %{session | undo: Enum.take([snapshot | session.undo], 50)}
   end
 end

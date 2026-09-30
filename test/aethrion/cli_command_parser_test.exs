@@ -48,6 +48,7 @@ defmodule Aethrion.CLI.CommandParserTest do
     assert {:ok, :undo} = CommandParser.parse("undo")
     assert {:ok, {:save, "tmp/a.json"}} = CommandParser.parse("save tmp/a.json")
     assert {:ok, {:load, "tmp/a.json"}} = CommandParser.parse("load tmp/a.json")
+    assert {:ok, {:record, "tmp/s.json"}} = CommandParser.parse("record tmp/s.json")
     assert {:ok, :help} = CommandParser.parse("help")
     assert {:ok, :quit} = CommandParser.parse("quit")
   end

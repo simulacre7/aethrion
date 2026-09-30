@@ -22,7 +22,7 @@ The social layer release: characters now act on each other, every change is expl
 - **Tuning.** Every rule declares its numbers as `params`; a world can override them in `state.tuning` (`Aethrion.Tuning`), in saved state, or in a scenario's `"tuning"` block. `mix aethrion.rules` prints them.
 - **Scenarios.** JSON scenario files with a world, events, and expectations (`Aethrion.Scenario`, `mix aethrion.scenario`). Six bundled scenarios run in the test suite.
 - **Reports.** `mix aethrion.report` renders a scenario as a self-contained HTML report with charts, a relationship graph, and the timeline.
-- **Interactive CLI.** `say` (free text through intent interpretation), `message`, `comfort`, `why`, `context`, `timeline`, `rules`, `undo`, `save`, `load`, and `--llm anthropic|openai`.
+- **Interactive CLI.** `say` (free text through intent interpretation), `message`, `comfort`, `why`, `context`, `timeline`, `rules`, `undo`, `save`, `load`, `record` (the session as a replayable scenario with snapshot expectations), and `--llm anthropic|openai`.
 - Property-based tests for bounds, determinism, persistence round trips, cascade causality, and the expression boundary.
 
 ### Changed

@@ -74,4 +74,58 @@ defmodule Aethrion.ScenarioTest do
     assert {:error, {:invalid_world, "mars"}} = Scenario.from_data(%{"world" => "mars"})
     assert {:error, :enoent} = Scenario.load("/nonexistent.json")
   end
+
+  test "recorded sessions replay as passing scenarios" do
+    alias Aethrion.{Event, Runtime}
+
+    events = [
+      Event.gift_received("user", "mina", "flower", observed_by: ["yuna"], at: "t1"),
+      Event.message_sent("user", "haru", "thanks for being around", tone: :warm, at: "t2"),
+      Event.time_tick("t3", hours: 2)
+    ]
+
+    {:ok, final, steps} = Runtime.run(Runtime.demo_state(), events)
+    outputs = Enum.flat_map(steps, & &1.outputs)
+
+    data =
+      "demo"
+      |> Scenario.record(Enum.map(steps, & &1.event), final, outputs, name: "Replay me")
+      |> Jason.encode!()
+      |> Jason.decode!()
+
+    assert data["name"] == "Replay me"
+    refute Enum.any?(data["events"], &Map.has_key?(&1, "id"))
+
+    assert %{"character" => "yuna", "field" => "mood"} =
+             Enum.find(data["expect"], &(&1["character"] == "yuna"))
+
+    assert {:ok, scenario} = Scenario.from_data(data)
+    assert {:ok, result} = Scenario.run(scenario)
+    assert Scenario.passed?(result)
+    assert result.state == final
+  end
+
+  test "sessions that started from a loaded world record that world" do
+    alias Aethrion.{Event, Runtime}
+
+    {:ok, origin, _steps} =
+      Runtime.run(Runtime.demo_state(), [Event.gift_received("user", "mina", "flower")])
+
+    {:ok, final, steps} = Runtime.run(origin, [Event.time_tick("t", hours: 1)])
+
+    data =
+      Scenario.record(
+        origin,
+        Enum.map(steps, & &1.event),
+        final,
+        Enum.flat_map(steps, & &1.outputs)
+      )
+      |> Jason.encode!()
+      |> Jason.decode!()
+
+    assert {:ok, scenario} = Scenario.from_data(data)
+    assert {:ok, result} = Scenario.run(scenario)
+    assert Scenario.passed?(result)
+    assert result.state == final
+  end
 end

@@ -137,6 +137,58 @@ defmodule Aethrion.Scenario do
   @doc "Returns true when every expectation passed."
   def passed?(%Result{checks: checks}), do: Enum.all?(checks, & &1.passed?)
 
+  @doc """
+  Builds scenario data (ready for `Jason.encode!/2`) from a recorded session.
+
+  `world` is `"demo"` or the `Aethrion.State` the session started from.
+  Expectations snapshot the outcome: every character's final mood and the
+  number of proactive messages and scenes per character. Replaying the file
+  with `mix aethrion.scenario` turns a play session into a regression test.
+  """
+  def record(world, host_events, %State{} = final, outputs, opts \\ []) do
+    world_data =
+      case world do
+        "demo" -> "demo"
+        %State{} = state -> state |> State.to_data() |> Map.delete("version")
+      end
+
+    %{
+      "name" => Keyword.get(opts, :name, "Recorded session"),
+      "description" => Keyword.get(opts, :description, "Recorded from mix demo.interactive."),
+      "world" => world_data,
+      "events" =>
+        Enum.map(host_events, fn event ->
+          event |> Map.drop([:id, :cause]) |> Event.to_data()
+        end),
+      "expect" => snapshot_expectations(final, outputs)
+    }
+  end
+
+  defp snapshot_expectations(final, outputs) do
+    moods =
+      for character <- State.sorted_characters(final) do
+        %{
+          "character" => character.id,
+          "field" => "mood",
+          "equals" => to_string(character.state.mood)
+        }
+      end
+
+    counts =
+      outputs
+      |> Enum.filter(&(&1.type in [:proactive_message, :character_interaction]))
+      |> Enum.frequencies_by(fn output ->
+        {to_string(output.type), Map.get(output, :character_id) || Map.get(output, :from)}
+      end)
+      |> Enum.sort()
+      |> Enum.map(fn {{type, id}, count} ->
+        key = if type == "proactive_message", do: "character", else: "from"
+        %{"output" => type, key => id, "count" => count}
+      end)
+
+    moods ++ counts
+  end
+
   @doc "Paths of the scenarios bundled with Aethrion."
   def bundled do
     :aethrion

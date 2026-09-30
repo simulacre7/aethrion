@@ -179,7 +179,7 @@ user> why yuna
   ...
 ```
 
-명령어: `say`, `message`, `gift`, `apologize`, `comfort`, `tick`, `status`, `memories`, `why`, `context`, `timeline`, `rules`, `undo`, `save`, `load`.
+명령어: `say`, `message`, `gift`, `apologize`, `comfort`, `tick`, `status`, `memories`, `why`, `context`, `timeline`, `rules`, `undo`, `save`, `load`, `record`(플레이 세션을 재생 가능한 시나리오로 저장).
 
 ## Elixir 앱에서 사용하기
 

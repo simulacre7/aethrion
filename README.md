@@ -187,7 +187,7 @@ user> context yuna
   Draft line: It's been quiet today. Do you have a minute to talk?
 ```
 
-Commands include `say`, `message`, `gift`, `apologize`, `comfort`, `tick`, `status`, `memories`, `why`, `context`, `timeline`, `rules`, `undo`, `save`, and `load`.
+Commands include `say`, `message`, `gift`, `apologize`, `comfort`, `tick`, `status`, `memories`, `why`, `context`, `timeline`, `rules`, `undo`, `save`, `load`, and `record` (turn a play session into a replayable scenario).
 
 ## Embedding Aethrion
 

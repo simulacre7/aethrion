@@ -204,14 +204,14 @@ TODO:
 - [x] Render scenarios as self-contained HTML reports.
 - [x] Add `why`, `context`, `timeline`, and `undo` to the interactive CLI.
 - [ ] Add a scenario diff tool that compares two branches of the same world.
-- [ ] Record interactive sessions as scenario files.
+- [x] Record interactive sessions as scenario files.
 
 ## Near-Term Priority
 
 Recommended next tasks:
 
 1. Add memory consolidation (many small memories -> one summary memory, deterministically).
-2. Record interactive sessions as scenarios, and compare branches side by side.
+2. Compare branches of the same world side by side.
 3. Publish to Hex once the event and output shapes settle.
 4. Explore per-character processes only if a concrete runtime need appears.
 
