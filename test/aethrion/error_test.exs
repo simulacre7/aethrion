@@ -38,6 +38,17 @@ defmodule Aethrion.ErrorTest do
     end
   end
 
+  test "a hand-built event without a receiver says which field is missing" do
+    assert {:error, %Error{code: :invalid_event, details: %{field: :to}, message: message}} =
+             Aethrion.Runtime.dispatch(Aethrion.demo_state(), %{
+               type: :gift_received,
+               from: "user",
+               item: "x"
+             })
+
+    assert message == "to must be a character id, got: nil"
+  end
+
   test "a scenario name of null falls back to the default" do
     assert {:ok, scenario} =
              Scenario.from_data(%{"name" => nil, "description" => nil, "events" => []})

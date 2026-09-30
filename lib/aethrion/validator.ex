@@ -129,14 +129,26 @@ defmodule Aethrion.Validator do
   defp require_character(state, event, field) do
     character_id = Map.get(event, field)
 
-    if State.character?(state, character_id) do
-      :ok
-    else
-      {:error,
-       error(:unknown_character, "unknown character: #{inspect(character_id)}", %{
-         field: field,
-         character_id: character_id
-       })}
+    cond do
+      not is_binary(character_id) ->
+        {:error,
+         error(
+           :invalid_event,
+           "#{field} must be a character id, got: #{inspect(character_id)}",
+           %{
+             field: field
+           }
+         )}
+
+      State.character?(state, character_id) ->
+        :ok
+
+      true ->
+        {:error,
+         error(:unknown_character, "unknown character: #{inspect(character_id)}", %{
+           field: field,
+           character_id: character_id
+         })}
     end
   end
 
