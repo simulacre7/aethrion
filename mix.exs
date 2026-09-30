@@ -119,12 +119,15 @@ defmodule Aethrion.MixProject do
           Aethrion.Transition,
           Aethrion.Trace,
           Aethrion.Explain,
+          Aethrion.Digest,
+          Aethrion.Tuning,
           ~r/Aethrion\.Rules\./
         ],
         "Expression & LLMs": [
           Aethrion.Expression,
           Aethrion.Expression.Request,
           Aethrion.Expression.Templates,
+          Aethrion.Expression.Templates.Ko,
           Aethrion.Expression.Prompt,
           Aethrion.Intent,
           Aethrion.Intent.Request,
