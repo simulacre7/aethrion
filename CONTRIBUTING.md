@@ -6,10 +6,8 @@ Aethrion is currently an early alpha project. The core goal is to keep the socia
 
 ```bash
 mix deps.get
-mix format --check-formatted
-mix compile --warnings-as-errors
-mix test
-mix aethrion.scenario --all --quiet
+mix check                     # format, warnings, tests, and every scenario
+MIX_ENV=dev mix dialyzer      # typespecs (CI runs it too)
 mix demo.drama
 ```
 
@@ -23,6 +21,9 @@ mix demo.drama
 - Prefer small, scenario-driven changes. A behavior change usually deserves a scenario in `priv/scenarios/` as well as unit tests.
 - Keep new dependencies minimal. Runtime dependencies are currently just `jason`.
 - Document public event and output shapes when changing them (`docs/api.md`, `docs/rules.md`).
+- Give every new expressive line an English and a Korean template (`Aethrion.Expression.Templates`, `...Templates.Ko`); the tests render every bundled scenario in Korean.
+- The READMEs quote real demo and scenario output, and the tests check it. If a change alters those lines, update the READMEs.
+- Convert untrusted strings to atoms only through explicit maps or `String.to_existing_atom/1` after `Aethrion.Pipeline.ensure_loaded/1`; CI runs each scenario in a fresh VM to catch load-order bugs.
 
 See [docs/architecture.md](docs/architecture.md) for how the pieces fit together.
 
@@ -53,8 +54,6 @@ Rules run on every event, so avoid per-memory work that rescans all memories (qu
 
 ## Before Opening A PR
 
-- Run `mix format --check-formatted`.
-- Run `mix compile --warnings-as-errors` and `mix test`.
-- Run `mix aethrion.scenario --all --quiet`.
-- Optionally run `mix dialyzer` (CI runs it).
+- Run `mix check`.
+- Optionally run `MIX_ENV=dev mix dialyzer` (CI runs it).
 - Include a short description of the scenario or behavior being changed.

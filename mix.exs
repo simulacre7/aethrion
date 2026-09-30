@@ -32,7 +32,22 @@ defmodule Aethrion.MixProject do
       start_permanent: Mix.env() == :prod,
       elixirc_paths: elixirc_paths(Mix.env()),
       dialyzer: [plt_add_apps: [:mix, :ex_unit, :inets, :ssl, :public_key]],
+      aliases: aliases(),
       deps: deps()
+    ]
+  end
+
+  def cli, do: [preferred_envs: [check: :test]]
+
+  # `mix check` runs what CI runs except Dialyzer (`MIX_ENV=dev mix dialyzer`).
+  defp aliases do
+    [
+      check: [
+        "format --check-formatted",
+        "compile --warnings-as-errors",
+        "test --warnings-as-errors",
+        "aethrion.scenario --all --quiet"
+      ]
     ]
   end
 
