@@ -43,13 +43,13 @@ defmodule Aethrion.DigestTest do
     assert [%{kind: :mood, text: "Haru, Mina, and Yuna are lonely."}] =
              Enum.filter(items, &(&1.kind == :mood))
 
-    assert [%{text: "Haru, Mina와 Yuna는 외로워졌다."}] =
+    assert [%{text: "Haru, Mina, Yuna 모두 외로워졌다."}] =
              [Event.time_tick("t", hours: 30)]
              |> digest(locale: :ko, state: apart)
              |> Enum.filter(&(&1.kind == :mood))
 
     # Together, Haru is fine.
-    assert [%{text: "Mina와 Yuna는 외로워졌다."}] =
+    assert [%{text: "Mina와 Yuna 모두 외로워졌다."}] =
              [Event.time_tick("t", hours: 30)]
              |> digest(locale: :ko)
              |> Enum.filter(&(&1.kind == :mood))
@@ -71,7 +71,7 @@ defmodule Aethrion.DigestTest do
 
     assert %{kind: :belief, event_id: "e3", text: "Mina remembers you being warm 2 times."} in items
 
-    assert %{text: "Mina는 너의 다정한 말 2번을 기억한다."} =
+    assert %{text: "Mina는 네가 두 번 다정하게 말한 걸 기억한다."} =
              [warm.("a"), warm.("b"), Event.time_tick("t", hours: 100)]
              |> digest(locale: :ko)
              |> Enum.find(&(&1.kind == :belief))
@@ -112,6 +112,6 @@ defmodule Aethrion.DigestTest do
     ko =
       digest([hostile.("mina"), hostile.("yuna"), Event.time_tick("t", hours: 120)], locale: :ko)
 
-    assert Enum.any?(ko, &(&1.text == "Haru는 네가 Mina, Yuna에게 모진 말을 한 걸 안다 (2번)."))
+    assert Enum.any?(ko, &(&1.text == "Haru는 네가 Mina, Yuna에게 두 번 모질게 말한 걸 안다."))
   end
 end

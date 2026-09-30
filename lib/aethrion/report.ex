@@ -97,7 +97,7 @@ defmodule Aethrion.Report do
     more =
       cond do
         hidden == 0 -> []
-        locale == :ko -> [%{kind: :more, text: "…그 밖에 #{hidden}개"}]
+        locale == :ko -> [%{kind: :more, text: "…외 #{hidden}건"}]
         true -> [%{kind: :more, text: "…and #{hidden} more"}]
       end
 
@@ -1121,7 +1121,7 @@ defmodule Aethrion.Report do
     "events processed" => "처리된 이벤트",
     "lines & scenes" => "대사와 장면",
     "branches" => "분기",
-    "expectations met" => "충족한 기대치",
+    "expectations met" => "통과한 검증 항목",
     "Tuned rules" => "조정한 규칙",
     "In short" => "요약",
     "Cast" => "등장인물",
@@ -1165,7 +1165,7 @@ defmodule Aethrion.Report do
     "the user" => "너",
     "lines to you" => "너에게 한 말",
     "scenes between characters" => "캐릭터끼리의 장면",
-    "Expectations" => "기대치",
+    "Expectations" => "검증 항목",
     "start" => "시작",
     "✓ pass" => "✓ 통과",
     "✕ fail" => "✕ 실패",
@@ -1177,8 +1177,8 @@ defmodule Aethrion.Report do
     bond: %{
       estranged: "틀어진 사이",
       strained: "서먹한 사이",
-      neutral: "그저 그런 사이",
-      friendly: "친근한 사이",
+      neutral: "보통 사이",
+      friendly: "친한 사이",
       close: "가까운 사이"
     },
     kind: %{experienced: "직접", observed: "목격", heard: "전해 들음", impression: "인상"},
@@ -1186,7 +1186,7 @@ defmodule Aethrion.Report do
     reaches_out: %{jealous: "질투", lonely: "외로움", curious: "궁금함", protective: "편들기"},
     reply: %{
       warm: "다정한 말",
-      neutral: "평범한 말",
+      neutral: "담담한 말",
       cold: "차가운 말",
       hostile: "모진 말",
       apology: "사과",

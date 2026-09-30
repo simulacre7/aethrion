@@ -17,6 +17,54 @@ defmodule Aethrion.Expression.Templates.Ko do
 
   alias Aethrion.Expression.{Request, Templates}
 
+  @doc """
+  Renders a request in Korean. With `tense: :past`, scenes between
+  characters are told as having happened ("함께 저녁을 먹고 늦게까지
+  이야기했다."), as a digest tells them.
+  """
+  @spec render(Request.t(), keyword()) :: String.t()
+  def render(%Request{} = request, opts) do
+    text = render(request)
+
+    case {Keyword.get(opts, :tense), request.kind} do
+      {:past, :character_interaction} -> past(text)
+      _present -> text
+    end
+  end
+
+  # Present-tense narration endings and their past forms. The quoted part of a
+  # line (someone's words) is left alone.
+  @past [
+    {"털어놓는다.", "털어놓았다."},
+    {"전한다.", "전했다."},
+    {"자랑한다.", "자랑했다."},
+    {"보낸다.", "보냈다."},
+    {"나눈다.", "나눴다."},
+    {"이야기한다.", "이야기했다."},
+    {"앉아 있다.", "앉아 있었다."},
+    {"있어 준다.", "있어 주었다."},
+    {"가벼워진다.", "가벼워졌다."},
+    {"반응한다.", "반응했다."}
+  ]
+
+  defp past(text) do
+    [narration | quoted] = String.split(text, "\"", parts: 2)
+
+    narration =
+      Enum.reduce(@past, narration, fn {now, then}, acc -> String.replace(acc, now, then) end)
+
+    Enum.join([narration | quoted], "\"")
+  end
+
+  @doc """
+  A count in native Korean with 번: `times(3)` is "세 번". Past ten, digits.
+  """
+  @spec times(non_neg_integer()) :: String.t()
+  def times(count) when count in 1..10,
+    do: Enum.at(~w(한 두 세 네 다섯 여섯 일곱 여덟 아홉 열), count - 1) <> " 번"
+
+  def times(count), do: "#{count}번"
+
   @doc "Renders a request in Korean."
   def render(%Request{kind: :proactive_message, reason: :jealous} = request) do
     case Templates.jealous_choice(request) do
@@ -34,7 +82,7 @@ defmodule Aethrion.Expression.Templates.Ko do
     case Templates.lonely_choice(request) do
       {:quote, text} -> "네가 했던 말이 계속 생각나. \"#{text}\" 잠깐 얘기할 수 있어?"
       {:gift, item} -> "네가 준 #{item}, 아직 가지고 있어. 잠깐 얘기할 수 있어?"
-      :kind -> "넌 늘 나한테 다정했잖아. 얘기하고 싶어. 잠깐 시간 돼?"
+      :kind -> "넌 늘 나한테 다정했잖아. 너랑 얘기하던 게 그리워. 잠깐 시간 돼?"
       :reunion -> "며칠째 얘기를 못 했네. 잠깐 시간 돼?"
       :a_while -> "한동안 얘기를 못 했네. 잠깐 시간 돼?"
       :busy -> "요즘 많이 바쁜가 보네. 얘기하고 싶을 때 언제든 연락해."
@@ -54,7 +102,7 @@ defmodule Aethrion.Expression.Templates.Ko do
             do: ["#{friend}한테 한 말은 좀 모질었어. 무슨 일 있어?", "#{friend}한테 그런 말은 좀 아니었어. 괜찮은 거야?"],
             else: [
               "#{friend}한테 한 말, 좀 심했어. 걔는 그런 말 들을 이유 없었어.",
-              "#{friend}한테 왜 그렇게 말해? 그건 공평하지 않았어.",
+              "#{friend}한테 왜 그렇게 말했어? 그건 좀 너무했어.",
               "#{friend}한테 말하는 거 봤어. 그러면 안 돼."
             ]
 
@@ -111,7 +159,7 @@ defmodule Aethrion.Expression.Templates.Ko do
   def render(%Request{kind: :reply, tone: :apology} = request) do
     case Templates.apology_choice(request) do
       :keeps_apologizing -> "계속 미안하다고만 하네. 그냥 그런 일이 없었으면 좋겠어."
-      :left_out -> "고마워. 나도 챙겨 줬으면 했을 뿐이야."
+      :left_out -> "고마워. 나도 좀 챙겨 줬으면 해서 그랬어."
       :nothing_to_forgive -> "사과할 거 없어. 우리 괜찮아."
       :once_more -> "알았어... 그래도 자꾸 그러진 말아 줘."
       :needs_time -> "말해 줘서 고마워. 조금만 시간을 줘."
@@ -177,7 +225,7 @@ defmodule Aethrion.Expression.Templates.Ko do
             else: with_particle(name(request, data["from"]), :subject)
 
         "#{with_particle(teller, :topic)} #{listener}에게 #{giver} #{name(request, data["to"])}한테 준 " <>
-          "#{data["item"]} 이야기를 털어놓는다."
+          "#{data["item"]} 얘기를 전한다."
 
       [%{data: %{"event" => "message_sent", "tone" => tone} = data} | _]
       when tone in ["hostile", "cold"] ->
@@ -227,7 +275,7 @@ defmodule Aethrion.Expression.Templates.Ko do
     cond do
       not Request.reunion?(request) -> nil
       match?(%{bond: bond} when bond in [:strained, :estranged], request.relationship) -> nil
-      mood == :lonely -> "왔구나... 보고 싶었어."
+      mood == :lonely -> "연락 왔네... 보고 싶었어."
       tone == :warm -> "오랜만이야! 고마워."
       true -> "오랜만이네!"
     end
@@ -269,7 +317,7 @@ defmodule Aethrion.Expression.Templates.Ko do
   defp reply(:neutral, :jealous), do: "아, 안녕."
   defp reply(:neutral, :lonely), do: "연락 줘서 반가워."
   defp reply(:neutral, :upset), do: "...왜?"
-  defp reply(:neutral, _mood), do: "듣고 있어."
+  defp reply(:neutral, _mood), do: ["응, 무슨 일이야?", "응, 왜?", "나야 뭐 그럭저럭. 너는?"]
   defp reply(:cold, :jealous), do: "그래, 알겠어."
   defp reply(:cold, _mood), do: "아... 그래."
   defp reply(:hostile, :upset), do: "그만해 줘."
@@ -294,6 +342,8 @@ defmodule Aethrion.Expression.Templates.Ko do
       # -ck (Jack 잭), and -ne or -me with a silent e after a vowel or in -nne
       # (Jane 제인, Jerome 제롬, Anne 앤), except words that say the e.
       [?k, ?c | _] -> true
+      # -le reads as ㄹ: Nicole 니콜, candle 캔들, apple 애플.
+      [?e, ?l | _] -> true
       [?e, before, third | _] when before in ~c"nm" -> silent_e?(word, before, third)
       [last | _] when last in ~c"aeiouyrwhsxfvzd" -> false
       [last, before | _] when last in ~c"tkp" -> before in ~c"aeiouy"
@@ -339,7 +389,7 @@ defmodule Aethrion.Expression.Templates.Ko do
         "#{with_particle(name.(event.from), :topic)} #{name.(event.to)}에게 속마음을 털어놓는다"
 
       %{type: :comfort_offered} ->
-        "#{with_particle(name.(event.from), :topic)} #{with_particle(name.(event.to), :object)} 위로한다"
+        "#{subject.(event.from)} #{with_particle(name.(event.to), :object)} 위로한다"
 
       %{type: :time_spent_together} ->
         "#{with_particle(name.(event.from), :with)} #{with_particle(name.(event.to), :topic)} 함께 시간을 보낸다"
@@ -418,7 +468,7 @@ defmodule Aethrion.Expression.Templates.Ko do
   defp subject(name), do: with_particle(name, :subject)
 
   defp ko_tone(:warm), do: "다정하게"
-  defp ko_tone(:neutral), do: "평범하게"
+  defp ko_tone(:neutral), do: "담담하게"
   defp ko_tone(:cold), do: "차갑게"
   defp ko_tone(:hostile), do: "모질게"
   defp ko_tone(other), do: to_string(other)

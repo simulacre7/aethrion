@@ -220,7 +220,14 @@ defmodule Aethrion.CLI.Display do
       end
 
     status = if expression.status == :ok, do: inspect(expression.adapter), else: "fallback"
-    print_tagged(label, :light_cyan, "#{speaker}: \"#{text}\"" <> faint(" (#{status})"))
+
+    # Scenes are narration, not something the speaker says.
+    line =
+      if Map.get(output, :type) == :character_interaction,
+        do: text,
+        else: "#{speaker}: \"#{text}\""
+
+    print_tagged(label, :light_cyan, line <> faint(" (#{status})"))
   end
 
   def explain(entries, character_id) do

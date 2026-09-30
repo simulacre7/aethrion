@@ -104,6 +104,45 @@ defmodule Aethrion.IntentTest do
     assert {:error, %{code: :unknown_character}} = Intent.interpret(state, "hi", to: "nobody")
   end
 
+  test "the fake adapter reads everyday Korean the way it is meant" do
+    cases = [
+      {"고맙다", :warm},
+      {"진짜 고맙습니다", :warm},
+      {"너무 좋았어", :warm},
+      {"보고싶어", :warm},
+      {"수고했어", :warm},
+      {"생일 축하해", :warm},
+      {"너 때문에 행복해", :warm},
+      {"사과할게", :apology},
+      {"내 잘못이야", :apology},
+      {"못 가서 미안해", :apology},
+      {"네가 잘못했잖아", :neutral},
+      {"용서해 줄게", :neutral},
+      {"미안한데 좀 조용히 해 줄래?", :neutral},
+      {"미안하긴 뭐가 미안해", :cold},
+      {"사과할 생각 없어", :cold},
+      {"보고 싶지 않아", :cold},
+      {"좋아하는 척하지 마", :cold},
+      {"사랑 따위 필요 없어", :cold},
+      {"오늘 날씨 최악이다", :neutral},
+      {"비 와서 싫어", :neutral},
+      {"나중에 같이 밥 먹자", :neutral},
+      {"잘 몰라서 그러는데 도와줄래?", :neutral},
+      {"너 싫어", :hostile},
+      {"한심해", :hostile},
+      {"너한테 질렸어", :hostile},
+      {"다시는 연락하지 마", :hostile}
+    ]
+
+    for {text, expected} <- cases do
+      {:ok, proposal} =
+        Aethrion.LLM.FakeAdapter.interpret(%Aethrion.Intent.Request{text: text}, [])
+
+      got = if proposal.intent == :apology, do: :apology, else: proposal.tone
+      assert got == expected, "#{text}: expected #{expected}, got #{got}"
+    end
+  end
+
   test "the fake adapter reads Korean too" do
     request = fn text -> %Aethrion.Intent.Request{text: text, from: "user", listener: %{}} end
     interpret = &(Aethrion.LLM.FakeAdapter.interpret(request.(&1)) |> elem(1))

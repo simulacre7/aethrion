@@ -303,7 +303,7 @@ defmodule Aethrion.Expression.Templates do
   defp reply(:neutral, :jealous), do: "Oh. Hi."
   defp reply(:neutral, :lonely), do: "Hey... it's good to hear from you."
   defp reply(:neutral, :upset), do: "...What is it?"
-  defp reply(:neutral, _mood), do: "I'm listening."
+  defp reply(:neutral, _mood), do: ["I'm listening.", "Yeah? What's up?", "Not much here. You?"]
   defp reply(:cold, :jealous), do: "Right. I get it."
   defp reply(:cold, _mood), do: "Oh. Okay."
   defp reply(:hostile, :upset), do: "Please stop."
@@ -474,9 +474,12 @@ defmodule Aethrion.Expression.Templates do
   # Counts what faded into an impression too, so the turn keeps going over
   # weeks, not only within the few days details are remembered.
   def pick(request, lines) when is_list(lines) do
-    said = (request.repeats || 1) - 1 + folded(request)
-    Enum.at(lines, rem(said, length(lines)))
+    Enum.at(lines, rem(turn(request), length(lines)))
   end
+
+  # Plain messages are not remembered, so for them the hour turns the line.
+  defp turn(%Request{tone: :neutral, now: now}) when is_integer(now), do: now
+  defp turn(request), do: (request.repeats || 1) - 1 + folded(request)
 
   defp folded(%Request{tone: tone} = request) when tone in [:warm, :cold, :hostile, :gift],
     do: impression_count(request, [Atom.to_string(tone)])

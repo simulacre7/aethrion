@@ -69,5 +69,5 @@ IO.puts("  (Mina toward you: #{bond.(state)})")
 IO.puts("\n== While you were away")
 for item <- Digest.of(while_away, state), do: IO.puts("  - " <> item.text)
 
-IO.puts("\n== 없는 동안")
+IO.puts("\n== 네가 없는 동안")
 for item <- Digest.of(while_away, state, locale: :ko), do: IO.puts("  - " <> item.text)

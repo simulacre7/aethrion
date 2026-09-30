@@ -149,7 +149,7 @@ defmodule Aethrion.NarrativeTest do
       assert [%{tone: :apology, text: "Thanks. I just wanted to feel remembered too."} = reply] =
                replies(outputs, "yuna")
 
-      assert Ko.render(reply.context) == "고마워. 나도 챙겨 줬으면 했을 뿐이야."
+      assert Ko.render(reply.context) == "고마워. 나도 좀 챙겨 줬으면 해서 그랬어."
     end
 
     test "an apology out of nowhere is waved off" do

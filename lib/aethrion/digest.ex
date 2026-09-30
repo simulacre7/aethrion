@@ -108,7 +108,7 @@ defmodule Aethrion.Digest do
 
   defp outings_line(scene, count, %{locale: :ko} = say) do
     "#{Ko.with_particle(say.name.(scene.character_id), :with)} " <>
-      "#{Ko.with_particle(say.name.(scene.to), :topic)} #{count}번 함께 시간을 보냈다."
+      "#{Ko.with_particle(say.name.(scene.to), :topic)} #{Ko.times(count)} 함께 시간을 보냈다."
   end
 
   defp outings_line(scene, count, say) do
@@ -183,20 +183,8 @@ defmodule Aethrion.Digest do
     actor = say.name.(actor)
 
     case {say.locale, pattern} do
-      {:ko, "gift"} ->
-        "#{Ko.with_particle(holder, :topic)} #{actor}에게 받은 선물 #{count}개를 기억한다."
-
-      {:ko, "apology"} ->
-        "#{Ko.with_particle(holder, :topic)} #{actor}의 사과 #{count}번을 기억한다."
-
-      {:ko, "comfort"} ->
-        "#{Ko.with_particle(holder, :topic)} #{actor}에게 위로받은 일 #{count}번을 기억한다."
-
-      {:ko, "together"} ->
-        "#{Ko.with_particle(holder, :topic)} #{Ko.with_particle(actor, :with)} 함께한 시간 #{count}번을 기억한다."
-
-      {:ko, tone} ->
-        "#{Ko.with_particle(holder, :topic)} #{actor}의 #{ko_tone(tone)} 말 #{count}번을 기억한다."
+      {:ko, pattern} ->
+        "#{Ko.with_particle(holder, :topic)} #{ko_remembers(pattern, actor, Ko.times(count), say)}"
 
       {_en, "gift"} ->
         "#{holder} remembers #{count} gifts from #{actor}."
@@ -231,7 +219,7 @@ defmodule Aethrion.Digest do
     case say.locale do
       :ko ->
         "#{Ko.with_particle(holder, :topic)} #{subject(say.name.(actor), say)} #{Enum.join(others, ", ")}에게 " <>
-          "#{ko_tone(tone)} 말을 한 걸 안다 (#{count}번)."
+          "#{Ko.times(count)} #{ko_adverb(tone)} 말한 걸 안다."
 
       _en ->
         actor = say.name.(actor)
@@ -243,18 +231,35 @@ defmodule Aethrion.Digest do
 
   defp belief(_data, _holder, _say), do: nil
 
-  defp ko_tone("warm"), do: "다정한"
-  defp ko_tone("cold"), do: "차가운"
-  defp ko_tone("hostile"), do: "모진"
-  defp ko_tone(other), do: other
+  # "은비는 네가 세 번 사과한 걸 기억한다."
+  defp ko_remembers("gift", actor, times, _say),
+    do: "#{actor}에게 선물을 #{times} 받은 걸 기억한다."
+
+  defp ko_remembers("apology", actor, times, say),
+    do: "#{subject(actor, say)} #{times} 사과한 걸 기억한다."
+
+  defp ko_remembers("comfort", actor, times, _say),
+    do: "#{actor}에게 #{times} 위로받은 걸 기억한다."
+
+  defp ko_remembers("together", actor, times, _say),
+    do: "#{Ko.with_particle(actor, :with)} 함께 보낸 #{times}의 시간을 기억한다."
+
+  defp ko_remembers(tone, actor, times, say),
+    do: "#{subject(actor, say)} #{times} #{ko_adverb(tone)} 말한 걸 기억한다."
+
+  defp ko_adverb("warm"), do: "다정하게"
+  defp ko_adverb("cold"), do: "차갑게"
+  defp ko_adverb("hostile"), do: "모질게"
+  defp ko_adverb(other), do: other
 
   # "네가", not "너가".
   defp subject("너", _say), do: "네가"
   defp subject(name, _say), do: Ko.with_particle(name, :subject)
 
   # Rendered text for expressive outputs, in the digest's language.
+  # A digest tells what already happened: scenes in the past tense.
   defp line(%{context: %Aethrion.Expression.Request{} = request}, %{locale: :ko}),
-    do: Ko.render(request)
+    do: Ko.render(request, tense: :past)
 
   defp line(output, _say), do: output.text
 
@@ -299,7 +304,13 @@ defmodule Aethrion.Digest do
 
     case say.locale do
       :ko ->
-        verb = if warmer?, do: "마음을 열었다", else: "거리를 두게 되었다"
+        verb =
+          cond do
+            not warmer? -> "거리를 두게 되었다"
+            after_bond in [:estranged, :strained] -> "조금 누그러졌다"
+            true -> "마음을 열었다"
+          end
+
         "#{Ko.with_particle(from, :topic)} #{to}에게 #{verb} (이제 #{ko_bond(after_bond)})."
 
       _en ->
@@ -317,19 +328,19 @@ defmodule Aethrion.Digest do
         :upset -> "속상해졌다"
       end
 
-    "#{Ko.with_particle(ko_list(names), :topic)} #{feeling}."
+    case names do
+      [one] -> "#{Ko.with_particle(one, :topic)} #{feeling}."
+      names -> "#{ko_list(names)} 모두 #{feeling}."
+    end
   end
 
   defp mood_line(["you"], mood, _say), do: "You are #{mood}."
   defp mood_line([name], mood, _say), do: "#{name} is #{mood}."
   defp mood_line(names, mood, _say), do: "#{and_list(names)} are #{mood}."
 
-  # "Mina, Yuna와 Haru": the particle follows the second-to-last name.
-  defp ko_list([one]), do: one
-
-  defp ko_list(names) do
-    Ko.with_particle(Enum.join(Enum.drop(names, -1), ", "), :with) <> " " <> List.last(names)
-  end
+  # "Mina와 Yuna", "은비, 민수, Jack": two names joined by 와/과, more by commas.
+  defp ko_list([a, b]), do: Ko.with_particle(a, :with) <> " " <> b
+  defp ko_list(names), do: Enum.join(names, ", ")
 
   defp and_list([one]), do: one
   defp and_list([a, b]), do: "#{a} and #{b}"
@@ -339,8 +350,8 @@ defmodule Aethrion.Digest do
 
   defp ko_bond(:estranged), do: "틀어진 사이"
   defp ko_bond(:strained), do: "서먹한 사이"
-  defp ko_bond(:neutral), do: "그저 그런 사이"
-  defp ko_bond(:friendly), do: "친근한 사이"
+  defp ko_bond(:neutral), do: "보통 사이"
+  defp ko_bond(:friendly), do: "친한 사이"
   defp ko_bond(:close), do: "가까운 사이"
   defp ko_bond(other), do: to_string(other)
 

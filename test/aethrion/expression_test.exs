@@ -196,7 +196,7 @@ defmodule Aethrion.ExpressionTest do
       {_state, back} = talk(step.state, :neutral)
 
       assert back.text == "You're back... I missed you."
-      assert Aethrion.Expression.Templates.Ko.render(back.context) == "왔구나... 보고 싶었어."
+      assert Aethrion.Expression.Templates.Ko.render(back.context) == "연락 왔네... 보고 싶었어."
     end
 
     test "a lonely character who has not heard from you in days says so" do
