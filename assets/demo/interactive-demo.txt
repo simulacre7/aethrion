@@ -17,7 +17,7 @@ MOOD     Mina neutral -> happy
 MOOD     Yuna neutral -> jealous
 user> tick 2
 EVENT    time passes +2h
-RULE     time_tick increased loneliness +8 for active characters (clock 2h)
+RULE     2h passed: loneliness +4 an hour for active characters, up to 100 (clock 2h)
 MOOD     Mina happy -> neutral
 SAYS     Yuna -> user: "You looked happy with Mina earlier. I wondered if you forgot about me."
 CASCADE  Yuna confides in Haru
@@ -36,6 +36,7 @@ SCENE    Haru stays with Yuna for a while. Yuna feels a little lighter.
 MOOD     Yuna jealous -> neutral
 user> say haru thank you for looking after Yuna
 INTENT   "thank you for looking after Yuna" -> message_sent (warm) via Aethrion.LLM.FakeAdapter
+  (a keyword guess; for an exact tone use: message user haru <warm|neutral|cold|hostile> <text>)
 EVENT    user -> Haru (warm): thank you for looking after Yuna
 RELATION Haru affinity toward user +4
 RELATION Haru trust toward user +2

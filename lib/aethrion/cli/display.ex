@@ -337,10 +337,17 @@ defmodule Aethrion.CLI.Display do
   def message(message), do: print(message)
 
   @doc """
-  Whether to color output: only on a terminal, and never with `NO_COLOR` set
-  (https://no-color.org).
+  Whether to color output: never with `NO_COLOR` set (https://no-color.org),
+  always with `FORCE_COLOR` set (for recordings), otherwise only on a
+  terminal.
   """
-  def color?, do: IO.ANSI.enabled?() and System.get_env("NO_COLOR") in [nil, ""]
+  def color? do
+    cond do
+      System.get_env("NO_COLOR") not in [nil, ""] -> false
+      System.get_env("FORCE_COLOR") not in [nil, "", "0"] -> true
+      true -> IO.ANSI.enabled?()
+    end
+  end
 
   defp print_section(title, note \\ nil) do
     print(["\n", :bright, title, :reset, :faint, if(note, do: "  #{note}", else: "")])

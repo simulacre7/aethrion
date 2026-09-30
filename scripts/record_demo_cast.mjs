@@ -25,7 +25,7 @@ const strip = (text) => text.replace(/\x1b\[[0-9;]*m/g, "");
 const isPrompt = (buffer) => strip(buffer).endsWith("user> ");
 
 const child = spawn("mix", ["demo.interactive", "--no-status"], {
-  env: { ...process.env, MIX_ENV: "dev" },
+  env: { ...process.env, MIX_ENV: "dev", FORCE_COLOR: "1" },
   stdio: ["pipe", "pipe", "inherit"],
 });
 
