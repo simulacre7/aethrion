@@ -3,7 +3,7 @@ defmodule Aethrion.PropertyTest do
   use ExUnitProperties
 
   alias Aethrion.{Event, Expression, Memory, Runtime, State}
-  alias Aethrion.Rules.Mood
+  alias Aethrion.Rules.{Bond, Mood}
 
   @characters ["mina", "yuna", "haru"]
   @actors ["user" | @characters]
@@ -83,6 +83,32 @@ defmodule Aethrion.PropertyTest do
 
       assert state.memories |> Enum.map(& &1.id) |> Enum.uniq() |> length() ==
                length(state.memories)
+    end
+  end
+
+  property "bond changes are exact and chain for every relationship" do
+    check all(events <- list_of(event_gen(), max_length: 40)) do
+      initial = Runtime.demo_state()
+      {state, outputs, _processed} = run(events)
+
+      bond = fn state, {from, to} ->
+        Bond.derive(State.get_relationship(state, from, to), state)
+      end
+
+      announced =
+        outputs
+        |> Enum.filter(&(&1.type == :bond_changed))
+        |> Enum.reduce(%{}, fn output, announced ->
+          pair = {output.from, output.to}
+          assert output.before == Map.get_lazy(announced, pair, fn -> bond.(initial, pair) end)
+          refute output.before == output.after
+          Map.put(announced, pair, output.after)
+        end)
+
+      # Every relationship's bond is what was last announced, or unchanged.
+      for pair <- Map.keys(state.relationships) do
+        assert bond.(state, pair) == Map.get_lazy(announced, pair, fn -> bond.(initial, pair) end)
+      end
     end
   end
 
