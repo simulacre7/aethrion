@@ -141,6 +141,8 @@ path = Path.join(System.tmp_dir!(), "cafe-morning.html")
 File.write!(path, Aethrion.Report.html(result))
 ```
 
+`Aethrion.Report.html(result, locale: :ko)`를 쓰면 제목, 이벤트 설명, 대사까지 모두 한국어로 된 리포트가 만들어집니다.
+
 ## 6. 목소리 입히기
 
 캐릭터의 모든 대사에는 이미 결정론적인 텍스트가 있습니다. 모델이 대신 문장을 다듬게 하려면 adapter로 출력을 렌더링하면 됩니다. 렌더링은 텍스트만 바꾸며, 세계는 어느 쪽이든 동일합니다.
