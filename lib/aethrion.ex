@@ -54,5 +54,5 @@ defmodule Aethrion do
   Builds a runtime state from explicit characters and relationships.
   """
   @spec new_state(keyword()) :: Aethrion.State.t()
-  defdelegate new_state(opts), to: Aethrion.State, as: :new
+  defdelegate new_state(opts \\ []), to: Aethrion.State, as: :new
 end
