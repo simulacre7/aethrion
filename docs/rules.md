@@ -80,7 +80,7 @@ The receiver: jealousy -15, loneliness -6, stress -10, trust toward the apologiz
 strength = importance - div(age_hours * (100 - importance), 96)
 ```
 
-A memory loses `(100 - importance) / 4` strength per simulated day, independent of how time was split into ticks. Memories below strength 20 are *faded*: kept for inspection, excluded from context selection.
+A memory loses `(100 - importance) / 4` strength per simulated day, independent of how time was split into ticks. Memories below strength 20 are *faded*: kept for inspection, excluded from context selection. After 30 simulated days faded (`forget_after_hours`), a memory is forgotten and removed, so long-running worlds do not grow without bound; impressions keep the patterns.
 
 | importance | fades after |
 | --- | --- |

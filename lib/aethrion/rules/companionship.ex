@@ -21,6 +21,7 @@ defmodule Aethrion.Rules.Companionship do
   def apply(%Transition{state: state} = transition) do
     threshold = Transition.param(transition, :affinity_threshold)
     cooldown = Transition.param(transition, :cooldown_hours)
+    outgoing = State.relationships_by_from(state)
 
     state
     |> State.sorted_characters()
@@ -29,7 +30,8 @@ defmodule Aethrion.Rules.Companionship do
       friend =
         if MapSet.member?(busy, character.id),
           do: nil,
-          else: closest_friend(state, character.id, threshold, busy, cooldown)
+          else:
+            closest_friend(state, Map.get(outgoing, character.id, []), threshold, busy, cooldown)
 
       case friend do
         nil ->
@@ -45,18 +47,24 @@ defmodule Aethrion.Rules.Companionship do
     |> elem(0)
   end
 
-  # Highest affinity first; ties broken by id.
-  defp closest_friend(state, id, threshold, busy, cooldown) do
-    state
-    |> State.sorted_characters()
-    |> Enum.filter(&(&1.id != id and Character.can_act?(&1) and not MapSet.member?(busy, &1.id)))
-    |> Enum.map(&{State.get_relationship(state, id, &1.id).affinity, &1.id})
-    |> Enum.filter(fn {affinity, friend} ->
-      affinity >= threshold and
+  # Highest affinity first; ties broken by id. Only existing relationships can
+  # clear the threshold, so the character's outgoing relationships suffice.
+  defp closest_friend(state, relationships, threshold, busy, cooldown) do
+    relationships
+    |> Enum.filter(fn %{from: id, to: friend, affinity: affinity} ->
+      affinity >= threshold and friend != id and not MapSet.member?(busy, friend) and
+        available?(state, friend) and
         State.cooldown_ready?(state, Together.cooldown_key(id, friend), cooldown)
     end)
-    |> Enum.sort_by(fn {affinity, friend} -> {-affinity, friend} end)
-    |> Enum.map(&elem(&1, 1))
+    |> Enum.sort_by(&{-&1.affinity, &1.to})
+    |> Enum.map(& &1.to)
     |> List.first()
+  end
+
+  defp available?(state, id) do
+    case State.character(state, id) do
+      %Character{} = character -> Character.can_act?(character)
+      nil -> false
+    end
   end
 end

@@ -18,6 +18,7 @@ The social layer release: characters now act on each other, every change is expl
 - **Richer state.** Simulated clock, cooldowns, derived moods (`:happy`, `:lonely`, `:jealous`, `:upset`), `joy`, `stress`, trait modifiers (`:sensitive`, `:calm`, `:playful`, `:talkative`).
 - **Memory.** Kinds (`:experienced`, `:observed`, `:heard`, `:impression`), topics, sources, structured `data`, age-based strength decay, and deterministic queries in `Aethrion.Memories`.
 - **History matters.** Impressions change how messages land: a record of kindness halves the impact of cold or hostile words (and the reply says "That's not like you"), repeated hostility halves the impact of warmth.
+- **Forgetting.** Memories faded for 30 simulated days (tunable) are removed, with a trace entry, so long-running worlds stay bounded.
 - **Consolidation.** Faded memories of the same interaction with the same actor fold into a lasting impression ("user has been warm to mina 3 times."), deterministically.
 - **Expression layer.** `Aethrion.Expression` renders outputs through an `Aethrion.LLM.Adapter`, falling back to deterministic templates on any failure. `Aethrion.Intent` lets a model propose an event from free text, limited to a closed set.
 - **Korean templates.** `FakeAdapter` renders every line in Korean with `locale: :ko` (particles chosen from names), and `mix demo.interactive --locale ko` shows both languages. The simulation is identical in every language.

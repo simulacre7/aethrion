@@ -14,13 +14,16 @@ defmodule Aethrion.Rules.MemoryDecay do
   `impression_slowdown` times more slowly, so patterns outlast details.
 
   Faded memories are kept for inspection but no longer selected as context.
+  Once a memory has been faded for `forget_after_hours` (30 simulated days by
+  default), it is forgotten: removed from the state, so long-running worlds do
+  not grow without bound. Impressions keep the patterns.
   """
 
   use Aethrion.Rule,
     id: :memory_decay,
     description:
       "Memory strength = importance - age_hours * (100 - importance) / 96; impressions decay 4x slower.",
-    params: [hours_per_unit: 96, impression_slowdown: 4]
+    params: [hours_per_unit: 96, impression_slowdown: 4, forget_after_hours: 720]
 
   alias Aethrion.{Memory, Transition}
 
@@ -50,7 +53,22 @@ defmodule Aethrion.Rules.MemoryDecay do
       end
     end
 
-    Transition.map_memories(transition, :strength, decayed, on_change: note_fading)
+    transition
+    |> Transition.map_memories(:strength, decayed, on_change: note_fading)
+    |> forget(clock, units)
+  end
+
+  defp forget(transition, clock, units) do
+    keep_for = Transition.param(transition, :forget_after_hours)
+
+    forgotten? = fn memory ->
+      case fade_tick(memory, unit(memory, units)) do
+        nil -> false
+        faded_at -> Memory.faded?(memory) and clock - faded_at >= keep_for
+      end
+    end
+
+    Transition.drop_memories(transition, forgotten?)
   end
 
   @doc "Strength of `memory` at simulated hour `clock`."

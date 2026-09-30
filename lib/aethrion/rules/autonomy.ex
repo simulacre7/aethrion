@@ -32,10 +32,12 @@ defmodule Aethrion.Rules.Autonomy do
     known =
       Map.new(memories, fn {id, list} -> {id, MapSet.new(list, & &1.topic)} end)
 
+    outgoing = State.relationships_by_from(transition.state)
+
     transition.state
     |> State.sorted_characters()
     |> Enum.filter(&wants_to_confide?(transition.state, &1))
-    |> Enum.reduce(transition, &confide(&2, &1, memories, known))
+    |> Enum.reduce(transition, &confide(&2, &1, memories, known, outgoing))
   end
 
   defp wants_to_confide?(state, %Character{} = character) do
@@ -44,8 +46,19 @@ defmodule Aethrion.Rules.Autonomy do
          Character.trait?(character, :talkative))
   end
 
-  defp confide(%Transition{state: state} = transition, %Character{} = teller, memories, known) do
-    confidants = confidants(state, teller.id, Transition.param(transition, :trust_threshold))
+  defp confide(
+         %Transition{state: state} = transition,
+         %Character{} = teller,
+         memories,
+         known,
+         outgoing
+       ) do
+    confidants =
+      confidants(
+        state,
+        Map.get(outgoing, teller.id, []),
+        Transition.param(transition, :trust_threshold)
+      )
 
     thresholds =
       {Transition.param(transition, :notable_importance),
@@ -91,13 +104,22 @@ defmodule Aethrion.Rules.Autonomy do
     do: memory.importance >= notable
 
   # Most trusted first; ties broken by id.
-  defp confidants(state, teller_id, trust_threshold) do
-    state
-    |> State.sorted_characters()
-    |> Enum.filter(&(&1.id != teller_id and Character.can_act?(&1)))
-    |> Enum.map(&{State.get_relationship(state, teller_id, &1.id).trust, &1.id})
-    |> Enum.filter(fn {trust, _id} -> trust >= trust_threshold end)
-    |> Enum.sort_by(fn {trust, id} -> {-trust, id} end)
-    |> Enum.map(&elem(&1, 1))
+  # Only relationships that exist can clear the threshold (missing ones are 0),
+  # so the teller's outgoing relationships are enough.
+  defp confidants(state, relationships, trust_threshold) do
+    relationships
+    |> Enum.filter(fn relationship ->
+      relationship.trust >= trust_threshold and relationship.to != relationship.from and
+        available?(state, relationship.to)
+    end)
+    |> Enum.sort_by(&{-&1.trust, &1.to})
+    |> Enum.map(& &1.to)
+  end
+
+  defp available?(state, id) do
+    case State.character(state, id) do
+      %Character{} = character -> Character.can_act?(character)
+      nil -> false
+    end
   end
 end

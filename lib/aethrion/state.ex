@@ -131,6 +131,14 @@ defmodule Aethrion.State do
     Map.get(state.relationships, {from, to}, %Relationship{from: from, to: to})
   end
 
+  @doc """
+  Relationships indexed by their `from` actor, for rules that need each
+  character's outgoing relationships without scanning every pair.
+  """
+  def relationships_by_from(%__MODULE__{} = state) do
+    Enum.group_by(Map.values(state.relationships), & &1.from)
+  end
+
   def update_relationship(%__MODULE__{} = state, from, to, fun) do
     relationship = state |> get_relationship(from, to) |> fun.() |> Relationship.clamp()
     put_in(state.relationships[{from, to}], relationship)

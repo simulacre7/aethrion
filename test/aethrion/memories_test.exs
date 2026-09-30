@@ -118,4 +118,35 @@ defmodule Aethrion.MemoriesTest do
     assert Memories.knows_topic?(state, "mina", "gift:e1")
     refute Memories.knows_topic?(state, "mina", "gift:e2")
   end
+
+  test "memories faded for long enough are forgotten, with a trace" do
+    state = State.new(characters: [character("mina"), character("haru")])
+
+    {state, _outputs} =
+      dispatch!(state, Aethrion.Event.message_sent("haru", "mina", "hm", tone: :cold))
+
+    [memory] = state.memories
+    faded_at = Aethrion.Rules.MemoryDecay.fade_tick(memory)
+
+    {:ok, step} = Runtime.step(state, Event.time_tick("t", hours: faded_at + 719))
+    assert [_] = step.state.memories
+
+    {:ok, step} = Runtime.step(step.state, Event.time_tick("t", hours: 1))
+    assert [] = step.state.memories
+    assert Enum.any?(step.trace, &((&1.detail || "") =~ "mina forgot"))
+  end
+
+  test "forgetting is tunable" do
+    state =
+      State.new(characters: [character("mina"), character("haru")])
+      |> Aethrion.Tuning.put(:memory_decay, :forget_after_hours, 0)
+
+    {state, _outputs} =
+      run!(state, [
+        Aethrion.Event.message_sent("haru", "mina", "hm", tone: :cold),
+        Event.time_tick("t", hours: 100)
+      ])
+
+    assert [] = state.memories
+  end
 end

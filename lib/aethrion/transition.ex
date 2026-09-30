@@ -230,6 +230,24 @@ defmodule Aethrion.Transition do
   end
 
   @doc """
+  Removes every memory for which `fun` returns true, tracing each removal.
+  Use sparingly: forgotten memories cannot be inspected any more.
+  """
+  def drop_memories(%__MODULE__{} = transition, fun) do
+    {dropped, kept} = Enum.split_with(transition.state.memories, fun)
+
+    transition = %{transition | state: %{transition.state | memories: kept}}
+
+    dropped
+    |> Enum.reverse()
+    |> Enum.reduce(transition, fn memory, transition ->
+      add_trace(transition, :memory, memory.character_id, memory.id, nil, memory.strength, nil,
+        detail: "#{memory.character_id} forgot #{inspect(memory.content)}"
+      )
+    end)
+  end
+
+  @doc """
   Emits an output, tagging it with the current event id and rule.
   """
   def emit(%__MODULE__{} = transition, output) do

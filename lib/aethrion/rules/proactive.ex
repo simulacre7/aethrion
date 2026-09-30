@@ -10,7 +10,7 @@ defmodule Aethrion.Rules.Proactive do
   | ---------- | ---------------------------------------------------------- | -------- |
   | `:jealous` | jealousy >= 15 and jealousy + loneliness >= 45             | 24h      |
   | `:lonely`  | loneliness >= 60 and jealousy < 15                         | 24h      |
-  | `:curious` | heard secondhand news about the user and is `:playful` or has affinity >= 30 toward the user | once per topic |
+  | `:curious` | heard secondhand news about the user and is `:playful` or has affinity >= 30 toward the user; checked when gossip arrives and as time passes | once per topic |
   """
 
   use Aethrion.Rule,
@@ -33,7 +33,12 @@ defmodule Aethrion.Rules.Proactive do
   @impl true
   def apply(%Transition{} = transition) do
     params = Map.new(params(), fn {key, _default} -> {key, Transition.param(transition, key)} end)
-    heard = heard_about_recipient(transition.state)
+    # Secondhand news only arrives with gossip; curiosity is checked when it
+    # does and as time passes, not on every event, so this scan stays cheap.
+    heard =
+      if transition.event.type in [:gossip_shared, :time_tick],
+        do: heard_about_recipient(transition.state),
+        else: %{}
 
     transition.state
     |> State.sorted_characters()
