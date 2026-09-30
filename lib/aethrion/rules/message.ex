@@ -103,8 +103,9 @@ defmodule Aethrion.Rules.Message do
   # Returns the percentage of the tone's normal effect that applies, noting why
   # when history changes it.
   defp history_modifier(%Transition{event: event, state: state} = transition) do
-    count = &Consolidation.impression_count(state, event.to, &1, event.from)
-    reputation = &Consolidation.reputation_count(state, event.to, &1, event.from)
+    counts = Consolidation.counts(state, event.to, event.from)
+    count = &Map.get(counts, {"impression", &1}, 0)
+    reputation = &Map.get(counts, {"reputation", &1}, 0)
     kindness = fn count -> Enum.sum(Enum.map(@kind_patterns, count)) end
     receiver = Transition.name(transition, event.to)
     sender = Transition.name(transition, event.from)

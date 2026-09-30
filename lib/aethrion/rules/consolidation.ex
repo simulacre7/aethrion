@@ -310,6 +310,27 @@ defmodule Aethrion.Rules.Consolidation do
     count(state, {character, "reputation", pattern, actor})
   end
 
+  @doc """
+  Every unfaded impression `character` holds of `actor`, in one pass over the
+  memories: `%{{"impression" | "reputation", pattern} => count}`. Use it when
+  reading several patterns at once; `impression_count/4` and
+  `reputation_count/4` each scan the memories.
+  """
+  @spec counts(State.t(), String.t(), String.t()) :: %{{String.t(), String.t()} => pos_integer()}
+  def counts(%State{} = state, character, actor) do
+    for %Memory{
+          kind: :impression,
+          character_id: ^character,
+          data: %{"event" => event, "pattern" => pattern, "from" => ^actor, "count" => count}
+        } = memory <- state.memories,
+        event in ["impression", "reputation"],
+        is_integer(count),
+        not Memory.faded?(memory),
+        into: %{} do
+      {{if(event == "impression", do: "impression", else: "reputation"), pattern}, count}
+    end
+  end
+
   defp count(state, key) do
     case State.memory(state, impression_id(key)) do
       %Memory{data: %{"count" => count}} = memory when is_integer(count) ->
