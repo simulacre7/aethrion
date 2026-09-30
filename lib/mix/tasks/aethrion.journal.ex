@@ -9,6 +9,10 @@ defmodule Mix.Tasks.Aethrion.Journal do
       mix aethrion.journal tmp/world.jsonl --scenario tmp/world.json
       mix aethrion.journal tmp/world.jsonl --report tmp/world.html
       mix aethrion.journal tmp/world.jsonl --compact --archive tmp/world-2026-10.jsonl
+      mix aethrion.journal tmp/world.jsonl --digest --locale ko
+
+  `--digest` also prints what happened, as `Aethrion.Digest` lines (in
+  Korean with `--locale ko`).
 
   `--compact` replaces the journal with one that starts from the replayed
   state (see `Aethrion.Journal.compact/2`); `--archive FILE` keeps a copy of
@@ -34,7 +38,9 @@ defmodule Mix.Tasks.Aethrion.Journal do
     compact: :boolean,
     archive: :string,
     max_depth: :integer,
-    max_events: :integer
+    max_events: :integer,
+    digest: :boolean,
+    locale: :string
   ]
 
   @impl Mix.Task
@@ -66,6 +72,7 @@ defmodule Mix.Tasks.Aethrion.Journal do
         )
 
         Display.status(state)
+        if opts[:digest], do: digest(steps, state, opts)
         export(path, opts)
         compact(path, opts)
 
@@ -108,6 +115,21 @@ defmodule Mix.Tasks.Aethrion.Journal do
   defp compacted(path, count, archive) do
     kept = if archive, do: "; the old journal is at #{archive}", else: ""
     "compacted #{count(count, "event")} into the starting state of #{path}#{kept}"
+  end
+
+  defp digest(steps, state, opts) do
+    locale =
+      case opts[:locale] do
+        nil -> :en
+        "en" -> :en
+        "ko" -> :ko
+        other -> Mix.raise("unsupported locale #{inspect(other)}; use en or ko")
+      end
+
+    steps
+    |> Enum.flat_map(& &1.outputs)
+    |> Aethrion.Digest.of(state, locale: locale)
+    |> Display.digest("everything the journal records")
   end
 
   defp limits(opts), do: Keyword.take(opts, [:max_depth, :max_events])

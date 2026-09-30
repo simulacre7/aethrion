@@ -128,6 +128,11 @@ defmodule Aethrion.MixTasksTest do
       |> plain()
 
     assert output =~ "compacted 1 event into the starting state"
+
+    digest =
+      capture_io(fn -> Mix.Tasks.Aethrion.Journal.run([archive, "--digest"]) end) |> plain()
+
+    assert digest =~ "Digest  everything the journal records"
     assert {:ok, compacted, []} = Aethrion.Journal.read(path)
     assert compacted == step.state
     assert {:ok, _state, [_event]} = Aethrion.Journal.read(archive)

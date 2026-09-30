@@ -49,7 +49,7 @@ The social layer release: characters act on each other, every change is explaina
 
 - JSON scenarios with a world, events, expectations, branches, tuning, and custom events (`Aethrion.Scenario`, `mix aethrion.scenario`), with a JSON Schema. Fourteen bundled scenarios run in the test suite, one with a Korean cast.
 - Self-contained HTML reports (`mix aethrion.report`, `--locale ko` for a Korean report) with charts, what each character has come to believe, a relationship graph with bond changes, the timeline, and branch comparison.
-- `mix aethrion.journal` replays a journal and exports it as a scenario or report.
+- `mix aethrion.journal` replays a journal, prints its digest, and exports it as a scenario or report.
 - Interactive CLI: `say`, `message`, `comfort`, `here` (witnesses), `opinion`, `digest`, `why`, `context`, `timeline`, `rules`, `undo`, `save`, `load`, `record`, `report`, `--llm`, and `--locale ko`.
 - A tutorial (English and Korean), a cookbook for hosts, rules reference, expression guide, scenario format, and API reference; a benchmark in `bench/`.
 - Property-based tests for bounds, determinism, persistence and journal round trips, session recording, cascade causality, bond announcements, and the expression boundary; soak tests that crash journaled and snapshotting worlds; README excerpts checked against real output. `mix check` runs the local suite; CI adds Dialyzer, Credo, each scenario in a fresh VM, and the examples.

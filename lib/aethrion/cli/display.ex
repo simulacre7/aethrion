@@ -298,8 +298,8 @@ defmodule Aethrion.CLI.Display do
     end)
   end
 
-  def digest(items) do
-    print_section("Digest", "what changed since the last digest")
+  def digest(items, note \\ "what changed since the last digest") do
+    print_section("Digest", note)
 
     case items do
       [] -> print([:faint, "  nothing worth mentioning"])
