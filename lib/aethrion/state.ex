@@ -11,7 +11,8 @@ defmodule Aethrion.State do
   - `tuning` - rule parameter overrides, see `Aethrion.Tuning`
   - `people` - `%{id => display name}` for actors who are not characters
     (players), so lines can say "Alex" instead of `"player:alex"` (an id
-    with no display name reads as its last part, capitalized)
+    with no display name reads as what follows its first colon, with the
+    first letter capitalized, unless that would match someone else's name)
   """
 
   alias Aethrion.{Character, CharacterState, Memory, Relationship}
@@ -126,26 +127,29 @@ defmodule Aethrion.State do
   def name(%__MODULE__{} = state, id) do
     case Map.get(state.characters, id) do
       %Character{name: name} -> name
-      nil -> Map.get_lazy(state.people, id, fn -> readable(id) end)
+      nil -> Map.get_lazy(state.people, id, fn -> readable(state, id) end)
     end
   end
 
   # An id like "player:alex" without a display name reads as "Alex" rather
   # than leaking into lines; plain ids stay as they are.
-  defp readable(id) when is_binary(id) do
-    case String.split(id, ":") do
-      [_single] ->
-        id
-
-      parts ->
-        case List.last(parts) do
-          "" -> id
-          <<first::utf8, rest::binary>> -> String.upcase(<<first::utf8>>) <> rest
-        end
+  defp readable(state, id) when is_binary(id) do
+    with [_kind, rest] when rest != "" <- String.split(id, ":", parts: 2),
+         name = :string.titlecase(rest),
+         false <- taken?(state, name) do
+      name
+    else
+      _plain_or_ambiguous -> id
     end
   end
 
-  defp readable(id), do: id
+  defp readable(_state, id), do: id
+
+  # A readable name must not pass for someone else.
+  defp taken?(state, name) do
+    Enum.any?(state.characters, fn {_id, character} -> character.name == name end) or
+      name in Map.values(state.people)
+  end
 
   @doc """
   Applies `fun` to a character's state directly, without clamping or tracing.

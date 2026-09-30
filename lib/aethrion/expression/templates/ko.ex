@@ -122,34 +122,16 @@ defmodule Aethrion.Expression.Templates.Ko do
   end
 
   def render(%Request{kind: :proactive_message, reason: :curious} = request) do
-    case Enum.find(request.memories, &(&1.kind == :heard)) do
-      %{source: source, data: %{"event" => "gift_received"} = data} ->
-        to = if data["to"] == source, do: "걔", else: name(request, data["to"])
-        heard = "#{name(request, source)}한테 들었어. #{to}한테 #{data["item"]} 줬다며?"
-
-        if :playful in request.speaker.traits,
-          do: heard <> " 제법인데.",
-          else: heard <> " 나한테 할 말 없어?"
-
-      %{source: source, data: %{"event" => "message_sent", "tone" => tone} = data}
-      when tone in ["hostile", "cold"] ->
-        to = if data["to"] == source, do: "걔", else: name(request, data["to"])
-
-        "#{name(request, source)}한테 들었어. 네가 #{to}한테 그런 말 했다며? " <>
-          "너답지 않던데, 무슨 일 있어?"
-
-      %{source: source, data: %{"event" => "message_sent", "tone" => "warm"} = data} ->
-        to = if data["to"] == source, do: "걔", else: name(request, data["to"])
-        "#{name(request, source)}한테 들었어. #{to}한테 다정하게 대해 줬다며? 좋더라."
-
-      %{source: source, data: %{"event" => "apology_offered"} = data} ->
-        to = if data["to"] == source, do: "걔", else: name(request, data["to"])
-        "#{name(request, source)}한테 들었어. #{to}한테 사과했다며? 잘했어."
-
-      %{source: source} ->
+    case Choices.curious_choice(request) do
+      {:other, source, _data} ->
         "#{name(request, source)}한테 네 얘기 좀 들었어. 네 입장도 듣고 싶은데?"
 
-      nil ->
+      {news, source, data} ->
+        # "걔" when the teller told about themselves.
+        to = if data["to"] == source, do: "걔", else: name(request, data["to"])
+        "#{name(request, source)}한테 들었어. #{curious_line(news, to, data, request)}"
+
+      :unknown ->
         "오늘 네 얘기를 좀 들었어. 네 입장도 듣고 싶은데?"
     end
   end
@@ -278,6 +260,18 @@ defmodule Aethrion.Expression.Templates.Ko do
   # To whom: the teller themselves ("자기"), or someone else.
   defp target(request, %{"to" => to}),
     do: if(to == request.speaker.id, do: "자기", else: name(request, to))
+
+  defp curious_line(:gift, to, data, request) do
+    heard = "#{to}한테 #{data["item"]} 줬다며?"
+    if :playful in request.speaker.traits, do: heard <> " 제법인데.", else: heard <> " 나한테 할 말 없어?"
+  end
+
+  defp curious_line(:harsh, to, _data, _request),
+    do: "네가 #{to}한테 그런 말 했다며? 너답지 않던데, 무슨 일 있어?"
+
+  defp curious_line(:warm, to, _data, _request), do: "#{to}한테 다정하게 대해 줬다며? 좋더라."
+  defp curious_line(:comfort, to, _data, _request), do: "#{to} 곁에 있어 줬다며? 고마워."
+  defp curious_line(:apology, to, _data, _request), do: "#{to}한테 사과했다며? 잘했어."
 
   defp reply_line(tone, request) do
     case Choices.reply_choice(tone, request) do

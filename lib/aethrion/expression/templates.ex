@@ -78,44 +78,9 @@ defmodule Aethrion.Expression.Templates do
   end
 
   def render(%Request{kind: :proactive_message, reason: :curious} = request) do
-    case Enum.find(request.memories, &(&1.kind == :heard)) do
-      %{source: source, data: %{"event" => "gift_received"} = data} ->
-        # A gift to the teller themselves, or to someone else.
-        {told, mentioned} =
-          if data["to"] == source,
-            do:
-              {"told me about getting #{with_article(data["item"])} from you",
-               "mentioned getting #{with_article(data["item"])} from you"},
-            else:
-              {"told me you gave #{name(request, data["to"])} #{with_article(data["item"])}",
-               "mentioned you gave #{name(request, data["to"])} #{with_article(data["item"])}"}
-
-        if :playful in request.speaker.traits do
-          "#{name(request, source)} #{told}. Smooth."
-        else
-          "#{name(request, source)} #{mentioned}. Is there something I should know?"
-        end
-
-      %{source: source, data: %{"event" => "message_sent", "tone" => tone} = data}
-      when tone in ["hostile", "cold"] ->
-        said = if data["to"] == source, do: "", else: " to #{name(request, data["to"])}"
-
-        "#{name(request, source)} told me what you said#{said}. " <>
-          "That didn't sound like you. Is everything okay?"
-
-      %{source: source, data: %{"event" => "message_sent", "tone" => "warm"} = data} ->
-        to = if data["to"] == source, do: "them", else: name(request, data["to"])
-        "#{name(request, source)} told me how kind you were to #{to}. That was sweet of you."
-
-      %{source: source, data: %{"event" => "apology_offered"} = data} ->
-        to = if data["to"] == source, do: "", else: " to #{name(request, data["to"])}"
-        "#{name(request, source)} told me you apologized#{to}. That was good of you."
-
-      %{source: source} ->
-        "#{name(request, source)} told me something about you. Want to tell me your side?"
-
-      nil ->
-        "I heard something about you today. Want to tell me your side?"
+    case Choices.curious_choice(request) do
+      {news, source, data} -> curious_line(news, name(request, source), data, source, request)
+      :unknown -> "I heard something about you today. Want to tell me your side?"
     end
   end
 
@@ -242,6 +207,46 @@ defmodule Aethrion.Expression.Templates do
   def render(%Request{} = request) do
     "#{request.speaker.name} reacts."
   end
+
+  # "Them" when the teller told about themselves.
+  defp curious_line(:gift, teller, data, source, request) do
+    {told, mentioned} =
+      if data["to"] == source,
+        do:
+          {"told me about getting #{with_article(data["item"])} from you",
+           "mentioned getting #{with_article(data["item"])} from you"},
+        else:
+          {"told me you gave #{name(request, data["to"])} #{with_article(data["item"])}",
+           "mentioned you gave #{name(request, data["to"])} #{with_article(data["item"])}"}
+
+    if :playful in request.speaker.traits,
+      do: "#{teller} #{told}. Smooth.",
+      else: "#{teller} #{mentioned}. Is there something I should know?"
+  end
+
+  defp curious_line(:harsh, teller, data, source, request) do
+    said = if data["to"] == source, do: "", else: " to #{name(request, data["to"])}"
+    "#{teller} told me what you said#{said}. That didn't sound like you. Is everything okay?"
+  end
+
+  defp curious_line(:warm, teller, data, source, request),
+    do:
+      "#{teller} told me how kind you were to #{them(request, data, source)}. That was sweet of you."
+
+  defp curious_line(:comfort, teller, data, source, request),
+    do:
+      "#{teller} told me you were there for #{them(request, data, source)}. That was kind of you."
+
+  defp curious_line(:apology, teller, data, source, request) do
+    to = if data["to"] == source, do: "", else: " to #{name(request, data["to"])}"
+    "#{teller} told me you apologized#{to}. That was good of you."
+  end
+
+  defp curious_line(:other, teller, _data, _source, _request),
+    do: "#{teller} told me something about you. Want to tell me your side?"
+
+  defp them(request, data, source),
+    do: if(data["to"] == source, do: "them", else: name(request, data["to"]))
 
   defp reply_line(tone, request) do
     case Choices.reply_choice(tone, request) do

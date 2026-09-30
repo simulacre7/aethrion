@@ -53,7 +53,10 @@ defmodule Aethrion.Expression do
       names: names(state, [speaker_id, listener_id], memories),
       tone: Keyword.get(opts, :tone),
       message: Keyword.get(opts, :message),
-      since_contact: Keyword.get(opts, :since_contact),
+      since_contact:
+        Keyword.get_lazy(opts, :since_contact, fn ->
+          State.hours_since(state, Aethrion.Rules.Reply.contact_key(speaker_id, listener_id))
+        end),
       repeats: Keyword.get(opts, :repeats),
       goodwill: Keyword.get(opts, :goodwill),
       now: state.clock
@@ -115,7 +118,7 @@ defmodule Aethrion.Expression do
     line = tidy(text)
 
     cond do
-      line == "" ->
+      String.replace(line, ~r/[\s"“”']/u, "") == "" ->
         Map.put(output, :expression, %{
           status: :fallback,
           adapter: adapter,

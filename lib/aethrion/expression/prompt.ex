@@ -180,7 +180,6 @@ defmodule Aethrion.Expression.Prompt do
 
   defp incoming_line(_request), do: nil
 
-  # What the rules weighed, so a model's line agrees with the draft.
   # How long it has been, for lines that mention it ("It's been a while").
   defp contact_line(%Request{kind: :proactive_message, since_contact: hours})
        when is_integer(hours),
@@ -192,6 +191,7 @@ defmodule Aethrion.Expression.Prompt do
 
   defp contact_line(_request), do: nil
 
+  # What the rules weighed, so a model's line agrees with the draft.
   defp history_line(%Request{kind: :reply} = request) do
     repeated =
       case request.repeats do

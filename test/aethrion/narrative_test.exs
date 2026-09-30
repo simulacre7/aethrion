@@ -939,9 +939,37 @@ defmodule Aethrion.NarrativeTest do
       assert Ko.render(scene.context) == "Yuna는 Haru에게 네가 자기한테 다정하게 대해 줬다고 전한다."
     end
 
-    test "unnamed player ids read as names" do
+    test "unnamed player ids read as names, but never as someone else's" do
       assert State.name(Runtime.demo_state(), "player:alex") == "Alex"
       assert State.name(Runtime.demo_state(), "sam") == "sam"
+      assert State.name(Runtime.demo_state(), "player:alex:2") == "Alex:2"
+      # "npc:mina" would read as the character Mina.
+      assert State.name(Runtime.demo_state(), "npc:mina") == "npc:mina"
+    end
+
+    test "a line of nothing but quotes falls back" do
+      {_state, outputs} =
+        run!(Runtime.demo_state(), [Event.message_sent("user", "mina", "hi", tone: :warm)])
+
+      [reply] = replies(outputs, "mina")
+
+      assert %{expression: %{status: :fallback, reason: :empty_response}} =
+               Aethrion.Expression.render_output(reply,
+                 adapter: Chatty,
+                 adapter_opts: [say: ~s("""")]
+               )
+    end
+
+    test "hearing that someone was comforted is kind news too" do
+      {state, _outputs} =
+        run!(Runtime.demo_state(), [Event.comfort_offered("user", "yuna")])
+
+      {_state, outputs} =
+        run!(state, [Event.gossip_shared("yuna", "haru", "memory:yuna:comfort:e1")])
+
+      assert [%{reason: :curious} = message] = proactive(outputs, "haru")
+      assert message.text == "Yuna told me you were there for them. That was kind of you."
+      assert Ko.render(message.context) == "Yuna한테 들었어. 걔 곁에 있어 줬다며? 고마워."
     end
   end
 

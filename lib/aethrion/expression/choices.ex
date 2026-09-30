@@ -213,6 +213,29 @@ defmodule Aethrion.Expression.Choices do
   defp folded(_request), do: 0
 
   @doc false
+  # What a curious character heard about the listener, and from whom:
+  # `{kind, source, data}`, or `:unknown` when no heard memory says.
+  @spec curious_choice(Request.t()) ::
+          {:gift | :harsh | :warm | :comfort | :apology | :other, String.t() | nil, map()}
+          | :unknown
+  def curious_choice(%Request{memories: memories}) do
+    case Enum.find(memories, &(&1.kind == :heard)) do
+      %{source: source, data: data} -> {news(data), source, data}
+      nil -> :unknown
+    end
+  end
+
+  defp news(%{"event" => "gift_received"}), do: :gift
+
+  defp news(%{"event" => "message_sent", "tone" => tone}) when tone in ["hostile", "cold"],
+    do: :harsh
+
+  defp news(%{"event" => "message_sent", "tone" => "warm"}), do: :warm
+  defp news(%{"event" => "comfort_offered"}), do: :comfort
+  defp news(%{"event" => "apology_offered"}), do: :apology
+  defp news(_data), do: :other
+
+  @doc false
   # Which reply fits kind or plain words, first match wins: hurt feelings
   # (`wary_choice/2`), a long absence (when nothing darker is going on), the
   # bond when the mood has nothing to say, then the mood.

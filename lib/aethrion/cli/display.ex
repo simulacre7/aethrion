@@ -219,7 +219,12 @@ defmodule Aethrion.CLI.Display do
         _other -> output.character_id
       end
 
-    status = if expression.status == :ok, do: inspect(expression.adapter), else: "fallback"
+    status =
+      case expression do
+        %{status: :ok} -> inspect(expression.adapter)
+        %{reason: :silence} -> "silent"
+        _fallback -> "fallback"
+      end
 
     # Scenes are narration, not something the speaker says.
     line =
