@@ -527,6 +527,16 @@ defmodule Aethrion.NarrativeTest do
       assert second.context.repeats == 2
     end
 
+    test "a model prompt says what the rules weighed" do
+      hostile = &Event.message_sent("user", "mina", "Go away #{&1}", tone: :hostile)
+      {_state, outputs} = run!(Runtime.demo_state(), [hostile.(1), hostile.(2)])
+      [_first, second] = replies(outputs, "mina")
+
+      assert Aethrion.Expression.Prompt.render_context(second.context) =~
+               "History: The listener has done this 2 times recently (this one included). " <>
+                 "The speaker takes it at full weight."
+    end
+
     test "a host-built gift request without an item still renders" do
       request = %Aethrion.Expression.Request{
         kind: :reply,

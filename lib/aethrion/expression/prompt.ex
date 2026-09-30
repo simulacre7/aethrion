@@ -90,6 +90,7 @@ defmodule Aethrion.Expression.Prompt do
       "Listener: #{describe_actor(request.listener)}",
       relationship_line(request.relationship),
       incoming_line(request),
+      history_line(request),
       people_line(request),
       "Memories:",
       memory_lines(request),
@@ -175,6 +176,37 @@ defmodule Aethrion.Expression.Prompt do
   end
 
   defp incoming_line(_request), do: nil
+
+  # What the rules weighed, so a model's line agrees with the draft.
+  defp history_line(%Request{kind: :reply} = request) do
+    repeated =
+      case request.repeats do
+        n when is_integer(n) and n >= 2 ->
+          "The listener has done this #{n} times recently (this one included)."
+
+        _once ->
+          nil
+      end
+
+    goodwill =
+      case request.goodwill do
+        true ->
+          "The speaker gives the listener the benefit of the doubt after a record of kindness."
+
+        false when request.tone in [:cold, :hostile] ->
+          "The speaker takes it at full weight."
+
+        _unknown ->
+          nil
+      end
+
+    case Enum.reject([repeated, goodwill], &is_nil/1) do
+      [] -> nil
+      parts -> "History: " <> Enum.join(parts, " ")
+    end
+  end
+
+  defp history_line(_request), do: nil
 
   defp people_line(%Request{names: names}) when map_size(names) > 0 do
     "People: " <>
