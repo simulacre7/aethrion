@@ -10,9 +10,13 @@ defmodule Aethrion.Intent do
   it still has to pass `Aethrion.Runtime.dispatch/3` validation and rules
   before anything changes.
 
-      {:ok, event, meta} = Aethrion.Intent.interpret(state, "sorry about earlier", to: "yuna")
-      event.type
-      #=> :apology_offered
+      iex> state = Aethrion.demo_state()
+      iex> {:ok, event, _meta} = Aethrion.Intent.interpret(state, "sorry about earlier", to: "yuna")
+      iex> event.type
+      :apology_offered
+      iex> {:ok, event, _meta} = Aethrion.Intent.interpret(state, "미안해, 내가 잘못했어", to: "yuna")
+      iex> event.type
+      :apology_offered
 
   If the adapter errors, raises, or proposes something outside the allowed set,
   the deterministic `Aethrion.LLM.FakeAdapter` interpretation is used instead
