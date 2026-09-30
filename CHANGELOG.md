@@ -22,7 +22,7 @@ The social layer release: characters act on each other, every change is explaina
 - `message_sent` with a structured tone (`:warm`, `:neutral`, `:cold`, `:hostile`) and replies.
 - Derived bonds (`:estranged`, `:strained`, `:neutral`, `:friendly`, `:close`) name what a relationship has become; a `:bond_changed` output announces when an event moves one.
 - A simulated clock, cooldowns, derived moods (`:happy`, `:lonely`, `:jealous`, `:upset`), `joy`, `stress`, and trait modifiers (`:sensitive`, `:calm`, `:playful`, `:talkative`).
-- Proactive messages address people: jealousy goes to the gift's giver, loneliness to the closest person, curiosity to the person the news is about. Characters do not reach out to someone they feel tense toward.
+- Proactive messages address people: jealousy goes to the gift's giver, loneliness to the closest person, curiosity to the person the news is about. Characters do not reach out to someone they feel tense toward, and a character who saw a person be hostile to a friend speaks up to them (`:protective`).
 - Tension eases through apologies, comfort, and time.
 - Reputation: messages take `observed_by`; witnesses and those who hear the story judge the sender by how they treated someone the judge cares about. Faded secondhand memories of messages fold into reputation impressions ("haru knows user has been hostile to mina and yuna 2 times."), which change how the sender's own messages land when there is no firsthand history, and how characters reply. Each event counts once, even when its details are forgotten and the story is heard again.
 

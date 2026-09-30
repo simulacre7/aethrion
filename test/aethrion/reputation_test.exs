@@ -314,4 +314,52 @@ defmodule Aethrion.ReputationTest do
     assert Consolidation.reputation_count(state, "mina", "gift", "user") == 0
     assert %{consolidated_into: nil} = State.memory(state, "memory:mina:observed:e1")
   end
+
+  describe "speaking up" do
+    defp protective(outputs),
+      do: outputs |> of_type(:proactive_message) |> Enum.filter(&(&1.reason == :protective))
+
+    test "a witness who cares speaks up to the person, once per incident" do
+      {_state, outputs} =
+        run!(world(), [
+          message("user", "mina", :hostile, ["haru"]),
+          Event.time_tick("t", hours: 2)
+        ])
+
+      assert [%{character_id: "haru", to: "user", text: text}] = protective(outputs)
+      assert text == "That was harsh, what you said to Mina. Mina didn't deserve that."
+    end
+
+    test "calm characters say it gently, in both languages" do
+      state = put_in(world().characters["haru"].traits, [:calm])
+      {_state, outputs} = dispatch!(state, message("user", "mina", :hostile, ["haru"]))
+
+      assert [%{text: "What you said to Mina earlier was unkind. Is everything okay?"} = output] =
+               protective(outputs)
+
+      assert Aethrion.Expression.Templates.Ko.render(output.context) ==
+               "아까 Mina한테 한 말은 좀 모질었어. 무슨 일 있어?"
+    end
+
+    test "nobody speaks up for someone they do not care about, or to a character" do
+      {_state, outputs} = dispatch!(world(), message("user", "mina", :hostile, ["bo"]))
+      assert protective(outputs) == []
+
+      {_state, outputs} = dispatch!(world(), message("yuna", "mina", :hostile, ["haru"]))
+      assert protective(outputs) == []
+    end
+
+    test "cold words or hearsay are not enough" do
+      {_state, outputs} = dispatch!(world(), message("user", "mina", :cold, ["haru"]))
+      assert protective(outputs) == []
+
+      {_state, outputs} =
+        run!(world(), [
+          message("user", "mina", :hostile),
+          Event.gossip_shared("mina", "yuna", "memory:mina:message:e1")
+        ])
+
+      assert protective(outputs) == []
+    end
+  end
 end

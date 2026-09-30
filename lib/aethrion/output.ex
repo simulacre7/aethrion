@@ -44,7 +44,10 @@ defmodule Aethrion.Output do
     %{type: :bond_changed, from: from, to: to, before: before_bond, after: after_bond}
   end
 
-  @doc "A character reached out on their own. `reason` is `:jealous`, `:lonely`, or `:curious`."
+  @doc """
+  A character reached out on their own. `reason` is `:jealous`, `:lonely`,
+  `:curious`, or `:protective`.
+  """
   def proactive_message(character_id, to, reason, text, opts \\ []) do
     %{
       type: :proactive_message,

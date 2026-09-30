@@ -173,6 +173,7 @@ Characters reach out to people (actors who are not characters, such as `user`) w
 | --- | --- | --- |
 | `jealous` | jealousy >= 15 and jealousy + loneliness >= 45 | 24 simulated hours |
 | `lonely` | loneliness >= 60 and jealousy < 15 | 24 simulated hours |
+| `protective` | saw a person be hostile to a character they care about (affinity >= 30) | once per incident |
 | `curious` | holds secondhand news involving a person (not a character), and is `:playful` or has affinity >= 30 toward the user | once per topic |
 
 Characters do not reach out to someone they feel tense toward (tension >= 10, parameter `avoid_tension`); they confide in friends instead.

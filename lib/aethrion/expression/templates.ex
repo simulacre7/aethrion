@@ -40,6 +40,18 @@ defmodule Aethrion.Expression.Templates do
     end
   end
 
+  def render(%Request{kind: :proactive_message, reason: :protective} = request) do
+    friend =
+      case Enum.find(request.memories, &(&1.kind == :observed)) do
+        %{data: %{"to" => to}} -> name(request, to)
+        nil -> "them"
+      end
+
+    if :calm in request.speaker.traits,
+      do: "What you said to #{friend} earlier was unkind. Is everything okay?",
+      else: "That was harsh, what you said to #{friend}. #{friend} didn't deserve that."
+  end
+
   def render(%Request{kind: :proactive_message, reason: :curious} = request) do
     case Enum.find(request.memories, &(&1.kind == :heard)) do
       %{source: source, data: %{"event" => "gift_received"} = data} ->

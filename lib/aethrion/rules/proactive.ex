@@ -6,8 +6,9 @@ defmodule Aethrion.Rules.Proactive do
   cascade never produces a burst of messages from one character.
 
   Who they reach out to: jealousy goes to whoever gave the gift they saw,
-  loneliness to the person they feel closest to, and curiosity to the person
-  the news is about. A world with no relationships to people addresses
+  loneliness to the person they feel closest to, curiosity to the person the
+  news is about, and a character who saw someone be hostile to a friend
+  speaks up to that person. A world with no relationships to people addresses
   `"user"`.
 
   Characters do not reach out to someone they currently feel tense toward
@@ -17,19 +18,23 @@ defmodule Aethrion.Rules.Proactive do
   | ---------- | ---------------------------------------------------------- | -------- |
   | `:jealous` | jealousy >= 15 and jealousy + loneliness >= 45             | 24h      |
   | `:lonely`  | loneliness >= 60 and jealousy < 15                         | 24h      |
+  | `:protective` | saw a person be hostile to a character they care about (affinity >= 30) | once per topic |
   | `:curious` | heard secondhand news about a person and is `:playful` or has affinity >= 30 toward them | once per topic |
+
+  Reasons are tried in the order of the table.
   """
 
   use Aethrion.Rule,
     id: :proactive,
     description:
-      "Jealous (pressure>=45), lonely (>=60), or curious (heard news about someone) characters message that person, at most once an hour.",
+      "Jealous (pressure>=45), protective (saw hostility to a friend), lonely (>=60), or curious (heard news about someone) characters message that person, at most once an hour.",
     params: [
       jealousy_floor: 15,
       pressure_threshold: 45,
       loneliness_threshold: 60,
       cooldown_hours: 24,
       curious_affinity: 30,
+      protective_affinity: 30,
       avoid_tension: 10,
       min_gap_hours: 1
     ]
@@ -45,9 +50,9 @@ defmodule Aethrion.Rules.Proactive do
 
     # Checked on every event: curiosity can become possible after any change
     # (affinity rising, tension easing, a character being unblocked).
-    heard = heard_about_people(state)
+    {heard, witnessed} = secondhand_about_people(state)
 
-    params = Map.put(params, :heard, heard)
+    params = params |> Map.put(:heard, heard) |> Map.put(:witnessed, witnessed)
     outgoing = State.relationships_by_from(state)
 
     state
@@ -101,13 +106,17 @@ defmodule Aethrion.Rules.Proactive do
   defp could_reach_out?(%Character{id: id, state: cs}, params) do
     (cs.jealousy >= params.jealousy_floor and
        cs.jealousy + cs.loneliness >= params.pressure_threshold) or
-      cs.loneliness >= params.loneliness_threshold or Map.has_key?(params.heard, id)
+      cs.loneliness >= params.loneliness_threshold or Map.has_key?(params.heard, id) or
+      Map.has_key?(params.witnessed, id)
   end
 
   defp first_trigger(_state, _character, [], _params), do: nil
 
   defp first_trigger(state, character, people, params) do
-    Enum.find_value([:jealous, :lonely, :curious], &trigger(&1, state, character, people, params))
+    Enum.find_value(
+      [:jealous, :protective, :lonely, :curious],
+      &trigger(&1, state, character, people, params)
+    )
   end
 
   # Reach out to whoever gave the gift that caused the jealousy, when reachable.
@@ -141,6 +150,21 @@ defmodule Aethrion.Rules.Proactive do
     end
   end
 
+  # Speak up to the person who was hostile to someone this character cares about.
+  defp trigger(:protective, state, %Character{id: id}, people, params) do
+    params.witnessed
+    |> Map.get(id, [])
+    |> Enum.find_value(fn %Memory{data: %{"from" => person, "to" => friend}} = memory ->
+      key = "proactive:#{id}:protective:#{memory.topic}"
+
+      if person in people and friend != id and
+           State.get_relationship(state, id, friend).affinity >= params.protective_affinity and
+           State.cooldown_ready?(state, key, :once) do
+        {:protective, key, person, memories: [memory]}
+      end
+    end)
+  end
+
   # Ask the person the news is about.
   defp trigger(:curious, state, %Character{id: id} = character, people, params) do
     params.heard
@@ -161,14 +185,33 @@ defmodule Aethrion.Rules.Proactive do
   end
 
   # Unfaded secondhand memories involving someone who is not a character, by
-  # character, newest first.
-  defp heard_about_people(state) do
-    for %Memory{kind: :heard} = memory <- state.memories,
+  # character, newest first: what they heard, and hostile messages from a
+  # person that they witnessed. One pass over the memories.
+  defp secondhand_about_people(state) do
+    add = fn acc, memory -> Map.update(acc, memory.character_id, [memory], &(&1 ++ [memory])) end
+
+    for %Memory{kind: kind} = memory <- state.memories,
+        kind in [:heard, :observed],
         not Memory.faded?(memory),
-        Enum.any?(memory.related_characters, &(not State.character?(state, &1))),
-        reduce: %{} do
-      acc -> Map.update(acc, memory.character_id, [memory], &(&1 ++ [memory]))
+        reduce: {%{}, %{}} do
+      {heard, witnessed} ->
+        cond do
+          kind == :heard and
+              Enum.any?(memory.related_characters, &(not State.character?(state, &1))) ->
+            {add.(heard, memory), witnessed}
+
+          kind == :observed and hostile_from_person?(state, memory) ->
+            {heard, add.(witnessed, memory)}
+
+          true ->
+            {heard, witnessed}
+        end
     end
+  end
+
+  defp hostile_from_person?(state, %Memory{data: data}) do
+    match?(%{"event" => "message_sent", "tone" => "hostile", "from" => _, "to" => _}, data) and
+      not State.character?(state, data["from"])
   end
 
   defp send_message(transition, character, reason, key, recipient, opts) do
