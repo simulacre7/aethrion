@@ -103,4 +103,15 @@ defmodule Aethrion.IntentTest do
     assert {:error, %{code: :invalid_event}} = Intent.interpret(state, "   ", to: "mina")
     assert {:error, %{code: :unknown_character}} = Intent.interpret(state, "hi", to: "nobody")
   end
+
+  test "the fake adapter reads Korean too" do
+    request = fn text -> %Aethrion.Intent.Request{text: text, from: "user", listener: %{}} end
+    interpret = &(Aethrion.LLM.FakeAdapter.interpret(request.(&1)) |> elem(1))
+
+    assert %{intent: :apology} = interpret.("미안해, 내가 잘못했어")
+    assert %{tone: :warm} = interpret.("오늘 정말 고마웠어")
+    assert %{tone: :hostile} = interpret.("꺼져")
+    assert %{tone: :cold} = interpret.("됐어, 나중에 얘기해")
+    assert %{tone: :neutral} = interpret.("밥 먹었어?")
+  end
 end

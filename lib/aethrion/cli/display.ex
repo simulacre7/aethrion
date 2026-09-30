@@ -197,7 +197,12 @@ defmodule Aethrion.CLI.Display do
 
   @doc "Prints an output rendered by an expression adapter."
   def expressed(%{text: text, expression: expression} = output, label \\ "LLM") do
-    speaker = output.character_id
+    speaker =
+      case output do
+        %{context: %{speaker: %{name: name}}} when is_binary(name) -> name
+        _other -> output.character_id
+      end
+
     status = if expression.status == :ok, do: inspect(expression.adapter), else: "fallback"
     print_tagged(label, :light_cyan, "#{speaker}: \"#{text}\"" <> faint(" (#{status})"))
   end
