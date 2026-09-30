@@ -62,6 +62,11 @@ defmodule Aethrion.CLI.CommandParserTest do
     assert {:error, _message} = CommandParser.parse("say yuna")
   end
 
+  test "parses witnesses at the end of an apology" do
+    assert {:ok, %{type: :apology_offered, reason: "that was cruel", observed_by: ["haru"]}} =
+             CommandParser.parse("apologize user mina that was cruel observed_by haru")
+  end
+
   test "parses opinion" do
     assert {:ok, {:opinion, "haru", "user"}} = CommandParser.parse("opinion haru user")
   end

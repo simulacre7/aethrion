@@ -43,7 +43,7 @@ defmodule Aethrion.CLI.Display do
       "  message <from> <to> <tone> <text> [observed_by a,b]",
       "                                              tone: warm | neutral | cold | hostile",
       "  gift <from> <to> <item> [observed_by a,b]",
-      "  apologize <from> <to> <reason>",
+      "  apologize <from> <to> <reason> [observed_by a,b]",
       "  comfort <from> <to>",
       "  tick <hours>",
       "  here [a,b | none]                           who else is present; they witness what you say and do",

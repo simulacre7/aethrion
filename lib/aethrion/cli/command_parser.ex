@@ -90,16 +90,17 @@ defmodule Aethrion.CLI.CommandParser do
   end
 
   defp do_parse(["apologize", from, to | reason_parts]) when reason_parts != [] do
-    reason = Enum.join(reason_parts, " ")
-    {:ok, Event.apology_offered(from, to, reason, at: "interactive:apology")}
+    {words, observed_by} = trailing_observers(reason_parts)
+
+    {:ok,
+     Event.apology_offered(from, to, Enum.join(words, " "),
+       observed_by: observed_by,
+       at: "interactive:apology"
+     )}
   end
 
   defp do_parse(["message", from, to, tone | words]) when words != [] do
-    {words, observed_by} =
-      case Enum.split(words, -2) do
-        {[_ | _] = text, ["observed_by", observers]} -> {text, observers(observers)}
-        _other -> {words, []}
-      end
+    {words, observed_by} = trailing_observers(words)
 
     case Enum.find(Event.tones(), &(Atom.to_string(&1) == tone)) do
       nil ->
@@ -121,6 +122,14 @@ defmodule Aethrion.CLI.CommandParser do
 
   defp do_parse(_tokens) do
     {:error, "unknown command. Type help for available commands."}
+  end
+
+  # Text followed by "observed_by a,b"; too short to be both, it is all text.
+  defp trailing_observers(words) do
+    case Enum.split(words, -2) do
+      {[_ | _] = text, ["observed_by", observers]} -> {text, observers(observers)}
+      _other -> {words, []}
+    end
   end
 
   defp observers(list), do: list |> String.split(",", trim: true) |> Enum.map(&String.trim/1)
