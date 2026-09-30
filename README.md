@@ -222,6 +222,8 @@ Supervisor.start_link(children, strategy: :one_for_one)
 Aethrion.World.subscribe(:garden)   # receive {:aethrion, pid, {:dispatched, step}} and {:expressed, output}
 ```
 
+Use `journal: "tmp/garden.jsonl"` instead of `persistence:` to keep an append-only event log: the world is rebuilt by replaying it, and `mix aethrion.journal` turns any journal into a report.
+
 More in [examples/](examples) and [docs/api.md](docs/api.md).
 
 ## Runtime vs LLM Server

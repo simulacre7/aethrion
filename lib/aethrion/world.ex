@@ -41,6 +41,7 @@ defmodule Aethrion.World do
   - `:state` - initial `Aethrion.State` (default: demo state)
   - `:pipeline` - an `Aethrion.Pipeline`
   - `:persistence` - `{adapter, opts}`, see `Aethrion.RuntimeServer`
+  - `:journal` - path of an `Aethrion.Journal` to rebuild from and append to
   - `:scheduler` - keyword options for `Aethrion.Scheduler` (without `:runtime`)
   - `:expression` - keyword options for asynchronous rendering (without
     `:task_supervisor`), see `Aethrion.RuntimeServer`
@@ -68,7 +69,7 @@ defmodule Aethrion.World do
         name: runtime(name),
         initial_state: Keyword.get(opts, :state, Runtime.demo_state())
       ] ++
-        Keyword.take(opts, [:pipeline, :persistence, :history_limit]) ++
+        Keyword.take(opts, [:pipeline, :persistence, :journal, :history_limit]) ++
         expression_opts(name, Keyword.get(opts, :expression))
 
     scheduler =

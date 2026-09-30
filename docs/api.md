@@ -228,7 +228,7 @@ A world supervises a `Task.Supervisor` for rendering, an `Aethrion.RuntimeServer
 
 | function | meaning |
 | --- | --- |
-| `start_link(opts)` | `:initial_state`, `:name`, `:pipeline`, `:history_limit`, `:persistence`, `:expression` |
+| `start_link(opts)` | `:initial_state`, `:name`, `:pipeline`, `:history_limit`, `:persistence` or `:journal`, `:expression` |
 | `dispatch(server, event)` | same result as `Runtime.dispatch/3` |
 | `step(server, event)` | `{:ok, %Aethrion.Step{}}` |
 | `get_state(server)`, `put_state(server, state)` | read or replace the state |
@@ -255,6 +255,23 @@ Subscriber messages:
 
 `Aethrion.State.to_data/1` writes format version 2. `from_data/1` also reads v0.1 data. For data you did not produce, use `Aethrion.State.parse/1`, which validates shapes, types, and ranges and returns `{:error, {:invalid_state_data, path, reason}}` instead of raising. `JsonFile.load/1` uses it. A runtime server whose snapshot exists but cannot be read refuses to start rather than overwrite it. `Aethrion.Persistence.InMemory` is the reference adapter; implement `Aethrion.Persistence` for your own storage.
 
+## Journals
+
+An `Aethrion.Journal` stores a world as its starting state plus every host event, one JSON line each. Replaying rebuilds exactly the same world, so a journal is both a durable log and a reproducible bug report.
+
+```elixir
+{Aethrion.World, name: :garden, journal: "tmp/garden.jsonl"}   # append on every dispatch, rebuild on start
+
+{:ok, state, steps} = Aethrion.Journal.replay("tmp/garden.jsonl")
+{:ok, scenario_data} = Aethrion.Journal.to_scenario("tmp/garden.jsonl")
+```
+
+```bash
+mix aethrion.journal tmp/garden.jsonl --report tmp/garden.html
+```
+
+Replay fails with `{:journal_mismatch, index, ...}` if an event gets a different id than recorded, meaning the journal does not match its starting state. Journals and snapshot persistence are alternatives; a runtime server accepts one or the other, and refuses `put_state/2` while journaling.
+
 ## Scenarios and reports
 
 ```elixir
@@ -276,3 +293,4 @@ See [scenarios.md](scenarios.md).
 | `mix aethrion.scenario PATH \| --all` | run scenarios and check expectations |
 | `mix aethrion.report PATH \| --all` | render HTML reports |
 | `mix aethrion.rules` | print the rule pipeline |
+| `mix aethrion.journal PATH` | replay a journal; `--scenario` / `--report` to export |

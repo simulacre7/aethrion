@@ -11,6 +11,8 @@ defmodule Aethrion.RuntimeServer do
   - **History** - the host events dispatched so far, for replay and debugging.
   - **Snapshots** - with `:persistence`, the state is saved after each dispatch
     and restored on start, so a supervised restart resumes where it left off.
+  - **Journals** - with `:journal`, every host event is appended to an
+    `Aethrion.Journal` and the world is rebuilt by replaying it on start.
   - **Asynchronous expression** - with `:expression`, expressive outputs are
     rendered by an `Aethrion.LLM.Adapter` in supervised tasks. Dispatch never
     waits for a model; slow, failing, or crashing adapters are isolated and the
@@ -48,6 +50,11 @@ defmodule Aethrion.RuntimeServer do
     `{Aethrion.Persistence.JsonFile, path: "tmp/world.json"}`. A saved state is
     loaded on start (taking precedence over `:initial_state`) and saved after
     every successful dispatch.
+  - `:journal` - path of an `Aethrion.Journal`. If it exists, the world is
+    rebuilt by replaying it (taking precedence over `:initial_state`);
+    otherwise it is created from the initial state. Every successful dispatch
+    appends its host event. Cannot be combined with `:persistence`, and
+    `put_state/2` is refused while journaling.
   - `:expression` - keyword options enabling asynchronous rendering:
     `:adapter` (required), `:adapter_opts`, `:timeout` (ms, default
     #{@default_expression_timeout}), `:task_supervisor` (a `Task.Supervisor`;
@@ -103,13 +110,15 @@ defmodule Aethrion.RuntimeServer do
 
   @impl true
   def init(opts) do
-    with {:ok, world} <- initial_world(opts),
+    with :ok <- check_storage(opts),
+         {:ok, world} <- initial_world(opts),
          {:ok, expression} <- expression_config(Keyword.get(opts, :expression)) do
       {:ok,
        %{
          world: world,
          pipeline: Keyword.get(opts, :pipeline, Pipeline.default()),
          persistence: Keyword.get(opts, :persistence),
+         journal: Keyword.get(opts, :journal),
          history: [],
          history_limit: Keyword.get(opts, :history_limit, @default_history_limit),
          subscribers: %{},
@@ -129,6 +138,7 @@ defmodule Aethrion.RuntimeServer do
           %{server | world: step.state}
           |> record_history(step.event)
           |> persist()
+          |> journal(step.event)
           |> broadcast({:dispatched, step})
           |> render_async(step.outputs)
 
@@ -140,6 +150,10 @@ defmodule Aethrion.RuntimeServer do
   end
 
   def handle_call(:get_state, _from, server), do: {:reply, server.world, server}
+
+  def handle_call({:put_state, _state}, _from, %{journal: path} = server) when is_binary(path) do
+    {:reply, {:error, :journal_enabled}, server}
+  end
 
   def handle_call({:put_state, state}, _from, server) do
     {:reply, :ok, persist(%{server | world: state, history: []})}
@@ -233,17 +247,44 @@ defmodule Aethrion.RuntimeServer do
        }}
   end
 
+  defp check_storage(opts) do
+    if Keyword.get(opts, :journal) && Keyword.get(opts, :persistence),
+      do: {:error, :journal_and_persistence},
+      else: :ok
+  end
+
   defp initial_world(opts) do
     fallback = Keyword.get(opts, :initial_state, Runtime.demo_state())
+    pipeline = Keyword.get(opts, :pipeline, Pipeline.default())
 
+    case Keyword.get(opts, :journal) do
+      nil -> snapshot_world(opts, fallback, pipeline)
+      path -> journal_world(path, fallback, pipeline)
+    end
+  end
+
+  defp journal_world(path, fallback, pipeline) do
+    if File.exists?(path) do
+      case Aethrion.Journal.replay(path, pipeline: pipeline) do
+        {:ok, state, _steps} ->
+          {:ok, state}
+
+        {:error, reason} ->
+          Logger.error("Aethrion.RuntimeServer could not replay its journal: #{inspect(reason)}")
+          {:error, {:invalid_journal, reason}}
+      end
+    else
+      with {:ok, state} <- validate_state(fallback),
+           :ok <- Aethrion.Journal.create(path, state) do
+        {:ok, state}
+      end
+    end
+  end
+
+  defp snapshot_world(opts, fallback, pipeline) do
     case Keyword.get(opts, :persistence) do
       {adapter, persistence_opts} ->
-        load_opts =
-          Keyword.put_new(
-            persistence_opts,
-            :pipeline,
-            Keyword.get(opts, :pipeline, Pipeline.default())
-          )
+        load_opts = Keyword.put_new(persistence_opts, :pipeline, pipeline)
 
         case adapter.load(load_opts) do
           {:ok, %State{} = state} ->
@@ -311,6 +352,19 @@ defmodule Aethrion.RuntimeServer do
 
       {:error, reason} ->
         Logger.warning("Aethrion.RuntimeServer could not save state: #{inspect(reason)}")
+        server
+    end
+  end
+
+  defp journal(%{journal: nil} = server, _event), do: server
+
+  defp journal(%{journal: path} = server, event) do
+    case Aethrion.Journal.append(path, event) do
+      :ok ->
+        server
+
+      {:error, reason} ->
+        Logger.error("Aethrion.RuntimeServer could not append to its journal: #{inspect(reason)}")
         server
     end
   end

@@ -107,6 +107,7 @@ defmodule Aethrion.MixProject do
           Aethrion.Scenario,
           Aethrion.Scenario.Result,
           Aethrion.Report,
+          Aethrion.Journal,
           ~r/Aethrion\.Persistence/
         ],
         CLI: [~r/Aethrion\.CLI\./]
