@@ -183,8 +183,16 @@ defmodule Aethrion.Rules.Reply do
           %Memory{kind: :impression, data: %{"event" => "impression", "from" => from}} ->
             from == event.from
 
-          # Apologies they saw or heard the sender make to others.
+          # Apologies they saw or heard the sender make to others, and the
+          # hostile words those would answer for.
           %Memory{kind: kind, data: %{"event" => "apology_offered", "from" => from}}
+          when kind in [:observed, :heard] ->
+            from == event.from
+
+          %Memory{
+            kind: kind,
+            data: %{"event" => "message_sent", "tone" => "hostile", "from" => from}
+          }
           when kind in [:observed, :heard] ->
             from == event.from
 
@@ -257,8 +265,20 @@ defmodule Aethrion.Rules.Reply do
         )
       end)
 
-    apologies ++ List.wrap(harsh) ++ List.wrap(gift) ++ impressions
+    # How the sender treated others, as the character saw or heard it, with
+    # any amends made for it.
+    to_others = Enum.filter(mine, &toward_others?(&1, sender))
+
+    apologies ++ List.wrap(harsh) ++ List.wrap(gift) ++ impressions ++ to_others
   end
+
+  defp toward_others?(%Memory{kind: kind, data: data}, sender) when kind in [:observed, :heard] do
+    data["from"] == sender and
+      (data["event"] == "apology_offered" or
+         (data["event"] == "message_sent" and data["tone"] == "hostile"))
+  end
+
+  defp toward_others?(_memory, _sender), do: false
 
   # The usual relevant memories, plus any apology the sender made to someone
   # whose mistreatment is among them: a reply should not bring up harsh words

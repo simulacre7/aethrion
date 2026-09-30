@@ -121,6 +121,41 @@ defmodule Aethrion.NarrativeTest do
       assert trust.(after_two) == trust.(after_one) - 6 + 4
     end
 
+    test "an apology from someone seen being hostile to others is taken warily" do
+      {_state, outputs} =
+        run!(Runtime.demo_state(), [
+          Event.message_sent("user", "yuna", "Leave me alone.",
+            tone: :hostile,
+            observed_by: ["haru"]
+          ),
+          Event.message_sent("user", "haru", "You too.", tone: :hostile),
+          Event.apology_offered("user", "haru", "I was out of line.")
+        ])
+
+      assert [%{context: context, text: text}] =
+               for(o <- replies(outputs, "haru"), o.tone == :apology, do: o)
+
+      assert text == "Thank you. But I've seen how you treat others too, so give me time."
+      assert Ko.render(context) =~ "다른 사람들한테 어떻게 하는지도 봤어"
+    end
+
+    test "amends seen made to someone else are not apologies to oneself" do
+      {_state, outputs} =
+        run!(Runtime.demo_state(), [
+          Event.message_sent("user", "yuna", "Leave me alone.",
+            tone: :hostile,
+            observed_by: ["haru"]
+          ),
+          Event.apology_offered("user", "yuna", "I'm sorry.", observed_by: ["haru"]),
+          Event.message_sent("user", "haru", "You too.", tone: :hostile),
+          Event.apology_offered("user", "haru", "I was out of line.")
+        ])
+
+      assert [%{text: text}] = for(o <- replies(outputs, "haru"), o.tone == :apology, do: o)
+      refute text =~ "habit"
+      refute text =~ "seen how you treat others"
+    end
+
     test "apologizing again for one thing is not taken as a pattern" do
       events =
         [Event.message_sent("user", "haru", "Useless.", tone: :hostile)] ++
@@ -702,7 +737,7 @@ defmodule Aethrion.NarrativeTest do
         |> Aethrion.Digest.of(Runtime.demo_state())
         |> Enum.map(& &1.text)
 
-      assert texts == ["Haru and Yuna spent time together 2 times.", "A secret"]
+      assert texts == ["Haru and Yuna spent time together twice.", "A secret"]
     end
 
     test "a model prompt says what the rules weighed" do
@@ -808,6 +843,20 @@ defmodule Aethrion.NarrativeTest do
       assert told.(you: "user") =~ "what you said to Mara"
       assert told.(you: "player:sam") =~ "what Jo said to Mara"
       assert told.(you: "player:sam", locale: :ko) =~ "Jo가 Mara한테"
+    end
+
+    test "another player's own digest leaves out news about what the user did" do
+      {state, outputs} = run!(Runtime.demo_state(), [flower_for_mina(), tick(2)])
+
+      everything = Enum.map(Aethrion.Digest.of(outputs, state, you: "player:sam"), & &1.text)
+      assert Enum.any?(everything, &(&1 =~ "Yuna tells Haru"))
+
+      mine =
+        outputs
+        |> Aethrion.Digest.of(state, you: "player:sam", only_you: true)
+        |> Enum.map(& &1.text)
+
+      refute Enum.any?(mine, &(&1 =~ "Yuna tells Haru"))
     end
 
     test "a quoted line stays said to whoever heard it, whoever reads the digest" do

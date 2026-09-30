@@ -116,7 +116,7 @@ defmodule Aethrion.Digest do
   end
 
   defp outings_line(scene, count, say) do
-    "#{say.name.(scene.character_id)} and #{say.name.(scene.to)} spent time together #{count} times."
+    "#{say.name.(scene.character_id)} and #{say.name.(scene.to)} spent time together #{times(count)}."
   end
 
   # Addressed to, or about, a person other than `you`.
@@ -124,10 +124,21 @@ defmodule Aethrion.Digest do
     other? = &(is_binary(&1) and &1 != you and not State.character?(state, &1))
 
     case output do
-      %{type: :proactive_message, to: to} -> other?.(to)
-      %{type: :bond_changed, from: from, to: to} -> other?.(from) or other?.(to)
-      %{type: :memory_created, memory: %{data: %{"from" => from}}} -> other?.(from)
-      _other -> false
+      %{type: :proactive_message, to: to} ->
+        other?.(to)
+
+      %{type: :bond_changed, from: from, to: to} ->
+        other?.(from) or other?.(to)
+
+      %{type: :memory_created, memory: %{data: %{"from" => from}}} ->
+        other?.(from)
+
+      # News about what another player did or was given is theirs to hear.
+      %{type: :character_interaction, kind: :gossip, context: %{memories: memories}} ->
+        Enum.any?(memories, &(other?.(&1.data["from"]) or other?.(&1.data["to"])))
+
+      _other ->
+        false
     end
   end
 
@@ -206,13 +217,14 @@ defmodule Aethrion.Digest do
         "#{holder} remembers #{count} apologies from #{actor}."
 
       {_en, "comfort"} ->
-        "#{holder} remembers being comforted by #{actor} #{count} times."
+        "#{holder} remembers being comforted by #{actor} #{times(count)}."
 
+      # How many outings is told where they happen; this is what they add up to.
       {_en, "together"} ->
-        "#{holder} remembers #{count} afternoons with #{actor}."
+        "#{holder} treasures the time spent with #{actor}."
 
       {_en, tone} ->
-        "#{holder} remembers #{actor} being #{tone} #{count} times."
+        "#{holder} remembers #{actor} being #{tone} #{times(count)}."
     end
   end
 
@@ -238,11 +250,15 @@ defmodule Aethrion.Digest do
         actor = say.name.(actor)
         treats = if actor == "you", do: "treat", else: "treats"
 
-        "#{holder} knows how #{actor} #{treats} others: #{tone} to #{and_list(others)}, #{count} times."
+        "#{holder} knows how #{actor} #{treats} others: #{tone} to #{and_list(others)}, #{times(count)}."
     end
   end
 
   defp belief(_data, _holder, _say), do: nil
+
+  defp times(1), do: "once"
+  defp times(2), do: "twice"
+  defp times(count), do: "#{count} times"
 
   # "은비는 네가 세 번 사과한 걸 기억한다."
   defp ko_remembers("gift", actor, times),

@@ -69,13 +69,15 @@ defmodule Aethrion.Expression.Choices do
   defp silence(_request), do: 0
 
   @doc false
-  # How an apology lands: worn thin after several, a relief to someone who
+  # How an apology lands: worn thin after several, guarded when the listener
+  # has also been seen being hostile to others, a relief to someone who
   # felt left out, unneeded when nothing was wrong, and slower to heal fresh
   # tension.
   @spec apology_choice(Request.t()) ::
           :settled
           | :enough
           | :keeps_apologizing
+          | :seen_it_before
           | :left_out
           | :nothing_to_forgive
           | :once_more
@@ -88,7 +90,10 @@ defmodule Aethrion.Expression.Choices do
     earlier =
       Enum.count(
         request.memories,
-        &match?(%{data: %{"event" => "apology_offered", "from" => ^listener}}, &1)
+        &match?(
+          %{kind: :experienced, data: %{"event" => "apology_offered", "from" => ^listener}},
+          &1
+        )
       ) - 1
 
     harsh? = Enum.any?(request.memories, &harsh_from?(&1, listener))
@@ -106,9 +111,16 @@ defmodule Aethrion.Expression.Choices do
     cond do
       settled? -> :settled
       earlier >= 2 -> apologizing_again(request, listener)
+      harsh? and Request.harshness_to_others(request) != nil -> :seen_it_before
       left_out? and not harsh? -> :left_out
       not harsh? and tension(request) == 0 -> :nothing_to_forgive
       earlier == 1 -> :once_more
+      true -> first_apology(request, mood)
+    end
+  end
+
+  defp first_apology(request, mood) do
+    cond do
       tension(request) >= @guarded_tension -> :needs_time
       mood == :upset -> :shaken
       true -> :accepted
@@ -146,8 +158,12 @@ defmodule Aethrion.Expression.Choices do
   def together_choice(_request), do: 0
 
   # Harsh words from `listener`, remembered or folded into an impression.
+  # Said to the speaker: what they saw said to others is not their hurt.
   defp harsh_from?(
-         %{data: %{"event" => "message_sent", "from" => from, "tone" => tone}},
+         %{
+           kind: :experienced,
+           data: %{"event" => "message_sent", "from" => from, "tone" => tone}
+         },
          listener
        ),
        do: from == listener and tone in ["cold", "hostile"]
@@ -179,7 +195,12 @@ defmodule Aethrion.Expression.Choices do
     end
 
     apologies =
-      numbers.(&match?(%{data: %{"event" => "apology_offered", "from" => ^listener}}, &1))
+      numbers.(
+        &match?(
+          %{kind: :experienced, data: %{"event" => "apology_offered", "from" => ^listener}},
+          &1
+        )
+      )
 
     harsh =
       numbers.(

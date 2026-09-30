@@ -69,7 +69,7 @@ defmodule Aethrion.DigestTest do
     warm = &Event.message_sent("user", "mina", &1, tone: :warm)
     items = digest([warm.("a"), warm.("b"), Event.time_tick("t", hours: 100)])
 
-    assert %{kind: :belief, event_id: "e3", text: "Mina remembers you being warm 2 times."} in items
+    assert %{kind: :belief, event_id: "e3", text: "Mina remembers you being warm twice."} in items
 
     assert %{text: "Mina는 네가 두 번 다정하게 말한 걸 기억한다."} =
              [warm.("a"), warm.("b"), Event.time_tick("t", hours: 100)]
@@ -106,7 +106,7 @@ defmodule Aethrion.DigestTest do
 
     assert Enum.any?(
              items,
-             &(&1.text == "Haru knows how you treat others: hostile to Mina and Yuna, 2 times.")
+             &(&1.text == "Haru knows how you treat others: hostile to Mina and Yuna, twice.")
            )
 
     ko =

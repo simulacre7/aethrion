@@ -62,11 +62,17 @@ defmodule Aethrion.Expression.Templates.Ko do
   end
 
   @doc """
-  A count in native Korean with 번: `times(3)` is "세 번". Past ten, digits.
+  A count in native Korean with 번: `times(3)` is "세 번", `times(21)` is
+  "스물한 번". From a hundred, digits.
   """
   @spec times(non_neg_integer()) :: String.t()
-  def times(count) when count in 1..10,
-    do: Enum.at(~w(한 두 세 네 다섯 여섯 일곱 여덟 아홉 열), count - 1) <> " 번"
+  def times(20), do: "스무 번"
+
+  def times(count) when count in 1..99 do
+    tens = Enum.at(["", "열", "스물", "서른", "마흔", "쉰", "예순", "일흔", "여든", "아흔"], div(count, 10))
+    ones = Enum.at(["", "한", "두", "세", "네", "다섯", "여섯", "일곱", "여덟", "아홉"], rem(count, 10))
+    tens <> ones <> " 번"
+  end
 
   def times(count), do: "#{count}번"
 
@@ -162,6 +168,7 @@ defmodule Aethrion.Expression.Templates.Ko do
       :settled -> "알았어, 이제 진짜 괜찮아."
       :enough -> "이미 사과했잖아. 정말 괜찮아."
       :keeps_apologizing -> "계속 미안하다고만 하네. 그냥 그런 일이 없었으면 좋겠어."
+      :seen_it_before -> "고마워. 그런데 네가 다른 사람들한테 어떻게 하는지도 봤어. 시간이 좀 필요해."
       :left_out -> "고마워. 나도 좀 챙겨 줬으면 해서 그랬어."
       :nothing_to_forgive -> "사과할 거 없어. 우리 괜찮아."
       :once_more -> "알았어... 그래도 자꾸 그러진 말아 줘."
@@ -489,27 +496,53 @@ defmodule Aethrion.Expression.Templates.Ko do
   @items %{
     "book" => "책",
     "bouquet" => "꽃다발",
+    "bracelet" => "팔찌",
+    "bread" => "빵",
     "cake" => "케이크",
+    "candle" => "양초",
+    "candy" => "사탕",
     "card" => "카드",
     "chocolate" => "초콜릿",
     "coffee" => "커피",
     "cookie" => "쿠키",
     "cookies" => "쿠키",
+    "cup" => "컵",
+    "drawing" => "그림",
+    "earrings" => "귀걸이",
     "flower" => "꽃",
     "flowers" => "꽃",
     "gift" => "선물",
+    "gloves" => "장갑",
+    "hairpin" => "머리핀",
+    "hat" => "모자",
+    "keychain" => "열쇠고리",
+    "kite" => "연",
     "letter" => "편지",
     "map" => "지도",
+    "muffin" => "머핀",
+    "mug" => "머그컵",
     "necklace" => "목걸이",
     "notebook" => "노트",
+    "orange" => "귤",
+    "painting" => "그림",
     "pastry box" => "디저트 상자",
+    "perfume" => "향수",
+    "photo" => "사진",
+    "picture" => "사진",
+    "pie" => "파이",
     "pin" => "배지",
+    "plant" => "화분",
     "postcard" => "엽서",
     "ribbon" => "리본",
     "ring" => "반지",
     "scarf" => "목도리",
     "snack" => "간식",
-    "tea" => "홍차"
+    "sweater" => "스웨터",
+    "tangerine" => "귤",
+    "tea" => "홍차",
+    "teddy bear" => "곰 인형",
+    "umbrella" => "우산",
+    "wine" => "와인"
   }
 
   @doc """
