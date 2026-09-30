@@ -214,6 +214,21 @@ defmodule Aethrion.JournalTest do
       assert RuntimeServer.get_state(restarted) == live
     end
 
+    test "a world can compact its journal every n events", %{path: path} do
+      name = :"compacting_#{System.unique_integer([:positive])}"
+      start_supervised!({World, name: name, journal: path, journal_compact_every: 2}, id: :w1)
+
+      for hours <- 1..5, do: {:ok, _step} = World.step(name, Event.time_tick("t", hours: hours))
+
+      # Compacted after events 2 and 4; event 5 is the only one left.
+      assert {:ok, _state, [%{type: :time_tick, hours: 5}]} = Journal.read(path)
+      live = World.state(name)
+      stop_supervised!(:w1)
+
+      start_supervised!({World, name: name, journal: path}, id: :w2)
+      assert World.state(name) == live
+    end
+
     test "servers without a journal refuse to compact" do
       server = start_supervised!(RuntimeServer)
 

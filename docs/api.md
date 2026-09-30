@@ -293,6 +293,7 @@ A journal grows with every event and is replayed in full on start. Compaction re
 
 ```elixir
 Aethrion.World.compact_journal(:garden)                                   # a running world
+{Aethrion.World, name: :garden, journal: "tmp/garden.jsonl", journal_compact_every: 1_000}  # automatically
 {:ok, state, 1_204} = Aethrion.Journal.compact("tmp/garden.jsonl", archive: "tmp/garden-2026-10.jsonl")
 ```
 

@@ -42,6 +42,7 @@ defmodule Aethrion.World do
   - `:pipeline` - an `Aethrion.Pipeline`
   - `:persistence` - `{adapter, opts}`, see `Aethrion.RuntimeServer`
   - `:journal` - path of an `Aethrion.Journal` to rebuild from and append to
+  - `:journal_compact_every` - compact the journal after this many events
   - `:scheduler` - keyword options for `Aethrion.Scheduler` (without `:runtime`)
   - `:expression` - keyword options for asynchronous rendering (without
     `:task_supervisor`), see `Aethrion.RuntimeServer`
@@ -74,6 +75,7 @@ defmodule Aethrion.World do
           :pipeline,
           :persistence,
           :journal,
+          :journal_compact_every,
           :history_limit,
           :max_depth,
           :max_events

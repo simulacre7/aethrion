@@ -57,6 +57,10 @@ defmodule Aethrion.RuntimeServer do
     otherwise it is created from the initial state. Every successful dispatch
     appends its host event. Cannot be combined with `:persistence`, and
     `put_state/2` is refused while journaling.
+  - `:journal_compact_every` - with `:journal`, compact the journal (see
+    `compact_journal/1`) after this many host events, so a long-running world
+    starts quickly. A failed compaction is logged and retried after the next
+    event; the journal stays valid either way.
   - `:expression` - keyword options enabling asynchronous rendering:
     `:adapter` (required), `:adapter_opts`, `:timeout` (ms, default
     #{@default_expression_timeout}), `:task_supervisor` (a `Task.Supervisor`;
@@ -134,6 +138,8 @@ defmodule Aethrion.RuntimeServer do
          limits: Keyword.take(opts, [:max_depth, :max_events]),
          persistence: Keyword.get(opts, :persistence),
          journal: Keyword.get(opts, :journal),
+         compact_every: Keyword.get(opts, :journal_compact_every),
+         since_compaction: 0,
          history: [],
          history_limit: Keyword.get(opts, :history_limit, @default_history_limit),
          subscribers: %{},
@@ -156,6 +162,7 @@ defmodule Aethrion.RuntimeServer do
           :ok ->
             server =
               %{server | world: step.state}
+              |> maybe_compact()
               |> record_history(step.event)
               |> persist()
               |> broadcast({:dispatched, step})
@@ -196,7 +203,10 @@ defmodule Aethrion.RuntimeServer do
   end
 
   def handle_call(:compact_journal, _from, %{journal: path} = server) do
-    {:reply, Aethrion.Journal.rewrite(path, server.world), server}
+    case Aethrion.Journal.rewrite(path, server.world) do
+      :ok -> {:reply, :ok, %{server | since_compaction: 0}}
+      error -> {:reply, error, server}
+    end
   end
 
   def handle_call({:subscribe, pid}, _from, server) do
@@ -404,6 +414,26 @@ defmodule Aethrion.RuntimeServer do
         server
     end
   end
+
+  defp maybe_compact(%{journal: path, compact_every: every} = server)
+       when is_binary(path) and is_integer(every) and every > 0 do
+    count = server.since_compaction + 1
+
+    if count >= every do
+      case Aethrion.Journal.rewrite(path, server.world) do
+        :ok ->
+          %{server | since_compaction: 0}
+
+        {:error, error} ->
+          Logger.warning("Aethrion.RuntimeServer could not compact its journal: #{error.message}")
+          %{server | since_compaction: count}
+      end
+    else
+      %{server | since_compaction: count}
+    end
+  end
+
+  defp maybe_compact(server), do: server
 
   defp journal(%{journal: nil}, _event), do: :ok
 
