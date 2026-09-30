@@ -116,6 +116,10 @@ defmodule Aethrion.Rules.Reply do
           %Memory{kind: :impression, data: %{"event" => "impression", "from" => from}} ->
             from == event.from
 
+          # Gifts they saw the sender give someone else.
+          %Memory{kind: :observed, data: %{"event" => "gift_received", "from" => from}} ->
+            from == event.from
+
           _other ->
             false
         end

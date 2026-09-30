@@ -49,9 +49,16 @@ defmodule Aethrion.Expression.Templates.Ko do
       %{data: %{"to" => to}} ->
         friend = name(request, to)
 
-        if calm?,
-          do: "#{friend}한테 한 말은 좀 모질었어. 무슨 일 있어?",
-          else: "#{friend}한테 한 말, 좀 심했어. #{with_particle(friend, :topic)} 그런 말 들을 이유 없었어."
+        lines =
+          if calm?,
+            do: ["#{friend}한테 한 말은 좀 모질었어. 무슨 일 있어?", "#{friend}한테 그런 말은 좀 아니었어. 괜찮은 거야?"],
+            else: [
+              "#{friend}한테 한 말, 좀 심했어. 걔는 그런 말 들을 이유 없었어.",
+              "#{friend}한테 왜 그렇게 말해? 그건 공평하지 않았어.",
+              "#{friend}한테 말하는 거 봤어. 그러면 안 돼."
+            ]
+
+        Templates.pick(request, lines)
 
       nil ->
         if calm?,
@@ -273,7 +280,8 @@ defmodule Aethrion.Expression.Templates.Ko do
   # have no final consonant (flower 플라워, show 쇼, Smith 스미스), nor do
   # endings Korean reads with an added vowel: -s, -x, -f, -v, -z, -d (Alex
   # 알렉스, scarf 스카프, postcard 포스트카드), and -t, -k, -p after another
-  # consonant (desk 데스크, gift 기프트). Other consonants do (book 북, Sol 솔).
+  # consonant (desk 데스크, gift 기프트). Other consonants do (book 북, Sol 솔),
+  # as do -ck and a silent e after n or m.
   defp latin_batchim?(word) do
     letters =
       word
@@ -283,6 +291,9 @@ defmodule Aethrion.Expression.Templates.Ko do
       |> String.to_charlist()
 
     case letters do
+      # -ck (Jack 잭), and -ne or -me with a silent e (Anne 앤, Jerome 제롬).
+      [?k, ?c | _] -> true
+      [?e, before | _] when before in ~c"nm" -> true
       [last | _] when last in ~c"aeiouyrwhsxfvzd" -> false
       [last, before | _] when last in ~c"tkp" -> before in ~c"aeiouy"
       [_last | _] -> true
@@ -438,6 +449,10 @@ defmodule Aethrion.Expression.Templates.Ko do
 
         codepoint in ?a..?z or codepoint in ?A..?Z ->
           {:ok, latin_batchim?(word)}
+
+        # Digits as read in Korean: 영, 일, 삼, 육, 칠, 팔 end in a consonant.
+        codepoint in ?0..?9 ->
+          {:ok, codepoint in ~c"013678"}
 
         true ->
           nil

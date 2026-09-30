@@ -32,6 +32,11 @@ defmodule Aethrion.Digest do
 
   - `:locale` - `:en` (default) or `:ko`
   - `:you` - the person addressed as "you" (default `"user"`)
+  - `:only_you` - `true` leaves out what concerns other people: messages
+    characters sent them, bonds toward them, and beliefs about them, so each
+    player in a shared world gets their own digest (default `false`)
+
+  Players are named by `Aethrion.State` `:people` display names.
   """
 
   alias Aethrion.State
@@ -46,13 +51,71 @@ defmodule Aethrion.Digest do
   def of(outputs, %State{} = state, opts \\ []) do
     locale = opts |> Keyword.get(:locale, :en) |> Aethrion.Report.supported_locale!()
 
+    you = Keyword.get(opts, :you, "user")
+
     say = %{
       locale: locale,
-      name: &name(state, &1, Keyword.get(opts, :you, "user"), locale)
+      name: &name(state, &1, you, locale)
     }
 
-    events = Enum.flat_map(outputs, &event_item(&1, say))
+    outputs =
+      if Keyword.get(opts, :only_you, false),
+        do: Enum.reject(outputs, &about_someone_else?(&1, state, you)),
+        else: outputs
+
+    events = outputs |> Enum.flat_map(&event_item(&1, say)) |> group_outings(outputs, say)
     events ++ net_bonds(outputs, say) ++ net_moods(outputs, say)
+  end
+
+  # Friends who spent time together more than once get one line, where their
+  # first outing was: "Haru and Yuna spent time together 4 times."
+  defp group_outings(items, outputs, say) do
+    scenes = Enum.filter(outputs, &match?(%{type: :character_interaction, kind: :together}, &1))
+
+    outings =
+      scenes
+      |> Enum.group_by(&Enum.sort([&1.character_id, &1.to]))
+      |> Map.filter(fn {_pair, list} -> length(list) > 1 end)
+
+    by_event = Map.new(scenes, &{Map.get(&1, :event_id), &1})
+
+    {items, _seen} =
+      Enum.flat_map_reduce(items, MapSet.new(), fn item, seen ->
+        with :scene <- item.kind,
+             %{} = scene <- Map.get(by_event, item.event_id),
+             pair = Enum.sort([scene.character_id, scene.to]),
+             [first | _] = list <- Map.get(outings, pair) do
+          if MapSet.member?(seen, pair),
+            do: {[], seen},
+            else:
+              {[%{item | text: outings_line(first, length(list), say)}], MapSet.put(seen, pair)}
+        else
+          _single -> {[item], seen}
+        end
+      end)
+
+    items
+  end
+
+  defp outings_line(scene, count, %{locale: :ko} = say) do
+    "#{Ko.with_particle(say.name.(scene.character_id), :with)} " <>
+      "#{Ko.with_particle(say.name.(scene.to), :topic)} #{count}번 함께 시간을 보냈다."
+  end
+
+  defp outings_line(scene, count, say) do
+    "#{say.name.(scene.character_id)} and #{say.name.(scene.to)} spent time together #{count} times."
+  end
+
+  # Addressed to, or about, a person other than `you`.
+  defp about_someone_else?(output, state, you) do
+    other? = &(is_binary(&1) and &1 != you and not State.character?(state, &1))
+
+    case output do
+      %{type: :proactive_message, to: to} -> other?.(to)
+      %{type: :bond_changed, from: from, to: to} -> other?.(from) or other?.(to)
+      %{type: :memory_created, memory: %{data: %{"from" => from}}} -> other?.(from)
+      _other -> false
+    end
   end
 
   defp event_item(%{type: :character_interaction} = output, say) do

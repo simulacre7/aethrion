@@ -81,10 +81,19 @@ Aethrion.Rules.Bond.derive(Aethrion.State.get_relationship(state, "mina", player
 
 ## Several people in one world
 
-Any actor id that is not a character is a person. Give each player their own id and relationships; characters address proactive messages to the person they are about (jealousy to the gift's giver, curiosity to the person the news is about, protectiveness to whoever was hostile).
+Any actor id that is not a character is a person. Give each player their own id, a display name, and relationships; characters address proactive messages to the person they are about (jealousy to the gift's giver, curiosity to the person the news is about, protectiveness to whoever was hostile).
 
 ```elixir
+state = Aethrion.State.new(characters: cast, relationships: rels,
+                           people: %{"player:alex" => "Alex", "player:sam" => "Sam"})
+
 Aethrion.Event.gift_received("player:alex", "mina", "ring", observed_by: ["yuna"])
+```
+
+Lines name players by their display name ("Tomas tells Elin what Alex said to Mara"). Each player gets their own digest: `you:` addresses them as "you", and `only_you: true` leaves out messages to, bonds toward, and beliefs about the other players:
+
+```elixir
+Aethrion.Digest.of(outputs, state, you: "player:sam", only_you: true)
 ```
 
 See `priv/scenarios/11_two_regulars.json`.

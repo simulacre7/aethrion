@@ -23,7 +23,9 @@ defmodule Aethrion.Expression.Request do
     have; `reunion?/1` says whether that is a long absence
   - `repeats` - for replies, how many messages in this tone (or gifts, or
     apologies) from the listener the speaker still remembers, this one
-    included (at least 1), so a reply can vary or escalate
+    included (at least 1), so a reply can vary or escalate; for protective
+    messages, how many characters (this one included) have spoken up about
+    the same incident
   - `goodwill` - for replies to cold or hostile words, whether the rules gave
     the listener the benefit of the doubt (`Aethrion.Rules.Message`), or
     `nil` when not known

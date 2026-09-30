@@ -59,6 +59,7 @@ Aethrion.State.new(
 | `clock` | simulated hours elapsed |
 | `seq` | events processed; used for event ids |
 | `cooldowns` | `%{key => clock}` for rate-limited behavior |
+| `people` | `%{id => display name}` for players and other actors who are not characters (`State.new(people: ...)`, saved as `"people"`) |
 
 `Aethrion.Runtime.demo_state/0` returns the built-in Mina / Yuna / Haru world.
 
@@ -196,7 +197,7 @@ steps
 
 ## Digest
 
-`Aethrion.Digest.of(outputs, state, opts)` turns a stretch of outputs into short lines for people: scenes between characters, messages characters sent, and new beliefs in order, then net bond and mood changes (a bond that went down and back up again is left out). `locale: :ko` gives Korean lines; `you:` names the person addressed as "you" (default `"user"`). Each item is `%{kind, event_id, text}`. In the interactive demo, `digest` shows what changed since the last one.
+`Aethrion.Digest.of(outputs, state, opts)` turns a stretch of outputs into short lines for people: scenes between characters, messages characters sent, and new beliefs in order, then net bond and mood changes (a bond that went down and back up again is left out). `locale: :ko` gives Korean lines; `you:` names the person addressed as "you" (default `"user"`), and `only_you: true` leaves out what concerns other people, for a player's own digest in a shared world. Players are named by the state's `people` display names. Each item is `%{kind, event_id, text}`. In the interactive demo, `digest` shows what changed since the last one.
 
 ```elixir
 Aethrion.Digest.of(outputs_since_last_visit, state)

@@ -278,7 +278,7 @@ defmodule Aethrion.RuntimeTest do
       assert [] = of_type(outputs, :character_interaction)
     end
 
-    test "repeated gifts accumulate but the jealous message fires once" do
+    test "repeated gifts the same day are felt once, and the jealous message fires once" do
       events = [
         flower_for_mina("t1"),
         Event.gift_received("user", "mina", "book", observed_by: ["yuna"], at: "t2"),
@@ -289,7 +289,7 @@ defmodule Aethrion.RuntimeTest do
       {state, outputs} = run!(Runtime.demo_state(), events)
 
       assert State.get_relationship(state, "mina", "user").affinity == 70
-      assert State.get_relationship(state, "yuna", "mina").tension == 24
+      assert State.get_relationship(state, "yuna", "mina").tension == 8
       assert [%{reason: :jealous}] = proactive(outputs, "yuna")
     end
 
@@ -336,7 +336,8 @@ defmodule Aethrion.RuntimeTest do
         assert Map.fetch!(relationship, field) in -100..100
       end
 
-      assert character_state(state, "yuna").jealousy == 100
+      assert State.get_relationship(state, "mina", "user").affinity == 100
+      assert character_state(state, "mina").joy == 100
     end
   end
 

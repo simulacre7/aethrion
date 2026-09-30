@@ -386,7 +386,8 @@ defmodule Aethrion.ReputationTest do
         land([impression("impression", "warm", 5), impression("reputation", "hostile", 2)], :warm)
 
       assert rel.affinity == 4
-      assert [%{text: "That's sweet of you."}] = of_type(step.outputs, :reply)
+      assert [%{text: text}] = of_type(step.outputs, :reply)
+      refute text =~ "heard how you treat people"
     end
 
     test "a hostile record with the receiver outweighs a warm reputation" do

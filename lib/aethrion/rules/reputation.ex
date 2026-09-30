@@ -9,7 +9,9 @@ defmodule Aethrion.Rules.Reputation do
     `care_threshold`) changes how they feel about the sender: hostility costs
     trust and adds tension, coldness costs a little trust, warmth earns a little
     affinity and trust, and an apology earns a little trust and eases tension
-    (never below zero): making amends in public repairs a reputation.
+    (never below zero): making amends in public repairs a reputation. What
+    a character only sees or hears raises affinity and trust no higher than
+    `goodwill_cap` (60).
   - **Hearsay.** A character who hears about such a message or apology through
     `:gossip_shared` judges the sender the same way, at `heard_percent` of the
     effect.
@@ -40,7 +42,8 @@ defmodule Aethrion.Rules.Reputation do
       warm_importance: 40,
       apology_trust: 2,
       apology_tension: -3,
-      apology_importance: 45
+      apology_importance: 45,
+      goodwill_cap: 60
     ]
 
   alias Aethrion.{Character, Memory, State, Transition}
@@ -132,6 +135,18 @@ defmodule Aethrion.Rules.Reputation do
   # Easing tension never makes it negative.
   defp adjust(transition, judge, actor, :tension, amount) when amount < 0,
     do: Apology.ease_tension(transition, judge, actor, amount)
+
+  # What others see earns liking and trust only up to `goodwill_cap`: past
+  # that, it takes dealing with the person yourself.
+  defp adjust(transition, judge, actor, field, amount)
+       when field in [:affinity, :trust] and amount > 0 do
+    current = Map.fetch!(State.get_relationship(transition.state, judge, actor), field)
+
+    case min(amount, Transition.param(transition, :goodwill_cap) - current) do
+      room when room > 0 -> Transition.adjust_relationship(transition, judge, actor, field, room)
+      _none -> transition
+    end
+  end
 
   defp adjust(transition, judge, actor, field, amount),
     do: Transition.adjust_relationship(transition, judge, actor, field, amount)

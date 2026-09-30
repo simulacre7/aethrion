@@ -42,6 +42,11 @@
       "type": "object",
       "required": ["characters"],
       "properties": {
+        "people": {
+          "description": "Display names for actors who are not characters (players): {\"player:alex\": \"Alex\"}.",
+          "type": "object",
+          "additionalProperties": {"type": "string"}
+        },
         "characters": {
           "type": "array",
           "items": {

@@ -197,7 +197,13 @@ defmodule Aethrion.Rules.Proactive do
            State.get_relationship(state, id, friend).affinity >= params.protective_affinity and
            State.cooldown_ready?(state, incident, :once) and
            State.cooldown_ready?(state, pair, params.cooldown_hours) do
-        {:protective, [incident, pair], person, memories: [memory]}
+        # Others who already spoke up about it, so the words differ.
+        spoken =
+          Enum.count(state.cooldowns, fn {key, _at} ->
+            String.ends_with?(key, ":protested:#{memory.topic}")
+          end)
+
+        {:protective, [incident, pair], person, memories: [memory], repeats: spoken + 1}
       end
     end)
   end

@@ -337,22 +337,42 @@ defmodule Aethrion.NarrativeTest do
   end
 
   describe "gifts" do
-    test "a gift gets a reply that fits, and reassures someone jealous" do
-      state = State.update_character_state(Runtime.demo_state(), "yuna", &%{&1 | jealousy: 30})
+    test "a gift gets a reply that fits, and reassures someone jealous of that giver" do
+      {state, _outputs} = run!(Runtime.demo_state(), [flower_for_mina()])
 
-      {state, outputs} =
-        run!(state, [Event.gift_received("user", "yuna", "ribbon")])
+      {after_gift, outputs} = run!(state, [Event.gift_received("user", "yuna", "ribbon")])
 
       assert [%{tone: :gift, text: "For me? ...I thought you'd forgotten about me."} = reply] =
                replies(outputs, "yuna")
 
       assert Ko.render(reply.context) == "나한테 주는 거야? ...나 잊은 줄 알았어."
-      assert character_state(state, "yuna").jealousy == 20
+      assert character_state(after_gift, "yuna").jealousy == 5
+
+      # Jealous, but not of this giver: just thanks.
+      {_state, outputs} = run!(state, [Event.gift_received("sam", "yuna", "ribbon")])
+      assert [%{text: "Thank you for the ribbon!"}] = replies(outputs, "yuna")
 
       {_state, outputs} =
         run!(Runtime.demo_state(), [Event.gift_received("user", "haru", "tea")])
 
       assert [%{text: "Thank you for the tea!"}] = replies(outputs, "haru")
+    end
+
+    test "a second gift the same day is noticed, not felt again, and never by its receiver" do
+      gift = &Event.gift_received("user", &1, &2, observed_by: ["yuna"])
+
+      {state, _outputs} =
+        run!(Runtime.demo_state(), [gift.("mina", "flower"), gift.("mina", "tea")])
+
+      assert character_state(state, "yuna").jealousy == 15
+
+      {state, _outputs} =
+        run!(Runtime.demo_state(), [
+          Event.gift_received("user", "yuna", "ribbon"),
+          gift.("mina", "flower")
+        ])
+
+      assert character_state(state, "yuna").jealousy == 0
     end
 
     test "gossip about a gift to the teller is told as their own good news" do
@@ -519,6 +539,101 @@ defmodule Aethrion.NarrativeTest do
 
       assert Aethrion.Expression.Templates.render(request) == "Thank you, I love it!"
       assert Ko.render(request) == "마음에 들어. 고마워!"
+    end
+  end
+
+  describe "several players" do
+    defp village do
+      State.new(
+        people: %{"player:alex" => "Alex", "player:sam" => "Sam"},
+        characters: [
+          %Aethrion.Character{id: "mara", name: "Mara"},
+          %Aethrion.Character{id: "tomas", name: "Tomas", traits: [:talkative]},
+          %Aethrion.Character{id: "elin", name: "Elin"}
+        ],
+        relationships: [
+          %Aethrion.Relationship{from: "tomas", to: "mara", affinity: 40, trust: 40},
+          %Aethrion.Relationship{from: "elin", to: "mara", affinity: 40, trust: 40},
+          %Aethrion.Relationship{from: "tomas", to: "elin", affinity: 30, trust: 40},
+          %Aethrion.Relationship{from: "mara", to: "player:alex", affinity: 30, trust: 20},
+          %Aethrion.Relationship{from: "mara", to: "player:sam", affinity: 30, trust: 20},
+          %Aethrion.Relationship{from: "tomas", to: "player:alex", affinity: 30, trust: 20},
+          %Aethrion.Relationship{from: "elin", to: "player:alex", affinity: 30, trust: 20},
+          %Aethrion.Relationship{from: "elin", to: "player:sam", affinity: 30, trust: 20}
+        ]
+      )
+    end
+
+    test "players are named, and each digest keeps to its own player" do
+      {state, outputs} =
+        run!(village(), [
+          Event.message_sent("player:alex", "mara", "Get lost.",
+            tone: :hostile,
+            observed_by: ["tomas", "elin"]
+          ),
+          Event.message_sent("player:sam", "elin", "Morning!", tone: :warm),
+          tick(6)
+        ])
+
+      texts = Enum.map(Aethrion.Digest.of(outputs, state, you: "player:sam"), & &1.text)
+      assert Enum.any?(texts, &(&1 =~ "Alex"))
+      refute Enum.any?(texts, &(&1 =~ "player:"))
+
+      mine =
+        outputs
+        |> Aethrion.Digest.of(state, you: "player:sam", only_you: true)
+        |> Enum.map(& &1.text)
+
+      refute Enum.any?(mine, &(&1 =~ "reached out to Alex"))
+      assert Enum.any?(texts, &(&1 =~ "reached out to Alex"))
+    end
+
+    test "witnesses who speak up about the same thing use different words" do
+      {_state, outputs} =
+        run!(village(), [
+          Event.message_sent("player:alex", "mara", "Get lost.",
+            tone: :hostile,
+            observed_by: ["tomas", "elin"]
+          )
+        ])
+
+      lines =
+        for %{reason: :protective, text: text} <- of_type(outputs, :proactive_message), do: text
+
+      assert length(lines) == 2
+      assert length(Enum.uniq(lines)) == 2
+    end
+
+    test "harsh words apologized for in front of the teller are not passed on" do
+      {_state, outputs} =
+        run!(village(), [
+          Event.message_sent("player:alex", "mara", "Get lost.",
+            tone: :hostile,
+            observed_by: ["tomas"]
+          ),
+          Event.apology_offered("player:alex", "mara", "I'm sorry.", observed_by: ["tomas"]),
+          tick(6)
+        ])
+
+      refute Enum.any?(
+               of_type(outputs, :character_interaction),
+               &(&1.kind == :gossip and &1.text =~ "Get lost.")
+             )
+    end
+
+    test "a month of the same kind words keeps finding new ones" do
+      events =
+        for _day <- 1..30,
+            event <- [
+              Event.message_sent("player:alex", "mara", "Morning!", tone: :warm),
+              tick(24)
+            ],
+            do: event
+
+      {_state, outputs} = run!(village(), events)
+      texts = for o <- replies(outputs, "mara"), do: o.text
+      {_line, most} = texts |> Enum.frequencies() |> Enum.max_by(&elem(&1, 1))
+      assert most <= 12
     end
   end
 

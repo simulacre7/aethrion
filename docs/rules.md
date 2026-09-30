@@ -48,7 +48,7 @@ Outputs report the delta that was actually applied after clamping. `energy` is r
 **observation** - for each observer (the giver and receiver are never observers, and inactive or blocked characters see nothing):
 
 - remembers what they saw (importance 60, kind `:observed`, same topic as the gift)
-- if they care about the giver (affinity >= 30): jealousy +10 (`:sensitive` +5, `:calm` -5) and tension toward the receiver +8
+- if they care about the giver (affinity >= 30): jealousy +10 (`:sensitive` +5, `:calm` -5) and tension toward the receiver +8, once a day per giver (a second gift the same day is noticed, not felt again), and not at all if the giver gave them something in the last day
 
 ### `message_sent` -> `message`, `reply`, `reputation`
 
@@ -79,6 +79,8 @@ History changes how a message lands, through impressions built by consolidation:
 | `warm` | affinity +2, trust +1 |
 | `cold` | trust -2, tension +2 |
 | `hostile` | trust -4, tension +4 |
+
+What a character only sees or hears raises affinity and trust no higher than 60 (`goodwill_cap`); past that, it takes dealing with the person yourself. When several witnesses speak up about the same incident, each says it differently.
 
 ### `apology_offered` -> `apology`, `reply`, `reputation`
 
@@ -117,7 +119,7 @@ Secondhand memories fold too. Faded `:observed` and `:heard` memories of how an 
 - firsthand memories with importance >= 60
 - talkative characters also retell `:heard` memories with importance >= 30
 
-At most one confidence per character per tick. It is enqueued as a `gossip_shared` follow-up event.
+At most one confidence per character per tick, and never harsh words the teller knows were apologized for. It is enqueued as a `gossip_shared` follow-up event.
 
 **companionship** - a character whose mood is `lonely` invites the friend they like most (affinity >= 30) who can act, at most once per 12 simulated hours per pair; each character joins at most one outing per tick. Enqueued as `time_spent_together`.
 

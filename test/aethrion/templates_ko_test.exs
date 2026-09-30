@@ -110,4 +110,20 @@ defmodule Aethrion.TemplatesKoTest do
       assert line == :unicode.characters_to_nfc_binary(line)
     end
   end
+
+  test "particles after -ck, a silent e, and digits" do
+    assert Aethrion.Expression.Templates.Ko.with_particle("Jack", :topic) == "Jack은"
+    assert Aethrion.Expression.Templates.Ko.with_particle("Anne", :subject) == "Anne이"
+    assert Aethrion.Expression.Templates.Ko.with_particle("Jerome", :topic) == "Jerome은"
+    assert Aethrion.Expression.Templates.Ko.with_particle("Mike", :topic) == "Mike는"
+    assert Aethrion.Expression.Templates.Ko.with_particle("3", :topic) == "3은"
+    assert Aethrion.Expression.Templates.Ko.with_particle("2", :topic) == "2는"
+  end
+
+  test "items take the article they need" do
+    assert Aethrion.Expression.Templates.with_article("flower") == "a flower"
+    assert Aethrion.Expression.Templates.with_article("apple") == "an apple"
+    assert Aethrion.Expression.Templates.with_article("cookies") == "cookies"
+    assert Aethrion.Expression.Templates.with_article("glass") == "a glass"
+  end
 end

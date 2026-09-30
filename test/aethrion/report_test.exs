@@ -66,13 +66,30 @@ defmodule Aethrion.ReportTest do
   end
 
   test "the digest keeps net changes when it is shortened" do
-    html =
-      Report.html(
-        result(Enum.find(Scenario.bundled(), &String.ends_with?(&1, "08_old_friends.json")))
-      )
+    # A week of gifts to Mina in front of Yuna: more happens than fits.
+    events =
+      for day <- 1..7,
+          event <- [
+            %{
+              "type" => "gift_received",
+              "from" => "user",
+              "to" => "mina",
+              "item" => "flower #{day}",
+              "observed_by" => ["yuna"]
+            },
+            %{"type" => "time_tick", "hours" => 26}
+          ],
+          do: event
+
+    {:ok, scenario} =
+      Scenario.from_data(%{"name" => "A week of flowers", "world" => "demo", "events" => events})
+
+    {:ok, result} = Scenario.run(scenario)
+    html = Report.html(result)
 
     assert html =~ ~s(<li class="more">…and)
-    assert html =~ ~s[<li class="bond">Mina warmed to you (now close).</li>]
+    assert html =~ ~s[<li class="bond">Yuna cooled toward Mina (now strained).</li>]
+    assert html =~ ~s[<li class="scene">Haru and Yuna spent time together 7 times.</li>]
   end
 
   test "reports open with a digest of what happened" do

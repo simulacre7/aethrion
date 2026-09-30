@@ -61,8 +61,12 @@ defmodule Aethrion.SocialCascadeTest do
     assert [%{kind: :comfort}] =
              first |> of_type(:character_interaction) |> Enum.filter(&(&1.kind == :comfort))
 
+    # Another gift to Mina, and Yuna is jealous again (a second gift the same
+    # day is noticed, not felt, so set it directly).
     {state, _outputs} =
       dispatch!(state, Event.gift_received("user", "mina", "cake", observed_by: ["yuna"]))
+
+    state = State.update_character_state(state, "yuna", &%{&1 | jealousy: 30})
 
     {_state, second} = dispatch!(state, Event.time_tick("t3", hours: 2))
 

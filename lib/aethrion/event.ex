@@ -175,7 +175,7 @@ defmodule Aethrion.Event do
   def describe(event, names \\ &Function.identity/1)
 
   def describe(%{type: :gift_received} = event, names) do
-    "#{names.(event.from)} gives #{names.(event.to)} a #{event.item}" <>
+    "#{names.(event.from)} gives #{names.(event.to)} #{Aethrion.Expression.Templates.with_article(event.item)}" <>
       observers_suffix(event, names)
   end
 

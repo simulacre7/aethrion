@@ -5,12 +5,16 @@ defmodule Aethrion.Rules.Observation do
   (affinity >= 30) also become jealous and tense toward the receiver.
 
   Trait modifiers: `:sensitive` +5 jealousy, `:calm` -5 jealousy.
+
+  Jealousy is about being left out, so it is felt once a day per giver
+  (a second gift the same day is noticed, not felt again), and not at all by
+  someone the giver gave something to in the last day.
   """
 
   use Aethrion.Rule,
     id: :observation,
     description:
-      "Observers remember the gift; those who care about the giver get jealous (+10, sensitive +5, calm -5) and tense toward the receiver (+8).",
+      "Observers remember the gift; those who care about the giver get jealous (+10, sensitive +5, calm -5) and tense toward the receiver (+8), once a day per giver, unless the giver just gave them something too.",
     params: [
       care_threshold: 30,
       jealousy_delta: 10,
@@ -36,9 +40,13 @@ defmodule Aethrion.Rules.Observation do
   defp observe(%Transition{event: event, state: state} = transition, observer_id) do
     observer = State.character(state, observer_id)
 
+    felt_key = "jealous:#{observer_id}:#{event.from}"
+
     cares? =
       State.get_relationship(state, observer_id, event.from).affinity >=
-        Transition.param(transition, :care_threshold)
+        Transition.param(transition, :care_threshold) and
+        State.cooldown_ready?(state, felt_key, 24) and
+        not given_lately?(state, observer_id, event.from)
 
     transition
     |> Transition.note(
@@ -48,6 +56,7 @@ defmodule Aethrion.Rules.Observation do
     |> then(fn transition ->
       if cares? do
         transition
+        |> Transition.put_cooldown(felt_key)
         |> Transition.adjust_character(
           observer_id,
           :jealousy,
@@ -75,6 +84,18 @@ defmodule Aethrion.Rules.Observation do
         topic: Gift.topic(event),
         data: Gift.data(event)
       )
+    )
+  end
+
+  # The giver gave the observer something in the last day.
+  defp given_lately?(state, observer_id, giver) do
+    state
+    |> Aethrion.Memories.for_character(observer_id)
+    |> Enum.any?(
+      &(match?(
+          %Memory{kind: :experienced, data: %{"event" => "gift_received", "from" => ^giver}},
+          &1
+        ) and state.clock - &1.created_tick < 24)
     )
   end
 

@@ -9,6 +9,8 @@ defmodule Aethrion.State do
   - `seq` - number of events processed; used to assign stable event ids
   - `cooldowns` - `%{key => clock}` recording when a rate-limited behavior last fired
   - `tuning` - rule parameter overrides, see `Aethrion.Tuning`
+  - `people` - `%{id => display name}` for actors who are not characters
+    (players), so lines can say "Alex" instead of `"player:alex"`
   """
 
   alias Aethrion.{Character, CharacterState, Memory, Relationship}
@@ -20,7 +22,8 @@ defmodule Aethrion.State do
           clock: non_neg_integer(),
           seq: non_neg_integer(),
           cooldowns: %{optional(String.t()) => non_neg_integer()},
-          tuning: Aethrion.Tuning.t()
+          tuning: Aethrion.Tuning.t(),
+          people: %{optional(String.t()) => String.t()}
         }
 
   @data_version 2
@@ -31,13 +34,15 @@ defmodule Aethrion.State do
             clock: 0,
             seq: 0,
             cooldowns: %{},
-            tuning: %{}
+            tuning: %{},
+            people: %{}
 
   @doc """
   Builds a runtime state from explicit characters and relationships.
 
   Options: `:characters`, `:relationships`, `:memories`, `:clock`, `:seq`,
-  `:cooldowns`, `:tuning`.
+  `:cooldowns`, `:tuning`, `:people` (display names for players, as a map or
+  keyword of id to name).
   """
   @spec new(keyword()) :: t()
   def new(opts \\ []) do
@@ -52,7 +57,8 @@ defmodule Aethrion.State do
       clock: Keyword.get(opts, :clock, 0),
       seq: Keyword.get(opts, :seq, 0),
       cooldowns: Map.new(Keyword.get(opts, :cooldowns, %{})),
-      tuning: Map.new(Keyword.get(opts, :tuning, %{}))
+      tuning: Map.new(Keyword.get(opts, :tuning, %{})),
+      people: Map.new(Keyword.get(opts, :people, %{}))
     }
   end
 
@@ -119,7 +125,7 @@ defmodule Aethrion.State do
   def name(%__MODULE__{} = state, id) do
     case Map.get(state.characters, id) do
       %Character{name: name} -> name
-      nil -> id
+      nil -> Map.get(state.people, id, id)
     end
   end
 
@@ -232,6 +238,9 @@ defmodule Aethrion.State do
       "cooldowns" => state.cooldowns,
       "tuning" => Aethrion.Tuning.to_data(state.tuning)
     }
+    |> then(fn data ->
+      if state.people == %{}, do: data, else: Map.put(data, "people", state.people)
+    end)
   end
 
   @doc """
@@ -278,7 +287,8 @@ defmodule Aethrion.State do
       clock: Map.get(data, "clock", 0),
       seq: Map.get(data, "seq", 0),
       cooldowns: cooldowns_from_data(data),
-      tuning: tuning_from_data(data, Keyword.get(opts, :pipeline, Aethrion.Pipeline.default()))
+      tuning: tuning_from_data(data, Keyword.get(opts, :pipeline, Aethrion.Pipeline.default())),
+      people: Map.get(data, "people", %{})
     )
   end
 
@@ -435,7 +445,8 @@ defmodule Aethrion.State do
          :ok <- each(data, "memories", &validate_memory/1),
          :ok <- optional(data, "clock", &non_neg_integer?/1),
          :ok <- optional(data, "seq", &non_neg_integer?/1),
-         :ok <- optional(data, "cooldowns", &cooldowns?/1) do
+         :ok <- optional(data, "cooldowns", &cooldowns?/1),
+         :ok <- optional(data, "people", &names?/1) do
       optional(data, "tuning", &is_map/1)
     end
   end
@@ -530,6 +541,9 @@ defmodule Aethrion.State do
       :error -> :ok
     end
   end
+
+  defp names?(value),
+    do: is_map(value) and Enum.all?(value, fn {id, name} -> is_binary(id) and is_binary(name) end)
 
   defp bond_name?(value),
     do: Enum.any?(Aethrion.Rules.Bond.bonds(), &(Atom.to_string(&1) == value))

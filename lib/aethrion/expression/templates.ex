@@ -29,7 +29,7 @@ defmodule Aethrion.Expression.Templates do
   def render(%Request{kind: :proactive_message, reason: :lonely} = request) do
     case lonely_choice(request) do
       {:quote, text} ->
-        "I keep thinking about what you said: \"#{text}\" Do you have a minute to talk?"
+        "I keep thinking about what you said: \"#{full_stop(text)}\" Do you have a minute to talk?"
 
       {:gift, item} ->
         "I still have the #{item} you gave me. Do you have a minute to talk?"
@@ -58,9 +58,19 @@ defmodule Aethrion.Expression.Templates do
       %{data: %{"to" => to}} ->
         friend = name(request, to)
 
-        if calm?,
-          do: "What you said to #{friend} was unkind. Is everything okay?",
-          else: "That was harsh, what you said to #{friend}. #{friend} didn't deserve that."
+        lines =
+          if calm?,
+            do: [
+              "What you said to #{friend} was unkind. Is everything okay?",
+              "That was a hard thing to say to #{friend}. Are you alright?"
+            ],
+            else: [
+              "That was harsh, what you said to #{friend}. #{friend} didn't deserve that.",
+              "Why would you talk to #{friend} like that? That wasn't fair.",
+              "I saw how you spoke to #{friend}. That wasn't okay."
+            ]
+
+        pick(request, lines)
 
       nil ->
         if calm?,
@@ -76,11 +86,11 @@ defmodule Aethrion.Expression.Templates do
         {told, mentioned} =
           if data["to"] == source,
             do:
-              {"told me about getting a #{data["item"]} from you",
-               "mentioned getting a #{data["item"]} from you"},
+              {"told me about getting #{with_article(data["item"])} from you",
+               "mentioned getting #{with_article(data["item"])} from you"},
             else:
-              {"told me you gave #{name(request, data["to"])} a #{data["item"]}",
-               "mentioned you gave #{name(request, data["to"])} a #{data["item"]}"}
+              {"told me you gave #{name(request, data["to"])} #{with_article(data["item"])}",
+               "mentioned you gave #{name(request, data["to"])} #{with_article(data["item"])}"}
 
         if :playful in request.speaker.traits do
           "#{name(request, source)} #{told}. Smooth."
@@ -175,7 +185,7 @@ defmodule Aethrion.Expression.Templates do
     case request.memories do
       [%{data: %{"event" => "gift_received", "to" => to} = data} | _]
       when to == request.speaker.id ->
-        "#{teller} tells #{listener} about getting a #{data["item"]} from #{name(request, data["from"])}."
+        "#{teller} tells #{listener} about getting #{with_article(data["item"])} from #{name(request, data["from"])}."
 
       [%{data: %{"event" => "gift_received"} = data} | _] ->
         "#{teller} tells #{listener} about the #{data["item"]} " <>
@@ -393,11 +403,12 @@ defmodule Aethrion.Expression.Templates do
 
   @doc false
   # How a gift lands: warily with hurt feelings between them, as reassurance
-  # to someone jealous or lonely, and as a bit much when they keep coming.
+  # to someone who saw the giver give to someone else (the first one since),
+  # as company to someone lonely, and as a bit much when they keep coming.
   def gift_choice(%Request{speaker: %{mood: mood}} = request) do
     cond do
       wary_choice(:warm, request) != nil -> :wary
-      mood == :jealous -> :reassured
+      (request.repeats || 1) == 1 and saw_gift_to_someone_else?(request) -> :reassured
       (request.repeats || 1) >= 3 -> :spoiled
       mood == :lonely -> :remembered
       match?(%{bond: :close}, request.relationship) -> :close
@@ -406,8 +417,13 @@ defmodule Aethrion.Expression.Templates do
   end
 
   @doc false
-  # Which of four ways two friends spend time, turning day by day.
-  def together_choice(%Request{now: now}) when is_integer(now), do: rem(div(now, 24), 4)
+  # Which of four ways two friends spend time, turning day by day, and not
+  # the same for every pair on the same day.
+  def together_choice(%Request{now: now} = request) when is_integer(now) do
+    pair = :erlang.phash2(Enum.sort([request.speaker.id, request.listener.id]), 4)
+    rem(div(now, 24) + pair, 4)
+  end
+
   def together_choice(_request), do: 0
 
   @doc false
@@ -423,15 +439,23 @@ defmodule Aethrion.Expression.Templates do
   @doc false
   # How harsh words land. The first gets hurt or, with a record of kindness,
   # the benefit of the doubt; repeated ones escalate (someone upset just asks
-  # for it to stop), and an estranged character stops answering.
+  # for it to stop), and after a fourth, or when estranged, the character
+  # stops answering.
   def harsh_choice(tone, request) do
     repeats = request.repeats || 1
 
     cond do
-      repeats >= 2 and match?(%{bond: :estranged}, request.relationship) -> :silent
-      repeats >= 2 -> escalation(tone, repeats, request.speaker.mood)
-      benefit_of_doubt?(request) -> :benefit
-      true -> :hurt
+      repeats >= 4 or (repeats >= 2 and match?(%{bond: :estranged}, request.relationship)) ->
+        :silent
+
+      repeats >= 2 ->
+        escalation(tone, repeats, request.speaker.mood)
+
+      benefit_of_doubt?(request) ->
+        :benefit
+
+      true ->
+        :hurt
     end
   end
 
@@ -446,8 +470,17 @@ defmodule Aethrion.Expression.Templates do
   def pick(_request, nil), do: nil
   def pick(_request, line) when is_binary(line), do: line
 
-  def pick(request, lines) when is_list(lines),
-    do: Enum.at(lines, rem((request.repeats || 1) - 1, length(lines)))
+  # Counts what faded into an impression too, so the turn keeps going over
+  # weeks, not only within the few days details are remembered.
+  def pick(request, lines) when is_list(lines) do
+    said = (request.repeats || 1) - 1 + folded(request)
+    Enum.at(lines, rem(said, length(lines)))
+  end
+
+  defp folded(%Request{tone: tone} = request) when tone in [:warm, :cold, :hostile, :gift],
+    do: impression_count(request, [Atom.to_string(tone)])
+
+  defp folded(_request), do: 0
 
   @doc false
   # Hurt feelings speak before the mood: a strained or estranged bond, or
@@ -463,6 +496,11 @@ defmodule Aethrion.Expression.Templates do
   def wary_choice(_tone, _request), do: nil
 
   defp find_full(request, fun), do: Enum.find(request.memories, &fun.(&1.data))
+
+  defp saw_gift_to_someone_else?(request) do
+    between = {request.listener.id, request.speaker.id}
+    find_memory(request, &gift_to_someone_else?(&1, between)) != nil
+  end
 
   # Hostile words from the listener in the last day, with no apology since.
   defp recently_hurt?(request) do
@@ -564,4 +602,20 @@ defmodule Aethrion.Expression.Templates do
   defp impression?(_data, _between, _patterns), do: false
 
   defp name(request, id), do: Map.get(request.names, id, id)
+
+  # A quoted line ends a sentence: "hey" becomes "hey."
+  defp full_stop(text) do
+    if String.match?(text, ~r/[.!?…~)]$/u), do: text, else: text <> "."
+  end
+
+  @doc false
+  # "a flower", "an apple", "cookies": the article an item needs, if any.
+  @spec with_article(String.t()) :: String.t()
+  def with_article(item) do
+    cond do
+      String.ends_with?(item, "s") and not String.ends_with?(item, "ss") -> item
+      String.match?(item, ~r/^[aeiouAEIOU]/) -> "an " <> item
+      true -> "a " <> item
+    end
+  end
 end

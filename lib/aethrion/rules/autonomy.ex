@@ -10,6 +10,8 @@ defmodule Aethrion.Rules.Autonomy do
   `Aethrion.Rules.Gossip`), rumors die out after a few hops. At most one
   confidence per character per tick.
 
+  Harsh words the teller knows were apologized for are not passed on.
+
   The confidence is enqueued as a `:gossip_shared` event, so it goes through
   validation and the gossip rules like any other event.
   """
@@ -66,10 +68,11 @@ defmodule Aethrion.Rules.Autonomy do
 
     knows? = fn id, topic -> known |> Map.get(id, MapSet.new()) |> MapSet.member?(topic) end
 
+    mine = Map.get(memories, teller.id, [])
+
     candidate =
-      memories
-      |> Map.get(teller.id, [])
-      |> Enum.reject(&Memory.faded?/1)
+      mine
+      |> Enum.reject(&(Memory.faded?(&1) or made_amends?(&1, mine)))
       |> Enum.filter(&notable?(&1, teller, thresholds))
       |> Enum.find_value(fn memory ->
         case Enum.find(confidants, &(not knows?.(&1, memory.topic))) do
@@ -87,6 +90,32 @@ defmodule Aethrion.Rules.Autonomy do
 
       nil ->
         transition
+    end
+  end
+
+  # Harsh words the teller knows were apologized for afterwards are not worth
+  # passing on. Event ids count up, so the apology's event number tells.
+  defp made_amends?(
+         %Memory{data: %{"event" => "message_sent", "tone" => tone, "from" => from, "to" => to}} =
+           harsh,
+         mine
+       )
+       when tone in ["cold", "hostile"] do
+    Enum.any?(mine, fn
+      %Memory{data: %{"event" => "apology_offered", "from" => ^from, "to" => ^to}} = apology ->
+        event_number(apology) > event_number(harsh)
+
+      _other ->
+        false
+    end)
+  end
+
+  defp made_amends?(_memory, _mine), do: false
+
+  defp event_number(%Memory{topic: topic}) do
+    case Regex.run(~r/:e(\d+)$/, topic || "") do
+      [_, digits] -> String.to_integer(digits)
+      nil -> 0
     end
   end
 
