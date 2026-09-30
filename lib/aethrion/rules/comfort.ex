@@ -63,7 +63,8 @@ defmodule Aethrion.Rules.Comfort do
       request =
         Expression.build_request(state, :character_interaction, event.from, event.to,
           reason: :comfort,
-          memories: []
+          memories: [],
+          bond: Aethrion.Rules.Bond.during(transition, event.from, event.to)
         )
 
       transition

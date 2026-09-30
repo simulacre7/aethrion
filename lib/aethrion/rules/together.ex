@@ -41,7 +41,8 @@ defmodule Aethrion.Rules.Together do
     request =
       Expression.build_request(state, :character_interaction, event.from, event.to,
         reason: :together,
-        memories: []
+        memories: [],
+        bond: Aethrion.Rules.Bond.during(transition, event.from, event.to)
       )
 
     transition =

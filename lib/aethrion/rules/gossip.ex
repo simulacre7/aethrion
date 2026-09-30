@@ -30,7 +30,8 @@ defmodule Aethrion.Rules.Gossip do
       request =
         Expression.build_request(state, :character_interaction, event.from, event.to,
           reason: :gossip,
-          memories: [memory]
+          memories: [memory],
+          bond: Aethrion.Rules.Bond.during(transition, event.from, event.to)
         )
 
       transition
