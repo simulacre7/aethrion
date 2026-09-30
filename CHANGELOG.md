@@ -36,7 +36,7 @@ The social layer release: characters act on each other, every change is explaina
 
 - Expressive outputs (`:proactive_message`, `:reply`, `:character_interaction`) carry deterministic fallback text, `memory_refs`, and a read-only `context` snapshot.
 - `Aethrion.Expression` renders outputs through an `Aethrion.LLM.Adapter` and keeps the fallback text on any failure. `Aethrion.Intent` lets a model propose an event from free text, limited to a closed set.
-- Adapters: `Aethrion.LLM.Anthropic` (Messages API), `Aethrion.LLM.OpenAICompatible` (OpenAI, vLLM, Ollama, llama.cpp), both on Erlang's `:httpc`; `FakeAdapter` gains Korean templates (`locale: :ko`).
+- Adapters: `Aethrion.LLM.Anthropic` (Messages API), `Aethrion.LLM.OpenAICompatible` (OpenAI, vLLM, Ollama, llama.cpp), both on Erlang's `:httpc`; `FakeAdapter` gains Korean templates (`locale: :ko`) and reads Korean free text.
 
 **Runtime and persistence**
 
@@ -47,11 +47,11 @@ The social layer release: characters act on each other, every change is explaina
 **Scenarios and tooling**
 
 - JSON scenarios with a world, events, expectations, branches, tuning, and custom events (`Aethrion.Scenario`, `mix aethrion.scenario`), with a JSON Schema. Thirteen bundled scenarios run in the test suite.
-- Self-contained HTML reports (`mix aethrion.report`, `--locale ko` for Korean lines) with charts, a relationship graph, the timeline, and branch comparison.
+- Self-contained HTML reports (`mix aethrion.report`, `--locale ko` for Korean lines) with charts, what each character has come to believe, a relationship graph with bond changes, the timeline, and branch comparison.
 - `mix aethrion.journal` replays a journal and exports it as a scenario or report.
 - Interactive CLI: `say`, `message`, `comfort`, `here` (witnesses), `opinion`, `why`, `context`, `timeline`, `rules`, `undo`, `save`, `load`, `record`, `report`, `--llm`, and `--locale ko`.
-- A tutorial (English and Korean), rules reference, expression guide, scenario format, and API reference; a benchmark in `bench/`.
-- Property-based tests for bounds, determinism, persistence and journal round trips, session recording, cascade causality, and the expression boundary. CI runs Dialyzer and the examples.
+- A tutorial (English and Korean), a cookbook for hosts, rules reference, expression guide, scenario format, and API reference; a benchmark in `bench/`.
+- Property-based tests for bounds, determinism, persistence and journal round trips, session recording, cascade causality, bond announcements, and the expression boundary; soak tests that crash journaled and snapshotting worlds; README excerpts checked against real output. `mix check` runs the local suite; CI adds Dialyzer, Credo, each scenario in a fresh VM, and the examples.
 
 ### Changed
 
