@@ -172,7 +172,7 @@ defmodule Aethrion.Expression.Templates do
        when tone in [:warm, :neutral] and mood in [:neutral, :happy, :lonely] do
     cond do
       not Request.reunion?(request) -> nil
-      Map.get(request.relationship || %{}, :bond) in [:strained, :estranged] -> nil
+      match?(%{bond: bond} when bond in [:strained, :estranged], request.relationship) -> nil
       mood == :lonely -> "You're back... I missed you."
       tone == :warm -> "You're back! It's been a while. Thank you."
       true -> "Hey, it's been a while!"
