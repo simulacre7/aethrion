@@ -24,6 +24,20 @@ defmodule Aethrion.ReadmeTest do
     end
   end
 
+  test "the word-gets-around excerpt in both READMEs is real output" do
+    path =
+      Enum.find(Aethrion.Scenario.bundled(), &String.ends_with?(&1, "12_word_gets_around.json"))
+
+    output = capture_io(fn -> Mix.Tasks.Aethrion.Scenario.run([path]) end) |> plain()
+
+    for readme <- ["README.md", "README.ko.md"],
+        block <- quoted_blocks(readme, "You always ruin everything. (seen by Haru)"),
+        line <- String.split(block, "\n", trim: true) do
+      assert output =~ String.trim(line),
+             "#{readme} quotes a line the scenario no longer prints: #{line}"
+    end
+  end
+
   test "the context excerpt in the README is real output" do
     input =
       "gift user mina flower observed_by yuna\nsay yuna sorry I forgot about you\ncontext yuna\nquit\n"

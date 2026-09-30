@@ -79,6 +79,28 @@ Yuna가 먼저 연락하는 이유는 질투와 외로움의 합이 임계값을
 
 두 시간이 지나기 전에 Yuna에게 사과하면 이 중 아무 일도 일어나지 않습니다. `mix demo.branches`는 같은 순간을 네 가지(침묵, 사과, 다정한 말, 날카로운 말)로 재생하고 Yuna의 결과를 비교합니다.
 
+## 소문은 퍼진다
+
+한 캐릭터를 대하는 방식은 다른 캐릭터들에게도 전해집니다. 사용자가 Haru가 보는 앞에서 Mina에게 모진 말을 하고, 다음 날 Haru에게는 다정하게 말을 겁니다(`priv/scenarios/12_word_gets_around.json`, 발췌):
+
+```txt
+EVENT    user -> Mina (hostile): You always ruin everything. (seen by Haru)
+SAYS     Mina -> user: "Please stop."
+RULE     Haru saw user be hostile to Mina and trusts user less
+SAYS     Haru -> user: "What you said to Mina earlier was unkind. Is everything okay?"
+
+EVENT    time passes +2h
+CASCADE  Mina confides in Yuna
+RULE     Yuna heard user be hostile to Mina and trusts user less
+SAYS     Yuna -> user: "Mina told me what you said. That didn't sound like you. Is everything okay?"
+CASCADE  Yuna comforts Mina
+
+EVENT    user -> Haru (warm): Want to grab lunch tomorrow?
+SAYS     Haru -> user: "Thanks... but I saw what you said to Mina."
+```
+
+Haru는 그 장면을 봤고 Mina를 아끼기 때문에 사용자를 덜 믿게 되고, 직접 한마디 합니다. Yuna는 전해 듣기만 했으므로 신뢰가 절반만 떨어집니다. 같은 일이 반복되면 세부 기억이 흐려진 뒤에도 평판("haru knows user has been hostile to mina and yuna 2 times.")이 남아, 몇 주 동안 사용자의 친절이 덜 와닿습니다. 관계에는 이 과정에서 바뀌는 이름(friendly, strained, close 등의 단계)도 있어서 바뀔 때마다 이벤트로 알려 주고, `why <from>-><to> bond`로 언제, 왜 바뀌었는지 볼 수 있습니다.
+
 ## 왜 필요한가
 
 대부분의 AI 캐릭터 시스템은 단순한 루프를 중심으로 만들어집니다.

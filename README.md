@@ -13,7 +13,7 @@ Aethrion is a persistent social simulation runtime for AI characters that rememb
 
 > LLMs generate expression; deterministic rules drive the simulation.
 
-[Try it](#try-it) · [Two events in, a story out](#two-events-in-a-story-out) · [How it works](#how-it-works) · [The LLM boundary](#the-llm-boundary) · [Scenarios](#scenarios-and-reports) · [Embedding](#embedding-aethrion) · [Docs](#documentation)
+[Try it](#try-it) · [Two events in, a story out](#two-events-in-a-story-out) · [Word gets around](#word-gets-around) · [How it works](#how-it-works) · [The LLM boundary](#the-llm-boundary) · [Scenarios](#scenarios-and-reports) · [Embedding](#embedding-aethrion) · [Docs](#documentation)
 
 Inspired by the ancient idea of aether, Aethrion treats memory, relationships, and autonomous interaction as a shared social layer where persistent agents can live, change, and respond to each other.
 
@@ -78,6 +78,28 @@ MOOD     Yuna jealous -> neutral
 Yuna reaches out because jealousy plus loneliness crossed a threshold. Yuna confides in Haru because she is struggling and trusts Haru most. Haru hears about the flower secondhand and, being playful, teases the user. Haru comforts Yuna out of care for her. Each of those is a rule you can read, test, and trace.
 
 Apologize to Yuna before the two hours pass and none of it happens. `mix demo.branches` plays the same moment four ways (say nothing, apologize, kind words, snap) and compares where Yuna ends up.
+
+## Word Gets Around
+
+How you treat one character reaches the others. The user snaps at Mina while Haru is in the room, then is friendly to Haru the next day (`priv/scenarios/12_word_gets_around.json`, abridged):
+
+```txt
+EVENT    user -> Mina (hostile): You always ruin everything. (seen by Haru)
+SAYS     Mina -> user: "Please stop."
+RULE     Haru saw user be hostile to Mina and trusts user less
+SAYS     Haru -> user: "What you said to Mina earlier was unkind. Is everything okay?"
+
+EVENT    time passes +2h
+CASCADE  Mina confides in Yuna
+RULE     Yuna heard user be hostile to Mina and trusts user less
+SAYS     Yuna -> user: "Mina told me what you said. That didn't sound like you. Is everything okay?"
+CASCADE  Yuna comforts Mina
+
+EVENT    user -> Haru (warm): Want to grab lunch tomorrow?
+SAYS     Haru -> user: "Thanks... but I saw what you said to Mina."
+```
+
+Haru saw it and cares about Mina, so Haru trusts the user less and says so. Yuna only heard about it, so Yuna's trust drops by half as much. Do it again and, once the details fade, what is left is a reputation ("haru knows user has been hostile to mina and yuna 2 times.") that blunts the user's kindness for weeks. Relationships also have names that change along the way (friendly, strained, close, ...), announced as events; `why <from>-><to> bond` shows when and why one changed.
 
 ## Why This Exists
 
