@@ -55,4 +55,27 @@ defmodule Aethrion.TemplatesKoTest do
              |> of_type(:reply)
              |> Expression.render(adapter: Aethrion.LLM.FakeAdapter, adapter_opts: [locale: :ko])
   end
+
+  test "every line the bundled scenarios produce renders in Korean" do
+    requests =
+      for path <- Aethrion.Scenario.bundled(),
+          {:ok, scenario} = Aethrion.Scenario.load(path),
+          {:ok, result} = Aethrion.Scenario.run(scenario),
+          output <- result.outputs ++ Enum.flat_map(result.branches, & &1.outputs),
+          match?(%{context: %Aethrion.Expression.Request{}}, output),
+          do: output.context
+
+    assert length(requests) > 50
+
+    for request <- requests do
+      line = Ko.render(request)
+      assert line =~ ~r/\p{Hangul}/u, "no Korean in #{inspect(line)} for #{inspect(request.kind)}"
+      refute line =~ ~r/[{}]|nil/, "unfilled template: #{inspect(line)}"
+      assert line == :unicode.characters_to_nfc_binary(line)
+    end
+
+    # The scenarios reach most template branches, in both languages.
+    kinds = requests |> Enum.map(&{&1.kind, &1.reason}) |> Enum.uniq()
+    assert length(kinds) >= 7
+  end
 end
