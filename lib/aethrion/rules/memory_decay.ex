@@ -25,17 +25,26 @@ defmodule Aethrion.Rules.MemoryDecay do
     clock = transition.state.clock
     unit = Transition.param(transition, :hours_per_unit)
 
-    transition.state.memories
-    |> Enum.reject(&Memory.faded?/1)
-    |> Enum.reverse()
-    |> Enum.reduce(transition, fn memory, transition ->
-      strength = strength_at(memory, clock, unit)
+    decayed = fn memory ->
+      if Memory.faded?(memory),
+        do: memory,
+        else: %{memory | strength: min(memory.strength, strength_at(memory, clock, unit))}
+    end
 
-      if strength < memory.strength do
-        decay(transition, memory, strength)
-      else
-        transition
-      end
+    newly_faded =
+      transition.state.memories
+      |> Enum.reject(&Memory.faded?/1)
+      |> Enum.filter(&Memory.faded?(decayed.(&1)))
+      |> Enum.reverse()
+
+    newly_faded
+    |> Enum.reduce(Transition.map_memories(transition, :strength, decayed), fn memory,
+                                                                               transition ->
+      Transition.note(
+        transition,
+        "#{Transition.name(transition, memory.character_id)}'s memory faded: \"#{memory.content}\"",
+        subject: memory.character_id
+      )
     end)
   end
 
@@ -43,22 +52,5 @@ defmodule Aethrion.Rules.MemoryDecay do
   def strength_at(%Memory{} = memory, clock, unit \\ 96) do
     age = max(clock - memory.created_tick, 0)
     max(memory.importance - div(age * (100 - memory.importance), max(unit, 1)), 0)
-  end
-
-  defp decay(transition, memory, strength) do
-    transition =
-      Transition.update_memory(transition, memory.id, &%{&1 | strength: strength},
-        field: :strength
-      )
-
-    if strength < Memory.faded_threshold() do
-      Transition.note(
-        transition,
-        "#{Transition.name(transition, memory.character_id)}'s memory faded: \"#{memory.content}\"",
-        subject: memory.character_id
-      )
-    else
-      transition
-    end
   end
 end

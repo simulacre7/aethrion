@@ -200,6 +200,32 @@ defmodule Aethrion.Transition do
   end
 
   @doc """
+  Applies `fun` to every memory in one pass and records a trace entry for
+  each memory whose `field` changed. Use this instead of calling
+  `update_memory/4` in a loop, which is quadratic in the number of memories.
+  """
+  def map_memories(%__MODULE__{} = transition, field, fun) when is_atom(field) do
+    {memories, changes} =
+      Enum.map_reduce(transition.state.memories, [], fn memory, changes ->
+        updated = fun.(memory)
+        before = Map.fetch!(memory, field)
+        value = Map.fetch!(updated, field)
+
+        if before == value,
+          do: {updated, changes},
+          else: {updated, [{memory, before, value} | changes]}
+      end)
+
+    transition = %{transition | state: %{transition.state | memories: memories}}
+
+    changes
+    |> Enum.reverse()
+    |> Enum.reduce(transition, fn {memory, before, value}, transition ->
+      add_trace(transition, :memory, memory.character_id, memory.id, field, before, value)
+    end)
+  end
+
+  @doc """
   Emits an output, tagging it with the current event id and rule.
   """
   def emit(%__MODULE__{} = transition, output) do

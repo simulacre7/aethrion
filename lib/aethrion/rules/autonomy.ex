@@ -20,15 +20,22 @@ defmodule Aethrion.Rules.Autonomy do
       "Struggling or talkative characters confide a notable memory to their most trusted friend; talkative ones retell rumors.",
     params: [notable_importance: 60, retell_importance: 30, trust_threshold: 30]
 
-  alias Aethrion.{Character, CharacterState, Event, Memories, Memory, State, Transition}
+  alias Aethrion.{Character, CharacterState, Event, Memory, State, Transition}
   alias Aethrion.Rules.Mood
 
   @impl true
   def apply(%Transition{} = transition) do
+    # Index memories once: autonomy only enqueues events, so the state it reads
+    # does not change while it runs.
+    memories = Enum.group_by(transition.state.memories, & &1.character_id)
+
+    known =
+      Map.new(memories, fn {id, list} -> {id, MapSet.new(list, & &1.topic)} end)
+
     transition.state
     |> State.sorted_characters()
     |> Enum.filter(&wants_to_confide?(transition.state, &1))
-    |> Enum.reduce(transition, &confide(&2, &1))
+    |> Enum.reduce(transition, &confide(&2, &1, memories, known))
   end
 
   defp wants_to_confide?(state, %Character{} = character) do
@@ -37,19 +44,22 @@ defmodule Aethrion.Rules.Autonomy do
          Character.trait?(character, :talkative))
   end
 
-  defp confide(%Transition{state: state} = transition, %Character{} = teller) do
+  defp confide(%Transition{state: state} = transition, %Character{} = teller, memories, known) do
     confidants = confidants(state, teller.id, Transition.param(transition, :trust_threshold))
 
     thresholds =
       {Transition.param(transition, :notable_importance),
        Transition.param(transition, :retell_importance)}
 
+    knows? = fn id, topic -> known |> Map.get(id, MapSet.new()) |> MapSet.member?(topic) end
+
     candidate =
-      state
-      |> Memories.for_character(teller.id)
+      memories
+      |> Map.get(teller.id, [])
+      |> Enum.reject(&Memory.faded?/1)
       |> Enum.filter(&notable?(&1, teller, thresholds))
       |> Enum.find_value(fn memory ->
-        case Enum.find(confidants, &(not Memories.knows_topic?(state, &1, memory.topic))) do
+        case Enum.find(confidants, &(not knows?.(&1, memory.topic))) do
           nil -> nil
           confidant -> {memory, confidant}
         end

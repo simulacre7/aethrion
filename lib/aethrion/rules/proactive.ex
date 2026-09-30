@@ -26,13 +26,14 @@ defmodule Aethrion.Rules.Proactive do
       avoid_tension: 10
     ]
 
-  alias Aethrion.{Character, Expression, Memories, Memory, Output, State, Transition}
+  alias Aethrion.{Character, Expression, Memory, Output, State, Transition}
 
   @recipient "user"
 
   @impl true
   def apply(%Transition{} = transition) do
     params = Map.new(params(), fn {key, _default} -> {key, Transition.param(transition, key)} end)
+    heard = heard_about_recipient(transition.state)
 
     transition.state
     |> State.sorted_characters()
@@ -42,7 +43,7 @@ defmodule Aethrion.Rules.Proactive do
         params.avoid_tension
     end)
     |> Enum.reduce(transition, fn character, transition ->
-      case first_trigger(transition.state, character, params) do
+      case first_trigger(transition.state, character, Map.put(params, :heard, heard)) do
         nil -> transition
         {reason, key, opts} -> send_message(transition, character, reason, key, opts)
       end
@@ -78,17 +79,25 @@ defmodule Aethrion.Rules.Proactive do
         State.get_relationship(state, id, @recipient).affinity >= params.curious_affinity
 
     if interested? do
-      state
-      |> Memories.for_character(id)
+      params.heard
+      |> Map.get(id, [])
       |> Enum.find_value(fn memory ->
         key = "proactive:#{id}:curious:#{memory.topic}"
 
-        if memory.kind == :heard and Memory.involves?(memory, @recipient) and
-             State.cooldown_ready?(state, key, :once) do
+        if State.cooldown_ready?(state, key, :once) do
           {:curious, key, memories: [memory]}
         end
       end)
     end
+  end
+
+  # Unfaded secondhand memories involving the recipient, by character, newest first.
+  defp heard_about_recipient(state) do
+    state.memories
+    |> Enum.filter(fn memory ->
+      memory.kind == :heard and Memory.involves?(memory, @recipient) and not Memory.faded?(memory)
+    end)
+    |> Enum.group_by(& &1.character_id)
   end
 
   defp send_message(transition, character, reason, key, opts) do
