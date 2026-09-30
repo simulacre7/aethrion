@@ -129,18 +129,29 @@ defmodule Aethrion.RuntimeServerTest do
 
     :ok = RuntimeServer.subscribe(server)
 
-    {elapsed, {:ok, _step}} =
+    {elapsed, {:ok, step}} =
       :timer.tc(fn -> RuntimeServer.step(server, Event.time_tick("t2", hours: 2)) end)
 
     assert elapsed < 1_000_000
 
-    assert_receive {:aethrion, ^server,
-                    {:expressed, %{expression: %{status: :fallback, reason: :timeout}} = output}},
-                   1_000
+    expressive = Enum.filter(step.outputs, &Aethrion.Output.expressive?/1)
+    assert length(expressive) > 1
 
-    assert output.text =~ "forgot about me" or output.type != :proactive_message
+    # Every pending rendering times out and is delivered with its fallback text.
+    for _output <- expressive do
+      assert_receive {:aethrion, ^server,
+                      {:expressed, %{expression: %{status: :fallback, reason: :timeout}} = output}},
+                     1_000
+
+      assert output.text == Enum.find(expressive, &(&1.context == output.context)).text
+    end
+
     assert Process.alive?(server)
-    assert Task.Supervisor.children(:sys.get_state(server).expression.task_supervisor) == []
+    assert :sys.get_state(server).pending == %{}
+
+    assert eventually(fn ->
+             Task.Supervisor.children(:sys.get_state(server).expression.task_supervisor) == []
+           end)
   end
 
   test "crashing adapters fall back and never crash the runtime" do

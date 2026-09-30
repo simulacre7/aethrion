@@ -342,7 +342,8 @@ defmodule Aethrion.State do
       "topic" => memory.topic,
       "source" => memory.source,
       "data" => memory.data,
-      "shared_with" => memory.shared_with
+      "shared_with" => memory.shared_with,
+      "consolidated_into" => memory.consolidated_into
     }
   end
 
@@ -361,7 +362,8 @@ defmodule Aethrion.State do
       topic: Map.get(data, "topic"),
       source: Map.get(data, "source"),
       data: Map.get(data, "data", %{}),
-      shared_with: Map.get(data, "shared_with", [])
+      shared_with: Map.get(data, "shared_with", []),
+      consolidated_into: Map.get(data, "consolidated_into")
     )
   end
 
@@ -430,7 +432,8 @@ defmodule Aethrion.State do
          :ok <- optional(memory, "shared_with", &string_list?/1),
          :ok <- optional(memory, "kind", &is_binary/1),
          :ok <- optional(memory, "topic", &(is_nil(&1) or is_binary(&1))),
-         :ok <- optional(memory, "source", &(is_nil(&1) or is_binary(&1))) do
+         :ok <- optional(memory, "source", &(is_nil(&1) or is_binary(&1))),
+         :ok <- optional(memory, "consolidated_into", &(is_nil(&1) or is_binary(&1))) do
       optional(memory, "data", &is_map/1)
     end
   end

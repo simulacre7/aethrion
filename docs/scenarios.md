@@ -20,6 +20,7 @@ mix aethrion.report priv/scenarios/01_the_flower.json     # HTML report in tmp/
 | `05_long_silence.json` | Days without contact: lonely messages quote kind words while remembered, then the memory fades. |
 | `06_small_town.json` | The rumor mill's rules with small-town tuning: news spreads through acquaintances and travels four hops. |
 | `07_crossroads.json` | One moment, four branches: say nothing, apologize, kind words, or snap. Compared side by side in the report. |
+| `08_old_friends.json` | Days of kindness, then silence, in a world tuned for days: conversations fade into lasting impressions, and the impression is what Mina remembers. |
 
 ## Format
 
@@ -103,7 +104,7 @@ Each expectation selects a value and compares it with `equals`, `at_least`, or `
 | `{"character": id, "field": name}` | a character state field: `mood`, `loneliness`, `jealousy`, `joy`, `stress`, `energy`, `active`, `blocked` |
 | `{"relationship": [from, to], "field": name}` | `affinity`, `trust`, or `tension` |
 | `{"output": type, ...filters}` | the number of outputs of that type matching every filter (`character`, `reason`, `kind`, `from`, `to`, `text`, `tone`) |
-| `{"memory": {...filters}}` | the number of memories matching every filter (`character`, `kind`, `source`, `importance`, `topic`, `faded`) |
+| `{"memory": {...filters}}` | the number of memories matching every filter (`character`, `kind`, `source`, `importance`, `topic`, `content`, `faded`) |
 | `{"clock": hours}` | the simulated clock |
 
 Output and memory expectations without a comparison pass when at least one matches. `count` is shorthand for `equals` on the count.

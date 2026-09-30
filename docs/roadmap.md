@@ -18,7 +18,7 @@ Implemented in v0.2:
 - cascading follow-up events with depth and count limits
 - character-to-character behavior: observation, confiding, rumor, empathy, comfort
 - tone-aware messages and replies; simulated clock, cooldowns, derived moods, joy and stress
-- memory kinds, topics, sources, age-based decay, deterministic retrieval
+- memory kinds, topics, sources, age-based decay, deterministic retrieval, consolidation into impressions
 - expression snapshots, LLM adapter behaviour, Anthropic and OpenAI-compatible adapters
 - intent interpretation limited to a closed set of proposals
 - supervised worlds with subscriptions, history, snapshot recovery, and async rendering
@@ -29,7 +29,6 @@ Implemented in v0.2:
 Not implemented yet:
 
 - per-character actor runtime (deliberately deferred, see Phase 4)
-- memory summarization and consolidation
 - package publishing
 
 ## Phase 1: v0.1 Library Foundation
@@ -143,7 +142,7 @@ TODO:
 - [x] Add recent memory queries.
 - [x] Add important memory queries.
 - [x] Add memory decay rules.
-- [ ] Add memory summarization or consolidation.
+- [x] Add memory consolidation (faded experiences fold into lasting impressions).
 - [x] Add relationship-aware context selection.
 - [x] Let knowledge spread between characters as secondhand memories.
 - [x] Avoid vector search until simple memory retrieval is insufficient.
@@ -210,8 +209,8 @@ TODO:
 
 Recommended next tasks:
 
-1. Add memory consolidation (many small memories -> one summary memory, deterministically).
-2. Publish to Hex once the event and output shapes settle.
+1. Publish to Hex once the event and output shapes settle.
+2. Let impressions and relationship history shape rule outcomes (for example, a long record of kindness softening the impact of one cold message).
 3. Explore per-character processes only if a concrete runtime need appears.
 
 Phoenix, vector databases, and distributed BEAM remain out of scope until the core runtime interface is stable.

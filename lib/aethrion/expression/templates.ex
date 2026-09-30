@@ -32,6 +32,9 @@ defmodule Aethrion.Expression.Templates do
       data = find_memory(request, &gift?(&1, between)) ->
         "I still have the #{data["item"]} you gave me. Do you have a minute to talk?"
 
+      find_memory(request, &impression?(&1, between, ["warm", "gift", "comfort"])) ->
+        "You've always been kind to me. I miss talking with you. Do you have a minute?"
+
       true ->
         "It's been quiet today. Do you have a minute to talk?"
     end
@@ -133,6 +136,11 @@ defmodule Aethrion.Expression.Templates do
     do: data["from"] == from and data["to"] == to
 
   defp gift?(_data, _between), do: false
+
+  defp impression?(%{"event" => "impression"} = data, {from, to}, patterns),
+    do: data["from"] == from and data["to"] == to and data["pattern"] in patterns
+
+  defp impression?(_data, _between, _patterns), do: false
 
   defp name(request, id), do: Map.get(request.names, id, id)
 end

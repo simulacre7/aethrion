@@ -64,7 +64,7 @@ Aethrion.State.new(
 
 Character state fields: `mood` (derived), `loneliness`, `jealousy`, `joy`, `stress`, `energy` (0..100), `active?`, `blocked?`, `last_active_at`.
 
-Memory fields: `importance`, `strength` (decays with age), `kind` (`:experienced`, `:observed`, `:heard`), `topic` (shared by every memory of the same underlying event), `source` (who told them), `data` (structured facts), `shared_with`, `related_characters`.
+Memory fields: `importance`, `strength` (decays with age), `kind` (`:experienced`, `:observed`, `:heard`, `:impression`), `consolidated_into`, `topic` (shared by every memory of the same underlying event), `source` (who told them), `data` (structured facts), `shared_with`, `related_characters`.
 
 ## Events
 

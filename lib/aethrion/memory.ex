@@ -7,14 +7,16 @@ defmodule Aethrion.Memory do
     whose strength drops below `faded_threshold/0` are kept for inspection but
     excluded from context selection by default.
   - `kind` explains how the character learned about it: `:experienced` (it
-    happened to them), `:observed` (they saw it), or `:heard` (someone told them).
+    happened to them), `:observed` (they saw it), `:heard` (someone told them),
+    or `:impression` (a summary of many faded experiences, see
+    `Aethrion.Rules.Consolidation`).
   - `topic` links memories about the same underlying event across characters.
   - `source` is the character who told them, for `:heard` memories.
   - `data` holds structured facts (string keys) that expression adapters may
     reference without parsing `content`.
   """
 
-  @type kind :: :experienced | :observed | :heard
+  @type kind :: :experienced | :observed | :heard | :impression
 
   @type t :: %__MODULE__{
           id: String.t(),
@@ -29,10 +31,11 @@ defmodule Aethrion.Memory do
           topic: String.t() | nil,
           source: String.t() | nil,
           data: %{optional(String.t()) => term()},
-          shared_with: [String.t()]
+          shared_with: [String.t()],
+          consolidated_into: String.t() | nil
         }
 
-  @kinds [:experienced, :observed, :heard]
+  @kinds [:experienced, :observed, :heard, :impression]
   @faded_threshold 20
 
   @enforce_keys [:id, :character_id, :content, :importance, :created_at]
@@ -49,7 +52,8 @@ defmodule Aethrion.Memory do
     topic: nil,
     source: nil,
     data: %{},
-    shared_with: []
+    shared_with: [],
+    consolidated_into: nil
   ]
 
   @doc """

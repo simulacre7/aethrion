@@ -65,7 +65,7 @@ Outputs report the delta that was actually applied after clamping.
 
 The receiver: jealousy -15, loneliness -6, stress -10, trust toward the apologizer +8, remembers the apology (importance 70).
 
-### `time_tick` -> `time_passage`, `memory_decay`, `autonomy`
+### `time_tick` -> `time_passage`, `memory_decay`, `consolidation`, `autonomy`
 
 **time_passage** - advances `state.clock` by `hours`. For each active character, per hour: loneliness +4, joy -2, stress -2. Jealousy does not fade with time alone; it takes an apology or comfort.
 
@@ -84,6 +84,8 @@ A memory loses `(100 - importance) / 4` strength per simulated day, independent 
 | 70 (apology) | ~6.7 days |
 | 90 | 4 weeks |
 | 100 | never |
+
+**consolidation** - individual memories fade, patterns should not. When a character holds at least 2 faded, unconsolidated firsthand memories of the same kind of interaction with the same actor (gifts, warm/cold/hostile messages, apologies, comfort), they fold into an `:impression` memory such as `"user has been warm to mina 3 times."`. Importance is `40 + 10 * count`, capped at 90, so impressions outlast the details. Later faded memories of the same pattern deepen the impression in place; the originals are kept and marked `consolidated_into`. Impressions are private: they are never gossiped.
 
 **autonomy** - characters act on their own. A character who is struggling (mood `jealous`, `lonely`, or `upset`) or `:talkative` confides a notable memory to their most trusted friend (trust >= 30) who has not heard about it yet:
 

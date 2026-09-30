@@ -70,6 +70,9 @@ defmodule Aethrion.Rules.Autonomy do
   defp notable?(%Memory{topic: topic}, _teller, _thresholds) when not is_binary(topic),
     do: false
 
+  # Impressions are private summaries, not news.
+  defp notable?(%Memory{kind: :impression}, _teller, _thresholds), do: false
+
   defp notable?(%Memory{kind: :heard} = memory, teller, {_notable, retell}) do
     Character.trait?(teller, :talkative) and memory.importance >= retell
   end
