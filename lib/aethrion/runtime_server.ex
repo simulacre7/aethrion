@@ -99,6 +99,15 @@ defmodule Aethrion.RuntimeServer do
   @spec put_state(server(), State.t()) :: :ok | {:error, Aethrion.Error.t()}
   def put_state(server, %State{} = state), do: GenServer.call(server, {:put_state, state})
 
+  @doc """
+  Compacts the server's journal: replaces it with one that starts from the
+  current state (see `Aethrion.Journal.compact/2`). Events are serialized with
+  dispatches, so none is lost. Returns `{:error, %Aethrion.Error{code:
+  :invalid_options}}` when the server does not journal.
+  """
+  @spec compact_journal(server()) :: :ok | {:error, Aethrion.Error.t()}
+  def compact_journal(server), do: GenServer.call(server, :compact_journal)
+
   @doc "Host events dispatched so far, oldest first, with their assigned ids."
   @spec history(server()) :: [Aethrion.Event.t()]
   def history(server), do: GenServer.call(server, :history)
@@ -180,6 +189,15 @@ defmodule Aethrion.RuntimeServer do
   end
 
   def handle_call(:history, _from, server), do: {:reply, Enum.reverse(server.history), server}
+
+  def handle_call(:compact_journal, _from, %{journal: nil} = server) do
+    error = Aethrion.Error.new(:invalid_options, "this runtime server has no :journal")
+    {:reply, {:error, error}, server}
+  end
+
+  def handle_call(:compact_journal, _from, %{journal: path} = server) do
+    {:reply, Aethrion.Journal.rewrite(path, server.world), server}
+  end
 
   def handle_call({:subscribe, pid}, _from, server) do
     if Map.has_key?(server.subscribers, pid) do

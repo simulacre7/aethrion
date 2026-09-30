@@ -76,6 +76,31 @@ defmodule Aethrion.MixTasksTest do
     assert File.read!(out) =~ "<h2>Timeline</h2>"
   end
 
+  @tag :tmp_dir
+  test "journal task compacts and archives", %{tmp_dir: dir} do
+    path = Path.join(dir, "world.jsonl")
+    archive = Path.join(dir, "old.jsonl")
+    state = Aethrion.Runtime.demo_state()
+    :ok = Aethrion.Journal.create(path, state)
+    {:ok, step} = Aethrion.Runtime.step(state, Aethrion.Event.time_tick("t", hours: 3))
+    :ok = Aethrion.Journal.append(path, step.event)
+
+    output =
+      capture_io(fn ->
+        Mix.Tasks.Aethrion.Journal.run([path, "--compact", "--archive", archive])
+      end)
+      |> plain()
+
+    assert output =~ "compacted 1 events into the starting state"
+    assert {:ok, compacted, []} = Aethrion.Journal.read(path)
+    assert compacted == step.state
+    assert {:ok, _state, [_event]} = Aethrion.Journal.read(archive)
+
+    assert_raise Mix.Error, "--archive only applies with --compact", fn ->
+      Mix.Tasks.Aethrion.Journal.run([path, "--archive", Path.join(dir, "x.jsonl")])
+    end
+  end
+
   test "the interactive demo records and reports a session" do
     dir = Path.join(System.tmp_dir!(), "aethrion-session-#{System.unique_integer([:positive])}")
     on_exit(fn -> File.rm_rf(dir) end)

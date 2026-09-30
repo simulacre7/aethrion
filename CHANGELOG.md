@@ -41,7 +41,7 @@ The social layer release: characters act on each other, every change is explaina
 
 - `Aethrion.World` supervises a runtime server, a scheduler, and rendering tasks.
 - `Aethrion.RuntimeServer` gains subscriptions, event history, cascade limits, snapshot persistence with restore, and asynchronous rendering with timeouts and crash isolation. A rule that raises rejects the event (`:rule_failed`) instead of crashing the world.
-- `Aethrion.Journal`: a world as its starting state plus an append-only log of host events. Replay rebuilds it exactly and detects mismatches; servers can journal every dispatch and rebuild from it on start.
+- `Aethrion.Journal`: a world as its starting state plus an append-only log of host events. Replay rebuilds it exactly and detects mismatches; servers can journal every dispatch and rebuild from it on start. Compaction (`Journal.compact/2`, `World.compact_journal/1`, `mix aethrion.journal --compact`) restarts a journal from the current state, optionally archiving the old one.
 
 **Scenarios and tooling**
 

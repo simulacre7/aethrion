@@ -8,6 +8,11 @@ defmodule Mix.Tasks.Aethrion.Journal do
       mix aethrion.journal tmp/world.jsonl
       mix aethrion.journal tmp/world.jsonl --scenario tmp/world.json
       mix aethrion.journal tmp/world.jsonl --report tmp/world.html
+      mix aethrion.journal tmp/world.jsonl --compact --archive tmp/world-2026-10.jsonl
+
+  `--compact` replaces the journal with one that starts from the replayed
+  state (see `Aethrion.Journal.compact/2`); `--archive FILE` keeps a copy of
+  the old one first. Exports run before compacting.
 
   Replaying proves the journal is consistent: every event must be accepted and
   receive the same id it was recorded with.
@@ -18,15 +23,23 @@ defmodule Mix.Tasks.Aethrion.Journal do
   alias Aethrion.{Journal, Report, Scenario}
   alias Aethrion.CLI.Display
 
-  @switches [scenario: :string, report: :string]
+  @switches [scenario: :string, report: :string, compact: :boolean, archive: :string]
 
   @impl Mix.Task
   def run(args) do
     Mix.Task.run("app.start")
 
     case OptionParser.parse(args, strict: @switches) do
-      {opts, [path], []} -> replay(path, opts)
-      _ -> Mix.raise("usage: mix aethrion.journal PATH [--scenario FILE] [--report FILE]")
+      {opts, [path], []} ->
+        if opts[:archive] && !opts[:compact],
+          do: Mix.raise("--archive only applies with --compact")
+
+        replay(path, opts)
+
+      _ ->
+        Mix.raise(
+          "usage: mix aethrion.journal PATH [--scenario FILE] [--report FILE] [--compact [--archive FILE]]"
+        )
     end
   end
 
@@ -42,6 +55,7 @@ defmodule Mix.Tasks.Aethrion.Journal do
 
         Display.status(state)
         export(path, opts)
+        compact(path, opts)
 
       {:error, error} ->
         Mix.raise("could not replay #{path}: #{Aethrion.Error.format(error)}")
@@ -68,5 +82,22 @@ defmodule Mix.Tasks.Aethrion.Journal do
     end
 
     :ok
+  end
+
+  defp compact(path, opts) do
+    cond do
+      opts[:compact] ->
+        case Journal.compact(path, Keyword.take(opts, [:archive])) do
+          {:ok, _state, count} ->
+            kept = if archive = opts[:archive], do: "; the old journal is at #{archive}", else: ""
+            Display.message("compacted #{count} events into the starting state of #{path}#{kept}")
+
+          {:error, error} ->
+            Mix.raise("could not compact #{path}: #{Aethrion.Error.format(error)}")
+        end
+
+      true ->
+        :ok
+    end
   end
 end

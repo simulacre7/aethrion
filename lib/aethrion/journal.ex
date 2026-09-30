@@ -21,6 +21,11 @@ defmodule Aethrion.Journal do
   `Aethrion.RuntimeServer` (and `Aethrion.World`) keep a journal with the
   `:journal` option and rebuild from it on start. Custom event types can be
   replayed when the same pipeline is passed (`pipeline:`).
+
+  A journal grows with every event and is replayed in full on start.
+  `compact/2` (or `Aethrion.RuntimeServer.compact_journal/1` for a running
+  world) replaces it with one that starts from the current state, trading the
+  history for a fast start; pass `archive:` to keep the old file.
   """
 
   alias Aethrion.{Error, Event, Runtime, Scenario, State}
@@ -34,25 +39,77 @@ defmodule Aethrion.Journal do
   """
   @spec create(Path.t(), State.t()) :: :ok | {:error, Error.t()}
   def create(path, %State{} = state) do
-    header = %{"aethrion_journal" => @version, "state" => State.to_data(state)}
-    tmp = path <> ".tmp"
+    if File.exists?(path),
+      do: {:error, already_exists(path)},
+      else: write_header(path, state)
+  end
 
+  @doc """
+  Replaces a journal's contents with `state` as the new starting state and no
+  events. Used by `Aethrion.RuntimeServer.compact_journal/1`, which already
+  holds the current state; to compact a journal on disk, use `compact/2`.
+  Like `create/2`, the file is written aside and renamed into place, so a
+  failure leaves the old journal intact.
+  """
+  @spec rewrite(Path.t(), State.t()) :: :ok | {:error, Error.t()}
+  def rewrite(path, %State{} = state), do: write_header(path, state)
+
+  @doc """
+  Compacts the journal at `path`: replays it and replaces it with a journal
+  that starts from the resulting state and has no events. Event ids continue
+  from where they were. The history (and with it, `Aethrion.Explain` for past
+  events) is discarded unless `archive:` names a new file to keep the old
+  journal in.
+
+  Returns `{:ok, state, compacted}` where `compacted` is the number of events
+  folded into the new starting state.
+
+  Options: `:archive`, and `:pipeline`, `:max_depth`, `:max_events` as for
+  `replay/2`.
+  """
+  @spec compact(Path.t(), keyword()) :: {:ok, State.t(), non_neg_integer()} | {:error, Error.t()}
+  def compact(path, opts \\ []) do
+    with {:ok, state, steps} <- replay(path, opts),
+         :ok <- archive(path, Keyword.get(opts, :archive)),
+         :ok <- write_header(path, state) do
+      {:ok, state, length(steps)}
+    end
+  end
+
+  defp archive(_path, nil), do: :ok
+
+  defp archive(path, archive) do
     cond do
-      File.exists?(path) ->
-        {:error, Error.new(:already_exists, "a journal already exists at #{path}", %{path: path})}
+      File.exists?(archive) ->
+        {:error, already_exists(archive)}
 
       true ->
-        with :ok <- File.mkdir_p(Path.dirname(path)),
-             :ok <- File.write(tmp, Jason.encode!(header) <> "\n"),
-             :ok <- File.rename(tmp, path) do
+        with :ok <- File.mkdir_p(Path.dirname(archive)),
+             :ok <- File.cp(path, archive) do
           :ok
         else
-          {:error, reason} ->
-            File.rm(tmp)
-            {:error, io_error(path, reason)}
+          {:error, reason} -> {:error, io_error(archive, reason)}
         end
     end
   end
+
+  defp write_header(path, state) do
+    header = %{"aethrion_journal" => @version, "state" => State.to_data(state)}
+    tmp = path <> ".tmp"
+
+    with :ok <- File.mkdir_p(Path.dirname(path)),
+         :ok <- File.write(tmp, Jason.encode!(header) <> "\n"),
+         :ok <- File.rename(tmp, path) do
+      :ok
+    else
+      {:error, reason} ->
+        File.rm(tmp)
+        {:error, io_error(path, reason)}
+    end
+  end
+
+  defp already_exists(path),
+    do: Error.new(:already_exists, "a file already exists at #{path}", %{path: path})
 
   @doc """
   Encodes a processed host event as a journal line, or returns

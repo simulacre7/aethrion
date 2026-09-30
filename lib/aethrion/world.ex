@@ -131,6 +131,9 @@ defmodule Aethrion.World do
   @doc "See `Aethrion.RuntimeServer.put_state/2`."
   def put_state(name, state), do: RuntimeServer.put_state(runtime(name), state)
 
+  @doc "Compacts the world's journal. See `Aethrion.RuntimeServer.compact_journal/1`."
+  def compact_journal(name), do: RuntimeServer.compact_journal(runtime(name))
+
   defp expression_opts(_name, nil), do: []
 
   defp expression_opts(name, opts) do

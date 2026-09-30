@@ -286,7 +286,19 @@ An `Aethrion.Journal` stores a world as its starting state plus every host event
 mix aethrion.journal tmp/garden.jsonl --report tmp/garden.html
 ```
 
-Replay fails with `{:journal_mismatch, index, ...}` if an event gets a different id than recorded, meaning the journal does not match its starting state. Journals and snapshot persistence are alternatives; a runtime server accepts one or the other, and refuses `put_state/2` while journaling.
+Replay fails with an `%Aethrion.Error{code: :journal_mismatch}` (with the event's `:index`) if an event gets a different id than recorded, meaning the journal does not match its starting state.
+
+A journal grows with every event and is replayed in full on start. Compaction replaces it with one that starts from the current state; ids continue, and the history is discarded unless archived:
+
+```elixir
+Aethrion.World.compact_journal(:garden)                                   # a running world
+{:ok, state, 1_204} = Aethrion.Journal.compact("tmp/garden.jsonl", archive: "tmp/garden-2026-10.jsonl")
+```
+
+```bash
+mix aethrion.journal tmp/garden.jsonl --compact --archive tmp/garden-2026-10.jsonl
+```
+ Journals and snapshot persistence are alternatives; a runtime server accepts one or the other, and refuses `put_state/2` while journaling.
 
 ## Scenarios and reports
 

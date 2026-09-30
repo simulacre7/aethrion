@@ -151,4 +151,73 @@ defmodule Aethrion.JournalTest do
     assert output =~ "2 host events replayed (4 with cascades)"
     assert File.read!(report) =~ "<h2>Timeline</h2>"
   end
+
+  describe "compaction" do
+    @events [
+      Aethrion.Event.gift_received("user", "mina", "flower", observed_by: ["yuna"]),
+      Aethrion.Event.message_sent("user", "haru", "thanks", tone: :warm),
+      Aethrion.Event.time_tick("t", hours: 30)
+    ]
+
+    test "starts the journal from the replayed state and keeps numbering", %{path: path} do
+      final = journal_events(path, Runtime.demo_state(), @events)
+
+      assert {:ok, ^final, 3} = Journal.compact(path)
+      assert {:ok, ^final, []} = Journal.read(path)
+
+      # New events continue the ids, and replay agrees with an uncompacted run.
+      {:ok, step} = Runtime.step(final, Event.time_tick("t", hours: 5))
+      :ok = Journal.append(path, step.event)
+      id = "e#{final.seq + 1}"
+      assert step.event.id == id
+      assert {:ok, state, [%{event: %{id: ^id}}]} = Journal.replay(path)
+      assert state == step.state
+      refute File.exists?(path <> ".tmp")
+    end
+
+    test "can archive the old journal first", %{path: path} do
+      archive = path <> ".archive"
+      on_exit(fn -> File.rm(archive) end)
+      final = journal_events(path, Runtime.demo_state(), @events)
+      old = File.read!(path)
+
+      assert {:ok, ^final, 3} = Journal.compact(path, archive: archive)
+      assert File.read!(archive) == old
+
+      # An existing archive is never overwritten, and the journal is untouched.
+      compacted = File.read!(path)
+      assert {:error, %{code: :already_exists}} = Journal.compact(path, archive: archive)
+      assert File.read!(path) == compacted
+    end
+
+    test "a journal that does not replay is left alone", %{path: path} do
+      :ok = Journal.create(path, Runtime.demo_state())
+      File.write!(path, ~s({"id": "e9", "type": "time_tick", "hours": 1}\n), [:append])
+      before = File.read!(path)
+
+      assert {:error, %{code: :journal_mismatch}} = Journal.compact(path)
+      assert File.read!(path) == before
+    end
+
+    test "a running server compacts without losing events", %{path: path} do
+      server = start_supervised!({RuntimeServer, journal: path}, id: :first)
+      for event <- @events, do: {:ok, _step} = RuntimeServer.step(server, event)
+
+      assert :ok = RuntimeServer.compact_journal(server)
+      assert {:ok, _state, []} = Journal.read(path)
+
+      {:ok, _step} = RuntimeServer.step(server, Event.time_tick("t", hours: 2))
+      live = RuntimeServer.get_state(server)
+      stop_supervised!(:first)
+
+      restarted = start_supervised!({RuntimeServer, journal: path}, id: :second)
+      assert RuntimeServer.get_state(restarted) == live
+    end
+
+    test "servers without a journal refuse to compact" do
+      server = start_supervised!(RuntimeServer)
+
+      assert {:error, %{code: :invalid_options}} = RuntimeServer.compact_journal(server)
+    end
+  end
 end
