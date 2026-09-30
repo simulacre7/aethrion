@@ -124,8 +124,14 @@ defmodule Aethrion.Tuning do
 
   defp fetch_rule(known, name) do
     case Map.fetch(known, name) do
-      {:ok, rule} -> {:ok, rule}
-      :error -> invalid("unknown rule #{inspect(name)}", %{rule: name})
+      {:ok, rule} ->
+        {:ok, rule}
+
+      :error ->
+        invalid(
+          "unknown rule #{inspect(name)}; known rules: #{known |> Map.keys() |> Enum.sort() |> Enum.join(", ")}",
+          %{rule: name}
+        )
     end
   end
 
@@ -137,6 +143,10 @@ defmodule Aethrion.Tuning do
         {{:ok, key}, value} when is_integer(value) ->
           {:cont, {:ok, Map.put(acc, key, value)}}
 
+        # 8.0 in JSON means 8.
+        {{:ok, key}, value} when is_float(value) and value == trunc(value) ->
+          {:cont, {:ok, Map.put(acc, key, trunc(value))}}
+
         {{:ok, _key}, value} ->
           {:halt,
            invalid("#{rule.id()}.#{name} must be an integer", %{
@@ -147,7 +157,10 @@ defmodule Aethrion.Tuning do
 
         {:error, _value} ->
           {:halt,
-           invalid("unknown parameter #{rule.id()}.#{name}", %{rule: rule.id(), parameter: name})}
+           invalid(
+             "unknown parameter #{rule.id()}.#{name}; #{rule.id()} has #{declared |> Map.keys() |> Enum.sort() |> Enum.join(", ")}",
+             %{rule: rule.id(), parameter: name}
+           )}
       end
     end)
   end
