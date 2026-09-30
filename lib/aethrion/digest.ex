@@ -305,7 +305,16 @@ defmodule Aethrion.Digest do
   # The reader is "you"; everyone else, the first reader included, by name.
   defp for_reader(request, %{you: you, state: state}, word) do
     names = Map.new(request.names, fn {id, _name} -> {id, State.name(state, id)} end)
-    %{request | names: Map.put(names, you, word)}
+
+    rename =
+      &if(State.character?(state, &1.id), do: %{&1 | name: State.name(state, &1.id)}, else: &1)
+
+    %{
+      request
+      | names: Map.put(names, you, word),
+        speaker: rename.(request.speaker),
+        listener: rename.(request.listener)
+    }
   end
 
   defp net_bonds(outputs, say) do

@@ -138,7 +138,7 @@ defmodule Aethrion.MixTasksTest do
       end)
       |> plain()
 
-    assert output =~ "KO       네가 Mina에게 꽃을 준다 (Yuna 목격)"
+    assert output =~ "KO       네가 미나에게 꽃을 준다 (유나 목격)"
   end
 
   test "with --locale ko, each line is followed by its Korean rendering" do

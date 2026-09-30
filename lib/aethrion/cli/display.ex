@@ -197,14 +197,17 @@ defmodule Aethrion.CLI.Display do
     print("")
   end
 
-  def event(event, state \\ nil, locale \\ nil) do
+  # `ko_state` names characters in the Korean line (default: `state`).
+  def event(event, state \\ nil, locale \\ nil, ko_state \\ nil) do
     names = if state, do: &State.name(state, &1), else: &Function.identity/1
     print_tagged("EVENT", :blue, Event.describe(event, names))
 
     if locale == :ko do
+      ko_state = ko_state || state
+
       ko_names = fn
         "user" -> "너"
-        id -> names.(id)
+        id -> if ko_state, do: State.name(ko_state, id), else: id
       end
 
       print_tagged(

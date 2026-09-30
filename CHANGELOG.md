@@ -74,7 +74,7 @@ The social layer release: characters act on each other, every change is explaina
 - Persistence adapters report "nothing saved yet" as `{:error, %Aethrion.Error{code: :not_found}}`, and every public function that can fail returns `%Aethrion.Error{}` with location details; `Aethrion.Error.format/1` renders the message with its location.
 - The `mix demo.*` tasks live in `dev/` and are no longer part of the package.
 - `mix aethrion.report --locale ko` writes `<name>.ko.html` by default, so it does not overwrite the English report.
-- The interactive demo matches character names without case, by id or display name (and the demo cast by their Korean names), and suggests the closest id for a typo.
+- The interactive demo matches character names without case, by id or display name (and the demo cast by their Korean names, 미나야 included), suggests the closest id for a typo, and with `--locale ko` calls the demo cast 미나, 유나, and 하루 in Korean lines.
 - Replies vary more: several plain messages within an hour, a second gift, and a first harsh word (by temperament) no longer get the same line; apologizing again for the same thing is not answered as a pattern, an apology from someone seen being hostile to others is taken warily, a jealous character who heard from the giver lately or had a gift from them says they felt a little left out rather than forgotten, and a plain question gets an answer that fits a question. The fake adapter reads more everyday Korean (좋은 아침, 재밌었어, 답답해) and takes a mild insult with a laugh ("바보야 ㅋㅋ") as teasing. Korean lines name common gifts in Korean ("꽃"), and digests say a witness "spoke up" rather than "reached out".
 
 ### Fixed and hardened

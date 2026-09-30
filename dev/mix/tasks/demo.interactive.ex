@@ -191,7 +191,10 @@ defmodule Mix.Tasks.Demo.Interactive do
     since = Enum.drop(session.outputs, session.digested)
 
     since
-    |> Aethrion.Digest.of(session.state, locale: session.locale || :en)
+    |> Aethrion.Digest.of(
+      if(session.locale == :ko, do: korean_state(session.state), else: session.state),
+      locale: session.locale || :en
+    )
     |> Display.digest(
       if(session.locale == :ko,
         do: "지난 요약 이후 달라진 것",
@@ -471,10 +474,46 @@ defmodule Mix.Tasks.Demo.Interactive do
   defp translations(step, %{adapter: nil, locale: locale}) when locale != nil do
     step.outputs
     |> Enum.filter(&Aethrion.Output.expressive?/1)
+    |> Enum.map(&korean_names/1)
     |> Expression.render(adapter: FakeAdapter, adapter_opts: [locale: locale])
   end
 
   defp translations(_step, _session), do: []
+
+  # In Korean lines the demo cast goes by their Korean names (미나, 유나, 하루),
+  # as long as they still have their English demo names.
+  @demo_names %{"mina" => {"Mina", "미나"}, "yuna" => {"Yuna", "유나"}, "haru" => {"Haru", "하루"}}
+
+  defp korean_name(id, name) do
+    case @demo_names[id] do
+      {^name, korean} -> korean
+      _other -> name
+    end
+  end
+
+  defp korean_names(%{context: %Aethrion.Expression.Request{} = request} = output) do
+    rename = fn %{id: id, name: name} = actor -> %{actor | name: korean_name(id, name)} end
+
+    request = %{
+      request
+      | names: Map.new(request.names, fn {id, name} -> {id, korean_name(id, name)} end),
+        speaker: rename.(request.speaker),
+        listener: rename.(request.listener)
+    }
+
+    %{output | context: request}
+  end
+
+  defp korean_names(output), do: output
+
+  defp korean_state(state) do
+    characters =
+      Map.new(state.characters, fn {id, character} ->
+        {id, %{character | name: korean_name(id, character.name)}}
+      end)
+
+    %{state | characters: characters}
+  end
 
   defp log_line(line, [next | rest] = translated) do
     Display.log(line)
@@ -497,7 +536,7 @@ defmodule Mix.Tasks.Demo.Interactive do
 
     case Runtime.step(session.state, event) do
       {:ok, step} ->
-        Display.event(step.event, session.state, session.locale)
+        Display.event(step.event, session.state, session.locale, korean_state(session.state))
         translated = translations(step, session)
         rest = Enum.reduce(step.log, translated, &log_line/2)
         Enum.each(rest, &Display.expressed(&1, "KO"))
