@@ -223,11 +223,14 @@ TODO:
 - [x] Bonds with announced, explainable changes that settle instead of flickering; bonds color replies.
 - [x] Characters notice how long it has been since a person last talked to them.
 - [x] Journals that stay fast to start (compaction) and warn when replayed by another version.
+- [x] Believable over weeks, checked by playing long sessions: loneliness after quiet stretches, unanswered messages that space out, apologies that wear thin, jealousy that fades, replies that vary and escalate.
+- [x] Several players in one world: display names, a digest per player, jealousy aimed at the giver who caused it.
 
 Success criteria:
 
 - A harsh word in front of a friend changes more than one relationship, and every effect can be explained.
 - Long-running worlds stay bounded in memory, cooldowns, and journal size.
+- A player who talks to a character daily for weeks, or disappears for a month, gets lines a person would find plausible.
 
 ## Near-Term Priority
 
