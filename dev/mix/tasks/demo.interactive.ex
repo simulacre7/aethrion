@@ -19,8 +19,8 @@ defmodule Mix.Tasks.Demo.Interactive do
   - `--no-status` - do not print the status tables after every event (use
     `status` to see them).
 
-  `here haru,yuna` puts characters in the room: they witness every gift and
-  message that does not name its own witnesses (`here none` clears it).
+  `here haru,yuna` puts characters in the room: they witness every gift,
+  message, and apology that does not name its own witnesses (`here none` clears it).
   """
   @shortdoc "Runs the interactive Aethrion CLI demo"
 
@@ -318,7 +318,7 @@ defmodule Mix.Tasks.Demo.Interactive do
   # Characters who are present witness gifts and messages that do not name
   # their own witnesses.
   defp with_witnesses(%{type: type} = event, [_ | _] = present)
-       when type in [:gift_received, :message_sent] do
+       when type in [:gift_received, :message_sent, :apology_offered] do
     case Map.get(event, :observed_by, []) do
       [] -> Map.put(event, :observed_by, present -- [event.from, event.to])
       _named -> event

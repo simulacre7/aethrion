@@ -83,6 +83,51 @@ defmodule Aethrion.ReputationTest do
     end
   end
 
+  describe "apologies in public" do
+    test "witnesses who care trust the apologizer a little more and ease tension" do
+      {state, _outputs} =
+        run!(world(), [
+          message("user", "mina", :hostile, ["haru"]),
+          Event.apology_offered("user", "mina", "I'm sorry", observed_by: ["haru"])
+        ])
+
+      assert %Memory{kind: :observed, topic: "apology:e2"} =
+               State.memory(state, "memory:haru:observed:e2")
+
+      # -4 + 2 trust; +4 - 3 tension.
+      assert %{trust: -2, tension: 1} = to_user(state, "haru")
+    end
+
+    test "easing tension never makes it negative" do
+      {state, _outputs} =
+        dispatch!(world(), Event.apology_offered("user", "mina", "sorry", observed_by: ["haru"]))
+
+      assert %{trust: 2, tension: 0} = to_user(state, "haru")
+    end
+
+    test "hearing about an apology counts for half" do
+      {state, _outputs} =
+        run!(world(), [
+          Event.apology_offered("user", "mina", "I'm sorry"),
+          Event.gossip_shared("mina", "yuna", "memory:mina:apology:e1")
+        ])
+
+      assert %{trust: 1} = to_user(state, "yuna")
+    end
+
+    test "a witnessed apology takes the edge off a pointed reply" do
+      {state, _outputs} =
+        run!(world(), [
+          message("user", "mina", :hostile, ["haru"]),
+          Event.apology_offered("user", "mina", "I'm sorry", observed_by: ["haru"])
+        ])
+
+      {_state, outputs} = dispatch!(state, message("user", "haru", :warm))
+      [reply] = of_type(outputs, :reply)
+      refute reply.text =~ "what you said to Mina"
+    end
+  end
+
   describe "hearsay" do
     test "hearing about hostility to a friend has half the effect" do
       {state, _outputs} =

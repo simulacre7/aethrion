@@ -2,14 +2,15 @@ defmodule Aethrion.Rules.Reputation do
   @moduledoc """
   Characters judge people by how they treat others.
 
-  - **Witnesses.** Characters in a message's `:observed_by` remember a warm,
-    cold, or hostile message as an `:observed` memory of the same topic as the
-    receiver's.
+  - **Witnesses.** Characters in a message's or apology's `:observed_by`
+    remember a warm, cold, or hostile message, or an apology, as an
+    `:observed` memory of the same topic as the receiver's.
   - **Judgement.** A witness who cares about the receiver (affinity >=
     `care_threshold`) changes how they feel about the sender: hostility costs
     trust and adds tension, coldness costs a little trust, warmth earns a little
-    affinity and trust.
-  - **Hearsay.** A character who hears about such a message through
+    affinity and trust, and an apology earns a little trust and eases tension
+    (never below zero): making amends in public repairs a reputation.
+  - **Hearsay.** A character who hears about such a message or apology through
     `:gossip_shared` judges the sender the same way, at `heard_percent` of the
     effect.
 
@@ -36,36 +37,33 @@ defmodule Aethrion.Rules.Reputation do
       heard_percent: 50,
       hostile_importance: 60,
       cold_importance: 35,
-      warm_importance: 40
+      warm_importance: 40,
+      apology_trust: 2,
+      apology_tension: -3,
+      apology_importance: 45
     ]
 
   alias Aethrion.{Character, Memory, State, Transition}
-  alias Aethrion.Rules.{Gossip, Message}
+  alias Aethrion.Rules.{Apology, Gossip, Message}
 
   # Which relationship fields each tone touches; amounts are params named
   # <tone>_<field>.
   @effects %{
     warm: [:affinity, :trust],
     cold: [:trust, :tension],
-    hostile: [:trust, :tension]
+    hostile: [:trust, :tension],
+    apology: [:trust, :tension]
   }
 
   @treatments %{"warm" => :warm, "cold" => :cold, "hostile" => :hostile}
 
   @impl true
   def apply(%Transition{event: %{type: :message_sent, tone: tone} = event} = transition)
-      when is_map_key(@effects, tone) do
-    event
-    |> Map.get(:observed_by, [])
-    |> Enum.uniq()
-    |> Enum.reject(&(&1 in [event.from, event.to]))
-    |> Enum.filter(&(transition.state |> State.character(&1) |> Character.can_act?()))
-    |> Enum.reduce(transition, fn witness, transition ->
-      transition
-      |> Transition.remember(witness_memory(transition, event, witness))
-      |> judge(witness, event.from, event.to, tone, :saw, 100)
-    end)
-  end
+      when is_map_key(@effects, tone),
+      do: witnessed(transition, event, tone)
+
+  def apply(%Transition{event: %{type: :apology_offered} = event} = transition),
+    do: witnessed(transition, event, :apology)
 
   def apply(%Transition{event: %{type: :gossip_shared} = event, state: state} = transition) do
     with %Memory{data: data} <- State.memory(state, Gossip.heard_memory_id(event)),
@@ -87,14 +85,30 @@ defmodule Aethrion.Rules.Reputation do
 
   def apply(%Transition{} = transition), do: transition
 
+  defp witnessed(transition, event, tone) do
+    event
+    |> Map.get(:observed_by, [])
+    |> Enum.uniq()
+    |> Enum.reject(&(&1 in [event.from, event.to]))
+    |> Enum.filter(&(transition.state |> State.character(&1) |> Character.can_act?()))
+    |> Enum.reduce(transition, fn witness, transition ->
+      transition
+      |> Transition.remember(witness_memory(transition, event, witness))
+      |> judge(witness, event.from, event.to, tone, :saw, 100)
+    end)
+  end
+
   @doc """
   Reads a memory's data as a treatment: `{actor, target, tone}` for a warm,
-  cold, or hostile message, or `nil`.
+  cold, or hostile message or an apology (tone `:apology`), or `nil`.
   """
-  @spec treatment(map()) :: {String.t(), String.t(), :warm | :cold | :hostile} | nil
+  @spec treatment(map()) :: {String.t(), String.t(), :warm | :cold | :hostile | :apology} | nil
   def treatment(%{"event" => "message_sent", "from" => from, "to" => to, "tone" => tone})
       when is_map_key(@treatments, tone),
       do: {from, to, Map.fetch!(@treatments, tone)}
+
+  def treatment(%{"event" => "apology_offered", "from" => from, "to" => to}),
+    do: {from, to, :apology}
 
   def treatment(_data), do: nil
 
@@ -106,7 +120,11 @@ defmodule Aethrion.Rules.Reputation do
       |> then(fn transition ->
         Enum.reduce(Map.fetch!(@effects, tone), transition, fn field, transition ->
           amount = div(Transition.param(transition, :"#{tone}_#{field}") * percent, 100)
-          Transition.adjust_relationship(transition, judge, actor, field, amount)
+
+          # Easing tension never makes it negative.
+          if field == :tension and amount < 0,
+            do: Apology.ease_tension(transition, judge, actor, amount),
+            else: Transition.adjust_relationship(transition, judge, actor, field, amount)
         end)
       end)
     else
@@ -119,22 +137,44 @@ defmodule Aethrion.Rules.Reputation do
     verb = if how == :saw, do: "saw", else: "heard"
 
     case tone do
-      :warm -> "#{judge} #{verb} #{actor} be kind to #{target} and warms to #{actor}"
-      tone -> "#{judge} #{verb} #{actor} be #{tone} to #{target} and trusts #{actor} less"
+      :warm ->
+        "#{judge} #{verb} #{actor} be kind to #{target} and warms to #{actor}"
+
+      :apology ->
+        "#{judge} #{verb} #{actor} apologize to #{target} and trusts #{actor} a little more"
+
+      tone ->
+        "#{judge} #{verb} #{actor} be #{tone} to #{target} and trusts #{actor} less"
     end
   end
 
+  defp witness_memory(transition, %{type: :apology_offered} = event, witness) do
+    observed(transition, event, witness,
+      content: "#{witness} saw #{event.from} apologize to #{event.to}: #{event.reason}",
+      importance: Transition.param(transition, :apology_importance),
+      topic: Apology.topic(event),
+      data: Apology.data(event)
+    )
+  end
+
   defp witness_memory(transition, event, witness) do
-    Memory.new(
-      id: "memory:#{witness}:observed:#{event.id}",
-      character_id: witness,
+    observed(transition, event, witness,
       content: "#{witness} saw #{event.from} be #{event.tone} to #{event.to}: \"#{event.text}\"",
       importance: Transition.param(transition, :"#{event.tone}_importance"),
-      created_at: event.at,
-      related_characters: [event.from, event.to],
-      kind: :observed,
       topic: Message.topic(event),
       data: Message.data(event)
+    )
+  end
+
+  defp observed(_transition, event, witness, fields) do
+    Memory.new(
+      [
+        id: "memory:#{witness}:observed:#{event.id}",
+        character_id: witness,
+        created_at: event.at,
+        related_characters: [event.from, event.to],
+        kind: :observed
+      ] ++ fields
     )
   end
 end

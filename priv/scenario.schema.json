@@ -120,6 +120,7 @@
             "from": {"$ref": "#/definitions/id"},
             "to": {"$ref": "#/definitions/id"},
             "reason": {"type": "string", "minLength": 1},
+            "observed_by": {"type": "array", "items": {"$ref": "#/definitions/id"}},
             "at": {"type": "string"}
           },
           "required": ["type", "from", "to", "reason"]

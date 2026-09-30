@@ -67,7 +67,7 @@ History changes how a message lands, through impressions built by consolidation:
 
 **reply** - when someone outside the cast (such as the user) talks to an active, unblocked character, the character emits a `:reply` output phrased from their current mood and memories. Replies do not change state. A warm message from someone the character saw or heard be hostile to another character gets a pointed answer: "Thanks... but I saw what you said to Mina."
 
-**reputation** - characters judge people by how they treat others. For each witness in the message's `observed_by` (never the sender or receiver, and never an inactive or blocked character):
+**reputation** - characters judge people by how they treat others. For each witness in the message's (or apology's, see below) `observed_by` (never the sender or receiver, and never an inactive or blocked character):
 
 - remembers a warm, cold, or hostile message (importance 40, 35, 60; kind `:observed`, same topic as the receiver's memory). Neutral messages are not remembered.
 - if they care about the receiver (affinity >= 20), their relationship with the sender changes:
@@ -78,9 +78,11 @@ History changes how a message lands, through impressions built by consolidation:
 | `cold` | trust -2, tension +2 |
 | `hostile` | trust -4, tension +4 |
 
-### `apology_offered` -> `apology`
+### `apology_offered` -> `apology`, `reputation`
 
 The receiver: jealousy -15, loneliness -6, stress -10, trust toward the apologizer +8, tension toward the apologizer -10 (never below 0), remembers the apology (importance 70).
+
+Apologies take `observed_by` too. Witnesses remember it (importance 45), and those who care about the receiver (affinity >= 20) trust the apologizer +2 and ease tension toward them by 3 (never below 0); hearing about it through gossip counts for half. Making amends in public repairs a reputation, and a character who saw the apology no longer brings up the harsh words in replies.
 
 ### `time_tick` -> `time_passage`, `memory_decay`, `consolidation`, `autonomy`, `companionship`
 

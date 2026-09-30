@@ -71,8 +71,8 @@ Memory fields: `importance`, `strength` (decays with age), `kind` (`:experienced
 | constructor | meaning |
 | --- | --- |
 | `Event.gift_received(from, to, item, observed_by: [...], at: label)` | someone gives a character an item |
+| `Event.apology_offered(from, to, reason, observed_by: [...], at: label)` | someone apologizes to a character; witnesses judge it |
 | `Event.message_sent(from, to, text, tone: tone, observed_by: [...], at: label)` | someone talks to a character; `tone` is `:warm`, `:neutral`, `:cold`, or `:hostile`; witnesses judge the sender |
-| `Event.apology_offered(from, to, reason, at: label)` | someone apologizes |
 | `Event.time_tick(now, hours: n)` | simulated time passes |
 | `Event.gossip_shared(from, to, memory_id, at: label)` | a character tells another about one of their memories (usually produced by rules) |
 | `Event.comfort_offered(from, to, at: label)` | someone comforts a character (usually produced by rules) |

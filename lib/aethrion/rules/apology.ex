@@ -41,13 +41,8 @@ defmodule Aethrion.Rules.Apology do
         created_at: event.at,
         related_characters: [event.from],
         kind: :experienced,
-        topic: "apology:#{event.id}",
-        data: %{
-          "event" => "apology_offered",
-          "from" => event.from,
-          "to" => event.to,
-          "reason" => event.reason
-        }
+        topic: topic(event),
+        data: data(event)
       )
 
     transition
@@ -73,5 +68,18 @@ defmodule Aethrion.Rules.Apology do
     )
     |> ease_tension(event.to, event.from, Transition.param(transition, :tension_delta))
     |> Transition.remember(memory)
+  end
+
+  @doc "The topic every memory of one apology shares."
+  def topic(event), do: "apology:#{event.id}"
+
+  @doc "Structured memory data for an apology."
+  def data(event) do
+    %{
+      "event" => "apology_offered",
+      "from" => event.from,
+      "to" => event.to,
+      "reason" => event.reason
+    }
   end
 end

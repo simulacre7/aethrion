@@ -46,7 +46,7 @@ defmodule Aethrion.CLI.Display do
       "  apologize <from> <to> <reason>",
       "  comfort <from> <to>",
       "  tick <hours>",
-      "  here [a,b | none]                           who else is present; they witness say, message, gift",
+      "  here [a,b | none]                           who else is present; they witness what you say and do",
       "",
       [:bright, "Inspect"],
       "  status                                      characters and relationships",

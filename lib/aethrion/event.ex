@@ -67,6 +67,7 @@ defmodule Aethrion.Event do
       from: from,
       to: to,
       reason: reason,
+      observed_by: Keyword.get(opts, :observed_by, []),
       at: Keyword.get(opts, :at, @unspecified)
     }
   end
@@ -140,6 +141,10 @@ defmodule Aethrion.Event do
     event |> Map.put_new(:at, @unspecified) |> Map.put_new(:observed_by, [])
   end
 
+  def normalize(%{type: :apology_offered} = event) do
+    event |> Map.put_new(:at, @unspecified) |> Map.put_new(:observed_by, [])
+  end
+
   def normalize(%{type: :message_sent} = event) do
     event
     |> Map.put_new(:at, @unspecified)
@@ -165,7 +170,8 @@ defmodule Aethrion.Event do
   def describe(%{type: :time_tick, hours: hours}, _names), do: "time passes +#{hours}h"
 
   def describe(%{type: :apology_offered} = event, names) do
-    "#{names.(event.from)} apologizes to #{names.(event.to)}: #{event.reason}"
+    "#{names.(event.from)} apologizes to #{names.(event.to)}: #{event.reason}" <>
+      observers_suffix(event, names)
   end
 
   def describe(%{type: :message_sent} = event, names) do
@@ -283,6 +289,7 @@ defmodule Aethrion.Event do
 
   defp build(:apology_offered, data) do
     apology_offered(data["from"], data["to"], data["reason"],
+      observed_by: Map.get(data, "observed_by", []),
       at: Map.get(data, "at", @unspecified)
     )
   end

@@ -51,17 +51,25 @@ defmodule Aethrion.Expression.Request do
   from the request's memories: `{:observed, target}` or `{:heard, target}`
   for a specific message, `:reputation` for a reputation impression (unless
   the speaker also holds a firsthand impression of the listener), or `nil`.
-  A specific memory wins over the impression.
+  A specific memory wins over the impression, and a remembered apology from
+  the listener to that person cancels it.
   """
   @spec harshness_to_others(t()) :: {:observed | :heard, String.t()} | :reputation | nil
   def harshness_to_others(
         %__MODULE__{speaker: %{id: speaker}, listener: %{id: listener}} = request
       ) do
+    apologized_to =
+      for %{data: %{"event" => "apology_offered", "from" => ^listener, "to" => to}} <-
+            request.memories,
+          do: to
+
     specific =
       Enum.find_value(request.memories, fn
         %{kind: kind, data: %{"event" => "message_sent", "tone" => "hostile"} = data}
         when kind in [:observed, :heard] ->
-          if data["from"] == listener and data["to"] != speaker, do: {kind, data["to"]}
+          if data["from"] == listener and data["to"] != speaker and
+               data["to"] not in apologized_to,
+             do: {kind, data["to"]}
 
         _memory ->
           nil
