@@ -27,6 +27,7 @@ defmodule Aethrion.CLI.CommandParser do
   defp do_parse(["save", path]), do: {:ok, {:save, path}}
   defp do_parse(["load", path]), do: {:ok, {:load, path}}
   defp do_parse(["record", path]), do: {:ok, {:record, path}}
+  defp do_parse(["report", path]), do: {:ok, {:report, path}}
 
   defp do_parse(["say", to | words]) when words != [] do
     {:ok, {:say, to, Enum.join(words, " ")}}

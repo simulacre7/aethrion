@@ -184,6 +184,25 @@ defmodule Mix.Tasks.Demo.Interactive do
     loop(session)
   end
 
+  defp handle({:ok, {:report, path}}, session) do
+    data =
+      Scenario.record(session.origin, session.host_events, session.state, session.outputs,
+        name: "Interactive session",
+        description: "#{length(session.host_events)} events from mix demo.interactive."
+      )
+
+    with {:ok, scenario} <- Scenario.from_data(Jason.decode!(Jason.encode!(data))),
+         {:ok, result} <- Scenario.run(scenario),
+         :ok <- File.mkdir_p(Path.dirname(path)),
+         :ok <- File.write(path, Aethrion.Report.html(result)) do
+      Display.message("wrote #{path}")
+    else
+      {:error, reason} -> Display.message("ERROR could not write report: #{inspect(reason)}")
+    end
+
+    loop(session)
+  end
+
   defp handle({:ok, {:load, path}}, session) do
     case JsonFile.load(path: path) do
       {:ok, state} ->

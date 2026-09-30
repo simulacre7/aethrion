@@ -25,7 +25,7 @@ The social layer release: characters now act on each other, every change is expl
 - **Scenarios.** JSON scenario files with a world, events, and expectations (`Aethrion.Scenario`, `mix aethrion.scenario`). Nine bundled scenarios run in the test suite.
 - **Branches.** Scenarios can define alternative futures after shared events; each branch has its own expectations, and reports compare branches side by side. The bundled `07_crossroads.json` plays one moment four ways.
 - **Reports.** `mix aethrion.report` renders a scenario as a self-contained HTML report with charts, a relationship graph, and the timeline.
-- **Interactive CLI.** `say` (free text through intent interpretation), `message`, `comfort`, `why`, `context`, `timeline`, `rules`, `undo`, `save`, `load`, `record` (the session as a replayable scenario with snapshot expectations), and `--llm anthropic|openai`.
+- **Interactive CLI.** `say` (free text through intent interpretation), `message`, `comfort`, `why`, `context`, `timeline`, `rules`, `undo`, `save`, `load`, `record` (the session as a replayable scenario with snapshot expectations), `report` (the session as an HTML report), and `--llm anthropic|openai`.
 - Property-based tests for bounds, determinism, persistence round trips, cascade causality, and the expression boundary.
 
 ### Changed

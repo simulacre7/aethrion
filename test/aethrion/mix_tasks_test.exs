@@ -73,4 +73,24 @@ defmodule Aethrion.MixTasksTest do
 
     assert File.read!(out) =~ "<h2>Timeline</h2>"
   end
+
+  test "the interactive demo records and reports a session" do
+    dir = Path.join(System.tmp_dir!(), "aethrion-session-#{System.unique_integer([:positive])}")
+    on_exit(fn -> File.rm_rf(dir) end)
+
+    input = """
+    gift user mina flower observed_by yuna
+    tick 2
+    record #{dir}/session.json
+    report #{dir}/session.html
+    quit
+    """
+
+    capture_io(input, fn -> Mix.Tasks.Demo.Interactive.run(["--no-status"]) end)
+
+    assert {:ok, scenario} = Aethrion.Scenario.load(Path.join(dir, "session.json"))
+    assert {:ok, result} = Aethrion.Scenario.run(scenario)
+    assert Aethrion.Scenario.passed?(result)
+    assert File.read!(Path.join(dir, "session.html")) =~ "Interactive session"
+  end
 end

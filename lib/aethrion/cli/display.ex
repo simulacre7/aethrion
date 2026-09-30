@@ -58,6 +58,7 @@ defmodule Aethrion.CLI.Display do
       "  undo                                        revert the last command",
       "  save <path> | load <path>                   world state as JSON",
       "  record <path>                               this session as a replayable scenario",
+      "  report <path>                               this session as an HTML report",
       "  help | quit"
     ])
   end
