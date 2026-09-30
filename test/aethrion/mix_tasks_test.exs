@@ -107,6 +107,7 @@ defmodule Aethrion.MixTasksTest do
       capture_io(input, fn -> Mix.Tasks.Demo.Interactive.run(["--no-status"]) end) |> plain()
 
     assert output =~ "Opinion  how Haru sees user"
+    assert output =~ ~r/last spoke\s+no record/
 
     assert output =~
              ~r/believes\s+haru knows user has been hostile to yuna 2 times\.\s+\(reputation\)/

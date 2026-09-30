@@ -275,6 +275,14 @@ defmodule Aethrion.CLI.Display do
       "affinity #{relationship.affinity}, trust #{relationship.trust}, tension #{relationship.tension}"
     ])
 
+    last_talked =
+      case Map.fetch(state.cooldowns, Aethrion.Rules.Reply.contact_key(from, to)) do
+        {:ok, at} -> "#{state.clock - at} hours ago"
+        :error -> "no record"
+      end
+
+    print(["  ", pad("last spoke", 11), :faint, last_talked])
+
     opinion_lines("believes", beliefs, fn memory ->
       scope = if memory.data["event"] == "reputation", do: "reputation", else: "firsthand"
       [memory.content, :faint, "  (#{scope})"]
