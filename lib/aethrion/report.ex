@@ -228,7 +228,7 @@ defmodule Aethrion.Report do
         why =
           result.steps
           |> Aethrion.Explain.character(character.id, :mood)
-          |> Aethrion.Explain.describe(&narrative_name(result.state, &1, t))
+          |> Enum.map(&t.({:why, &1, fn id -> narrative_name(result.state, id, t) end}))
           |> Enum.map(&["<li>", esc(&1), "</li>"])
 
         meters =
@@ -1093,6 +1093,7 @@ defmodule Aethrion.Report do
   defp english({:values, a, t, x}), do: "affinity #{a}, trust #{t}, tension #{x}"
   defp english({:caused_by, id}), do: "caused by #{id}"
   defp english({:event, event, names}), do: Event.describe(event, names)
+  defp english({:why, change, names}), do: [change] |> Aethrion.Explain.describe(names) |> hd()
   defp english({:rule_log, count}), do: "Rule log (#{count} lines)"
   defp english({:identical, count}), do: "#{count} values identical in every branch"
   defp english({:tag, :scene, kind}), do: "scene · #{kind}"
@@ -1187,6 +1188,19 @@ defmodule Aethrion.Report do
     do: Aethrion.Expression.Templates.Ko.describe_event(event, names)
 
   defp korean({:rule_log, count}), do: "규칙 로그 (#{count}줄)"
+
+  defp korean({:why, change, names}) do
+    chain =
+      Enum.map_join(
+        change.chain,
+        " ← ",
+        &Aethrion.Expression.Templates.Ko.describe_event(&1, names)
+      )
+
+    "#{korean_value(:mood, change.before)} → #{korean_value(:mood, change.after)} " <>
+      "(#{change.rule} 규칙, #{change.event_id}: #{chain})"
+  end
+
   defp korean({:identical, count}), do: "모든 분기에서 같은 값 #{count}개"
   defp korean({:tag, :scene, kind}), do: "장면 · #{korean_value(:scene, kind)}"
   defp korean({:tag, :reaches_out, reason}), do: "먼저 연락 · #{korean_value(:reaches_out, reason)}"
