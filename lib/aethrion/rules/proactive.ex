@@ -55,6 +55,9 @@ defmodule Aethrion.Rules.Proactive do
     params = params |> Map.put(:heard, heard) |> Map.put(:witnessed, witnessed)
     outgoing = State.relationships_by_from(state)
 
+    transition = prune_curiosity(transition, heard)
+    state = transition.state
+
     state
     |> State.sorted_characters()
     |> Enum.filter(&(Character.can_act?(&1) and could_reach_out?(&1, params)))
@@ -185,6 +188,27 @@ defmodule Aethrion.Rules.Proactive do
       end
     end)
   end
+
+  # A curiosity key only matters while its heard memory is unfaded, and faded
+  # memories never come back, so on each tick keys for anything else are
+  # dropped; otherwise they would pile up in long-running worlds.
+  defp prune_curiosity(%Transition{event: %{type: :time_tick}, state: state} = transition, heard) do
+    live =
+      for {id, memories} <- heard, memory <- memories, into: MapSet.new() do
+        "proactive:#{id}:curious:#{memory.topic}"
+      end
+
+    cooldowns =
+      Map.filter(state.cooldowns, fn {key, _at} ->
+        not String.contains?(key, ":curious:") or MapSet.member?(live, key)
+      end)
+
+    if map_size(cooldowns) == map_size(state.cooldowns),
+      do: transition,
+      else: Transition.put_state(transition, %{state | cooldowns: cooldowns})
+  end
+
+  defp prune_curiosity(transition, _heard), do: transition
 
   # Unfaded secondhand memories involving someone who is not a character, by
   # character, newest first: what they heard, and hostile messages from a

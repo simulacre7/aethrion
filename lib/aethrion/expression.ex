@@ -159,7 +159,8 @@ defmodule Aethrion.Expression do
       importance: memory.importance,
       strength: memory.strength,
       source: memory.source,
-      data: memory.data
+      # Folded topics are bookkeeping, not something to phrase.
+      data: Map.delete(memory.data, "topics")
     }
   end
 

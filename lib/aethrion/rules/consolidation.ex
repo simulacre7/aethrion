@@ -29,9 +29,11 @@ defmodule Aethrion.Rules.Consolidation do
   reads it. `Aethrion.Rules.Message` weighs reputation less than firsthand
   impressions.
 
-  Every impression records the `"topics"` it folded in, so one event is
-  counted once even if its details are forgotten and the story is heard again
-  later (see `Aethrion.Memories.knows_topic?/3`).
+  Every impression records the `"topics"` it folded in that some memory in the
+  world still carries, so one event is counted once even if its details are
+  forgotten and the story is heard again later (see
+  `Aethrion.Memories.knows_topic?/3`). Topics nobody remembers any more cannot
+  be retold, so they are dropped when the impression next changes.
 
   Consolidation is deterministic and purely structural; no summarization
   model is involved.
@@ -56,12 +58,18 @@ defmodule Aethrion.Rules.Consolidation do
 
     # One pass for candidates and existing impressions, so lookups do not
     # rescan the memory list for every group.
-    {candidates, impressions} =
-      Enum.reduce(state.memories, {[], %{}}, fn memory, {candidates, impressions} ->
+    {candidates, impressions, live_topics} =
+      Enum.reduce(state.memories, {[], %{}, MapSet.new()}, fn memory,
+                                                              {candidates, impressions, live} ->
         cond do
-          memory.kind == :impression -> {candidates, Map.put(impressions, memory.id, memory)}
-          candidate?(memory) -> {[memory | candidates], impressions}
-          true -> {candidates, impressions}
+          memory.kind == :impression ->
+            {candidates, Map.put(impressions, memory.id, memory), live}
+
+          candidate?(memory) ->
+            {[memory | candidates], impressions, MapSet.put(live, memory.topic)}
+
+          true ->
+            {candidates, impressions, MapSet.put(live, memory.topic)}
         end
       end)
 
@@ -95,11 +103,12 @@ defmodule Aethrion.Rules.Consolidation do
     Enum.reduce(groups, transition, fn {key, memories, existing}, transition ->
       # A topic already folded in (details forgotten, story heard again) is
       # marked above but not counted twice.
-      folded = if existing, do: Map.get(existing.data, "topics", []), else: []
+      folded =
+        if existing, do: MapSet.new(Map.get(existing.data, "topics", [])), else: MapSet.new()
 
-      case Enum.reject(memories, &(is_binary(&1.topic) and &1.topic in folded)) do
+      case Enum.reject(memories, &(is_binary(&1.topic) and MapSet.member?(folded, &1.topic))) do
         [] -> transition
-        memories -> consolidate(transition, key, memories, existing)
+        memories -> consolidate(transition, key, memories, existing, live_topics)
       end
     end)
   end
@@ -172,16 +181,18 @@ defmodule Aethrion.Rules.Consolidation do
     end
   end
 
-  defp consolidate(transition, {character, scope, pattern, actor} = key, memories, existing) do
+  defp consolidate(transition, {character, scope, pattern, actor} = key, memories, existing, live) do
     id = impression_id(key)
     previous = if existing, do: existing.data["count"], else: 0
     count = previous + length(memories)
 
+    # A topic only needs remembering while some memory of it still exists:
+    # otherwise nobody can tell the story again.
     topics =
       memories
       |> Enum.map(& &1.topic)
-      |> Enum.filter(&is_binary/1)
       |> Enum.concat(if existing, do: Map.get(existing.data, "topics", []), else: [])
+      |> Enum.filter(&(is_binary(&1) and MapSet.member?(live, &1)))
       |> Enum.uniq()
       |> Enum.sort()
 

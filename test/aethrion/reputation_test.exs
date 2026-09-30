@@ -372,4 +372,43 @@ defmodule Aethrion.ReputationTest do
       assert protective(outputs) == []
     end
   end
+
+  describe "long-running worlds stay bounded" do
+    test "curiosity keys are dropped once the news has faded" do
+      {state, _outputs} =
+        run!(Aethrion.Runtime.demo_state(), [flower_for_mina(), Event.time_tick("t", hours: 2)])
+
+      key = "proactive:haru:curious:gift:e1"
+      assert Map.has_key?(state.cooldowns, key)
+
+      {state, _outputs} = dispatch!(state, Event.time_tick("t", hours: 200))
+      refute Map.has_key?(state.cooldowns, key)
+    end
+
+    test "impressions keep only topics some memory still carries" do
+      hostile = &message("user", "mina", :hostile, &1)
+
+      {state, _outputs} =
+        run!(world(), [
+          hostile.(["haru"]),
+          hostile.(["haru"]),
+          Event.time_tick("t", hours: 120),
+          # Both sightings are forgotten; then two more fold into the same reputation.
+          Event.time_tick("t", hours: 900),
+          hostile.(["haru"]),
+          hostile.(["haru"]),
+          Event.time_tick("t", hours: 120)
+        ])
+
+      assert %Memory{data: %{"count" => 4, "topics" => topics}} =
+               State.memory(state, "memory:haru:reputation:hostile:user")
+
+      live = for m <- state.memories, m.kind != :impression, into: MapSet.new(), do: m.topic
+
+      # Nothing remembers the first message any more, so it cannot be retold.
+      refute MapSet.member?(live, "message:e1")
+      refute "message:e1" in topics
+      assert Enum.all?(topics, &MapSet.member?(live, &1))
+    end
+  end
 end
