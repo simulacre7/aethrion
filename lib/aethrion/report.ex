@@ -255,7 +255,7 @@ defmodule Aethrion.Report do
 
         traits = Enum.map(character.traits, &["<li>", esc(t.({:trait, &1})), "</li>"])
 
-        memory_names = &memory_name(result.state, &1)
+        memory_names = &narrative_name(result.state, &1, t)
 
         {beliefs, memories} =
           result.state
@@ -275,8 +275,11 @@ defmodule Aethrion.Report do
             ]
           end)
 
+        # The same thing remembered twice (two afternoons together) reads as
+        # one line.
         remembered =
           memories
+          |> Enum.uniq_by(&t.({:memory, &1, memory_names}))
           |> Enum.take(3)
           |> Enum.map(fn memory ->
             [
@@ -900,14 +903,7 @@ defmodule Aethrion.Report do
           "</strong>",
           if(branch.checks == [],
             do: "",
-            else: [
-              " · ",
-              to_string(passed),
-              "/",
-              to_string(length(branch.checks)),
-              " ",
-              t.("expectations met")
-            ]
+            else: [" · ", esc(t.({:checks_met, passed, length(branch.checks)}))]
           ),
           "</summary>",
           if(branch.description == "",
@@ -1100,11 +1096,34 @@ defmodule Aethrion.Report do
     do:
       "This world has #{total} characters. The cast, charts, relationships, and branch table show the #{shown} most active; the timeline shows everyone."
 
+  defp english({:checks_met, passed, total}), do: "#{passed}/#{total} expectations met"
   defp english({:feelings, name}), do: "#{name}: feelings over time"
   defp english({:values, a, t, x}), do: "affinity #{a}, trust #{t}, tension #{x}"
   defp english({:caused_by, id}), do: "caused by #{id}"
   defp english({:event, event, names}), do: Event.describe(event, names)
-  defp english({:memory, memory, _names}), do: memory.content
+
+  defp english({:memory, memory, names}) do
+    text =
+      case memory.data do
+        %{"event" => event} = data when event in ["impression", "reputation"] ->
+          Aethrion.Digest.belief_text(data, names.(memory.character_id), :en, names)
+
+        data ->
+          english_memory(data, names)
+      end
+
+    case {text, memory} do
+      {nil, _memory} ->
+        memory.content
+
+      {text, %{kind: :heard, source: source}} when is_binary(source) ->
+        "From #{names.(source)}: #{text}"
+
+      {text, _memory} ->
+        text
+    end
+  end
+
   defp english({:short_label, event}), do: short_label(event)
   defp english({:why, change, names}), do: [change] |> Aethrion.Explain.describe(names) |> hd()
   defp english({:rule_log, count}), do: "Rule log (#{count} lines)"
@@ -1223,6 +1242,7 @@ defmodule Aethrion.Report do
     do:
       "이 세계에는 캐릭터가 #{total}명 있습니다. 등장인물, 차트, 관계, 분기 표는 가장 활발한 #{shown}명만 보여 주고, 타임라인은 모두를 보여 줍니다."
 
+  defp korean({:checks_met, passed, total}), do: "검증 #{passed}/#{total} 통과"
   defp korean({:feelings, name}), do: "#{name}: 시간에 따른 감정"
   defp korean({:values, a, t, x}), do: "호감 #{a}, 신뢰 #{t}, 긴장 #{x}"
   defp korean({:caused_by, id}), do: "원인: #{id}"
@@ -1275,14 +1295,42 @@ defmodule Aethrion.Report do
 
   # Names inside sentences ("the user gives Mina a flower").
   # Memory lines in Korean speak to the user, as the character lines do.
-  defp memory_name(_state, "user"), do: "너"
-  defp memory_name(state, id), do: State.name(state, id)
-
   defp narrative_name(_state, "user", t), do: t.("the user")
   defp narrative_name(state, id, _t), do: State.name(state, id)
 
   defp display(_state, "user", t), do: t.("You")
   defp display(state, id, _t), do: State.name(state, id)
+
+  # What a memory holds, told with display names: "The user gave Mina a flower."
+  defp english_memory(%{"event" => "gift_received", "from" => from, "to" => to} = data, names),
+    do: capitalize_first("#{names.(from)} gave #{names.(to)} #{article(data["item"])}.")
+
+  defp english_memory(%{"event" => "message_sent", "from" => from, "to" => to} = data, names),
+    do:
+      capitalize_first(
+        "#{names.(from)} was #{data["tone"]} to #{names.(to)}: \"#{data["text"]}\""
+      )
+
+  defp english_memory(%{"event" => "apology_offered", "from" => from, "to" => to} = data, names),
+    do: capitalize_first("#{names.(from)} apologized to #{names.(to)}: \"#{data["reason"]}\"")
+
+  defp english_memory(%{"event" => "comfort_offered", "from" => from, "to" => to}, names),
+    do: capitalize_first("#{names.(from)} comforted #{names.(to)}.")
+
+  defp english_memory(%{"event" => "time_spent_together", "from" => from, "to" => to}, names),
+    do: capitalize_first("#{names.(from)} and #{names.(to)} spent time together.")
+
+  defp english_memory(_data, _names), do: nil
+
+  defp article(item) when is_binary(item) do
+    cond do
+      not String.match?(item, ~r/^[a-z]/i) -> item
+      String.match?(item, ~r/^[aeiou]/i) -> "an " <> item
+      true -> "a " <> item
+    end
+  end
+
+  defp article(item), do: to_string(item)
 
   defp capitalize_first(<<first::utf8, rest::binary>>), do: String.upcase(<<first::utf8>>) <> rest
   defp capitalize_first(text), do: text

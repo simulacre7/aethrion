@@ -33,7 +33,7 @@ defmodule Aethrion.ReportTest do
       )
 
     assert html =~
-             ~s(Has come to believe</p><ul class="memories"><li><span class="memory-kind">firsthand</span>user has been warm to mina 3 times.)
+             ~s(Has come to believe</p><ul class="memories"><li><span class="memory-kind">firsthand</span>Mina remembers the user being warm 3 times.)
 
     refute html =~ ~r/Remembers most<\/p><ul class="memories">(?:(?!<\/ul>).)*impression/s
   end

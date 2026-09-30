@@ -374,17 +374,19 @@ defmodule Aethrion.Digest do
   end
 
   defp mood_line(names, mood, %{locale: :ko}) do
+    # How they are now, not something that happened next: "지금 Mina는
+    # 속상하다." after a comforting scene does not read as upset by it.
     feeling =
       case mood do
-        :happy -> "기분이 좋아졌다"
-        :lonely -> "외로워졌다"
-        :jealous -> "질투하기 시작했다"
-        :upset -> "속상해졌다"
+        :happy -> "기분이 좋다"
+        :lonely -> "외롭다"
+        :jealous -> "질투하고 있다"
+        :upset -> "속상하다"
       end
 
     case names do
-      [one] -> "#{Ko.with_particle(one, :topic)} #{feeling}."
-      names -> "#{ko_list(names)} 모두 #{feeling}."
+      [one] -> "지금 #{Ko.with_particle(one, :topic)} #{feeling}."
+      names -> "지금 #{ko_list(names)} 모두 #{feeling}."
     end
   end
 

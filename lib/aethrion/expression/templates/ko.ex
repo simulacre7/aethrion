@@ -255,7 +255,7 @@ defmodule Aethrion.Expression.Templates.Ko do
   defp gossip(request, %{"event" => "message_sent", "tone" => tone} = data)
        when tone in ["hostile", "cold"],
        do:
-         "#{actor(request, data["from"])} #{target(request, data)}한테 \"#{data["text"]}\"라고 한 걸 전한다."
+         "#{actor(request, data["from"])} #{target(request, data)}한테 \"#{quoted(data["text"])}\"라고 한 걸 전한다."
 
   defp gossip(request, %{"event" => event} = data)
        when event in ["apology_offered", "comfort_offered", "message_sent"] do
@@ -457,7 +457,7 @@ defmodule Aethrion.Expression.Templates.Ko do
   end
 
   defp describe_data(%{"event" => "apology_offered", "from" => from, "to" => to} = data, names),
-    do: "#{subject(names.(from))} #{names.(to)}에게 사과했다: #{data["reason"]}"
+    do: "#{subject(names.(from))} #{names.(to)}에게 사과했다: \"#{data["reason"]}\""
 
   defp describe_data(%{"event" => "comfort_offered", "from" => from, "to" => to}, names),
     do: "#{subject(names.(from))} #{with_particle(names.(to), :object)} 위로해 줬다."
@@ -466,6 +466,10 @@ defmodule Aethrion.Expression.Templates.Ko do
     do: "#{with_particle(names.(from), :with)} #{with_particle(names.(to), :subject)} 함께 시간을 보냈다."
 
   defp describe_data(_data, _names), do: nil
+
+  # Words quoted before 라고 lose their final full stop: "그만해"라고.
+  defp quoted(text) when is_binary(text), do: String.replace(text, ~r/\.+$/u, "")
+  defp quoted(text), do: text
 
   defp seen_by(%{observed_by: [_ | _] = observers}, name),
     do: " (#{Enum.map_join(observers, ", ", name)} 목격)"

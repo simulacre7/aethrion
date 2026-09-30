@@ -176,6 +176,6 @@ defmodule Aethrion.TemplatesKoTest do
     }
 
     assert Aethrion.Expression.Templates.Ko.render(said, tense: :past) ==
-             ~s(Yuna는 Haru에게 네가 자기한테 "전한다."라고 한 걸 전했다.)
+             ~s(Yuna는 Haru에게 네가 자기한테 "전한다"라고 한 걸 전했다.)
   end
 end

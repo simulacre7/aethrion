@@ -948,7 +948,7 @@ defmodule Aethrion.NarrativeTest do
         outputs
         |> Aethrion.Digest.of(state, opts)
         |> Enum.map(& &1.text)
-        |> Enum.find(&(&1 =~ "Get lost."))
+        |> Enum.find(&(&1 =~ "Get lost"))
       end
 
       assert told.(you: "user") =~ "what you said to Mara"

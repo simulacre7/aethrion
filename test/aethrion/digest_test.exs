@@ -43,13 +43,13 @@ defmodule Aethrion.DigestTest do
     assert [%{kind: :mood, text: "Haru, Mina, and Yuna are lonely."}] =
              Enum.filter(items, &(&1.kind == :mood))
 
-    assert [%{text: "Haru, Mina, Yuna 모두 외로워졌다."}] =
+    assert [%{text: "지금 Haru, Mina, Yuna 모두 외롭다."}] =
              [Event.time_tick("t", hours: 30)]
              |> digest(locale: :ko, state: apart)
              |> Enum.filter(&(&1.kind == :mood))
 
     # Together, Haru is fine.
-    assert [%{text: "Mina와 Yuna 모두 외로워졌다."}] =
+    assert [%{text: "지금 Mina와 Yuna 모두 외롭다."}] =
              [Event.time_tick("t", hours: 30)]
              |> digest(locale: :ko)
              |> Enum.filter(&(&1.kind == :mood))
