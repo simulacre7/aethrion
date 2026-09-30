@@ -31,7 +31,7 @@ host event
 | relationship `affinity`, `trust`, `tension` | -100..100 |
 | memory `importance`, `strength` | 0..100 |
 
-Outputs report the delta that was actually applied after clamping.
+Outputs report the delta that was actually applied after clamping. `energy` is reserved for hosts: no built-in rule reads or changes it, but it is validated, persisted, and available to custom rules.
 
 ## Event rules
 
