@@ -805,5 +805,22 @@ defmodule Aethrion.NarrativeTest do
     end
   end
 
+  test "a reply sees the bond the world records, even on a relationship's first change" do
+    state =
+      State.update_relationship(
+        Runtime.demo_state(),
+        "mina",
+        "user",
+        &%{&1 | affinity: 50, trust: 30}
+      )
+
+    {:ok, step} = Runtime.step(state, Event.message_sent("user", "mina", "k.", tone: :cold))
+
+    recorded = State.get_relationship(step.state, "mina", "user")
+    assert [%{context: %{relationship: %{bond: bond}}}] = replies(step.outputs, "mina")
+    assert bond == recorded.bond
+    assert bond == Bond.derive(recorded, step.state)
+  end
+
   defp tick(hours), do: Event.time_tick("t", hours: hours)
 end

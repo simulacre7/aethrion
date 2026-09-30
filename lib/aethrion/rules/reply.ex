@@ -47,6 +47,7 @@ defmodule Aethrion.Rules.Reply do
           repeats: repeats,
           goodwill: Aethrion.Rules.Message.goodwill?(state, event),
           speaker_mood: mood,
+          bond: Aethrion.Rules.Bond.during(transition, event.to, event.from),
           memories: memories
         )
 

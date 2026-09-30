@@ -45,7 +45,7 @@ defmodule Aethrion.Expression do
       reason: Keyword.fetch!(opts, :reason),
       speaker: speaker(state, speaker_id, Keyword.get(opts, :speaker_mood)),
       listener: actor(state, listener_id),
-      relationship: relationship(state, speaker_id, listener_id),
+      relationship: relationship(state, speaker_id, listener_id, Keyword.get(opts, :bond)),
       memories: Enum.map(memories, &memory_view/1),
       names: names(state, [speaker_id, listener_id], memories),
       tone: Keyword.get(opts, :tone),
@@ -147,14 +147,14 @@ defmodule Aethrion.Expression do
     end
   end
 
-  defp relationship(state, from, to) do
+  defp relationship(state, from, to, bond) do
     relationship = State.get_relationship(state, from, to)
 
     %{
       affinity: relationship.affinity,
       trust: relationship.trust,
       tension: relationship.tension,
-      bond: Aethrion.Rules.Bond.derive(relationship, state)
+      bond: bond || Aethrion.Rules.Bond.derive(relationship, state)
     }
   end
 

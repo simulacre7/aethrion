@@ -107,6 +107,30 @@ defmodule Aethrion.Rules.Bond do
   end
 
   @doc """
+  The bond `from` has toward `to` in the middle of an event: what this rule
+  will record once the event's changes are in, for rules that run before it
+  (replies, proactive messages) and describe the relationship.
+  """
+  @spec during(Transition.t(), String.t(), String.t()) :: bond()
+  def during(%Transition{state: state} = transition, from, to) do
+    now = State.get_relationship(state, from, to)
+    thresholds = thresholds(state)
+
+    case now.bond do
+      nil ->
+        fields =
+          transition.trace
+          |> Enum.filter(&(&1.kind == :relationship and &1.target == {from, to}))
+          |> Enum.reduce(%{}, fn entry, fields -> Map.put(fields, entry.field, entry.before) end)
+
+        derive(%{now | bond: derive(struct(now, fields), thresholds)}, thresholds)
+
+      _recorded ->
+        derive(now, thresholds)
+    end
+  end
+
+  @doc """
   The bond of a relationship: from its numbers, and from the bond it last had
   (see hysteresis above). Pass the world state to honor its
   `Aethrion.Tuning` overrides; without it the defaults are used.

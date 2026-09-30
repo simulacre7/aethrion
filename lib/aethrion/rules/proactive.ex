@@ -427,7 +427,10 @@ defmodule Aethrion.Rules.Proactive do
         :proactive_message,
         character.id,
         recipient,
-        opts |> Keyword.put(:reason, reason) |> Keyword.put(:since_contact, since_contact)
+        opts
+        |> Keyword.put(:reason, reason)
+        |> Keyword.put(:since_contact, since_contact)
+        |> Keyword.put(:bond, Aethrion.Rules.Bond.during(transition, character.id, recipient))
       )
 
     output =
