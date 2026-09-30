@@ -100,7 +100,7 @@ defmodule Aethrion.Expression.Choices do
 
     # An apology after one that already came after the latest harsh words is
     # for something already forgiven.
-    settled? = earlier == 1 and forgiven?(request, listener)
+    settled? = settled?(request, listener, earlier)
 
     cond do
       settled? -> :settled
@@ -156,6 +156,11 @@ defmodule Aethrion.Expression.Choices do
        do: from == listener and pattern in ["cold", "hostile"]
 
   defp harsh_from?(_memory, _listener), do: false
+
+  defp settled?(request, listener, 1),
+    do: tension(request) < @guarded_tension and forgiven?(request, listener)
+
+  defp settled?(_request, _listener, _earlier), do: false
 
   defp forgiven?(request, listener) do
     numbers = fn match? ->

@@ -352,6 +352,7 @@ defmodule Aethrion.Expression.Templates do
 
     cond do
       not String.match?(item, ~r/^[A-Za-z]/) -> item
+      String.match?(word, ~r/^(a|an|the|some|my|your) /) -> item
       plural?(word) -> item
       String.match?(word, ~r/^(hour|honest|honou?r|heir)/) -> "an " <> item
       String.match?(word, ~r/^(uni|use|usu|eu|one|once)/) -> "a " <> item

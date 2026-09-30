@@ -985,5 +985,29 @@ defmodule Aethrion.NarrativeTest do
     end
   end
 
+  test "a digest tells what a belief holds now, not when it first formed" do
+    warm = Event.message_sent("user", "mina", "Morning!", tone: :warm)
+
+    {state, outputs} =
+      run!(Runtime.demo_state(), Enum.flat_map(1..14, fn _ -> [warm, tick(24)] end))
+
+    count =
+      Enum.find_value(state.memories, fn
+        %{kind: :impression, data: %{"pattern" => "warm", "from" => "user"}} = memory
+        when memory.character_id == "mina" ->
+          memory.data["count"]
+
+        _other ->
+          nil
+      end)
+
+    assert count > 2
+
+    assert Enum.any?(
+             Aethrion.Digest.of(outputs, state),
+             &(&1.text == "Mina remembers you being warm #{count} times.")
+           )
+  end
+
   defp tick(hours), do: Event.time_tick("t", hours: hours)
 end

@@ -169,7 +169,14 @@ defmodule Aethrion.IntentTest do
       {"안 해도 돼, 고마워", :warm},
       {"I'm no longer happy", :cold},
       {"not that happy", :cold},
-      {"can't thank you enough", :warm}
+      {"can't thank you enough", :warm},
+      {"I don't hate you", :neutral},
+      {"please don't leave me alone", :neutral},
+      {"너 바보 아니야", :neutral},
+      {"너 안 싫어", :neutral},
+      {"오늘 비 와서 짜증나", :neutral},
+      {"너 때문에 짜증나", :hostile},
+      {"오늘 예뻐 보여", :warm}
     ]
 
     for {text, expected} <- cases do

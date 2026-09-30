@@ -327,7 +327,7 @@ defmodule Aethrion.CLI.Display do
 
     last_talked =
       case State.hours_since(state, Aethrion.Rules.Reply.contact_key(from, to)) do
-        nil -> "no record"
+        nil -> "never"
         hours -> "#{hours} hours ago"
       end
 

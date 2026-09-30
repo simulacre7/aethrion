@@ -128,14 +128,16 @@ defmodule Aethrion.Expression.Request do
         )
       )
 
+    # A reputation for hostility, unless the speaker knows of an apology to
+    # everyone it was about.
     reputation? =
-      Enum.any?(
-        request.memories,
-        &match?(
-          %{data: %{"event" => "reputation", "pattern" => "hostile", "from" => ^listener}},
-          &1
-        )
-      )
+      Enum.any?(request.memories, fn
+        %{data: %{"event" => "reputation", "pattern" => "hostile", "from" => ^listener} = data} ->
+          not Enum.all?(Map.get(data, "about", []), &Map.has_key?(apologies, &1))
+
+        _memory ->
+          false
+      end)
 
     cond do
       specific -> specific

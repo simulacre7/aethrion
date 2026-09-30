@@ -135,6 +135,7 @@ defmodule Aethrion.TemplatesKoTest do
     assert Aethrion.Expression.Templates.with_article("hour") == "an hour"
     assert Aethrion.Expression.Templates.with_article("unicorn") == "a unicorn"
     assert Aethrion.Expression.Templates.with_article("귤") == "귤"
+    assert Aethrion.Expression.Templates.with_article("a small cake") == "a small cake"
   end
 
   test "past tense leaves quoted words alone, wherever a quote appears" do

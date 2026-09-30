@@ -46,12 +46,14 @@ defmodule Aethrion.LLM.FakeAdapter do
              "worthless",
              "stop it"
            ] ++
-             ["꺼져", "닥쳐", "짜증", "바보", "멍청", "한심", "질렸", "재수 없", "재수없", "지긋지긋"] ++
+             ["꺼져", "닥쳐", "바보", "멍청", "한심", "질렸", "재수 없", "재수없", "지긋지긋"] ++
              ["연락하지 마", "상종", "역겨", "저리 가", "입 다물", "이기적", "그 모양"]
   # "그만해", but not "걱정 그만해" or "그만해도 돼".
   @stop ~r/(?<!걱정 )그만해(?!도)/u
   # Harsh only when aimed at the listener: "너 싫어", not "비 와서 싫어".
-  @hostile_at_you ["싫어", "최악", "미워"]
+  @hostile_at_you ["싫어", "최악", "미워", "짜증"]
+  # Denied insults are not insults: "너 바보 아니야".
+  @hostile_denied ~r/(?:바보|멍청|한심|이기적|싫|미워|최악)\S*\s*(?:아니|아냐|안\s)/u
   @you ~r/(?:^|\s)(?:너(?![무희])|넌|널|니(?=\s)|네가|니가|너가|당신)/u
   @warm [
     "thank",
@@ -98,7 +100,9 @@ defmodule Aethrion.LLM.FakeAdapter do
     "축하",
     "힘내",
     "자랑스러",
-    "행복"
+    "행복",
+    "예쁘",
+    "예뻐"
   ]
   # Disappointment is cold even next to a warm word ("대단히 실망했어"), and so
   # is brushing something off ("사랑 따위 필요 없어").
@@ -178,9 +182,15 @@ defmodule Aethrion.LLM.FakeAdapter do
       mentions?(String.replace(text, @not_apology, ""), @apology)
   end
 
+  # Harsh words count unless they are negated or denied: "I don't hate you",
+  # "don't go away", "너 안 싫어", "너 바보 아니야".
   defp hostile?(text) do
-    mentions?(text, @hostile) or Regex.match?(@stop, text) or
-      (mentions?(text, @hostile_at_you) and Regex.match?(@you, text))
+    insult? =
+      mentions?(text, @hostile) or Regex.match?(@stop, text) or
+        (mentions?(text, @hostile_at_you) and Regex.match?(@you, text))
+
+    insult? and not negated_before?(text, @hostile ++ @hostile_at_you) and
+      not Regex.match?(@hostile_denied, text)
   end
 
   defp cold?(text), do: mentions?(text, @cold) or Regex.match?(@dont_know, text)

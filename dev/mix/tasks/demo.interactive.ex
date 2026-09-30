@@ -321,7 +321,11 @@ defmodule Mix.Tasks.Demo.Interactive do
         # The fake adapter only guesses from keywords; say so once.
         if is_nil(session.adapter) and event.type == :message_sent and not session.hinted? do
           Display.message(
-            "  (a keyword guess; for an exact tone use: message user #{to} <warm|neutral|cold|hostile> <text>)"
+            if session.locale == :ko,
+              do:
+                "  (키워드로 추측한 말투입니다. 정확히 정하려면: message user #{to} <warm|neutral|cold|hostile> <말>)",
+              else:
+                "  (a keyword guess; for an exact tone use: message user #{to} <warm|neutral|cold|hostile> <text>)"
           )
         end
 

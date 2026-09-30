@@ -56,7 +56,9 @@ defmodule Aethrion.Digest do
     say = %{
       locale: locale,
       you: you,
-      name: &name(state, &1, you, locale)
+      name: &name(state, &1, you, locale),
+      # Impressions deepen after they form; tell what they hold now.
+      impressions: for(%{kind: :impression} = m <- state.memories, into: %{}, do: {m.id, m.data})
     }
 
     outputs =
@@ -157,7 +159,9 @@ defmodule Aethrion.Digest do
   end
 
   defp event_item(%{type: :memory_created, memory: %{kind: :impression} = memory} = output, say) do
-    case belief(memory.data, say.name.(memory.character_id), say) do
+    data = Map.get(say.impressions, memory.id, memory.data)
+
+    case belief(data, say.name.(memory.character_id), say) do
       nil -> []
       text -> [item(:belief, output, text)]
     end
