@@ -110,6 +110,9 @@ defmodule Aethrion.IntentTest do
 
     assert {:ok, %{type: :apology_offered, observed_by: ["haru"]}, _meta} =
              Intent.interpret(state, "sorry", to: "mina", observed_by: ["haru"])
+
+    assert {:ok, %{observed_by: []}, _meta} =
+             Intent.interpret(state, "hi", to: "mina", observed_by: nil)
   end
 
   test "the fake adapter reads everyday Korean the way it is meant" do

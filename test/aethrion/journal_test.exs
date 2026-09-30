@@ -156,6 +156,15 @@ defmodule Aethrion.JournalTest do
 
       assert {:ok, server} = start_supervised({RuntimeServer, journal: path, pipeline: pipeline})
       assert Aethrion.Tuning.get(RuntimeServer.get_state(server), Sparkle, :shine) == 5
+
+      # Loading such a state into a server without the rule is refused, so it
+      # cannot write a journal it could not start from again.
+      {:ok, plain} =
+        start_supervised(
+          Supervisor.child_spec({RuntimeServer, journal: path <> ".plain"}, id: :plain)
+        )
+
+      assert {:error, %Aethrion.Error{}} = RuntimeServer.put_state(plain, state)
     end
 
     test "a world keeps its subscribers across a runtime restart, and says its name", %{

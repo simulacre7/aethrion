@@ -84,8 +84,13 @@ defmodule Aethrion.Intent do
 
         {proposal, meta} = propose(adapter, request, Keyword.get(opts, :adapter_opts, []))
 
-        event_opts =
-          [at: Keyword.get(opts, :at, "unspecified")] ++ Keyword.take(opts, [:observed_by])
+        witnesses =
+          case Keyword.get(opts, :observed_by) do
+            list when is_list(list) -> [observed_by: list]
+            _none -> []
+          end
+
+        event_opts = [at: Keyword.get(opts, :at, "unspecified")] ++ witnesses
 
         {:ok, build_event(proposal, request, event_opts), meta}
     end

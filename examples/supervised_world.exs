@@ -41,10 +41,10 @@ defmodule Example.Listener do
 
     if remaining > 0 do
       receive do
-        {:aethrion, _pid, {:dispatched, step}} ->
+        {:aethrion, _world, {:dispatched, step}} ->
           IO.puts("dispatched #{step.event.id} #{Aethrion.Event.describe(step.event)}")
 
-        {:aethrion, _pid, {:expressed, output}} ->
+        {:aethrion, _world, {:expressed, output}} ->
           speaker = output.character_id
           IO.puts("  #{speaker}: #{output.text}  [#{output.expression.status}]")
       after

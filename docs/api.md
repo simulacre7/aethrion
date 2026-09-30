@@ -266,13 +266,13 @@ Aethrion.World.history(:garden)
 Aethrion.World.unsubscribe(:garden)
 ```
 
-A world supervises a `Task.Supervisor` for rendering, an `Aethrion.RuntimeServer`, and an optional `Aethrion.Scheduler` under `:rest_for_one`. With `:persistence`, a restarted runtime resumes from its last snapshot.
+A world supervises a `:pg` scope for its subscribers, a `Task.Supervisor` for rendering, an `Aethrion.RuntimeServer`, and an optional `Aethrion.Scheduler` under `:rest_for_one`. With `:persistence` or `:journal`, a restarted runtime resumes from its last snapshot or journal.
 
 ### RuntimeServer
 
 | function | meaning |
 | --- | --- |
-| `start_link(opts)` | `:initial_state`, `:name`, `:pipeline`, `:max_depth`, `:max_events`, `:history_limit`, `:persistence` or `:journal` (with `:journal_compact_every`), `:expression` |
+| `start_link(opts)` | `:initial_state`, `:name`, `:pipeline`, `:max_depth`, `:max_events`, `:history_limit`, `:persistence` or `:journal` (with `:journal_compact_every`), `:expression`, `:subscribers` (a `:pg` scope), `:tag` |
 | `dispatch(server, event)` | same result as `Runtime.dispatch/3` |
 | `step(server, event)` | `{:ok, %Aethrion.Step{}}` |
 | `get_state(server)`, `put_state(server, state)` | read or replace the state |
@@ -338,7 +338,7 @@ Aethrion.World.compact_journal(:garden)                                   # a ru
 ```bash
 mix aethrion.journal tmp/garden.jsonl --compact --archive tmp/garden-2026-10.jsonl
 ```
-Journals and snapshot persistence are alternatives; a runtime server accepts one or the other, and refuses `put_state/2` while journaling.
+Journals and snapshot persistence are alternatives; a runtime server accepts one or the other. `put_state/2` on a journaling server starts the journal over from the new state, and a state whose tuning the pipeline cannot hold is refused.
 
 ## Scenarios and reports
 

@@ -84,12 +84,18 @@ defmodule Mix.Tasks.Aethrion.Scenario do
          {:module, _} <- Code.ensure_loaded(module),
          function when is_atom(function) <- existing_atom(function_name),
          true <- function_exported?(module, function, 0),
-         %Aethrion.Pipeline{} = pipeline <- apply(module, function, []) do
+         %Aethrion.Pipeline{} = pipeline <- safe_apply(module, function) do
       pipeline
     else
       _other ->
         Mix.raise("--pipeline #{spec}: expected Module.function returning an Aethrion.Pipeline")
     end
+  end
+
+  defp safe_apply(module, function) do
+    apply(module, function, [])
+  rescue
+    _error -> nil
   end
 
   defp existing_atom(name) do

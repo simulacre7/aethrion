@@ -142,7 +142,7 @@ In an `Aethrion.World` (or `Aethrion.RuntimeServer`) with `:expression` configur
 ```
 
 - `dispatch/2` returns immediately with fallback text; the simulation never waits on a model.
-- Subscribers receive `{:aethrion, pid, {:expressed, output}}` when a line is rendered.
+- Subscribers receive `{:aethrion, tag, {:expressed, output}}` when a line is rendered (`tag` is the world's name for an `Aethrion.World`).
 - A slow adapter is terminated at `timeout`; a crashing or killed task is isolated. Either way subscribers receive the output with `expression.status == :fallback`, and the runtime keeps running.
 
 This is where BEAM earns its place: not to make inference faster, but to keep a long-running world responsive and correct while the slowest, least reliable part of the system sits behind a supervised boundary.

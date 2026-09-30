@@ -20,10 +20,13 @@ defmodule Aethrion.RuntimeServer do
 
   Subscribers receive:
 
-  - `{:aethrion, server_pid, {:dispatched, %Aethrion.Step{}}}`
-  - `{:aethrion, server_pid, {:expressed, output}}` - for each expressive output
+  - `{:aethrion, tag, {:dispatched, %Aethrion.Step{}}}`
+  - `{:aethrion, tag, {:expressed, output}}` - for each expressive output
     when `:expression` is configured; `output.expression.status` is `:ok` or
     `:fallback`
+
+  `tag` is the server's pid unless the `:tag` option says otherwise (an
+  `Aethrion.World` uses its name).
   """
 
   use GenServer
@@ -55,8 +58,8 @@ defmodule Aethrion.RuntimeServer do
   - `:journal` - path of an `Aethrion.Journal`. If it exists, the world is
     rebuilt by replaying it (taking precedence over `:initial_state`);
     otherwise it is created from the initial state. Every successful dispatch
-    appends its host event. Cannot be combined with `:persistence`, and
-    `put_state/2` is refused while journaling.
+    appends its host event. Cannot be combined with `:persistence`;
+    `put_state/2` starts the journal over from the new state.
   - `:journal_compact_every` - with `:journal`, compact the journal (see
     `compact_journal/1`) after this many host events, so a long-running world
     starts quickly. A failed compaction is logged and retried after the next
@@ -192,16 +195,13 @@ defmodule Aethrion.RuntimeServer do
 
   def handle_call(:get_state, _from, server), do: {:reply, server.world, server}
 
-  # A journaled world starts its journal over from the new state.
-  def handle_call({:put_state, state}, _from, %{journal: path} = server) when is_binary(path) do
-    case Aethrion.Journal.rewrite(path, state) do
-      :ok -> {:reply, :ok, %{server | world: state, history: [], since_compaction: 0}}
+  # A state whose tuning the pipeline cannot hold is refused: saved, it
+  # would lose that tuning, or keep the server from starting again.
+  def handle_call({:put_state, state}, _from, server) do
+    case tuning_fits(state, server.pipeline) do
+      :ok -> replace_state(server, state)
       error -> {:reply, error, server}
     end
-  end
-
-  def handle_call({:put_state, state}, _from, server) do
-    {:reply, :ok, persist(%{server | world: state, history: []})}
   end
 
   def handle_call(:history, _from, server), do: {:reply, Enum.reverse(server.history), server}
@@ -218,7 +218,8 @@ defmodule Aethrion.RuntimeServer do
     end
   end
 
-  def handle_call({:subscribe, pid}, _from, %{pg: scope} = server) when not is_nil(scope) do
+  def handle_call({:subscribe, pid}, _from, %{pg: scope} = server)
+      when not is_nil(scope) and node(pid) == node() do
     unless pid in :pg.get_local_members(scope, :subscribers),
       do: :ok = :pg.join(scope, :subscribers, pid)
 
@@ -234,7 +235,8 @@ defmodule Aethrion.RuntimeServer do
     end
   end
 
-  def handle_call({:unsubscribe, pid}, _from, %{pg: scope} = server) when not is_nil(scope) do
+  def handle_call({:unsubscribe, pid}, _from, %{pg: scope} = server)
+      when not is_nil(scope) and node(pid) == node() do
     _left_or_not_joined = :pg.leave(scope, :subscribers, pid)
     {:reply, :ok, server}
   end
@@ -508,11 +510,33 @@ defmodule Aethrion.RuntimeServer do
     end
   end
 
+  defp replace_state(%{journal: path} = server, state) when is_binary(path) do
+    # A journaled world starts its journal over from the new state.
+    case Aethrion.Journal.rewrite(path, state) do
+      :ok -> {:reply, :ok, %{server | world: state, history: [], since_compaction: 0}}
+      error -> {:reply, error, server}
+    end
+  end
+
+  defp replace_state(server, state),
+    do: {:reply, :ok, persist(%{server | world: state, history: []})}
+
+  defp tuning_fits(%State{tuning: tuning}, _pipeline) when tuning == %{}, do: :ok
+
+  defp tuning_fits(%State{} = state, pipeline) do
+    case Aethrion.Tuning.from_data(Aethrion.Tuning.to_data(state.tuning), pipeline: pipeline) do
+      {:ok, _tuning} -> :ok
+      {:error, error} -> {:error, error}
+    end
+  end
+
   defp broadcast(server, payload) do
+    # Local subscribers of a World live in its :pg scope; others (and every
+    # subscriber of a bare server) are monitored here.
     subscribers =
       case server.pg do
         nil -> Map.keys(server.subscribers)
-        scope -> :pg.get_local_members(scope, :subscribers)
+        scope -> :pg.get_local_members(scope, :subscribers) ++ Map.keys(server.subscribers)
       end
 
     for pid <- subscribers, do: send(pid, {:aethrion, server.tag, payload})

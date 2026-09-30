@@ -26,8 +26,9 @@ defmodule Aethrion.World do
 
   If the runtime server crashes it restarts from the last persisted snapshot
   or journal (when `:persistence` or `:journal` is given), and the scheduler
-  restarts after it; subscribers stay subscribed. A crash inside an
-  expression adapter never reaches the runtime.
+  restarts after it; subscribers on this node stay subscribed (those on other
+  nodes, and everyone if the subscriber scope itself crashes, subscribe
+  again). A crash inside an expression adapter never reaches the runtime.
 
   Subscribers receive `{:aethrion, world_name, {:dispatched, step}}` and, with
   `:expression`, `{:aethrion, world_name, {:expressed, output}}`, so one
@@ -174,11 +175,31 @@ defmodule Aethrion.World do
 
   @doc "See `Aethrion.RuntimeServer.subscribe/2`."
   @spec subscribe(atom(), pid()) :: :ok
-  def subscribe(name, pid \\ self()), do: RuntimeServer.subscribe(runtime(name), pid)
+  # Local subscribers join the world's :pg scope directly, so subscribing
+  # works even while the runtime is restarting.
+  def subscribe(name, pid \\ self())
+
+  def subscribe(name, pid) when node(pid) == node() do
+    scope = subscribers(name)
+
+    unless pid in :pg.get_local_members(scope, :subscribers),
+      do: :pg.join(scope, :subscribers, pid)
+
+    :ok
+  end
+
+  def subscribe(name, pid), do: RuntimeServer.subscribe(runtime(name), pid)
 
   @doc "See `Aethrion.RuntimeServer.unsubscribe/2`."
   @spec unsubscribe(atom(), pid()) :: :ok
-  def unsubscribe(name, pid \\ self()), do: RuntimeServer.unsubscribe(runtime(name), pid)
+  def unsubscribe(name, pid \\ self())
+
+  def unsubscribe(name, pid) when node(pid) == node() do
+    _left_or_not_joined = :pg.leave(subscribers(name), :subscribers, pid)
+    :ok
+  end
+
+  def unsubscribe(name, pid), do: RuntimeServer.unsubscribe(runtime(name), pid)
 
   @doc "See `Aethrion.RuntimeServer.put_state/2`."
   @spec put_state(atom(), Aethrion.State.t()) :: :ok | {:error, Aethrion.Error.t()}
