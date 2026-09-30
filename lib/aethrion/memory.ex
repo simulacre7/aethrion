@@ -61,8 +61,13 @@ defmodule Aethrion.Memory do
   """
   def new(attrs) when is_list(attrs) or is_map(attrs) do
     memory = struct!(__MODULE__, attrs)
-    %{memory | strength: memory.strength || memory.importance}
+    importance = clamp(memory.importance)
+    %{memory | importance: importance, strength: clamp(memory.strength || importance)}
   end
+
+  # Tuned parameters can push importance outside 0..100; memories never leave it.
+  defp clamp(value) when is_integer(value), do: value |> max(0) |> min(100)
+  defp clamp(value), do: value
 
   @doc "Memory kinds the runtime understands."
   def kinds, do: @kinds

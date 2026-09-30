@@ -154,10 +154,10 @@ defmodule Aethrion.Transition do
 
   @doc """
   Stores a memory and emits `:memory_created`. The memory's `created_tick` is
-  set to the current clock.
+  set to the current clock unless `created_tick:` is given.
   """
-  def remember(%__MODULE__{} = transition, %Memory{} = memory) do
-    memory = %{memory | created_tick: transition.state.clock}
+  def remember(%__MODULE__{} = transition, %Memory{} = memory, opts \\ []) do
+    memory = %{memory | created_tick: Keyword.get(opts, :created_tick, transition.state.clock)}
     state = State.add_memory(transition.state, memory)
 
     %{transition | state: state}
@@ -204,7 +204,9 @@ defmodule Aethrion.Transition do
   each memory whose `field` changed. Use this instead of calling
   `update_memory/4` in a loop, which is quadratic in the number of memories.
   """
-  def map_memories(%__MODULE__{} = transition, field, fun) when is_atom(field) do
+  def map_memories(%__MODULE__{} = transition, field, fun, opts \\ []) when is_atom(field) do
+    on_change = Keyword.get(opts, :on_change, fn transition, _before, _after -> transition end)
+
     {memories, changes} =
       Enum.map_reduce(transition.state.memories, [], fn memory, changes ->
         updated = fun.(memory)
@@ -213,15 +215,17 @@ defmodule Aethrion.Transition do
 
         if before == value,
           do: {updated, changes},
-          else: {updated, [{memory, before, value} | changes]}
+          else: {updated, [{memory, updated, before, value} | changes]}
       end)
 
     transition = %{transition | state: %{transition.state | memories: memories}}
 
-    changes
-    |> Enum.reverse()
-    |> Enum.reduce(transition, fn {memory, before, value}, transition ->
-      add_trace(transition, :memory, memory.character_id, memory.id, field, before, value)
+    # Memories are stored newest first, so `changes` is already oldest first,
+    # matching the order memories were created in.
+    Enum.reduce(changes, transition, fn {memory, updated, before, value}, transition ->
+      transition
+      |> add_trace(:memory, memory.character_id, memory.id, field, before, value)
+      |> on_change.(memory, updated)
     end)
   end
 

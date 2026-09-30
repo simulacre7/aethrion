@@ -238,7 +238,14 @@ defmodule Aethrion.RuntimeServer do
 
     case Keyword.get(opts, :persistence) do
       {adapter, persistence_opts} ->
-        case adapter.load(persistence_opts) do
+        load_opts =
+          Keyword.put_new(
+            persistence_opts,
+            :pipeline,
+            Keyword.get(opts, :pipeline, Pipeline.default())
+          )
+
+        case adapter.load(load_opts) do
           {:ok, %State{} = state} ->
             {:ok, state}
 

@@ -118,10 +118,10 @@ defmodule Aethrion.Scenario do
   end
 
   @doc "Loads a scenario from a JSON file."
-  def load(path) do
+  def load(path, opts \\ []) do
     with {:ok, json} <- File.read(path),
          {:ok, data} <- Jason.decode(json),
-         {:ok, scenario} <- from_data(data) do
+         {:ok, scenario} <- from_data(data, opts) do
       {:ok, %{scenario | path: path}}
     else
       {:error, %Jason.DecodeError{} = error} ->
@@ -133,11 +133,15 @@ defmodule Aethrion.Scenario do
   end
 
   @doc "Builds a scenario from decoded JSON data."
-  def from_data(%{} = data) do
+  def from_data(data, opts \\ [])
+
+  def from_data(%{} = data, opts) do
+    pipeline = Keyword.get(opts, :pipeline, Aethrion.Pipeline.default())
+
     with :ok <- string_field(data, "name"),
          :ok <- string_field(data, "description"),
-         {:ok, state} <- world(Map.get(data, "world", "demo")),
-         {:ok, tuning} <- Aethrion.Tuning.from_data(Map.get(data, "tuning")),
+         {:ok, state} <- world(Map.get(data, "world", "demo"), pipeline),
+         {:ok, tuning} <- Aethrion.Tuning.from_data(Map.get(data, "tuning"), pipeline),
          {:ok, events} <- events(Map.get(data, "events", [])),
          {:ok, expectations} <- expectations(Map.get(data, "expect", [])),
          {:ok, branches} <- branches(Map.get(data, "branches", [])) do
@@ -156,7 +160,7 @@ defmodule Aethrion.Scenario do
     end
   end
 
-  def from_data(_data), do: {:error, :invalid_scenario}
+  def from_data(_data, _opts), do: {:error, :invalid_scenario}
 
   @doc """
   Runs the scenario and evaluates its expectations.
@@ -291,16 +295,16 @@ defmodule Aethrion.Scenario do
 
   ## Parsing
 
-  defp world("demo"), do: {:ok, State.demo()}
+  defp world("demo", _pipeline), do: {:ok, State.demo()}
 
-  defp world(%{"characters" => characters} = data) when is_list(characters) do
-    case State.parse(data) do
+  defp world(%{"characters" => characters} = data, pipeline) when is_list(characters) do
+    case State.parse(data, pipeline: pipeline) do
       {:ok, state} -> {:ok, state}
       {:error, {:invalid_state_data, path, reason}} -> {:error, {:invalid_world, path, reason}}
     end
   end
 
-  defp world(other), do: {:error, {:invalid_world, other}}
+  defp world(other, _pipeline), do: {:error, {:invalid_world, other}}
 
   defp events(list) when is_list(list) do
     list
@@ -332,6 +336,8 @@ defmodule Aethrion.Scenario do
     |> Enum.with_index()
     |> Enum.reduce_while({:ok, []}, fn {data, index}, {:ok, acc} ->
       with %{} <- data,
+           :ok <- string_field(data, "name"),
+           :ok <- string_field(data, "description"),
            {:ok, events} <- events(Map.get(data, "events", [])),
            {:ok, expectations} <- expectations(Map.get(data, "expect", [])) do
         branch = %{

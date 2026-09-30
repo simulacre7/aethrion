@@ -213,6 +213,8 @@ defmodule Mix.Tasks.Demo.Interactive do
           remember(session)
           | state: state,
             origin: state,
+            trace: [],
+            events: [],
             host_events: [],
             outputs: []
         })

@@ -42,7 +42,8 @@ defmodule Aethrion.ConsolidationTest do
     assert [impression] = impressions(state, "mina")
     assert impression.content == "user has been warm to mina 3 times."
     assert impression.importance == 70
-    assert impression.created_tick == state.clock
+    # Dated from when the latest memory ("c", created at hour 72) faded.
+    assert impression.created_tick == 72 + 46
   end
 
   test "different patterns and actors stay separate" do

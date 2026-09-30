@@ -184,4 +184,175 @@ defmodule Aethrion.RegressionTest do
       assert %{status: :fallback, reason: :empty_response} = output.expression
     end
   end
+
+  describe "second review" do
+    alias Aethrion.{Memory, Pipeline, Tuning}
+    alias Aethrion.Rules.{Consolidation, MemoryDecay}
+
+    test "tuned importance cannot push memories outside 0..100" do
+      state =
+        Runtime.demo_state()
+        |> Tuning.put(:gift, :importance, 250)
+        |> Tuning.put(:consolidation, :per_occurrence, -50)
+
+      {state, _outputs} =
+        run!(state, [
+          Event.gift_received("user", "mina", "a"),
+          Event.gift_received("user", "mina", "b"),
+          Event.time_tick("t", hours: 2000)
+        ])
+
+      assert Enum.all?(state.memories, &(&1.importance in 0..100 and &1.strength in 0..100))
+
+      assert {:ok, _state} =
+               state |> State.to_data() |> Jason.encode!() |> Jason.decode!() |> State.parse()
+    end
+
+    test "tuning for custom rules survives persistence and scenarios with the same pipeline" do
+      defmodule Custom do
+        use Aethrion.Rule, id: :custom_tuned, description: "Test rule.", params: [k: 1]
+        @impl true
+        def apply(transition), do: transition
+      end
+
+      pipeline = Pipeline.append(Pipeline.default(), :time_tick, Custom)
+      state = Tuning.put(Runtime.demo_state(), Custom, :k, 5)
+      data = state |> State.to_data() |> Jason.encode!() |> Jason.decode!()
+
+      assert {:ok, %{tuning: %{custom_tuned: %{k: 5}}}} = State.parse(data, pipeline: pipeline)
+      assert {:ok, %{tuning: tuning}} = State.parse(data)
+      refute Map.has_key?(tuning, :custom_tuned)
+
+      assert {:ok, scenario} =
+               Scenario.from_data(%{"tuning" => %{"custom_tuned" => %{"k" => 7}}},
+                 pipeline: pipeline
+               )
+
+      assert scenario.state.tuning.custom_tuned == %{k: 7}
+
+      path = Path.join(System.tmp_dir!(), "aethrion-custom-#{System.unique_integer()}.json")
+      on_exit(fn -> File.rm(path) end)
+      :ok = JsonFile.save(state, path: path)
+
+      server =
+        start_supervised!(
+          {RuntimeServer, pipeline: pipeline, persistence: {JsonFile, path: path}}
+        )
+
+      assert RuntimeServer.get_state(server).tuning.custom_tuned == %{k: 5}
+    end
+
+    test "impressions do not depend on how time was split into ticks" do
+      events = [
+        Event.message_sent("user", "mina", "a", tone: :warm),
+        Event.time_tick("t", hours: 48),
+        Event.message_sent("user", "mina", "b", tone: :warm)
+      ]
+
+      {base, _outputs} = run!(Runtime.demo_state(), events)
+      {one_tick, _outputs} = dispatch!(base, Event.time_tick("t", hours: 152))
+      {hourly, _outputs} = run!(base, for(_ <- 1..152, do: Event.time_tick("t", hours: 1)))
+
+      impression = fn state -> Enum.find(state.memories, &(&1.kind == :impression)) end
+
+      assert impression.(one_tick).created_tick == impression.(hourly).created_tick
+      assert impression.(one_tick).strength == impression.(hourly).strength
+      refute Memory.faded?(impression.(one_tick))
+    end
+
+    test "impressions decay more slowly, and faded impressions stop counting" do
+      {state, _outputs} =
+        run!(Runtime.demo_state(), [
+          Event.message_sent("user", "mina", "a", tone: :warm),
+          Event.message_sent("user", "mina", "b", tone: :warm),
+          Event.time_tick("t", hours: 200)
+        ])
+
+      assert Consolidation.impression_count(state, "mina", "warm", "user") == 2
+
+      # An ordinary importance-60 memory fades after 96h; the impression lasts 4x as long.
+      {state, _outputs} = dispatch!(state, Event.time_tick("t", hours: 200))
+      assert Consolidation.impression_count(state, "mina", "warm", "user") == 2
+
+      {state, _outputs} = dispatch!(state, Event.time_tick("t", hours: 400))
+      assert Consolidation.impression_count(state, "mina", "warm", "user") == 0
+    end
+
+    test "memory decay traces oldest first, each fade note right after its change" do
+      {state, _outputs} =
+        run!(Runtime.demo_state(), [
+          Event.message_sent("user", "mina", "first", tone: :cold),
+          Event.message_sent("user", "haru", "second", tone: :cold)
+        ])
+
+      {:ok, step} = Runtime.step(state, Event.time_tick("t", hours: 100))
+
+      decay = Enum.filter(step.trace, &(&1.rule == :memory_decay))
+
+      assert [
+               %{kind: :memory, target: "memory:mina:message:e1"},
+               %{kind: :note, subject: "mina"},
+               %{kind: :memory, target: "memory:haru:message:e2"},
+               %{kind: :note, subject: "haru"}
+             ] = decay
+    end
+
+    test "fade_tick inverts strength_at" do
+      for importance <- [0, 19, 20, 21, 45, 60, 99], unit <- [1, 24, 96] do
+        memory =
+          Memory.new(
+            id: "m",
+            character_id: "a",
+            content: "",
+            importance: importance,
+            created_at: "t",
+            created_tick: 10
+          )
+
+        tick = MemoryDecay.fade_tick(memory, unit)
+
+        assert MemoryDecay.strength_at(memory, tick, unit) < Memory.faded_threshold()
+
+        if tick > 10 do
+          assert MemoryDecay.strength_at(memory, tick - 1, unit) >= Memory.faded_threshold()
+        end
+      end
+
+      assert MemoryDecay.fade_tick(
+               Memory.new(
+                 id: "m",
+                 character_id: "a",
+                 content: "",
+                 importance: 100,
+                 created_at: "t"
+               )
+             ) == nil
+    end
+
+    test "non-string branch names are rejected" do
+      assert {:error, {:invalid_branch, 0, {:invalid_field, "name", %{"x" => 1}}}} =
+               Scenario.from_data(%{"branches" => [%{"name" => %{"x" => 1}}]})
+    end
+
+    test "loading a world in the interactive demo clears the previous world's history" do
+      path =
+        Path.join(System.tmp_dir!(), "aethrion-load-#{System.unique_integer([:positive])}.json")
+
+      on_exit(fn -> File.rm(path) end)
+      :ok = JsonFile.save(Runtime.demo_state(), path: path)
+
+      output =
+        ExUnit.CaptureIO.capture_io(
+          "gift user mina flower\nload #{path}\ntimeline\nwhy mina\nquit\n",
+          fn ->
+            Mix.Tasks.Demo.Interactive.run(["--no-status"])
+          end
+        )
+        |> String.replace(~r/\e\[[0-9;]*m/, "")
+
+      [_before, after_load] = String.split(output, "loaded #{path}")
+      assert after_load =~ "no events yet"
+      assert after_load =~ "nothing yet"
+    end
+  end
 end

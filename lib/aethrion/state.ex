@@ -208,18 +208,22 @@ defmodule Aethrion.State do
   Validates and rebuilds state from untrusted data (a save file, a scenario
   world). Returns `{:ok, state}` or `{:error, {:invalid_state_data, path, reason}}`
   instead of raising, and never creates atoms.
+
+  Pass `pipeline:` when the world uses custom rules, so their tuning is kept.
   """
-  def parse(data) do
+  def parse(data, opts \\ []) do
     with :ok <- validate_data(data) do
-      {:ok, from_data(data)}
+      {:ok, from_data(data, opts)}
     end
   end
 
   @doc """
   Rebuilds state from `to_data/1` output. Version 1 data (v0.1 alpha) is migrated.
-  Raises on malformed input; use `parse/1` for data you did not produce.
+  Raises on malformed input; use `parse/2` for data you did not produce.
+  Tuning for rules outside `pipeline:` (default `Aethrion.Pipeline.default/0`)
+  is dropped.
   """
-  def from_data(data) when is_map(data) do
+  def from_data(data, opts \\ []) when is_map(data) do
     new(
       characters: Enum.map(Map.get(data, "characters", []), &character_from_data/1),
       relationships: Enum.map(Map.get(data, "relationships", []), &relationship_from_data/1),
@@ -227,22 +231,22 @@ defmodule Aethrion.State do
       clock: Map.get(data, "clock", 0),
       seq: Map.get(data, "seq", 0),
       cooldowns: cooldowns_from_data(data),
-      tuning: tuning_from_data(data)
+      tuning: tuning_from_data(data, Keyword.get(opts, :pipeline, Aethrion.Pipeline.default()))
     )
   end
 
   # Unknown rules or parameters in saved data are dropped rather than failing
   # the load; scenarios validate tuning strictly instead.
-  defp tuning_from_data(%{"tuning" => tuning}) when is_map(tuning) do
+  defp tuning_from_data(%{"tuning" => tuning}, pipeline) when is_map(tuning) do
     Enum.reduce(tuning, %{}, fn {rule, params}, acc ->
-      case Aethrion.Tuning.from_data(%{rule => params}) do
+      case Aethrion.Tuning.from_data(%{rule => params}, pipeline) do
         {:ok, parsed} -> Map.merge(acc, parsed)
         {:error, _reason} -> acc
       end
     end)
   end
 
-  defp tuning_from_data(_data), do: %{}
+  defp tuning_from_data(_data, _pipeline), do: %{}
 
   defp cooldowns_from_data(%{"cooldowns" => cooldowns}) when is_map(cooldowns), do: cooldowns
 

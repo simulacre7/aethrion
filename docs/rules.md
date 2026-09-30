@@ -90,7 +90,7 @@ A memory loses `(100 - importance) / 4` strength per simulated day, independent 
 | 90 | 4 weeks |
 | 100 | never |
 
-**consolidation** - individual memories fade, patterns should not. When a character holds at least 2 faded, unconsolidated firsthand memories of the same kind of interaction with the same actor (gifts, warm/cold/hostile messages, apologies, comfort), they fold into an `:impression` memory such as `"user has been warm to mina 3 times."`. Importance is `40 + 10 * count`, capped at 90, so impressions outlast the details. Later faded memories of the same pattern deepen the impression in place; the originals are kept and marked `consolidated_into`. Impressions are private: they are never gossiped.
+**consolidation** - individual memories fade, patterns should not. When a character holds at least 2 faded, unconsolidated firsthand memories of the same kind of interaction with the same actor (gifts, warm/cold/hostile messages, apologies, comfort), they fold into an `:impression` memory such as `"user has been warm to mina 3 times."`. Importance is `40 + 10 * count`, capped at 90. An impression dates from when its latest memory faded (so the result does not depend on how time was split into ticks) and decays four times more slowly than ordinary memories (`memory_decay.impression_slowdown`), so patterns outlast the details. Later faded memories of the same pattern deepen the impression in place; the originals are kept and marked `consolidated_into`. Impressions are private: they are never gossiped. A faded impression no longer counts toward goodwill or wariness.
 
 **autonomy** - characters act on their own. A character who is struggling (mood `jealous`, `lonely`, or `upset`) or `:talkative` confides a notable memory to their most trusted friend (trust >= 30) who has not heard about it yet:
 
@@ -160,7 +160,7 @@ The same in a scenario or a saved state:
 "tuning": {"autonomy": {"trust_threshold": 15}, "gossip": {"importance_drop": 10}}
 ```
 
-Only parameters a rule declares are accepted. `mix aethrion.rules` prints every parameter and its default, and `Aethrion.Tuning.describe/2` returns defaults alongside a world's current values. The bundled `06_small_town.json` scenario shows the effect: with default tuning nothing spreads in that world; tuned, one witnessed gift reaches the end of the street.
+Only parameters a rule declares are accepted. Memory importance and strength stay within 0..100 whatever the tuning. Tuning for custom rules is kept when the world is loaded with the same pipeline (`State.parse(data, pipeline: p)`, `JsonFile.load(path: ..., pipeline: p)`, `Scenario.load(path, pipeline: p)`; a `RuntimeServer` passes its own pipeline). `mix aethrion.rules` prints every parameter and its default, and `Aethrion.Tuning.describe/2` returns defaults alongside a world's current values. The bundled `06_small_town.json` scenario shows the effect: with default tuning nothing spreads in that world; tuned, one witnessed gift reaches the end of the street.
 
 ## Writing your own rule
 
