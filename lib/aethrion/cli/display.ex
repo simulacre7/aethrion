@@ -43,7 +43,7 @@ defmodule Aethrion.CLI.Display do
       [:bright, "말하고 행동하기"],
       "  say <캐릭터> <말>                           자유 입력; 의도를 해석해서 이벤트로 보냅니다",
       "  message <누가> <누구에게> <tone> <말> [observed_by a,b]",
-      "                                              tone: warm(다정하게) | neutral(담담하게) | cold(차갑게) | hostile(모질게)",
+      "                                              tone: warm(다정하게) | neutral(평소처럼) | cold(차갑게) | hostile(모질게)",
       "  gift <누가> <누구에게> <물건> [observed_by a,b]",
       "  apologize <누가> <누구에게> <이유> [observed_by a,b]",
       "  comfort <누가> <누구를>",
@@ -362,7 +362,7 @@ defmodule Aethrion.CLI.Display do
   def digest(items, note \\ "what changed since the last digest", locale \\ :en) do
     {title, empty} =
       if locale == :ko,
-        do: {"요약", "  이야기할 만한 일이 없었습니다"},
+        do: {"요약", "  이야기할 만한 일은 없었다."},
         else: {"Digest", "  nothing worth mentioning"}
 
     print_section(title, note)

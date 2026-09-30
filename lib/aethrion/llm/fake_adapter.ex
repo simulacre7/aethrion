@@ -102,7 +102,13 @@ defmodule Aethrion.LLM.FakeAdapter do
     "자랑스러",
     "행복",
     "예쁘",
-    "예뻐"
+    "예뻐",
+    "좋은",
+    "재밌",
+    "재미있",
+    "내 편",
+    "잘 잤",
+    "잘 지냈"
   ]
   # Disappointment is cold even next to a warm word ("대단히 실망했어"), and so
   # is brushing something off ("사랑 따위 필요 없어").
@@ -130,7 +136,8 @@ defmodule Aethrion.LLM.FakeAdapter do
           "i am busy",
           "too busy"
         ] ++
-          ["됐어", "됐거든", "나중에 얘기", "나중에 해", "바빠", "상관없", "상관하지 마", "알아서 해", "귀찮"]
+          ["됐어", "됐거든", "나중에 얘기", "나중에 해", "바빠", "상관없", "상관하지 마", "알아서 해", "귀찮"] ++
+          ["답답", "느려"]
   # "몰라" on its own, not "잘 몰라서 그러는데".
   @dont_know ~r/몰라(?!서)|나중에[\s.!?~]*$/u
 
@@ -190,7 +197,16 @@ defmodule Aethrion.LLM.FakeAdapter do
         (mentions?(text, @hostile_at_you) and Regex.match?(@you, text))
 
     insult? and not negated_before?(text, @hostile ++ @hostile_at_you) and
-      not Regex.match?(@hostile_denied, text)
+      not Regex.match?(@hostile_denied, text) and not teasing?(text)
+  end
+
+  # A mild word with a laugh is teasing: "바보야 ㅋㅋ", "you idiot lol".
+  @mild ["바보", "멍청", "idiot"]
+  @laugh ~r/[ㅋㅎ]{2,}|\blol\b|\bhaha/u
+
+  defp teasing?(text) do
+    Regex.match?(@laugh, text) and mentions?(text, @mild) and
+      not mentions?(text, @hostile -- @mild) and not Regex.match?(@stop, text)
   end
 
   defp cold?(text), do: mentions?(text, @cold) or Regex.match?(@dont_know, text)

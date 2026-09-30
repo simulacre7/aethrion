@@ -118,6 +118,13 @@ defmodule Aethrion.IntentTest do
   test "the fake adapter reads everyday Korean the way it is meant" do
     cases = [
       {"고맙다", :warm},
+      {"좋은 아침! 잘 잤어?", :warm},
+      {"오늘 재밌었어", :warm},
+      {"넌 항상 내 편이구나", :warm},
+      {"바보야 ㅋㅋ", :neutral},
+      {"you idiot lol", :neutral},
+      {"꺼져 ㅋㅋ", :hostile},
+      {"너 왜 이렇게 느려? 답답해", :cold},
       {"진짜 고맙습니다", :warm},
       {"너무 좋았어", :warm},
       {"보고싶어", :warm},

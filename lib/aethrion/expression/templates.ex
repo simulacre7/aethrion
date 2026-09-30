@@ -127,7 +127,8 @@ defmodule Aethrion.Expression.Templates do
       :settled -> "It's okay, really. We're good now."
       :enough -> "You already apologized. It's okay, really."
       :keeps_apologizing -> "You keep saying sorry. I just need it to stop happening."
-      :seen_it_before -> "Thank you. But I've seen how you treat others too, so give me time."
+      {:others, :seen} -> "Thank you. But I've seen how you treat others too, so give me time."
+      {:others, :heard} -> "Thank you. But I've heard how you treat others too, so give me time."
       :left_out -> "Thanks. I just wanted to feel remembered too."
       :nothing_to_forgive -> "You don't have to apologize. We're okay."
       :once_more -> "Okay... Just please don't make a habit of it."
@@ -278,13 +279,33 @@ defmodule Aethrion.Expression.Templates do
 
   defp reply_line(tone, request) do
     case Choices.reply_choice(tone, request) do
-      {:bond, bond} -> Choices.pick(request, bond_line(tone, bond))
-      :guarded when tone == :warm -> "Thanks... I'm still a little hurt, though."
-      :guarded -> "...Hey."
-      {:reunion, :missed} -> "You're back... I missed you."
-      {:reunion, :thanks} -> "You're back! It's been a while. Thank you."
-      {:reunion, :hello} -> "Hey, it's been a while!"
-      {:mood, mood} -> Choices.pick(request, reply(tone, mood))
+      {:bond, bond} ->
+        Choices.pick(request, bond_line(tone, bond))
+
+      :guarded when tone == :warm ->
+        "Thanks... I'm still a little hurt, though."
+
+      :guarded ->
+        "...Hey."
+
+      {:reunion, :missed} ->
+        "You're back... I missed you."
+
+      {:reunion, :thanks} ->
+        "You're back! It's been a while. Thank you."
+
+      {:reunion, :hello} ->
+        "Hey, it's been a while!"
+
+      :question ->
+        Choices.pick(request, [
+          "Hmm, good question.",
+          "Let me think about that.",
+          "Why, are you curious?"
+        ])
+
+      {:mood, mood} ->
+        Choices.pick(request, reply(tone, mood))
     end
   end
 

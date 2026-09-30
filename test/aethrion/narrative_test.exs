@@ -203,6 +203,36 @@ defmodule Aethrion.NarrativeTest do
       assert List.last(texts) == "It's okay, really. We're good now."
     end
 
+    test "an apology from someone only heard about says heard, not seen" do
+      memory = fn kind, to, event, n ->
+        %{
+          kind: kind,
+          topic: "x:e#{n}",
+          data: %{"event" => event, "from" => "user", "to" => to, "tone" => "hostile"}
+        }
+      end
+
+      request = %Aethrion.Expression.Request{
+        kind: :reply,
+        reason: :reply,
+        tone: :apology,
+        speaker: %{id: "haru", name: "Haru", traits: [], mood: :neutral},
+        listener: %{id: "user", name: "you"},
+        relationship: %{affinity: 30, trust: 20, tension: 0, bond: :neutral},
+        names: %{"user" => "you", "yuna" => "Yuna", "haru" => "Haru"},
+        memories: [
+          memory.(:heard, "yuna", "message_sent", 1),
+          memory.(:experienced, "haru", "message_sent", 2),
+          memory.(:experienced, "haru", "apology_offered", 3)
+        ]
+      }
+
+      assert Aethrion.Expression.Templates.render(request) ==
+               "Thank you. But I've heard how you treat others too, so give me time."
+
+      assert Ko.render(request) =~ "어떻게 하는지도 들었어"
+    end
+
     test "apologizing again for one thing is not taken as a pattern" do
       events =
         [Event.message_sent("user", "haru", "Useless.", tone: :hostile)] ++
@@ -465,6 +495,17 @@ defmodule Aethrion.NarrativeTest do
 
       assert character_state(state, "mina").stress == 20
       assert character_state(state, "yuna").stress == 30
+    end
+
+    test "a plain question gets an answer that fits a question" do
+      {_state, outputs} =
+        run!(Runtime.demo_state(), [
+          Event.message_sent("user", "haru", "What are you reading these days?", tone: :neutral)
+        ])
+
+      assert [%{text: text, context: context}] = replies(outputs, "haru")
+      assert text in ["Hmm, good question.", "Let me think about that.", "Why, are you curious?"]
+      assert Ko.render(context) in ["음, 글쎄. 생각 좀 해 볼게.", "왜? 궁금해?", "음... 좋은 질문이네."]
     end
 
     test "a first harsh word lands by temperament" do

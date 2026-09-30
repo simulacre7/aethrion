@@ -1178,15 +1178,15 @@ defmodule Aethrion.Report do
       estranged: "틀어진 사이",
       strained: "서먹한 사이",
       neutral: "보통 사이",
-      friendly: "친한 사이",
-      close: "가까운 사이"
+      friendly: "편한 사이",
+      close: "아주 가까운 사이"
     },
     kind: %{experienced: "직접", observed: "목격", heard: "전해 들음", impression: "인상"},
     scene: %{gossip: "털어놓기", comfort: "위로", together: "함께"},
     reaches_out: %{jealous: "질투", lonely: "외로움", curious: "궁금함", protective: "편들기"},
     reply: %{
       warm: "다정한 말",
-      neutral: "담담한 말",
+      neutral: "평범한 말",
       cold: "차가운 말",
       hostile: "모진 말",
       apology: "사과",

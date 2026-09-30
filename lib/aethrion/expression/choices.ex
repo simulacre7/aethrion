@@ -98,7 +98,7 @@ defmodule Aethrion.Expression.Choices do
           :settled
           | :enough
           | :keeps_apologizing
-          | :seen_it_before
+          | {:others, :seen | :heard}
           | :left_out
           | :nothing_to_forgive
           | :once_more
@@ -132,11 +132,19 @@ defmodule Aethrion.Expression.Choices do
     cond do
       settled? -> :settled
       earlier >= 2 -> apologizing_again(request, listener)
-      harsh? and Request.harshness_to_others(request) != nil -> :seen_it_before
+      harsh? and Request.harshness_to_others(request) != nil -> {:others, how_known(request)}
       left_out? and not harsh? -> :left_out
       not harsh? and tension(request) == 0 -> :nothing_to_forgive
       earlier == 1 -> :once_more
       true -> first_apology(request, mood)
+    end
+  end
+
+  # Whether the speaker saw the listener be hostile to others or only heard.
+  defp how_known(request) do
+    case Request.harshness_to_others(request) do
+      {:observed, _target} -> :seen
+      _heard -> :heard
     end
   end
 
@@ -355,7 +363,11 @@ defmodule Aethrion.Expression.Choices do
   # (`wary_choice/2`), a long absence (when nothing darker is going on), the
   # bond when the mood has nothing to say, then the mood.
   @spec reply_choice(atom(), Request.t()) ::
-          {:bond, atom()} | :guarded | {:reunion, :missed | :thanks | :hello} | {:mood, atom()}
+          {:bond, atom()}
+          | :guarded
+          | {:reunion, :missed | :thanks | :hello}
+          | :question
+          | {:mood, atom()}
   def reply_choice(tone, %Request{speaker: %{mood: mood}} = request) do
     bond = match?(%{bond: _}, request.relationship) && request.relationship.bond
 
@@ -366,14 +378,34 @@ defmodule Aethrion.Expression.Choices do
       reunion = reunion(tone, mood, bond, request) ->
         {:reunion, reunion}
 
-      tone in [:warm, :neutral] and mood in [:neutral, :happy] and
-          bond in [:close, :strained, :estranged] ->
+      asked?(tone, mood, bond, request) ->
+        :question
+
+      bond_speaks?(tone, mood, bond, request) ->
         {:bond, bond}
 
       true ->
         {:mood, mood}
     end
   end
+
+  defp asked?(tone, mood, bond, request),
+    do:
+      tone == :neutral and mood in [:neutral, :happy] and bond not in [:strained, :estranged] and
+        question?(request.message)
+
+  defp bond_speaks?(tone, mood, bond, request),
+    do:
+      tone in [:warm, :neutral] and mood in [:neutral, :happy] and
+        bond in [:close, :strained, :estranged] and not mid_conversation?(tone, bond, request)
+
+  defp question?(text) when is_binary(text), do: String.match?(text, ~r/[?？]\s*$/u)
+  defp question?(_text), do: false
+
+  # A close friend's hello ("There you are!") is for the first message in a
+  # while, not the third in an hour.
+  defp mid_conversation?(:neutral, :close, %Request{since_contact: 0}), do: true
+  defp mid_conversation?(_tone, _bond, _request), do: false
 
   defp reunion(tone, mood, bond, request)
        when tone in [:warm, :neutral] and mood in [:neutral, :happy, :lonely] do

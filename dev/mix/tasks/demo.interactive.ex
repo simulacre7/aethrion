@@ -390,7 +390,14 @@ defmodule Mix.Tasks.Demo.Interactive do
 
   # Names are matched without case, by id or display name, and the demo cast
   # answers to its Korean names too.
-  @korean_names %{"미나" => "mina", "유나" => "yuna", "하루" => "haru"}
+  @korean_names %{
+    "미나" => "mina",
+    "미나야" => "mina",
+    "유나" => "yuna",
+    "유나야" => "yuna",
+    "하루" => "haru",
+    "하루야" => "haru"
+  }
 
   defp resolve(state, typed) do
     key = String.downcase(typed)

@@ -169,7 +169,8 @@ defmodule Aethrion.Expression.Templates.Ko do
       :settled -> "알았어, 이제 진짜 괜찮아."
       :enough -> "이미 사과했잖아. 정말 괜찮아."
       :keeps_apologizing -> "계속 미안하다고만 하네. 그냥 그런 일이 없었으면 좋겠어."
-      :seen_it_before -> "고마워. 그런데 네가 다른 사람들한테 어떻게 하는지도 봤어. 시간이 좀 필요해."
+      {:others, :seen} -> "고마워. 그런데 네가 다른 사람들한테 어떻게 하는지도 봤어. 시간이 좀 필요해."
+      {:others, :heard} -> "고마워. 그런데 네가 다른 사람들한테 어떻게 하는지도 들었어. 시간이 좀 필요해."
       :left_out -> "고마워. 나도 좀 챙겨 줬으면 해서 그랬어."
       :nothing_to_forgive -> "사과할 거 없어. 우리 괜찮아."
       :once_more -> "알았어... 그래도 자꾸 그러진 말아 줘."
@@ -303,6 +304,7 @@ defmodule Aethrion.Expression.Templates.Ko do
       {:reunion, :missed} -> "연락 왔네... 보고 싶었어."
       {:reunion, :thanks} -> "오랜만이야! 고마워."
       {:reunion, :hello} -> "오랜만이네!"
+      :question -> Choices.pick(request, ["음, 글쎄. 생각 좀 해 볼게.", "왜? 궁금해?", "음... 좋은 질문이네."])
       {:mood, mood} -> Choices.pick(request, reply(tone, mood))
     end
   end
@@ -326,7 +328,7 @@ defmodule Aethrion.Expression.Templates.Ko do
   defp reply(:neutral, :jealous), do: "아, 안녕."
   defp reply(:neutral, :lonely), do: "연락 줘서 반가워."
   defp reply(:neutral, :upset), do: "...왜?"
-  defp reply(:neutral, _mood), do: ["응, 무슨 일이야?", "응, 왜?", "응.", "그래, 알았어."]
+  defp reply(:neutral, _mood), do: ["응, 무슨 일이야?", "응, 왜?", "응.", "응, 계속 말해 봐."]
   defp reply(:cold, :jealous), do: "그래, 알겠어."
   defp reply(:cold, _mood), do: "아... 그래."
   defp reply(:hostile, :upset), do: "그만해 줘."
@@ -480,18 +482,18 @@ defmodule Aethrion.Expression.Templates.Ko do
   @spec adverb(atom() | String.t()) :: String.t()
   def adverb(tone) when is_atom(tone), do: tone |> Atom.to_string() |> adverb()
   def adverb("warm"), do: "다정하게"
-  def adverb("neutral"), do: "담담하게"
+  def adverb("neutral"), do: "평소처럼"
   def adverb("cold"), do: "차갑게"
   def adverb("hostile"), do: "모질게"
   def adverb(other), do: other
 
-  @doc "A bond's name in Korean: `:friendly` is \"친한 사이\"."
+  @doc "A bond's name in Korean: `:friendly` is \"편한 사이\"."
   @spec bond_label(atom()) :: String.t()
   def bond_label(:estranged), do: "틀어진 사이"
   def bond_label(:strained), do: "서먹한 사이"
   def bond_label(:neutral), do: "보통 사이"
-  def bond_label(:friendly), do: "친한 사이"
-  def bond_label(:close), do: "가까운 사이"
+  def bond_label(:friendly), do: "편한 사이"
+  def bond_label(:close), do: "아주 가까운 사이"
   def bond_label(other), do: to_string(other)
 
   @items %{
