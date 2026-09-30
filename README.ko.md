@@ -207,6 +207,7 @@ STATE    Yuna jealousy -15
 STATE    Yuna loneliness -6
 RELATION Yuna trust toward user +8
 MEMORY   Yuna remembers: "user apologized to yuna: sorry I forgot about you"
+SAYS     Yuna -> user: "Thanks. I just wanted to feel remembered too."
 MOOD     Yuna jealous -> neutral
 
 user> why yuna jealousy

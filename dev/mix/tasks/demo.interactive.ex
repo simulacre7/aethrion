@@ -39,6 +39,10 @@ defmodule Mix.Tasks.Demo.Interactive do
     Mix.Task.run("app.start")
     {opts, _rest, _invalid} = OptionParser.parse(args, strict: @switches)
 
+    # Read and write UTF-8 even when the shell's locale does not say so, so
+    # Korean (or any non-ASCII) input is not mangled.
+    :io.setopts(:standard_io, encoding: :unicode)
+
     Display.banner()
 
     session = %{
