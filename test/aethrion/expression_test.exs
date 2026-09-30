@@ -176,5 +176,16 @@ defmodule Aethrion.ExpressionTest do
       assert back.text == "You're back... I missed you."
       assert Aethrion.Expression.Templates.Ko.render(back.context) == "왔구나... 보고 싶었어."
     end
+
+    test "a lonely character who has not heard from you in days says so" do
+      {state, _reply} = talk(quiet_world(), :neutral)
+      {:ok, step} = Runtime.step(state, Event.time_tick("t", hours: 100))
+
+      assert [%{reason: :lonely, text: text} = message] =
+               of_type(step.outputs, :proactive_message)
+
+      assert text == "We haven't talked in a few days. Do you have a minute?"
+      assert Aethrion.Expression.Templates.Ko.render(message.context) == "며칠째 얘기를 못 했네. 잠깐 시간 돼?"
+    end
   end
 end

@@ -17,9 +17,9 @@ defmodule Aethrion.Expression.Request do
   - `names` - display names for every id referenced by the memories
   - `tone` - the incoming tone for replies
   - `message` - the incoming text for replies
-  - `since_contact` - for replies, simulated hours since the listener last
-    talked to the speaker, or `nil` the first time; `reunion?/1` says whether
-    that is a long absence
+  - `since_contact` - for replies and proactive messages, simulated hours
+    since the listener last talked to the speaker, or `nil` if they never
+    have; `reunion?/1` says whether that is a long absence
   - `fallback_text` - the deterministic template text
   """
 

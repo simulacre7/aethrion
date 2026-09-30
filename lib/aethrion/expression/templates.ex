@@ -35,6 +35,9 @@ defmodule Aethrion.Expression.Templates do
       find_memory(request, &impression?(&1, between, ["warm", "gift", "comfort", "together"])) ->
         "You've always been kind to me. I miss talking with you. Do you have a minute?"
 
+      Request.reunion?(request) ->
+        "We haven't talked in a few days. Do you have a minute?"
+
       true ->
         "It's been quiet today. Do you have a minute to talk?"
     end

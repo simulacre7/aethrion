@@ -248,13 +248,21 @@ defmodule Aethrion.Rules.Proactive do
   end
 
   defp send_message(transition, character, reason, key, recipient, opts) do
+    state = transition.state
+
+    since_contact =
+      case Map.fetch(state.cooldowns, Aethrion.Rules.Reply.contact_key(character.id, recipient)) do
+        {:ok, at} -> state.clock - at
+        :error -> nil
+      end
+
     request =
       Expression.build_request(
-        transition.state,
+        state,
         :proactive_message,
         character.id,
         recipient,
-        Keyword.put(opts, :reason, reason)
+        opts |> Keyword.put(:reason, reason) |> Keyword.put(:since_contact, since_contact)
       )
 
     output =

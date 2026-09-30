@@ -41,6 +41,9 @@ defmodule Aethrion.Expression.Templates.Ko do
       find(request, &kind_impression?(&1, between)) ->
         "넌 늘 나한테 다정했잖아. 얘기하고 싶어. 잠깐 시간 돼?"
 
+      Request.reunion?(request) ->
+        "며칠째 얘기를 못 했네. 잠깐 시간 돼?"
+
       true ->
         "오늘은 좀 조용하네. 잠깐 얘기할 수 있어?"
     end
