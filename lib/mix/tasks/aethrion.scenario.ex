@@ -28,47 +28,48 @@ defmodule Mix.Tasks.Aethrion.Scenario do
   alias Aethrion.{Output, Scenario, State}
 
   @switches [all: :boolean, quiet: :boolean, json: :boolean, pipeline: :string]
+  @usage "mix aethrion.scenario PATH [PATH...] | --all [--quiet] [--json] [--pipeline Module.function]"
 
   @impl Mix.Task
   def run(args) do
     Mix.Task.run("app.start")
-
-    {opts, paths} =
-      Aethrion.CLI.TaskArgs.parse!(
-        args,
-        @switches,
-        "mix aethrion.scenario PATH [PATH...] | --all [--quiet] [--json] [--pipeline Module.function]"
-      )
-
-    paths = if opts[:all], do: Scenario.bundled(), else: paths
-
-    if paths == [] do
-      Mix.raise("usage: mix aethrion.scenario PATH [PATH...] | --all")
-    end
+    {opts, paths} = Aethrion.CLI.TaskArgs.parse!(args, @switches, @usage)
+    paths = paths(opts[:all], paths)
 
     opts = Keyword.put(opts, :pipeline, pipeline(opts[:pipeline]))
     results = Enum.map(paths, &run_one(&1, opts))
     failed = Enum.count(results, &(!&1.passed))
 
-    # One JSON document: an object for one scenario, an array for several.
-    if opts[:json] do
-      documents = for %{json: json} <- results, json != nil, do: json
-
-      case {paths, documents} do
-        {[_one], [document]} -> IO.puts(Jason.encode!(document, pretty: true))
-        _several -> IO.puts(Jason.encode!(documents, pretty: true))
-      end
-    end
-
-    if length(results) > 1 and !opts[:json] do
-      Display.message(
-        if failed == 0,
-          do: "\n#{length(results)} scenarios, every expectation met",
-          else: "\n#{length(results)} scenarios, #{failed} with unmet expectations or errors"
-      )
-    end
-
+    if opts[:json], do: print_json(paths, results), else: summarize(results, failed)
     unless failed == 0, do: exit({:shutdown, 1})
+  end
+
+  defp paths(true, []), do: Scenario.bundled()
+
+  defp paths(true, _paths),
+    do: Mix.raise("--all runs every bundled scenario; leave out the paths")
+
+  defp paths(_all, []), do: Mix.raise("usage: #{@usage}")
+  defp paths(_all, paths), do: paths
+
+  # One JSON document: an object for one scenario, an array for several.
+  defp print_json(paths, results) do
+    documents = for %{json: json} <- results, json != nil, do: json
+
+    case {paths, documents} do
+      {[_one], [document]} -> IO.puts(Jason.encode!(document, pretty: true))
+      _several -> IO.puts(Jason.encode!(documents, pretty: true))
+    end
+  end
+
+  defp summarize([_one], _failed), do: :ok
+
+  defp summarize(results, failed) do
+    Display.message(
+      if failed == 0,
+        do: "\n#{length(results)} scenarios, every expectation met",
+        else: "\n#{length(results)} scenarios, #{failed} with unmet expectations or errors"
+    )
   end
 
   defp run_one(path, opts) do

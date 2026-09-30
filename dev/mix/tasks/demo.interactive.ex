@@ -192,7 +192,13 @@ defmodule Mix.Tasks.Demo.Interactive do
 
     since
     |> Aethrion.Digest.of(session.state, locale: session.locale || :en)
-    |> Display.digest()
+    |> Display.digest(
+      if(session.locale == :ko,
+        do: "지난 요약 이후 달라진 것",
+        else: "what changed since the last digest"
+      ),
+      session.locale || :en
+    )
 
     loop(%{session | digested: length(session.outputs)})
   end

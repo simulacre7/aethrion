@@ -124,7 +124,10 @@ defmodule Mix.Tasks.Aethrion.Journal do
     steps
     |> Enum.flat_map(& &1.outputs)
     |> Aethrion.Digest.of(state, locale: locale(opts))
-    |> Display.digest("everything the journal records")
+    |> Display.digest(
+      if(locale(opts) == :ko, do: "저널에 기록된 모든 일", else: "everything the journal records"),
+      locale(opts)
+    )
   end
 
   defp locale(opts) do

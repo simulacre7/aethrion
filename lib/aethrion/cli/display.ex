@@ -356,11 +356,16 @@ defmodule Aethrion.CLI.Display do
     end)
   end
 
-  def digest(items, note \\ "what changed since the last digest") do
-    print_section("Digest", note)
+  def digest(items, note \\ "what changed since the last digest", locale \\ :en) do
+    {title, empty} =
+      if locale == :ko,
+        do: {"요약", "  이야기할 만한 일이 없었습니다"},
+        else: {"Digest", "  nothing worth mentioning"}
+
+    print_section(title, note)
 
     case items do
-      [] -> print([:faint, "  nothing worth mentioning"])
+      [] -> print([:faint, empty])
       items -> Enum.each(items, &print(["  ", &1.text]))
     end
 

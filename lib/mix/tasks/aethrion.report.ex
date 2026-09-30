@@ -32,7 +32,10 @@ defmodule Mix.Tasks.Aethrion.Report do
 
     targets =
       case {opts[:all], paths} do
-        {true, _paths} ->
+        {true, [_ | _]} ->
+          Mix.raise("--all runs every bundled scenario; leave out PATH\nusage: #{@usage}")
+
+        {true, []} ->
           dir = Keyword.get(opts, :out_dir, "tmp/reports")
 
           Enum.map(
