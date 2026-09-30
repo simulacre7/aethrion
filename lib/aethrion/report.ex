@@ -33,7 +33,9 @@ defmodule Aethrion.Report do
   - `:locale` - `:ko` writes the report in Korean: headings, notes, event
     descriptions, and every character line (from
     `Aethrion.Expression.Templates.Ko`), and memories from their data.
-    Scenario names and descriptions stay as written. Defaults to `:en`.
+    What authors wrote (scenario names, descriptions, profiles) stays as
+    written, and so do the rule logs, which are for developers. Defaults to
+    `:en`.
   """
   @spec html(Scenario.Result.t(), keyword()) :: iodata()
   def html(%Scenario.Result{} = result, opts \\ []) do
