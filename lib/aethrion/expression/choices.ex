@@ -226,7 +226,10 @@ defmodule Aethrion.Expression.Choices do
     harsh =
       numbers.(
         &match?(
-          %{data: %{"event" => "message_sent", "from" => ^listener, "tone" => t}}
+          %{
+            kind: :experienced,
+            data: %{"event" => "message_sent", "from" => ^listener, "tone" => t}
+          }
           when t in ["cold", "hostile"],
           &1
         )

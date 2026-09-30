@@ -156,6 +156,49 @@ defmodule Aethrion.NarrativeTest do
       refute text =~ "seen how you treat others"
     end
 
+    test "an insult and apology never gain trust, however they are spread out" do
+      trust = fn state, who -> State.get_relationship(state, who, "user").trust end
+      insult = &Event.message_sent("user", &1, "Go away.", tone: :hostile)
+      sorry = &Event.apology_offered("user", &1, "Sorry.")
+
+      # Long enough for the insult to fade before the apology.
+      cycle = [insult.("mina"), tick(130), sorry.("mina"), tick(40)]
+      {state, _} = run!(Runtime.demo_state(), cycle ++ cycle ++ cycle)
+      assert trust.(state, "mina") <= trust.(Runtime.demo_state(), "mina")
+
+      # Only what the words actually took comes back.
+      low =
+        State.update_relationship(Runtime.demo_state(), "haru", "user", &%{&1 | trust: 3})
+
+      {state, _} = run!(low, [insult.("haru"), sorry.("haru")])
+      assert trust.(state, "haru") == 3
+
+      # An apology seen made to someone else is not the last one to oneself:
+      # one's own still gives back what the insult took.
+      {seen, _} =
+        run!(Runtime.demo_state(), [
+          insult.("haru"),
+          Event.apology_offered("user", "yuna", "Sorry.", observed_by: ["haru"])
+        ])
+
+      {state, _} = run!(seen, [sorry.("haru")])
+      assert trust.(state, "haru") - trust.(seen, "haru") == 6
+    end
+
+    test "amends seen made to others do not undo one's own forgiveness" do
+      {_state, outputs} =
+        run!(Runtime.demo_state(), [
+          Event.message_sent("user", "haru", "Useless.", tone: :hostile),
+          Event.apology_offered("user", "haru", "Sorry."),
+          Event.message_sent("user", "yuna", "Go away.", tone: :hostile, observed_by: ["haru"]),
+          Event.apology_offered("user", "yuna", "Sorry.", observed_by: ["haru"]),
+          Event.apology_offered("user", "haru", "Sorry again.")
+        ])
+
+      texts = for o <- replies(outputs, "haru"), o.tone == :apology, do: o.text
+      assert List.last(texts) == "It's okay, really. We're good now."
+    end
+
     test "apologizing again for one thing is not taken as a pattern" do
       events =
         [Event.message_sent("user", "haru", "Useless.", tone: :hostile)] ++

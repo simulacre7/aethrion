@@ -8,7 +8,7 @@ defmodule Aethrion.Rules.Message do
   | warm     | affinity +4, trust +2, loneliness -15 (half of it after a quiet stretch, if more), joy +8, tension -2 (not below 0), remembers it |
   | neutral  | loneliness -6                                                            |
   | cold     | affinity -3, tension +4, joy -5, remembers it                            |
-  | hostile  | affinity -8, trust -6, tension +10, stress +20, joy -10, remembers it    |
+  | hostile  | affinity -8, trust -6, tension +10, stress +20 (`:sensitive` +10), joy -10, remembers it (with the trust it took) |
 
   History changes how a message lands. Impressions are built by
   `Aethrion.Rules.Consolidation` from faded memories:
@@ -85,10 +85,18 @@ defmodule Aethrion.Rules.Message do
       div(Transition.param(transition, :"#{event.tone}_#{field}") * percent, 100)
     end
 
+    trust = fn transition ->
+      Aethrion.State.get_relationship(transition.state, event.to, event.from).trust
+    end
+
+    trust_before = trust.(transition)
+
     transition =
       Enum.reduce(effects[:relationship], transition, fn field, transition ->
         Transition.adjust_relationship(transition, event.to, event.from, field, amount.(field))
       end)
+
+    trust_lost = max(trust_before - trust.(transition), 0)
 
     transition =
       Enum.reduce(effects[:character], transition, fn field, transition ->
@@ -108,7 +116,7 @@ defmodule Aethrion.Rules.Message do
 
       tone ->
         importance = Transition.param(transition, :"#{tone}_importance")
-        Transition.remember(transition, memory(event, importance))
+        Transition.remember(transition, memory(event, importance, trust_lost))
     end
   end
 
@@ -255,7 +263,9 @@ defmodule Aethrion.Rules.Message do
 
   def goodwill?(_state, _event), do: false
 
-  defp memory(event, importance) do
+  # The receiver's memory keeps how much trust the words took, so an apology
+  # can give back no more than that (`Aethrion.Rules.Apology`).
+  defp memory(event, importance, trust_lost) do
     Memory.new(
       id: "memory:#{event.to}:message:#{event.id}",
       character_id: event.to,
@@ -265,7 +275,8 @@ defmodule Aethrion.Rules.Message do
       related_characters: [event.from],
       kind: :experienced,
       topic: topic(event),
-      data: data(event)
+      data:
+        if(trust_lost > 0, do: Map.put(data(event), "trust_lost", trust_lost), else: data(event))
     )
   end
 

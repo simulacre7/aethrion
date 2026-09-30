@@ -94,7 +94,7 @@ state = Aethrion.State.new(characters: cast, relationships: rels,
 Aethrion.Event.gift_received("player:alex", "mina", "ring", observed_by: ["yuna"])
 ```
 
-Lines name players by their display name ("Tomas tells Elin what Alex said to Mara"). Each player gets their own digest: `you:` addresses them as "you", and `only_you: true` leaves out messages to, bonds toward, and beliefs about the other players:
+Lines name players by their display name ("Tomas tells Elin what Alex said to Mara"). Each player gets their own digest: `you:` addresses them as "you", and `only_you: true` leaves out messages to, bonds toward, and beliefs and gossip about the other players:
 
 ```elixir
 Aethrion.Digest.of(outputs, state, you: "player:sam", only_you: true)

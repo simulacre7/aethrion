@@ -22,10 +22,10 @@ defmodule Aethrion.CLI.CommandParserTest do
     # Capitalized commands resolve too, and text is never taken for observers.
     assert {:ok, {:say, "mina", "hello"}} = CommandParser.parse("Say MINA hello", resolve)
 
-    assert {:ok, %{text: "observed_by Haru", observed_by: []}} =
+    assert {:error, "usage: message" <> _} =
              CommandParser.parse("message user MINA warm observed_by Haru", resolve)
 
-    assert {:ok, %{reason: "observed_by Haru", observed_by: []}} =
+    assert {:error, "usage: apologize" <> _} =
              CommandParser.parse("apologize user MINA observed_by Haru", resolve)
   end
 
@@ -35,6 +35,9 @@ defmodule Aethrion.CLI.CommandParserTest do
 
     assert {:ok, %{item: "pastry box", observed_by: []}} =
              CommandParser.parse("gift user mina pastry box")
+
+    assert {:error, "usage: gift" <> _} = CommandParser.parse("gift user mina observed_by yuna")
+    assert {:error, "usage: gift" <> _} = CommandParser.parse("gift user mina a observed_by b c")
   end
 
   test "parses gift command" do
@@ -133,8 +136,8 @@ defmodule Aethrion.CLI.CommandParserTest do
                "message user mina hostile you ruin everything observed_by haru,yuna"
              )
 
-    # Too short to be text followed by witnesses: the words are the text.
-    assert {:ok, %{text: "observed_by haru", observed_by: []}} =
+    # Witnesses with no text before them are a mistake, not the text.
+    assert {:error, "usage: message" <> _} =
              CommandParser.parse("message user mina hostile observed_by haru")
   end
 

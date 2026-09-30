@@ -197,7 +197,7 @@ steps
 
 ## Digest
 
-`Aethrion.Digest.of(outputs, state, opts)` turns a stretch of outputs into short lines for people: scenes between characters, messages characters sent, and new beliefs in order, then net bond and mood changes (a bond that went down and back up again is left out). `locale: :ko` gives Korean lines; `you:` names the person addressed as "you" (default `"user"`), and `only_you: true` leaves out what concerns other people, for a player's own digest in a shared world. Players are named by the state's `people` display names. Each item is `%{kind, event_id, text}`. In the interactive demo, `digest` shows what changed since the last one.
+`Aethrion.Digest.of(outputs, state, opts)` turns a stretch of outputs into short lines for people: scenes between characters, messages characters sent, and new beliefs in order, then net bond and mood changes (a bond that went down and back up again is left out). `locale: :ko` gives Korean lines; `you:` names the person addressed as "you" (default `"user"`), and `only_you: true` leaves out what concerns other people (messages to them, bonds toward them, beliefs and gossip about them), for a player's own digest in a shared world. Scenes are told to the reader; quoted lines stay said to whoever heard them. Players are named by the state's `people` display names. Each item is `%{kind, event_id, text}`. In the interactive demo, `digest` shows what changed since the last one.
 
 ```elixir
 Aethrion.Digest.of(outputs_since_last_visit, state)
@@ -206,7 +206,7 @@ Aethrion.Digest.of(outputs_since_last_visit, state)
 #    %{kind: :mood, event_id: "e6", text: "Haru, Mina, and Yuna are lonely."}]
 ```
 
-New beliefs read like "Mina remembers you being warm 2 times." or "Haru knows how you treat others: hostile to Mina and Yuna, 2 times."
+New beliefs read like "Mina remembers you being warm twice." or "Haru knows how you treat others: hostile to Mina and Yuna, twice."
 
 ## Memory queries
 

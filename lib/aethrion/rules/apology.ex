@@ -90,41 +90,60 @@ defmodule Aethrion.Rules.Apology do
     |> Transition.remember(memory)
   end
 
-  # From someone with a record of hostile words, an apology gives back at
-  # most the trust that hostile words since the last one took, so insulting
-  # and apologizing never builds trust. From someone with no such record (an
-  # apology for leaving a friend out, say) it is taken whole.
+  # From someone with a record of hostile words (remembered, faded, or
+  # folded into an impression), an apology gives back at most the trust that
+  # their hostile words since their last apology to the receiver actually
+  # took, so insulting and apologizing never builds trust. From someone with
+  # no such record (an apology for leaving a friend out, say) it is taken
+  # whole.
   defp trust_lost(state, %{from: from, to: to} = event) do
-    remembered = Memories.for_character(state, to)
-
-    hostile? = fn memory ->
-      match?(
-        %Memory{
-          kind: :experienced,
-          data: %{"event" => "message_sent", "from" => ^from, "tone" => "hostile"}
-        },
-        memory
-      )
-    end
+    remembered = Memories.for_character(state, to, include_faded: true)
 
     last_apology =
       remembered
-      |> Enum.filter(&match?(%Memory{data: %{"event" => "apology_offered", "from" => ^from}}, &1))
+      |> Enum.filter(
+        &match?(
+          %Memory{kind: :experienced, data: %{"event" => "apology_offered", "from" => ^from}},
+          &1
+        )
+      )
       |> Enum.map(&(Memories.event_number(&1) || 0))
       |> Enum.max(fn -> -1 end)
 
     now = Memories.event_number(topic(event)) || 0
+    hostile = Enum.filter(remembered, &hostile_from?(&1, from))
 
-    since =
-      Enum.count(
-        remembered,
-        &(hostile?.(&1) and (Memories.event_number(&1) || 0) in (last_apology + 1)..now//1)
-      )
+    record? =
+      hostile != [] or
+        Enum.any?(
+          remembered,
+          &match?(
+            %Memory{kind: :impression, data: %{"from" => ^from, "pattern" => "hostile"}},
+            &1
+          )
+        )
 
-    if Enum.any?(remembered, hostile?),
-      do: since * abs(Aethrion.Tuning.get(state, Aethrion.Rules.Message, :hostile_trust)),
-      else: nil
+    if record? do
+      hostile
+      |> Enum.filter(&((Memories.event_number(&1) || 0) in (last_apology + 1)..now//1))
+      |> Enum.map(&Map.get(&1.data, "trust_lost", default_loss(state)))
+      |> Enum.sum()
+    end
   end
+
+  defp hostile_from?(memory, from) do
+    match?(
+      %Memory{
+        kind: :experienced,
+        data: %{"event" => "message_sent", "from" => ^from, "tone" => "hostile"}
+      },
+      memory
+    )
+  end
+
+  # Memories saved before losses were recorded count the rule's amount.
+  defp default_loss(state),
+    do: abs(Aethrion.Tuning.get(state, Aethrion.Rules.Message, :hostile_trust))
 
   defp repair(trust, nil), do: trust
   defp repair(trust, lost), do: min(trust, lost)

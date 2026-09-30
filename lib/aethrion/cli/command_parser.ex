@@ -148,39 +148,40 @@ defmodule Aethrion.CLI.CommandParser do
 
   # The item is the rest of the line: "gift user mina pastry box".
   defp do_parse(["gift", from, to | item_parts]) when item_parts != [] do
-    {words, observed_by} = trailing_observers(item_parts)
-
-    {:ok,
-     Event.gift_received(from, to, Enum.join(words, " "),
-       observed_by: observed_by,
-       at: "interactive:gift"
-     )}
+    with {:ok, words, observed_by} <- trailing_observers(item_parts, "gift") do
+      {:ok,
+       Event.gift_received(from, to, Enum.join(words, " "),
+         observed_by: observed_by,
+         at: "interactive:gift"
+       )}
+    end
   end
 
   defp do_parse(["apologize", from, to | reason_parts]) when reason_parts != [] do
-    {words, observed_by} = trailing_observers(reason_parts)
-
-    {:ok,
-     Event.apology_offered(from, to, Enum.join(words, " "),
-       observed_by: observed_by,
-       at: "interactive:apology"
-     )}
+    with {:ok, words, observed_by} <- trailing_observers(reason_parts, "apologize") do
+      {:ok,
+       Event.apology_offered(from, to, Enum.join(words, " "),
+         observed_by: observed_by,
+         at: "interactive:apology"
+       )}
+    end
   end
 
   defp do_parse(["message", from, to, tone | words]) when words != [] do
-    {words, observed_by} = trailing_observers(words)
+    with {:ok, words, observed_by} <- trailing_observers(words, "message") do
+      case Enum.find(Event.tones(), &(Atom.to_string(&1) == tone)) do
+        nil ->
+          {:error,
+           "tone must be one of: #{Enum.map_join(Event.tones(), ", ", &Atom.to_string/1)}"}
 
-    case Enum.find(Event.tones(), &(Atom.to_string(&1) == tone)) do
-      nil ->
-        {:error, "tone must be one of: #{Enum.map_join(Event.tones(), ", ", &Atom.to_string/1)}"}
-
-      tone ->
-        {:ok,
-         Event.message_sent(from, to, Enum.join(words, " "),
-           tone: tone,
-           observed_by: observed_by,
-           at: "interactive:message"
-         )}
+        tone ->
+          {:ok,
+           Event.message_sent(from, to, Enum.join(words, " "),
+             tone: tone,
+             observed_by: observed_by,
+             at: "interactive:message"
+           )}
+      end
     end
   end
 
@@ -231,11 +232,19 @@ defmodule Aethrion.CLI.CommandParser do
   end
 
   # Text followed by "observed_by a,b"; too short to be both, it is all text.
-  defp trailing_observers(words) do
-    case Enum.split(words, -2) do
-      {[_ | _] = text, ["observed_by", observers]} -> {text, observers(observers)}
-      _other -> {words, []}
-    end
+  # "observed_by" anywhere else is a mistake ("observed_by a, b", or no text
+  # before it), not part of the text.
+  defp trailing_observers(words, command) do
+    {text, observers} =
+      case Enum.split(words, -2) do
+        {[_ | _] = text, ["observed_by", observers]} -> {text, observers(observers)}
+        _other -> {words, []}
+      end
+
+    if "observed_by" in text,
+      do:
+        {:error, "usage: #{@usage[command]} (observers last, separated by commas without spaces)"},
+      else: {:ok, text, observers}
   end
 
   defp observers(list), do: list |> String.split(",", trim: true) |> Enum.map(&String.trim/1)

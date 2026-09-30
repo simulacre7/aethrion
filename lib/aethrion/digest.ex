@@ -33,8 +33,9 @@ defmodule Aethrion.Digest do
   - `:locale` - `:en` (default) or `:ko`
   - `:you` - the person addressed as "you" (default `"user"`)
   - `:only_you` - `true` leaves out what concerns other people: messages
-    characters sent them, bonds toward them, and beliefs about them, so each
-    player in a shared world gets their own digest (default `false`)
+    characters sent them, bonds toward them, beliefs about them, and gossip
+    about what they did or were given, so each player in a shared world gets
+    their own digest (default `false`)
 
   Players are named by `Aethrion.State` `:people` display names.
   """
