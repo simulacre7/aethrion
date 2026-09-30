@@ -36,6 +36,8 @@ mix aethrion.scenario --all    # 번들 시나리오 실행 및 기대값 검증
 mix aethrion.report priv/scenarios/01_the_flower.json   # tmp/에 HTML 리포트 생성
 ```
 
+처음이라면 [튜토리얼](docs/tutorial.ko.md)에서 몇 분 만에 세계, 규칙, what-if를 만들어 볼 수 있습니다.
+
 interactive demo를 녹화한 세션입니다(실제 출력, [plain-text transcript](assets/demo/interactive-demo.txt)):
 
 ![Aethrion interactive demo](assets/demo/interactive-demo-readable.svg)

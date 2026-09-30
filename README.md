@@ -36,6 +36,8 @@ mix aethrion.scenario --all    # run the bundled scenarios and check their expec
 mix aethrion.report priv/scenarios/01_the_flower.json   # HTML report in tmp/
 ```
 
+New here? The [tutorial](docs/tutorial.md) builds a world, a rule, and a what-if in a few minutes.
+
 A recorded session of the interactive demo (real output, [plain-text transcript](assets/demo/interactive-demo.txt)):
 
 ![Aethrion interactive demo](assets/demo/interactive-demo-readable.svg)
