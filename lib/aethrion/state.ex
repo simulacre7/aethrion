@@ -1,31 +1,53 @@
 defmodule Aethrion.State do
   @moduledoc """
-  In-memory state container for the v0 runtime.
+  Plain-data world state advanced by the deterministic runtime.
+
+  - `characters` - `%{id => Aethrion.Character}`
+  - `relationships` - `%{{from, to} => Aethrion.Relationship}`
+  - `memories` - newest first
+  - `clock` - simulated hours elapsed, advanced by `time_tick` events
+  - `seq` - number of events processed; used to assign stable event ids
+  - `cooldowns` - `%{key => clock}` recording when a rate-limited behavior last fired
   """
 
-  alias Aethrion.{Character, CharacterState, Relationship}
+  alias Aethrion.{Character, CharacterState, Memory, Relationship}
 
-  @type t :: %__MODULE__{}
+  @type t :: %__MODULE__{
+          characters: %{optional(String.t()) => Character.t()},
+          relationships: %{optional({String.t(), String.t()}) => Relationship.t()},
+          memories: [Memory.t()],
+          clock: non_neg_integer(),
+          seq: non_neg_integer(),
+          cooldowns: %{optional(String.t()) => non_neg_integer()}
+        }
 
-  defstruct characters: %{}, relationships: %{}, memories: [], emitted_proactive: MapSet.new()
+  @data_version 2
+
+  defstruct characters: %{}, relationships: %{}, memories: [], clock: 0, seq: 0, cooldowns: %{}
 
   @doc """
   Builds a runtime state from explicit characters and relationships.
+
+  Options: `:characters`, `:relationships`, `:memories`, `:clock`, `:seq`, `:cooldowns`.
   """
   def new(opts \\ []) do
-    characters = Keyword.get(opts, :characters, [])
-    relationships = Keyword.get(opts, :relationships, [])
-    memories = Keyword.get(opts, :memories, [])
-    emitted_proactive = Keyword.get(opts, :emitted_proactive, MapSet.new())
-
     %__MODULE__{
-      characters: Map.new(characters, &{&1.id, &1}),
-      relationships: Map.new(relationships, &{{&1.from, &1.to}, &1}),
-      memories: memories,
-      emitted_proactive: MapSet.new(emitted_proactive)
+      characters: Map.new(Keyword.get(opts, :characters, []), &{&1.id, &1}),
+      relationships:
+        Map.new(
+          Keyword.get(opts, :relationships, []),
+          &{{&1.from, &1.to}, Relationship.clamp(&1)}
+        ),
+      memories: Keyword.get(opts, :memories, []),
+      clock: Keyword.get(opts, :clock, 0),
+      seq: Keyword.get(opts, :seq, 0),
+      cooldowns: Map.new(Keyword.get(opts, :cooldowns, %{}))
     }
   end
 
+  @doc """
+  The built-in Mina / Yuna / Haru scenario.
+  """
   def demo do
     characters = [
       %Character{
@@ -45,7 +67,8 @@ defmodule Aethrion.State do
       %Character{
         id: "haru",
         name: "Haru",
-        profile: "Calm, playful, and usually outside the immediate drama.",
+        profile:
+          "Calm, playful, and usually outside the immediate drama. Quietly looks out for Yuna.",
         traits: [:calm, :playful],
         state: %CharacterState{mood: :neutral, loneliness: 8}
       }
@@ -55,11 +78,44 @@ defmodule Aethrion.State do
       characters: characters,
       relationships: [
         %Relationship{from: "mina", to: "user", affinity: 40, trust: 25},
+        %Relationship{from: "mina", to: "yuna", affinity: 20, trust: 15},
         %Relationship{from: "yuna", to: "user", affinity: 38, trust: 20},
-        %Relationship{from: "yuna", to: "mina", affinity: 10, trust: 10}
+        %Relationship{from: "yuna", to: "mina", affinity: 10, trust: 10},
+        %Relationship{from: "yuna", to: "haru", affinity: 25, trust: 40},
+        %Relationship{from: "haru", to: "user", affinity: 20, trust: 15},
+        %Relationship{from: "haru", to: "yuna", affinity: 30, trust: 35},
+        %Relationship{from: "haru", to: "mina", affinity: 15, trust: 15}
       ]
     )
   end
+
+  ## Characters
+
+  @doc "Returns true when `id` names a character in this state."
+  def character?(%__MODULE__{} = state, id),
+    do: is_binary(id) and Map.has_key?(state.characters, id)
+
+  @doc "Fetches a character or returns nil."
+  def character(%__MODULE__{} = state, id), do: Map.get(state.characters, id)
+
+  @doc "Characters sorted by id, for deterministic iteration."
+  def sorted_characters(%__MODULE__{} = state) do
+    state.characters |> Map.values() |> Enum.sort_by(& &1.id)
+  end
+
+  @doc "Display name for a character id, or the raw id for external actors such as `user`."
+  def name(%__MODULE__{} = state, id) do
+    case Map.get(state.characters, id) do
+      %Character{name: name} -> name
+      nil -> id
+    end
+  end
+
+  def update_character_state(%__MODULE__{} = state, character_id, fun) do
+    update_in(state.characters[character_id].state, fun)
+  end
+
+  ## Relationships
 
   def get_relationship(%__MODULE__{} = state, from, to) do
     Map.get(state.relationships, {from, to}, %Relationship{from: from, to: to})
@@ -70,49 +126,97 @@ defmodule Aethrion.State do
     put_in(state.relationships[{from, to}], relationship)
   end
 
-  def update_character_state(%__MODULE__{} = state, character_id, fun) do
-    update_in(state.characters[character_id].state, fun)
-  end
+  ## Memories
 
   def add_memory(%__MODULE__{} = state, memory) do
     %{state | memories: [memory | state.memories]}
   end
 
-  def mark_proactive_emitted(%__MODULE__{} = state, character_id, reason) do
-    %{state | emitted_proactive: MapSet.put(state.emitted_proactive, {character_id, reason})}
+  @doc "Fetches a memory by id or returns nil."
+  def memory(%__MODULE__{} = state, memory_id) do
+    Enum.find(state.memories, &(&1.id == memory_id))
   end
 
-  def proactive_emitted?(%__MODULE__{} = state, character_id, reason) do
-    MapSet.member?(state.emitted_proactive, {character_id, reason})
+  @doc "Applies `fun` to the memory with `memory_id`."
+  def update_memory(%__MODULE__{} = state, memory_id, fun) do
+    memories =
+      Enum.map(state.memories, fn
+        %Memory{id: ^memory_id} = memory -> fun.(memory)
+        memory -> memory
+      end)
+
+    %{state | memories: memories}
   end
 
+  ## Cooldowns
+
+  @doc """
+  Returns true when `key` has never fired, or fired at least `hours` simulated
+  hours ago. Pass `:once` to allow the behavior only one time.
+  """
+  def cooldown_ready?(%__MODULE__{} = state, key, :once),
+    do: not Map.has_key?(state.cooldowns, key)
+
+  def cooldown_ready?(%__MODULE__{} = state, key, hours) when is_integer(hours) do
+    case Map.fetch(state.cooldowns, key) do
+      {:ok, fired_at} -> state.clock - fired_at >= hours
+      :error -> true
+    end
+  end
+
+  @doc "Records that `key` fired at the current clock."
+  def put_cooldown(%__MODULE__{} = state, key) do
+    %{state | cooldowns: Map.put(state.cooldowns, key, state.clock)}
+  end
+
+  ## Serialization
+
+  @doc "Current serialization format version."
+  def data_version, do: @data_version
+
+  @doc """
+  Converts state into JSON-friendly data with string keys.
+  """
   def to_data(%__MODULE__{} = state) do
     %{
-      "characters" =>
-        Enum.map(state.characters, fn {_id, character} -> character_to_data(character) end),
+      "version" => @data_version,
+      "clock" => state.clock,
+      "seq" => state.seq,
+      "characters" => state |> sorted_characters() |> Enum.map(&character_to_data/1),
       "relationships" =>
-        Enum.map(state.relationships, fn {_key, relationship} ->
-          relationship_to_data(relationship)
-        end),
+        state.relationships
+        |> Map.values()
+        |> Enum.sort_by(&{&1.from, &1.to})
+        |> Enum.map(&relationship_to_data/1),
       "memories" => Enum.map(state.memories, &memory_to_data/1),
-      "emitted_proactive" =>
-        Enum.map(state.emitted_proactive, fn {character_id, reason} ->
-          %{"character_id" => character_id, "reason" => Atom.to_string(reason)}
-        end)
+      "cooldowns" => state.cooldowns
     }
   end
 
+  @doc """
+  Rebuilds state from `to_data/1` output. Version 1 data (v0.1 alpha) is migrated.
+  """
   def from_data(data) when is_map(data) do
     new(
       characters: Enum.map(Map.get(data, "characters", []), &character_from_data/1),
       relationships: Enum.map(Map.get(data, "relationships", []), &relationship_from_data/1),
       memories: Enum.map(Map.get(data, "memories", []), &memory_from_data/1),
-      emitted_proactive:
-        Enum.map(Map.get(data, "emitted_proactive", []), fn item ->
-          {Map.fetch!(item, "character_id"), item |> Map.fetch!("reason") |> String.to_atom()}
-        end)
+      clock: Map.get(data, "clock", 0),
+      seq: Map.get(data, "seq", 0),
+      cooldowns: cooldowns_from_data(data)
     )
   end
+
+  defp cooldowns_from_data(%{"cooldowns" => cooldowns}) when is_map(cooldowns), do: cooldowns
+
+  # v1 recorded one-shot proactive messages without a clock.
+  defp cooldowns_from_data(%{"emitted_proactive" => emitted}) when is_list(emitted) do
+    Map.new(emitted, fn item ->
+      {"proactive:#{item["character_id"]}:#{item["reason"]}", 0}
+    end)
+  end
+
+  defp cooldowns_from_data(_data), do: %{}
 
   defp character_to_data(character) do
     %{
@@ -124,12 +228,13 @@ defmodule Aethrion.State do
     }
   end
 
-  defp character_from_data(data) do
+  @doc false
+  def character_from_data(data) do
     %Character{
       id: Map.fetch!(data, "id"),
       name: Map.fetch!(data, "name"),
       profile: Map.get(data, "profile", ""),
-      traits: data |> Map.get("traits", []) |> Enum.map(&String.to_atom/1),
+      traits: data |> Map.get("traits", []) |> Enum.map(&trait_from_data/1),
       state: data |> Map.get("state", %{}) |> character_state_from_data()
     }
   end
@@ -140,6 +245,8 @@ defmodule Aethrion.State do
       "energy" => character_state.energy,
       "loneliness" => character_state.loneliness,
       "jealousy" => character_state.jealousy,
+      "joy" => character_state.joy,
+      "stress" => character_state.stress,
       "active" => character_state.active?,
       "blocked" => character_state.blocked?,
       "last_active_at" => character_state.last_active_at
@@ -148,10 +255,12 @@ defmodule Aethrion.State do
 
   defp character_state_from_data(data) do
     %CharacterState{
-      mood: data |> Map.get("mood", "neutral") |> String.to_atom(),
+      mood: enum_from_data(Map.get(data, "mood", "neutral"), CharacterState.moods(), :neutral),
       energy: Map.get(data, "energy", 100),
       loneliness: Map.get(data, "loneliness", 0),
       jealousy: Map.get(data, "jealousy", 0),
+      joy: Map.get(data, "joy", 0),
+      stress: Map.get(data, "stress", 0),
       active?: Map.get(data, "active", true),
       blocked?: Map.get(data, "blocked", false),
       last_active_at: Map.get(data, "last_active_at")
@@ -169,38 +278,67 @@ defmodule Aethrion.State do
     }
   end
 
-  defp relationship_from_data(data) do
+  @doc false
+  def relationship_from_data(data) do
     %Relationship{
       from: Map.fetch!(data, "from"),
       to: Map.fetch!(data, "to"),
       affinity: Map.get(data, "affinity", 0),
       trust: Map.get(data, "trust", 0),
       tension: Map.get(data, "tension", 0),
-      tags: data |> Map.get("tags", []) |> Enum.map(&String.to_atom/1)
+      tags: data |> Map.get("tags", []) |> Enum.map(&trait_from_data/1)
     }
   end
 
-  defp memory_to_data(memory) do
+  @doc false
+  def memory_to_data(memory) do
     %{
       "id" => memory.id,
       "character_id" => memory.character_id,
       "content" => memory.content,
       "importance" => memory.importance,
+      "strength" => memory.strength,
       "created_at" => memory.created_at,
-      "related_characters" => memory.related_characters
+      "created_tick" => memory.created_tick,
+      "related_characters" => memory.related_characters,
+      "kind" => Atom.to_string(memory.kind),
+      "topic" => memory.topic,
+      "source" => memory.source,
+      "data" => memory.data,
+      "shared_with" => memory.shared_with
     }
   end
 
-  defp memory_from_data(data) do
-    %Aethrion.Memory{
+  @doc false
+  def memory_from_data(data) do
+    Memory.new(
       id: Map.fetch!(data, "id"),
       character_id: Map.fetch!(data, "character_id"),
       content: Map.fetch!(data, "content"),
       importance: Map.fetch!(data, "importance"),
+      strength: Map.get(data, "strength"),
       created_at: Map.fetch!(data, "created_at"),
-      related_characters: Map.get(data, "related_characters", [])
-    }
+      created_tick: Map.get(data, "created_tick", 0),
+      related_characters: Map.get(data, "related_characters", []),
+      kind: enum_from_data(Map.get(data, "kind", "experienced"), Memory.kinds(), :experienced),
+      topic: Map.get(data, "topic"),
+      source: Map.get(data, "source"),
+      data: Map.get(data, "data", %{}),
+      shared_with: Map.get(data, "shared_with", [])
+    )
   end
+
+  # Enumerated values are converted through a whitelist so untrusted JSON cannot
+  # create arbitrary atoms.
+  defp enum_from_data(value, allowed, default) when is_binary(value) do
+    Enum.find(allowed, default, &(Atom.to_string(&1) == value))
+  end
+
+  defp enum_from_data(_value, _allowed, default), do: default
+
+  # Traits and tags are open-ended descriptive atoms authored by the host.
+  defp trait_from_data(value) when is_binary(value), do: String.to_atom(value)
+  defp trait_from_data(value) when is_atom(value), do: value
 
   defp atom_to_string(value) when is_atom(value), do: Atom.to_string(value)
   defp atom_to_string(value), do: value

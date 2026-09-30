@@ -11,6 +11,7 @@ defmodule Aethrion.MixProject do
       source_url: "https://github.com/simulacre7/aethrion",
       homepage_url: "https://github.com/simulacre7/aethrion",
       start_permanent: Mix.env() == :prod,
+      elixirc_paths: elixirc_paths(Mix.env()),
       deps: deps()
     ]
   end
@@ -22,10 +23,14 @@ defmodule Aethrion.MixProject do
     ]
   end
 
+  defp elixirc_paths(:test), do: ["lib", "test/support"]
+  defp elixirc_paths(_env), do: ["lib"]
+
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      {:jason, "~> 1.4"}
+      {:jason, "~> 1.4"},
+      {:stream_data, "~> 1.1", only: :test}
     ]
   end
 

@@ -105,39 +105,45 @@ defmodule Aethrion.CLI.Display do
     print("")
   end
 
-  def event(%{type: :gift_received, from: from, to: to, item: item}) do
-    print_tagged("EVENT", :blue, "#{from} gives #{to} a #{item}")
+  def event(event) do
+    print_tagged("EVENT", :blue, Aethrion.Event.describe(event))
   end
 
-  def event(%{type: :time_tick, hours: hours}) do
-    print_tagged("EVENT", :blue, "time passes +#{hours}h")
-  end
-
-  def event(%{type: :apology_offered, from: from, to: to, reason: reason}) do
-    print_tagged("EVENT", :blue, "#{from} apologizes to #{to}: #{reason}")
-  end
+  @log_tags %{
+    "Rule" => {"RULE", :magenta},
+    "State" => {"STATE", :yellow},
+    "Relation" => {"RELATION", :yellow},
+    "Mood" => {"MOOD", :light_yellow},
+    "Memory" => {"MEMORY", :green},
+    "Output" => {"OUTPUT", :cyan},
+    "Scene" => {"SCENE", :light_magenta},
+    "Event" => {"EVENT", :light_blue},
+    "Cascade" => {"CASCADE", :red}
+  }
 
   def log(line) do
-    cond do
-      String.starts_with?(line, "[Rule]") ->
-        print_tagged("RULE", :magenta, trim_tag(line))
-
-      String.starts_with?(line, "[State]") ->
-        print_tagged("STATE", :yellow, trim_tag(line))
-
-      String.starts_with?(line, "[Memory]") ->
-        print_tagged("MEMORY", :green, trim_tag(line))
-
-      String.starts_with?(line, "[Output]") ->
-        print_tagged("OUTPUT", :cyan, trim_tag(line))
-
-      true ->
-        print(line)
+    with [_, tag, message] <- Regex.run(~r/^\[([^\]]+)\]\s*(.*)$/s, line),
+         {label, color} <- Map.get(@log_tags, tag) do
+      print_tagged(label, color, message)
+    else
+      _ -> print(line)
     end
   end
 
   def output(%{type: :proactive_message, character_id: character_id, reason: reason}) do
     print_tagged("EFFECT", :cyan, "proactive_message #{character_id}->user reason=#{reason}")
+  end
+
+  def output(%{type: :reply, character_id: character_id, to: to}) do
+    print_tagged("EFFECT", :cyan, "reply #{character_id}->#{to}")
+  end
+
+  def output(%{type: :character_interaction, kind: kind, from: from, to: to}) do
+    print_tagged("EFFECT", :cyan, "character_interaction #{kind} #{from}->#{to}")
+  end
+
+  def output(%{type: :mood_changed, character_id: character_id, to: mood}) do
+    print_tagged("EFFECT", :cyan, "mood_changed #{character_id} #{mood}")
   end
 
   def output(%{type: :relationship_changed, from: from, to: to, delta: delta}) do
@@ -146,6 +152,10 @@ defmodule Aethrion.CLI.Display do
 
   def output(%{type: :memory_created, memory: memory}) do
     print_tagged("EFFECT", :cyan, "memory_created #{memory.id}")
+  end
+
+  def output(%{type: type}) do
+    print_tagged("EFFECT", :cyan, to_string(type))
   end
 
   def error(error) do
@@ -168,10 +178,6 @@ defmodule Aethrion.CLI.Display do
     chardata
     |> IO.ANSI.format(true)
     |> IO.puts()
-  end
-
-  defp trim_tag(line) do
-    String.replace(line, ~r/^\[[^\]]+\]\s*/, "")
   end
 
   defp pad(value, width) do

@@ -1,16 +1,68 @@
 defmodule Aethrion.LLM.FakeAdapter do
   @moduledoc """
-  Deterministic expression adapter used by tests and demos.
+  Deterministic adapter used by tests, demos, and as the default.
 
-  It does not read or mutate runtime state. It only turns a known reason into a
-  stable line of dialogue.
+  `render/2` returns the request's deterministic template text. `interpret/2`
+  uses a small keyword lexicon. Neither reads nor mutates runtime state.
   """
 
-  def proactive_message("yuna", :jealous) do
-    "You looked happy with Mina earlier. I wondered if you forgot about me."
+  @behaviour Aethrion.LLM.Adapter
+
+  alias Aethrion.Expression.{Request, Templates}
+
+  @apology ["sorry", "apologize", "apologise", "forgive me", "my bad"]
+  @hostile ["hate", "stupid", "shut up", "annoying", "go away", "leave me alone", "idiot"]
+  @warm [
+    "thank",
+    "love",
+    "miss you",
+    "glad",
+    "happy",
+    "beautiful",
+    "care about",
+    "proud",
+    "great",
+    "amazing",
+    "sweet"
+  ]
+  @cold ["whatever", "busy", "later", "don't care", "not now"]
+
+  @impl true
+  def render(%Request{} = request, _opts \\ []) do
+    {:ok, request.fallback_text || Templates.render(request)}
   end
 
+  @impl true
+  def interpret(%Aethrion.Intent.Request{text: text}, _opts \\ []) do
+    text = String.downcase(text)
+
+    proposal =
+      cond do
+        mentions?(text, @apology) -> %{intent: :apology}
+        mentions?(text, @hostile) -> %{intent: :message, tone: :hostile}
+        mentions?(text, @warm) -> %{intent: :message, tone: :warm}
+        mentions?(text, @cold) -> %{intent: :message, tone: :cold}
+        true -> %{intent: :message, tone: :neutral}
+      end
+
+    {:ok, proposal}
+  end
+
+  @doc """
+  Backwards-compatible helper from v0.1: the stable line for a proactive reason
+  with no memory context.
+  """
   def proactive_message(character_id, reason) do
-    "#{character_id} has something to say about #{reason}."
+    Templates.render(%Request{
+      kind: :proactive_message,
+      reason: reason,
+      speaker: %{id: character_id, name: character_id, traits: [], mood: :neutral},
+      listener: %{id: "user", name: "you"}
+    })
+  end
+
+  # Matches at word starts so "thanks" matches "thank" but "whatever" does not match "hate".
+  defp mentions?(text, words) do
+    Enum.any?(words, &Regex.match?(~r/(?<![a-z])#{Regex.escape(&1)}/u, text))
   end
 end
