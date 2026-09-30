@@ -45,4 +45,35 @@ defmodule Aethrion.Expression.Request do
     message: nil,
     fallback_text: nil
   ]
+
+  @doc """
+  What the speaker knows about the listener being hostile to someone else,
+  from the request's memories: `{:observed, target}` or `{:heard, target}`
+  for a specific message, `:reputation` for a reputation impression, or `nil`.
+  A specific memory wins over the impression.
+  """
+  @spec harshness_to_others(t()) :: {:observed | :heard, String.t()} | :reputation | nil
+  def harshness_to_others(
+        %__MODULE__{speaker: %{id: speaker}, listener: %{id: listener}} = request
+      ) do
+    specific =
+      Enum.find_value(request.memories, fn
+        %{kind: kind, data: %{"event" => "message_sent", "tone" => "hostile"} = data}
+        when kind in [:observed, :heard] ->
+          if data["from"] == listener and data["to"] != speaker, do: {kind, data["to"]}
+
+        _memory ->
+          nil
+      end)
+
+    specific ||
+      if Enum.any?(
+           request.memories,
+           &match?(
+             %{data: %{"event" => "reputation", "pattern" => "hostile", "from" => ^listener}},
+             &1
+           )
+         ),
+         do: :reputation
+  end
 end

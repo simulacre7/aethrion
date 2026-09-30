@@ -1,0 +1,62 @@
+{
+  "$schema": "../scenario.schema.json",
+  "name": "Word gets around",
+  "description": "The user snaps at Mina, who is already having a rough week, while Haru is in the room. Haru cares about Mina, remembers what was said, and trusts the user less; Mina, upset, confides in Yuna, who trusts the user a little less too, from hearsay alone. When the user is friendly to Haru the next day, Haru's reply mentions what they saw. If it happens again, the details fade into a reputation that blunts the user's kindness for weeks; if the user makes it right in front of both friends, they warm back up.",
+  "world": {
+    "characters": [
+      {"id": "mina", "name": "Mina", "profile": "Warm and expressive; having a rough week.", "traits": ["sensitive"], "state": {"stress": 25}},
+      {"id": "haru", "name": "Haru", "profile": "Calm and loyal to friends.", "traits": ["calm"]},
+      {"id": "yuna", "name": "Yuna", "profile": "Observant and protective.", "traits": []}
+    ],
+    "relationships": [
+      {"from": "mina", "to": "user", "affinity": 35, "trust": 25},
+      {"from": "mina", "to": "yuna", "affinity": 45, "trust": 45},
+      {"from": "haru", "to": "user", "affinity": 30, "trust": 25},
+      {"from": "haru", "to": "mina", "affinity": 40, "trust": 30},
+      {"from": "haru", "to": "yuna", "affinity": 35, "trust": 30},
+      {"from": "yuna", "to": "user", "affinity": 30, "trust": 25},
+      {"from": "yuna", "to": "mina", "affinity": 45, "trust": 40}
+    ]
+  },
+  "events": [
+    {"type": "message_sent", "from": "user", "to": "mina", "text": "You always ruin everything.", "tone": "hostile", "observed_by": ["haru"], "at": "monday"},
+    {"type": "time_tick", "now": "monday evening", "hours": 2},
+    {"type": "message_sent", "from": "user", "to": "haru", "text": "Want to grab lunch tomorrow?", "tone": "warm", "at": "tuesday"}
+  ],
+  "expect": [
+    {"memory": {"character": "haru", "kind": "observed", "topic": "message:e1"}, "count": 1},
+    {"memory": {"character": "yuna", "kind": "heard", "source": "mina"}, "count": 1},
+    {"output": "reply", "character": "haru", "text": "Thanks... but I saw what you said to Mina."},
+    {"output": "proactive_message", "character": "yuna", "reason": "curious", "to": "user", "count": 1},
+    {"relationship": ["haru", "user"], "field": "trust", "equals": 23},
+    {"relationship": ["yuna", "user"], "field": "trust", "equals": 23}
+  ],
+  "branches": [
+    {
+      "name": "It happens again",
+      "events": [
+        {"type": "message_sent", "from": "user", "to": "yuna", "text": "Mind your own business.", "tone": "hostile", "observed_by": ["haru"], "at": "wednesday"},
+        {"type": "time_tick", "now": "next week", "hours": 120},
+        {"type": "message_sent", "from": "user", "to": "haru", "text": "Sorry I've been busy. Coffee?", "tone": "warm", "at": "next week"}
+      ],
+      "expect": [
+        {"memory": {"character": "haru", "content": "haru knows user has been hostile to mina and yuna 2 times."}, "count": 1},
+        {"output": "reply", "character": "haru", "text": "...Thanks. I've heard how you treat people, though."},
+        {"relationship": ["haru", "user"], "field": "trust", "equals": 20}
+      ]
+    },
+    {
+      "name": "Makes it right",
+      "events": [
+        {"type": "apology_offered", "from": "user", "to": "mina", "reason": "That was cruel, and it wasn't true.", "at": "wednesday"},
+        {"type": "message_sent", "from": "user", "to": "mina", "text": "Thank you for putting up with me.", "tone": "warm", "observed_by": ["haru", "yuna"], "at": "wednesday"},
+        {"type": "time_tick", "now": "next week", "hours": 120}
+      ],
+      "expect": [
+        {"relationship": ["haru", "user"], "field": "trust", "equals": 24},
+        {"relationship": ["yuna", "user"], "field": "trust", "equals": 24},
+        {"memory": {"character": "haru", "content": "haru knows user has been hostile to mina and yuna 2 times."}, "count": 0}
+      ]
+    }
+  ]
+}

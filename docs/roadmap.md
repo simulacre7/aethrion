@@ -19,6 +19,7 @@ Implemented in v0.2:
 - character-to-character behavior: observation, confiding, rumor, empathy, comfort
 - tone-aware messages and replies; simulated clock, cooldowns, derived moods, joy and stress
 - memory kinds, topics, sources, age-based decay, deterministic retrieval, consolidation into impressions that change how later messages land
+- reputation: witnesses and hearsay judge how someone treats others, and secondhand memories fold into reputation impressions
 - expression snapshots, LLM adapter behaviour, Anthropic and OpenAI-compatible adapters
 - intent interpretation limited to a closed set of proposals
 - supervised worlds with subscriptions, history, snapshot recovery, and async rendering
@@ -215,6 +216,5 @@ Recommended next tasks:
 
 1. Publish to Hex once the event and output shapes settle.
 2. Explore per-character processes only if a concrete runtime need appears.
-3. Let characters form impressions of each other from observed and heard memories, not only firsthand ones.
 
 Phoenix, vector databases, and distributed BEAM remain out of scope until the core runtime interface is stable.

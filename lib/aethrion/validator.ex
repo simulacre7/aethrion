@@ -76,7 +76,8 @@ defmodule Aethrion.Validator do
          :ok <- require_character(state, event, :to),
          :ok <- require_distinct(event),
          :ok <- require_string(event, :text),
-         :ok <- require_tone(event) do
+         :ok <- require_tone(event),
+         :ok <- require_observers(state, Map.get(event, :observed_by, [])) do
       :ok
     end
   end

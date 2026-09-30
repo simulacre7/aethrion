@@ -39,7 +39,8 @@ defmodule Aethrion.CLI.Display do
     print_lines([
       [:bright, "Talk and act"],
       "  say <character> <text>                      free text; intent is interpreted, then dispatched",
-      "  message <from> <to> <tone> <text>           tone: warm | neutral | cold | hostile",
+      "  message <from> <to> <tone> <text> [observed_by a,b]",
+      "                                              tone: warm | neutral | cold | hostile",
       "  gift <from> <to> <item> [observed_by a,b]",
       "  apologize <from> <to> <reason>",
       "  comfort <from> <to>",

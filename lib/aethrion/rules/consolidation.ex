@@ -20,6 +20,14 @@ defmodule Aethrion.Rules.Consolidation do
   An impression dates from when its latest memory faded, and decays more
   slowly than ordinary memories (see `Aethrion.Rules.MemoryDecay`).
 
+  **Reputation.** Secondhand memories (`:observed` and `:heard`) of how an
+  actor treated *other* characters fold the same way into a reputation
+  impression, across everyone the actor treated that way:
+  `"haru knows user has been hostile to mina and yuna 2 times."` Its id is
+  `memory:<holder>:reputation:<pattern>:<actor>`, and `reputation_count/4`
+  reads it. `Aethrion.Rules.Message` weighs reputation less than firsthand
+  impressions.
+
   Consolidation is deterministic and purely structural; no summarization
   model is involved.
   """
@@ -27,7 +35,7 @@ defmodule Aethrion.Rules.Consolidation do
   use Aethrion.Rule,
     id: :consolidation,
     description:
-      "Folds 2+ faded memories of the same interaction with the same actor into one lasting impression.",
+      "Folds 2+ faded memories of the same interaction with the same actor into one lasting impression; secondhand ones into a reputation.",
     params: [min_group: 2, base_importance: 40, per_occurrence: 10, max_importance: 90]
 
   alias Aethrion.{Memory, State, Transition}
@@ -72,49 +80,82 @@ defmodule Aethrion.Rules.Consolidation do
 
   @doc """
   Returns true when `memory` can become part of an impression: a firsthand
-  memory of one of the covered interactions.
+  memory of one of the covered interactions, or a secondhand one of how
+  someone treated another character.
   """
-  def consolidatable?(%Memory{} = memory) do
-    memory.kind == :experienced and not is_nil(pattern(memory))
-  end
+  def consolidatable?(%Memory{} = memory), do: not is_nil(classify(memory))
 
   defp candidate?(%Memory{} = memory) do
-    memory.kind == :experienced and Memory.faded?(memory) and is_nil(memory.consolidated_into) and
-      not is_nil(pattern(memory))
+    Memory.faded?(memory) and is_nil(memory.consolidated_into) and consolidatable?(memory)
   end
 
   defp key(%Memory{} = memory) do
-    {pattern, actor} = pattern(memory)
-    {memory.character_id, pattern, actor}
+    {scope, pattern, actor, _target} = classify(memory)
+    {memory.character_id, scope, pattern, actor}
   end
 
-  defp pattern(%Memory{character_id: me, data: data}) do
+  # {scope, pattern, actor, target}: "impression" for what happened to the
+  # holder, "reputation" for what the holder saw or heard happen to others.
+  defp classify(%Memory{character_id: me, kind: kind, data: data}) do
+    case {kind, interaction(data)} do
+      {_kind, nil} ->
+        nil
+
+      {:experienced, {pattern, actor, ^me}} ->
+        {"impression", pattern, actor, me}
+
+      {:experienced, _other} ->
+        nil
+
+      {kind, {_pattern, ^me, _target}} when kind in [:observed, :heard] ->
+        nil
+
+      {kind, {_pattern, _actor, ^me}} when kind in [:observed, :heard] ->
+        nil
+
+      {kind, {pattern, actor, target}} when kind in [:observed, :heard] ->
+        {"reputation", pattern, actor, target}
+
+      _other ->
+        nil
+    end
+  end
+
+  defp interaction(data) do
     case data do
-      %{"event" => "gift_received", "from" => actor, "to" => ^me} ->
-        {"gift", actor}
+      %{"event" => "gift_received", "from" => actor, "to" => target} ->
+        {"gift", actor, target}
 
-      %{"event" => "message_sent", "tone" => tone, "from" => actor, "to" => ^me}
+      %{"event" => "message_sent", "tone" => tone, "from" => actor, "to" => target}
       when tone in ["warm", "cold", "hostile"] ->
-        {tone, actor}
+        {tone, actor, target}
 
-      %{"event" => "apology_offered", "from" => actor, "to" => ^me} ->
-        {"apology", actor}
+      %{"event" => "apology_offered", "from" => actor, "to" => target} ->
+        {"apology", actor, target}
 
-      %{"event" => "comfort_offered", "from" => actor, "to" => ^me} ->
-        {"comfort", actor}
+      %{"event" => "comfort_offered", "from" => actor, "to" => target} ->
+        {"comfort", actor, target}
 
-      %{"event" => "time_spent_together", "from" => actor, "to" => ^me} ->
-        {"together", actor}
+      %{"event" => "time_spent_together", "from" => actor, "to" => target} ->
+        {"together", actor, target}
 
       _ ->
         nil
     end
   end
 
-  defp consolidate(transition, {character, pattern, actor} = key, memories, existing) do
+  defp consolidate(transition, {character, scope, pattern, actor} = key, memories, existing) do
     id = impression_id(key)
     previous = if existing, do: existing.data["count"], else: 0
     count = previous + length(memories)
+
+    about =
+      memories
+      |> Enum.map(&(&1 |> classify() |> elem(3)))
+      |> Enum.concat(if existing, do: Map.get(existing.data, "about", []), else: [])
+      |> Enum.uniq()
+      |> Enum.sort()
+
     importance = importance(transition, count)
     {unit, impression_unit} = MemoryDecay.units(transition)
 
@@ -127,15 +168,28 @@ defmodule Aethrion.Rules.Consolidation do
       |> max(if(existing, do: existing.created_tick, else: 0))
       |> min(transition.state.clock)
 
-    content = content(pattern, actor, character, count)
+    {content, data} =
+      case scope do
+        "impression" ->
+          {content(pattern, actor, character, count),
+           %{
+             "event" => "impression",
+             "pattern" => pattern,
+             "from" => actor,
+             "to" => character,
+             "count" => count
+           }}
 
-    data = %{
-      "event" => "impression",
-      "pattern" => pattern,
-      "from" => actor,
-      "to" => character,
-      "count" => count
-    }
+        "reputation" ->
+          {reputation_content(pattern, actor, character, others(about), count),
+           %{
+             "event" => "reputation",
+             "pattern" => pattern,
+             "from" => actor,
+             "about" => about,
+             "count" => count
+           }}
+      end
 
     impression =
       Memory.new(
@@ -145,9 +199,9 @@ defmodule Aethrion.Rules.Consolidation do
         importance: importance,
         created_at: "consolidated",
         created_tick: formed_at,
-        related_characters: [actor],
+        related_characters: Enum.uniq([actor | if(scope == "reputation", do: about, else: [])]),
         kind: :impression,
-        topic: "impression:#{character}:#{pattern}:#{actor}",
+        topic: "#{scope}:#{character}:#{pattern}:#{actor}",
         data: data
       )
 
@@ -166,6 +220,7 @@ defmodule Aethrion.Rules.Consolidation do
             importance: impression.importance,
             strength: impression.strength,
             created_tick: formed_at,
+            related_characters: impression.related_characters,
             data: data
         },
         field: :content
@@ -192,7 +247,20 @@ defmodule Aethrion.Rules.Consolidation do
   or when the impression itself has faded.
   """
   def impression_count(%State{} = state, character, pattern, actor) do
-    case State.memory(state, impression_id({character, pattern, actor})) do
+    count(state, {character, "impression", pattern, actor})
+  end
+
+  @doc """
+  How many times `character` has seen or heard `actor` act out `pattern`
+  toward other characters, from a reputation impression. Zero without one, or
+  when it has faded.
+  """
+  def reputation_count(%State{} = state, character, pattern, actor) do
+    count(state, {character, "reputation", pattern, actor})
+  end
+
+  defp count(state, key) do
+    case State.memory(state, impression_id(key)) do
       %Memory{data: %{"count" => count}} = memory when is_integer(count) ->
         # A faded impression is a forgotten pattern.
         if Memory.faded?(memory), do: 0, else: count
@@ -202,8 +270,17 @@ defmodule Aethrion.Rules.Consolidation do
     end
   end
 
-  defp impression_id({character, pattern, actor}),
-    do: "memory:#{character}:impression:#{pattern}:#{actor}"
+  defp impression_id({character, scope, pattern, actor}),
+    do: "memory:#{character}:#{scope}:#{pattern}:#{actor}"
+
+  defp reputation_content("together", actor, character, others, count),
+    do: "#{character} knows #{actor} has spent time with #{others} #{count} times."
+
+  defp reputation_content(pattern, actor, character, others, count),
+    do: "#{character} knows " <> content(pattern, actor, others, count)
+
+  defp others([one]), do: one
+  defp others(many), do: Enum.join(Enum.drop(many, -1), ", ") <> " and " <> List.last(many)
 
   defp content("gift", actor, character, count),
     do: "#{actor} has given #{character} #{count} gifts."

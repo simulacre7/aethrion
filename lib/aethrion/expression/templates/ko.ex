@@ -81,6 +81,15 @@ defmodule Aethrion.Expression.Templates.Ko do
     end
   end
 
+  def render(%Request{kind: :reply, tone: :warm, speaker: %{mood: mood}} = request) do
+    case Request.harshness_to_others(request) do
+      {:observed, target} -> "고마워... 그런데 네가 #{name(request, target)}한테 한 말, 나도 봤어."
+      {:heard, target} -> "고마워... 그런데 네가 #{name(request, target)}한테 한 말, 나도 들었어."
+      :reputation -> "...고마워. 그런데 네가 다른 사람들한테 어떻게 하는지 들었어."
+      nil -> reply(:warm, mood)
+    end
+  end
+
   def render(%Request{kind: :reply, tone: tone, speaker: %{mood: mood}}), do: reply(tone, mood)
 
   def render(%Request{kind: :character_interaction, reason: :gossip} = request) do

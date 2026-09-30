@@ -23,6 +23,7 @@ The social layer release: characters act on each other, every change is explaina
 - A simulated clock, cooldowns, derived moods (`:happy`, `:lonely`, `:jealous`, `:upset`), `joy`, `stress`, and trait modifiers (`:sensitive`, `:calm`, `:playful`, `:talkative`).
 - Proactive messages address people: jealousy goes to the gift's giver, loneliness to the closest person, curiosity to the person the news is about. Characters do not reach out to someone they feel tense toward.
 - Tension eases through apologies, comfort, and time.
+- Reputation: messages take `observed_by`; witnesses and those who hear the story judge the sender by how they treated someone the judge cares about. Faded secondhand memories fold into reputation impressions ("haru knows user has been hostile to mina and yuna 2 times."), which change how the sender's own messages land and how characters reply.
 
 **Memory**
 
@@ -44,7 +45,7 @@ The social layer release: characters act on each other, every change is explaina
 
 **Scenarios and tooling**
 
-- JSON scenarios with a world, events, expectations, branches, tuning, and custom events (`Aethrion.Scenario`, `mix aethrion.scenario`), with a JSON Schema. Eleven bundled scenarios run in the test suite.
+- JSON scenarios with a world, events, expectations, branches, tuning, and custom events (`Aethrion.Scenario`, `mix aethrion.scenario`), with a JSON Schema. Twelve bundled scenarios run in the test suite.
 - Self-contained HTML reports (`mix aethrion.report`) with charts, a relationship graph, the timeline, and branch comparison.
 - `mix aethrion.journal` replays a journal and exports it as a scenario or report.
 - Interactive CLI: `say`, `message`, `comfort`, `why`, `context`, `timeline`, `rules`, `undo`, `save`, `load`, `record`, `report`, `--llm`, and `--locale ko`.

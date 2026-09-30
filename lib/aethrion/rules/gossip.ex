@@ -61,12 +61,15 @@ defmodule Aethrion.Rules.Gossip do
     end
   end
 
+  @doc "The id of the memory a listener gains from `event`."
+  def heard_memory_id(event), do: "memory:#{event.to}:heard:#{event.id}"
+
   defp heard_memory(transition, event, %Memory{} = original) do
     drop = Transition.param(transition, :importance_drop)
     floor = Transition.param(transition, :min_importance)
 
     Memory.new(
-      id: "memory:#{event.to}:heard:#{event.id}",
+      id: heard_memory_id(event),
       character_id: event.to,
       content: "#{event.from} told #{event.to}: #{original.content}",
       importance: max(original.importance - drop, floor),

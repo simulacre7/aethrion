@@ -73,12 +73,11 @@ defmodule Aethrion.CLI.CommandParser do
   end
 
   defp do_parse(["gift", from, to, item, "observed_by", observers]) do
-    observed_by =
-      observers
-      |> String.split(",", trim: true)
-      |> Enum.map(&String.trim/1)
-
-    {:ok, Event.gift_received(from, to, item, observed_by: observed_by, at: "interactive:gift")}
+    {:ok,
+     Event.gift_received(from, to, item,
+       observed_by: observers(observers),
+       at: "interactive:gift"
+     )}
   end
 
   defp do_parse(["apologize", from, to | reason_parts]) when reason_parts != [] do
@@ -87,6 +86,12 @@ defmodule Aethrion.CLI.CommandParser do
   end
 
   defp do_parse(["message", from, to, tone | words]) when words != [] do
+    {words, observed_by} =
+      case Enum.split(words, -2) do
+        {[_ | _] = text, ["observed_by", observers]} -> {text, observers(observers)}
+        _other -> {words, []}
+      end
+
     case Enum.find(Event.tones(), &(Atom.to_string(&1) == tone)) do
       nil ->
         {:error, "tone must be one of: #{Enum.map_join(Event.tones(), ", ", &Atom.to_string/1)}"}
@@ -95,6 +100,7 @@ defmodule Aethrion.CLI.CommandParser do
         {:ok,
          Event.message_sent(from, to, Enum.join(words, " "),
            tone: tone,
+           observed_by: observed_by,
            at: "interactive:message"
          )}
     end
@@ -107,6 +113,8 @@ defmodule Aethrion.CLI.CommandParser do
   defp do_parse(_tokens) do
     {:error, "unknown command. Type help for available commands."}
   end
+
+  defp observers(list), do: list |> String.split(",", trim: true) |> Enum.map(&String.trim/1)
 
   # Fields map through literal atoms, so input never creates atoms and the
   # lookup never depends on which modules happen to be loaded.

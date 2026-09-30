@@ -36,7 +36,7 @@ defmodule Aethrion.Pipeline do
     %__MODULE__{
       event_rules: %{
         gift_received: [Rules.Gift, Rules.Observation],
-        message_sent: [Rules.Message, Rules.Reply],
+        message_sent: [Rules.Message, Rules.Reply, Rules.Reputation],
         apology_offered: [Rules.Apology],
         time_tick: [
           Rules.TimePassage,
@@ -45,7 +45,7 @@ defmodule Aethrion.Pipeline do
           Rules.Autonomy,
           Rules.Companionship
         ],
-        gossip_shared: [Rules.Gossip, Rules.Empathy],
+        gossip_shared: [Rules.Gossip, Rules.Reputation, Rules.Empathy],
         comfort_offered: [Rules.Comfort],
         time_spent_together: [Rules.Together]
       },

@@ -77,6 +77,9 @@ defmodule Aethrion.Event do
   `tone` is the structured, authoritative interpretation of the message and must
   be one of `tones/0`. `text` is kept for memory and expression only; rules never
   parse it. Use `Aethrion.Intent` to propose a tone from free text.
+
+  Characters in `:observed_by` witness the message and remember how the sender
+  treated the receiver (see `Aethrion.Rules.Reputation`).
   """
   @spec message_sent(String.t(), String.t(), String.t(), keyword()) :: t()
   def message_sent(from, to, text, opts \\ []) do
@@ -86,6 +89,7 @@ defmodule Aethrion.Event do
       to: to,
       text: text,
       tone: Keyword.get(opts, :tone, :neutral),
+      observed_by: Keyword.get(opts, :observed_by, []),
       at: Keyword.get(opts, :at, @unspecified)
     }
   end
@@ -137,7 +141,10 @@ defmodule Aethrion.Event do
   end
 
   def normalize(%{type: :message_sent} = event) do
-    event |> Map.put_new(:at, @unspecified) |> Map.put_new(:tone, :neutral)
+    event
+    |> Map.put_new(:at, @unspecified)
+    |> Map.put_new(:tone, :neutral)
+    |> Map.put_new(:observed_by, [])
   end
 
   def normalize(%{type: type} = event) when type in @types,
@@ -162,7 +169,8 @@ defmodule Aethrion.Event do
   end
 
   def describe(%{type: :message_sent} = event, names) do
-    "#{names.(event.from)} -> #{names.(event.to)} (#{event.tone}): #{event.text}"
+    "#{names.(event.from)} -> #{names.(event.to)} (#{event.tone}): #{event.text}" <>
+      observers_suffix(event, names)
   end
 
   def describe(%{type: :gossip_shared} = event, names) do
@@ -282,6 +290,7 @@ defmodule Aethrion.Event do
   defp build(:message_sent, data) do
     message_sent(data["from"], data["to"], data["text"],
       tone: tone_from_data(Map.get(data, "tone", "neutral")),
+      observed_by: Map.get(data, "observed_by", []),
       at: Map.get(data, "at", @unspecified)
     )
   end

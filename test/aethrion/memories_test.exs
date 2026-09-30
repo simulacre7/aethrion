@@ -120,20 +120,33 @@ defmodule Aethrion.MemoriesTest do
   end
 
   test "memories faded for long enough are forgotten, with a trace" do
-    state = State.new(characters: [character("mina"), character("haru"), character("ana")])
+    state =
+      State.new(
+        characters: [character("mina"), character("haru"), character("ana"), character("bo")]
+      )
 
     {state, _outputs} =
-      dispatch!(state, Aethrion.Event.gift_received("haru", "ana", "pin", observed_by: ["mina"]))
+      run!(state, [
+        Aethrion.Event.gift_received("haru", "ana", "pin", observed_by: ["mina"]),
+        Aethrion.Event.gift_received("haru", "bo", "cup", observed_by: ["mina"])
+      ])
 
     observed = State.memory(state, "memory:mina:observed:e1")
     faded_at = Aethrion.Rules.MemoryDecay.fade_tick(observed)
 
+    # Both sightings fade and fold into Mina's view of Haru, then are forgotten.
     {:ok, step} = Runtime.step(state, Event.time_tick("t", hours: faded_at + 719))
-    assert State.memory(step.state, observed.id)
+
+    assert %{consolidated_into: "memory:mina:reputation:gift:haru"} =
+             State.memory(step.state, observed.id)
 
     {:ok, step} = Runtime.step(step.state, Event.time_tick("t", hours: 1))
     refute State.memory(step.state, observed.id)
+    refute State.memory(step.state, "memory:mina:observed:e2")
     assert Enum.any?(step.trace, &((&1.detail || "") =~ "mina forgot"))
+
+    assert %Memory{content: "mina knows haru has given ana and bo 2 gifts."} =
+             State.memory(step.state, "memory:mina:reputation:gift:haru")
 
     # Ana's own memory of the gift could still become part of a pattern, so it stays.
     assert State.memory(step.state, "memory:ana:gift:e1")
@@ -162,9 +175,12 @@ defmodule Aethrion.MemoriesTest do
     {state, _outputs} =
       run!(state, [
         Aethrion.Event.gift_received("haru", "ana", "pin", observed_by: ["mina"]),
-        Event.time_tick("t", hours: 100)
+        Aethrion.Event.gift_received("haru", "ana", "cup", observed_by: ["mina"]),
+        Event.time_tick("t", hours: 100),
+        Event.time_tick("t", hours: 1)
       ])
 
     refute State.memory(state, "memory:mina:observed:e1")
+    assert State.memory(state, "memory:mina:reputation:gift:haru")
   end
 end

@@ -21,9 +21,10 @@ defmodule Aethrion.PropertyTest do
       gen all(
             from <- member_of(@actors),
             to <- member_of(@characters),
-            tone <- member_of(Event.tones())
+            tone <- member_of(Event.tones()),
+            observers <- list_of(member_of(@characters), max_length: 2)
           ) do
-        Event.message_sent(from, to, "...", tone: tone)
+        Event.message_sent(from, to, "...", tone: tone, observed_by: observers)
       end,
       gen all(to <- member_of(@characters)) do
         Event.apology_offered("user", to, "sorry")

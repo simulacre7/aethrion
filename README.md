@@ -112,6 +112,7 @@ host event
 
 - **Rules** are small modules (`use Aethrion.Rule`) organized by an explicit `Aethrion.Pipeline`. Add your own, remove built-ins, or register new event types. `mix aethrion.rules` lists them.
 - **Cascades** let characters act on each other: observation, confiding, rumor, empathy, comfort, companionship.
+- **Reputation** carries how you treat one character to the others: whoever sees or hears about it judges you, and faded details become a lasting reputation.
 - **Traces** record every change: which rule, which event, before and after. `why yuna jealousy` in the interactive demo answers "why is Yuna this jealous?" with each change and the chain of events behind it.
 - **Memory** has kinds (experienced, observed, heard), sources, topics that link everyone's memory of the same event, age-based decay, and consolidation of faded experiences into lasting impressions. Retrieval is deterministic; no vector search.
 - **Tuning** makes every rule's numbers data: a world, saved state, or scenario can override them without code.
@@ -160,7 +161,7 @@ Scenarios are JSON files with a world, a script of events, and expectations. The
 
 <img src="assets/report/the-flower.png" alt="Aethrion scenario report: cast, feelings over time, relationship graph, and timeline" width="720">
 
-Bundled scenarios: the flower, the apology, words matter (tone), rumor mill (news spreading through a trust graph), long silence (loneliness and fading memory), small town (the same rules, tuned differently), crossroads (one moment, four branches, compared side by side), old friends (conversations fading into lasting impressions), benefit of the doubt (the same harsh words landing differently depending on history), company (friends keeping each other company while the user is away), and two regulars (two people, each message going to the right one). See [docs/scenarios.md](docs/scenarios.md).
+Bundled scenarios: the flower, the apology, words matter (tone), rumor mill (news spreading through a trust graph), long silence (loneliness and fading memory), small town (the same rules, tuned differently), crossroads (one moment, four branches, compared side by side), old friends (conversations fading into lasting impressions), benefit of the doubt (the same harsh words landing differently depending on history), company (friends keeping each other company while the user is away), two regulars (two people, each message going to the right one), and word gets around (a harsh word in front of a friend becoming a reputation). See [docs/scenarios.md](docs/scenarios.md).
 
 ## Interactive Demo
 

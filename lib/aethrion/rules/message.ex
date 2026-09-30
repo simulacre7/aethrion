@@ -18,6 +18,11 @@ defmodule Aethrion.Rules.Message do
     are halved: the receiver gives the sender the benefit of the doubt.
   - **Wariness.** If the receiver holds an impression of at least 2 hostile
     messages from the sender, warm effects are halved.
+
+  Without firsthand history, reputation counts for less: a sender the
+  receiver has seen or heard be hostile to others at least twice gets 75% of
+  a warm message's effect, and one known for kindness to others (3+) gets 75%
+  of a cold or hostile one's (see `Aethrion.Rules.Reputation`).
   """
 
   use Aethrion.Rule,
@@ -44,11 +49,17 @@ defmodule Aethrion.Rules.Message do
       goodwill_count: 3,
       goodwill_percent: 50,
       wariness_count: 2,
-      wariness_percent: 50
+      wariness_percent: 50,
+      reputation_goodwill_count: 3,
+      reputation_goodwill_percent: 75,
+      reputation_wariness_count: 2,
+      reputation_wariness_percent: 75
     ]
 
   alias Aethrion.{Memory, Transition}
   alias Aethrion.Rules.Consolidation
+
+  @kind_patterns ["warm", "gift", "comfort", "together"]
 
   # Which fields each tone touches; the amounts are params named <tone>_<field>.
   @effects %{
@@ -91,25 +102,41 @@ defmodule Aethrion.Rules.Message do
   # when history changes it.
   defp history_modifier(%Transition{event: event, state: state} = transition) do
     count = &Consolidation.impression_count(state, event.to, &1, event.from)
+    reputation = &Consolidation.reputation_count(state, event.to, &1, event.from)
+    kindness = fn count -> Enum.sum(Enum.map(@kind_patterns, count)) end
     receiver = Transition.name(transition, event.to)
     sender = Transition.name(transition, event.from)
+    param = &Transition.param(transition, &1)
 
     cond do
-      event.tone in [:cold, :hostile] and
-          count.("warm") + count.("gift") + count.("comfort") + count.("together") >=
-            Transition.param(transition, :goodwill_count) ->
+      event.tone in [:cold, :hostile] and kindness.(count) >= param.(:goodwill_count) ->
         {Transition.note(
            transition,
            "#{receiver} gives #{sender} the benefit of the doubt after a long record of kindness",
            subject: event.to
-         ), Transition.param(transition, :goodwill_percent)}
+         ), param.(:goodwill_percent)}
 
-      event.tone == :warm and count.("hostile") >= Transition.param(transition, :wariness_count) ->
+      event.tone == :warm and count.("hostile") >= param.(:wariness_count) ->
         {Transition.note(
            transition,
            "#{receiver} is wary of kindness from #{sender} after repeated hostility",
            subject: event.to
-         ), Transition.param(transition, :wariness_percent)}
+         ), param.(:wariness_percent)}
+
+      event.tone in [:cold, :hostile] and
+          kindness.(reputation) >= param.(:reputation_goodwill_count) ->
+        {Transition.note(
+           transition,
+           "#{receiver} has heard enough good about #{sender} to give them some benefit of the doubt",
+           subject: event.to
+         ), param.(:reputation_goodwill_percent)}
+
+      event.tone == :warm and reputation.("hostile") >= param.(:reputation_wariness_count) ->
+        {Transition.note(
+           transition,
+           "#{receiver} is guarded with #{sender}, knowing how they have treated others",
+           subject: event.to
+         ), param.(:reputation_wariness_percent)}
 
       true ->
         {transition, 100}
@@ -125,14 +152,22 @@ defmodule Aethrion.Rules.Message do
       created_at: event.at,
       related_characters: [event.from],
       kind: :experienced,
-      topic: "message:#{event.id}",
-      data: %{
-        "event" => "message_sent",
-        "from" => event.from,
-        "to" => event.to,
-        "tone" => Atom.to_string(event.tone),
-        "text" => event.text
-      }
+      topic: topic(event),
+      data: data(event)
     )
+  end
+
+  @doc "The topic every memory of one message shares."
+  def topic(event), do: "message:#{event.id}"
+
+  @doc "Structured memory data for a message."
+  def data(event) do
+    %{
+      "event" => "message_sent",
+      "from" => event.from,
+      "to" => event.to,
+      "tone" => Atom.to_string(event.tone),
+      "text" => event.text
+    }
   end
 end

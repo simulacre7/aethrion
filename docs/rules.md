@@ -48,7 +48,7 @@ Outputs report the delta that was actually applied after clamping. `energy` is r
 - remembers what they saw (importance 60, kind `:observed`, same topic as the gift)
 - if they care about the giver (affinity >= 30): jealousy +10 (`:sensitive` +5, `:calm` -5) and tension toward the receiver +8
 
-### `message_sent` -> `message`, `reply`
+### `message_sent` -> `message`, `reply`, `reputation`
 
 **message** - effects on the receiver, by the event's structured `tone`. Rules never parse the text.
 
@@ -63,8 +63,20 @@ History changes how a message lands, through impressions built by consolidation:
 
 - **Goodwill** - if the receiver holds impressions of at least 3 kind acts from the sender (warm messages, gifts, comfort, time together), cold and hostile effects are halved (`goodwill_count`, `goodwill_percent`). Their reply reflects it: "That's not like you. Is something wrong?"
 - **Wariness** - if the receiver holds an impression of at least 2 hostile messages from the sender, warm effects are halved (`wariness_count`, `wariness_percent`).
+- **Reputation** - without firsthand history, what the receiver has seen or heard counts for less: a reputation for hostility to others (2+) leaves 75% of a warm message's effect, and a reputation for kindness to others (3+) leaves 75% of a cold or hostile one's (`reputation_*` params). Firsthand history always wins.
 
-**reply** - when someone outside the cast (such as the user) talks to an active, unblocked character, the character emits a `:reply` output phrased from their current mood and memories. Replies do not change state.
+**reply** - when someone outside the cast (such as the user) talks to an active, unblocked character, the character emits a `:reply` output phrased from their current mood and memories. Replies do not change state. A warm message from someone the character saw or heard be hostile to another character gets a pointed answer: "Thanks... but I saw what you said to Mina."
+
+**reputation** - characters judge people by how they treat others. For each witness in the message's `observed_by` (never the sender or receiver):
+
+- remembers a warm, cold, or hostile message (importance 40, 35, 60; kind `:observed`, same topic as the receiver's memory). Neutral messages are not remembered.
+- if they care about the receiver (affinity >= 20), their relationship with the sender changes:
+
+| tone | witness toward sender |
+| --- | --- |
+| `warm` | affinity +2, trust +1 |
+| `cold` | trust -2, tension +2 |
+| `hostile` | trust -4, tension +4 |
 
 ### `apology_offered` -> `apology`
 
@@ -92,6 +104,8 @@ A memory loses `(100 - importance) / 4` strength per simulated day, independent 
 
 **consolidation** - individual memories fade, patterns should not. When a character holds at least 2 faded, unconsolidated firsthand memories of the same kind of interaction with the same actor (gifts, warm/cold/hostile messages, apologies, comfort, time together), they fold into an `:impression` memory such as `"user has been warm to mina 3 times."`. Importance is `40 + 10 * count`, capped at 90. An impression dates from when its latest memory faded (so the result does not depend on how time was split into ticks) and decays four times more slowly than ordinary memories (`memory_decay.impression_slowdown`), so patterns outlast the details. Later faded memories of the same pattern deepen the impression in place; the originals are kept and marked `consolidated_into`. Impressions are private: they are never gossiped. A faded impression no longer counts toward goodwill or wariness.
 
+Secondhand memories fold too. Faded `:observed` and `:heard` memories of how an actor treated *other* characters become a reputation impression, grouped by pattern and actor across everyone they treated that way: `"haru knows user has been hostile to mina and yuna 2 times."` (id `memory:haru:reputation:hostile:user`). Memories of something done to or by the holder are never reputation.
+
 **autonomy** - characters act on their own. A character who is struggling (mood `jealous`, `lonely`, or `upset`) or `:talkative` confides a notable memory to their most trusted friend (trust >= 30) who has not heard about it yet:
 
 - firsthand memories with importance >= 60
@@ -105,11 +119,13 @@ At most one confidence per character per tick. It is enqueued as a `gossip_share
 
 Both characters: loneliness -15, joy +6, affinity toward each other +2, and both remember it (importance 40). Emits a `:character_interaction` scene of kind `:together`. Repeated outings consolidate into impressions and count as kindness for goodwill.
 
-### `gossip_shared` -> `gossip`, `empathy`
+### `gossip_shared` -> `gossip`, `reputation`, `empathy`
 
 **gossip** - the listener gains a `:heard` memory of the same topic with importance reduced by 15 (minimum 20) and `source` set to the teller. The teller's loneliness -4 and trust toward the listener +2. If the listener already knew, nothing changes. Emits a `:character_interaction` scene.
 
 Because each retelling loses importance and retelling needs importance >= 30, a rumor starting from an importance-60 observation travels at most three hops: 60 -> 45 -> 30 -> 20.
+
+**reputation** - if what the listener just heard is how someone treated a character the listener cares about (affinity >= 20), the listener judges them as a witness would, at half the effect (`heard_percent`). Nobody judges a message they sent or received.
 
 **empathy** - if the listener cares about the teller (affinity >= 25), the teller is struggling, and the listener is not, the listener offers comfort: a `comfort_offered` follow-up event, at most once per 12 simulated hours per pair.
 

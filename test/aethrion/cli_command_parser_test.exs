@@ -62,6 +62,17 @@ defmodule Aethrion.CLI.CommandParserTest do
     assert {:error, _message} = CommandParser.parse("say yuna")
   end
 
+  test "parses witnesses at the end of a message" do
+    assert {:ok, %{text: "you ruin everything", observed_by: ["haru", "yuna"]}} =
+             CommandParser.parse(
+               "message user mina hostile you ruin everything observed_by haru,yuna"
+             )
+
+    # Too short to be text followed by witnesses: the words are the text.
+    assert {:ok, %{text: "observed_by haru", observed_by: []}} =
+             CommandParser.parse("message user mina hostile observed_by haru")
+  end
+
   test "parses messages with a tone" do
     assert {:ok,
             %{type: :message_sent, from: "user", to: "mina", tone: :warm, text: "you did great"}} =
@@ -79,7 +90,8 @@ defmodule Aethrion.CLI.CommandParserTest do
   property "never raises, whatever is typed" do
     words =
       ~w(gift say message why context tick comfort apologize save load record report memories
-         status undo user mina yuna yuna->haru -> trust jealousy warm smug observed_by a,b,, 0 -1 quit)
+         status undo user mina yuna yuna->haru -> trust jealousy warm smug observed_by 0 -1 quit) ++
+        ["a,b,,"]
 
     check all(
             tokens <-

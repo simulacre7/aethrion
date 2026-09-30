@@ -92,6 +92,15 @@ defmodule Aethrion.Expression.Templates do
     end
   end
 
+  def render(%Request{kind: :reply, tone: :warm, speaker: %{mood: mood}} = request) do
+    case Request.harshness_to_others(request) do
+      {:observed, target} -> "Thanks... but I saw what you said to #{name(request, target)}."
+      {:heard, target} -> "Thanks... but I heard what you said to #{name(request, target)}."
+      :reputation -> "...Thanks. I've heard how you treat people, though."
+      nil -> reply(:warm, mood)
+    end
+  end
+
   def render(%Request{kind: :reply, tone: tone, speaker: %{mood: mood}}) do
     reply(tone, mood)
   end
