@@ -37,6 +37,19 @@ defmodule Aethrion.JournalTest do
     assert Enum.any?(List.last(steps).events, &(&1.type == :gossip_shared))
   end
 
+  test "journals record the version that wrote them and warn when it differs", %{path: path} do
+    :ok = Journal.create(path, Runtime.demo_state())
+    header = path |> File.read!() |> String.split("\n") |> hd() |> Jason.decode!()
+    assert header["aethrion"] == Mix.Project.config()[:version]
+
+    assert ExUnit.CaptureLog.capture_log(fn -> Journal.read(path) end) == ""
+
+    File.write!(path, Jason.encode!(%{header | "aethrion" => "0.1.0"}) <> "\n")
+
+    assert ExUnit.CaptureLog.capture_log(fn -> {:ok, _state, []} = Journal.read(path) end) =~
+             ~s(written by Aethrion "0.1.0")
+  end
+
   test "journals cannot be created twice", %{path: path} do
     :ok = Journal.create(path, Runtime.demo_state())
     assert {:error, %{code: :already_exists}} = Journal.create(path, Runtime.demo_state())

@@ -9,11 +9,12 @@ defmodule Aethrion.Journal do
 
       {:ok, state, steps} = Aethrion.Journal.replay("tmp/world.jsonl")
 
-  The first line is a header with the starting state; each following line is
-  one host event with the id it was assigned:
+  The first line is a header with the starting state and the Aethrion version
+  that wrote it; each following line is one host event with the id it was
+  assigned:
 
   ```json
-  {"aethrion_journal": 1, "state": {...}}
+  {"aethrion_journal": 1, "aethrion": "0.2.0-alpha", "state": {...}}
   {"id": "e1", "type": "gift_received", "from": "user", "to": "mina", ...}
   {"id": "e2", "type": "time_tick", "hours": 2, "now": "..."}
   ```
@@ -21,6 +22,11 @@ defmodule Aethrion.Journal do
   `Aethrion.RuntimeServer` (and `Aethrion.World`) keep a journal with the
   `:journal` option and rebuild from it on start. Custom event types can be
   replayed when the same pipeline is passed (`pipeline:`).
+
+  Replay is exact for the Aethrion version (and pipeline) that wrote the
+  journal. Rules change between versions, so reading a journal written by
+  another version logs a warning; compact it with the old version before
+  upgrading to keep the world as it was.
 
   A journal grows with every event and is replayed in full on start.
   `compact/2` (or `Aethrion.RuntimeServer.compact_journal/1` for a running
@@ -30,7 +36,10 @@ defmodule Aethrion.Journal do
 
   alias Aethrion.{Error, Event, Runtime, Scenario, State}
 
+  require Logger
+
   @version 1
+  @library_version Mix.Project.config()[:version]
 
   @doc """
   Creates a journal at `path` whose starting state is `state`. Fails if the
@@ -154,7 +163,12 @@ defmodule Aethrion.Journal do
   end
 
   defp write_header(path, state, version \\ nil) do
-    header = %{"aethrion_journal" => @version, "state" => State.to_data(state)}
+    header = %{
+      "aethrion_journal" => @version,
+      "aethrion" => @library_version,
+      "state" => State.to_data(state)
+    }
+
     tmp = tmp_path(path)
 
     result =
@@ -368,8 +382,9 @@ defmodule Aethrion.Journal do
   end
 
   defp parse_header(line, opts) do
-    with {:ok, %{"aethrion_journal" => @version, "state" => data}} <- Jason.decode(line),
+    with {:ok, %{"aethrion_journal" => @version, "state" => data} = header} <- Jason.decode(line),
          {:ok, state} <- State.parse(data, Keyword.take(opts, [:pipeline])) do
+      warn_on_version(header)
       {:ok, state}
     else
       {:ok, %{"aethrion_journal" => @version}} ->
@@ -388,6 +403,16 @@ defmodule Aethrion.Journal do
         {:error, invalid_journal(1, :missing_header)}
     end
   end
+
+  defp warn_on_version(%{"aethrion" => version}) when version != @library_version do
+    Logger.warning(
+      "this journal was written by Aethrion #{inspect(version)} and is being read by " <>
+        "#{@library_version}; rules may have changed, so replay can differ from the original. " <>
+        "Compact it with #{inspect(version)} before upgrading to keep the world as it was."
+    )
+  end
+
+  defp warn_on_version(_header), do: :ok
 
   defp parse_events(lines, pipeline) do
     lines
