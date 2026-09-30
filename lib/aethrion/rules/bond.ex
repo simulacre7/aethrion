@@ -8,8 +8,8 @@ defmodule Aethrion.Rules.Bond do
   | --- | --- |
   | `:estranged` | tension >= 50 or affinity <= -30 |
   | `:strained` | tension >= 20 or trust <= -10 |
-  | `:close` | affinity >= 50, trust >= 30, and tension < 10 |
-  | `:friendly` | affinity >= 25, trust >= 15, and tension < 10 |
+  | `:close` | affinity >= 50, trust >= 30, and tension < 10 (to become close) |
+  | `:friendly` | affinity >= 25, trust >= 15, and tension < 10 (to become friendly) |
   | `:neutral` | otherwise |
 
   Bonds settle rather than flicker. Once a relationship has a bond, it keeps

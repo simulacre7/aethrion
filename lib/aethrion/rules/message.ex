@@ -38,6 +38,7 @@ defmodule Aethrion.Rules.Message do
       warm_loneliness: -15,
       warm_joy: 8,
       warm_tension: -2,
+      warm_return_percent: 50,
       neutral_loneliness: -6,
       cold_affinity: -3,
       cold_tension: 4,
@@ -98,7 +99,7 @@ defmodule Aethrion.Rules.Message do
         )
       end)
 
-    transition = soothe(transition)
+    transition = soothe(transition, percent)
 
     case event.tone do
       :neutral ->
@@ -111,8 +112,9 @@ defmodule Aethrion.Rules.Message do
   end
 
   # A kind word after a quiet stretch (no company for the time passage's
-  # quiet hours) eases half of whatever loneliness has built up, at least the
-  # usual amount: coming back matters more than the tenth message in a day.
+  # quiet hours) eases `warm_return_percent` (half) of whatever loneliness has
+  # built up, if that is more than usual: coming back matters more than the
+  # tenth message in a day.
   defp character_amount(
          %Transition{event: %{tone: :warm} = event, state: state} = transition,
          :loneliness,
@@ -122,27 +124,30 @@ defmodule Aethrion.Rules.Message do
     quiet = Aethrion.Tuning.get(state, Aethrion.Rules.TimePassage, :quiet_hours)
     key = Aethrion.Rules.TimePassage.company_key(event.to)
 
-    if State.cooldown_ready?(state, key, quiet) do
+    base = amount.(:loneliness)
+
+    if base < 0 and State.cooldown_ready?(state, key, quiet) do
       current = Transition.character_state(transition, event.to).loneliness
-      min(amount.(:loneliness), -div(current * percent, 200))
+      share = Transition.param(transition, :warm_return_percent)
+      min(base, -div(current * share * percent, 10_000))
     else
-      amount.(:loneliness)
+      base
     end
   end
 
   defp character_amount(_transition, field, amount, _percent), do: amount.(field)
 
   # Kind words ease leftover tension a little, never below zero.
-  defp soothe(%Transition{event: %{tone: :warm} = event} = transition) do
+  defp soothe(%Transition{event: %{tone: :warm} = event} = transition, percent) do
     Aethrion.Rules.Apology.ease_tension(
       transition,
       event.to,
       event.from,
-      Transition.param(transition, :warm_tension)
+      div(Transition.param(transition, :warm_tension) * percent, 100)
     )
   end
 
-  defp soothe(transition), do: transition
+  defp soothe(transition, _percent), do: transition
 
   # Returns the percentage of the tone's normal effect that applies, noting why
   # when history changes it.

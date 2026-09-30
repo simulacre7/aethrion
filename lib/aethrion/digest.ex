@@ -264,6 +264,9 @@ defmodule Aethrion.Digest do
   defp line(%{context: %Aethrion.Expression.Request{} = request}, %{locale: :ko} = say),
     do: Ko.render(for_reader(request, say.you, "너"), tense: :past)
 
+  # A line a model already phrased is kept as it is.
+  defp line(%{expression: %{status: :ok}} = output, %{locale: :en}), do: output.text
+
   defp line(%{context: %Aethrion.Expression.Request{} = request}, %{you: you})
        when you != "user",
        do: Aethrion.Expression.Templates.render(for_reader(request, you, "you"))

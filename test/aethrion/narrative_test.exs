@@ -731,8 +731,20 @@ defmodule Aethrion.NarrativeTest do
 
       assert [] = proactive(step.outputs, "mina")
 
-      {_state, outputs} = run!(step.state, [tick(3)])
+      {_state, outputs} = run!(step.state, List.duplicate(tick(1), 12))
       assert [] = proactive(outputs, "mina")
+    end
+
+    test "the relief of a kind word after days away follows tuning" do
+      state =
+        Runtime.demo_state()
+        |> Aethrion.Tuning.put(:message, :warm_loneliness, 0)
+
+      {state, _outputs} = run!(state, [tick(72)])
+      before = character_state(state, "mina").loneliness
+
+      {state, _outputs} = run!(state, [Event.message_sent("user", "mina", "hi!", tone: :warm)])
+      assert character_state(state, "mina").loneliness == before
     end
 
     test "a week of cold words is noticed, and an apology after it is not waved off" do

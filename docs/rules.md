@@ -56,7 +56,7 @@ Outputs report the delta that was actually applied after clamping. `energy` is r
 
 | tone | receiver effects | remembered (importance) |
 | --- | --- | --- |
-| `warm` | affinity +4, trust +2, loneliness -15 (or half of it, if more, after a quiet stretch), joy +8, tension -2 (not below 0) | yes (45) |
+| `warm` | affinity +4, trust +2, loneliness -15 (or half of what built up, if more, after a quiet stretch: `warm_return_percent`), joy +8, tension -2 (not below 0) | yes (45) |
 | `neutral` | loneliness -6 | no |
 | `cold` | affinity -3, tension +4, joy -5 | yes (35) |
 | `hostile` | affinity -8, trust -6, tension +10, stress +20, joy -10 | yes (65) |
@@ -167,8 +167,8 @@ Names what a directed relationship has become, first match wins:
 | --- | --- |
 | `estranged` | tension >= 50 or affinity <= -30 |
 | `strained` | tension >= 20 or trust <= -10 |
-| `close` | affinity >= 50, trust >= 30, and tension < 10 |
-| `friendly` | affinity >= 25, trust >= 15, and tension < 10 |
+| `close` | affinity >= 50, trust >= 30, and tension < 10 (to become close; an established bond holds until tension reaches 20) |
+| `friendly` | affinity >= 25, trust >= 15, and tension < 10 (likewise) |
 | `neutral` | otherwise |
 
 Bonds settle rather than flicker: once a relationship has a bond (recorded on the relationship as `bond`), it keeps it until the numbers move 5 points (`hysteresis`) past the threshold that would change it. A close friend stays close until affinity drops below 45; a strained relationship stays strained until tension falls below 15. Getting worse into strained or estranged, and getting closer, register at once. `Aethrion.Rules.Bond.derive/2` gives the current bond of any relationship. After each event, every relationship the event changed is compared before and after; when its bond moved, the rule emits `:bond_changed` and logs `[Bond] Mina toward user: friendly -> strained`. Relationships an event did not touch never announce. Bonds appear in the CLI status table, reports, and expression requests.
@@ -181,7 +181,7 @@ Characters reach out to people (actors who are not characters, such as `user`) w
 | --- | --- | --- |
 | `jealous` | jealousy >= 15 and jealousy + loneliness >= 45 | 24 simulated hours |
 | `protective` | saw a person be hostile to a character they care about (affinity >= 30), and has not seen or heard them apologize since | once per incident, and 24 simulated hours per person and friend |
-| `lonely` | loneliness >= 60, jealousy < 15, affinity >= 25 toward the person, no company and nothing from that person for 6 hours, and not heading out with a friend this hour | 24 simulated hours; 72 after a lonely message that got no reply; a week after a week of silence |
+| `lonely` | loneliness >= 60, jealousy < 15, affinity >= 25 toward the person, no company and nothing from that person for 6 hours, no cold or hostile words from them for a day, and not heading out with a friend this hour | 24 simulated hours; 72 after a lonely message that got no reply; a week after a week of silence |
 | `curious` | holds secondhand news involving a person (not a character), and is `:playful` or has affinity >= 30 toward them; not about harsh words from someone they saw be hostile themselves | once per topic |
 
 Characters do not reach out to someone they feel tense toward (tension >= 5, parameter `avoid_tension`: one hostile message keeps them away for about three days); they confide in friends instead; speaking up for a friend is the exception. Writing again after a lonely message got no reply costs 2 affinity toward that person. Lonely messages quote each kind word once, and recall fond memories (kind words, a gift from the last three days, a record of kindness) only when nothing harsh stands between them, and mention how long it has been; after a week of silence only the silence is left: "I guess you've been busy. I'll be here whenever you want to talk."

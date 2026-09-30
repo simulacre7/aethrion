@@ -12,7 +12,7 @@ defmodule Aethrion.Rules.Reply do
   use Aethrion.Rule,
     id: :reply,
     description:
-      "The receiver replies to external actors' messages, gifts, and apologies, phrased from their current mood and memories."
+      "The receiver replies to external actors' messages, gifts, and apologies, phrased from their mood (after harsh words, the hurt; otherwise the mood the words found) and memories."
 
   alias Aethrion.{Character, Expression, Memories, Memory, Output, State, Transition}
 
@@ -56,8 +56,13 @@ defmodule Aethrion.Rules.Reply do
           context: request
         )
 
-      transition
-      |> Transition.put_cooldown(key)
+      rebuffed =
+        if Map.get(event, :tone) in [:cold, :hostile],
+          do: [rebuff_key(event.to, event.from)],
+          else: []
+
+      [key | rebuffed]
+      |> Enum.reduce(transition, &Transition.put_cooldown(&2, &1))
       |> Transition.emit(output)
       |> Transition.log("[Output] #{receiver.name} -> #{event.from}: \"#{output.text}\"")
     else
@@ -67,6 +72,10 @@ defmodule Aethrion.Rules.Reply do
 
   @doc false
   def contact_key(character, person), do: "contact:#{character}:#{person}"
+
+  @doc false
+  # When this person last brushed the character off (cold or hostile words).
+  def rebuff_key(character, person), do: "rebuff:#{character}:#{person}"
 
   # A reply comes from how the character felt when the words arrived: the
   # mood of their numbers before this event changed them. The trace is newest

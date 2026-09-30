@@ -19,7 +19,7 @@ defmodule Aethrion.Rules.Proactive do
   | ---------- | ---------------------------------------------------------- | -------- |
   | `:jealous` | jealousy >= 15 and jealousy + loneliness >= 45             | 24h      |
   | `:protective` | saw a person be hostile to a character they care about (affinity >= 30), and has not seen or heard them apologize since | once per incident, and 24h per person and friend |
-  | `:lonely`  | loneliness >= 60, jealousy < 15, affinity >= 25 toward the person, no company for 6h, and not heading out with a friend this hour | 24h; 72h after a lonely message that got no reply, a week after a week of silence |
+  | `:lonely`  | loneliness >= 60, jealousy < 15, affinity >= 25 toward the person, no company and nothing from that person for 6h, no brush-off from them for a day, and not heading out with a friend this hour | 24h; 72h after a lonely message that got no reply, a week after a week of silence |
   | `:curious` | heard secondhand news about a person and is `:playful` or has affinity >= 30 toward them; not about harsh words from someone they saw be hostile themselves | once per topic |
 
   Reasons are tried in the order of the table. Writing again after a lonely
@@ -165,6 +165,7 @@ defmodule Aethrion.Rules.Proactive do
          not Companionship.heading_out?(state, id) and
          State.cooldown_ready?(state, TimePassage.company_key(id), params.alone_hours) and
          State.cooldown_ready?(state, Reply.contact_key(id, closest), params.alone_hours) and
+         State.cooldown_ready?(state, Reply.rebuff_key(id, closest), params.cooldown_hours) and
          State.get_relationship(state, id, closest).affinity >= params.lonely_affinity and
          State.cooldown_ready?(state, key, lonely_cooldown(state, id, closest, params)) do
       {:lonely, [key, lonely_key(id, closest)], closest,
@@ -244,7 +245,7 @@ defmodule Aethrion.Rules.Proactive do
   # The memories a lonely message can draw on, minus kind words it already
   # quoted: a lonely message quotes each thing said once.
   defp unquoted(state, id, person) do
-    quoted_at = Map.get(state.cooldowns, quoted_key(id), -1)
+    quoted_at = Map.get(state.cooldowns, quoted_key(id, person), -1)
 
     state
     |> Memories.relevant(id, focus: [person], limit: 4)
@@ -253,12 +254,12 @@ defmodule Aethrion.Rules.Proactive do
         %Memory{kind: :experienced, data: %{"event" => "message_sent", "tone" => "warm"}},
         memory
       ) and
-        memory.created_tick <= quoted_at
+        memory.created_tick < quoted_at
     end)
     |> Enum.take(3)
   end
 
-  defp quoted_key(id), do: "proactive:#{id}:quoted"
+  defp quoted_key(id, person), do: "proactive:#{id}:quoted:#{person}"
 
   # When a lonely message last went to this person.
   defp lonely_key(id, person), do: "proactive:#{id}:lonely:#{person}"
@@ -438,7 +439,7 @@ defmodule Aethrion.Rules.Proactive do
     quoted =
       if reason == :lonely and
            match?({:quote, _text}, Aethrion.Expression.Templates.lonely_choice(request)),
-         do: [quoted_key(character.id)],
+         do: [quoted_key(character.id, recipient)],
          else: []
 
     transition
