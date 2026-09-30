@@ -269,7 +269,7 @@ Subscriber messages:
 {:ok, loaded} = Aethrion.Persistence.JsonFile.load(path: "tmp/aethrion.json")
 ```
 
-`Aethrion.State.to_data/1` writes format version 2. `from_data/1` also reads v0.1 data. For data you did not produce, use `Aethrion.State.parse/1`, which validates shapes, types, and ranges and returns `{:error, {:invalid_state_data, path, reason}}` instead of raising. `JsonFile.load/1` uses it. A runtime server whose snapshot exists but cannot be read refuses to start rather than overwrite it. `Aethrion.Persistence.InMemory` is the reference adapter; implement `Aethrion.Persistence` for your own storage.
+`Aethrion.State.to_data/1` writes format version 2. `from_data/1` also reads v0.1 data. For data you did not produce, use `Aethrion.State.parse/2`, which validates shapes, types, and ranges and returns `{:error, %Aethrion.Error{code: :invalid_state}}` with the `:path` of the first problem instead of raising. `JsonFile.load/1` uses it and reports a missing file as `:not_found`. A runtime server whose snapshot exists but cannot be read refuses to start rather than overwrite it. `Aethrion.Persistence.InMemory` is the reference adapter; implement `Aethrion.Persistence` for your own storage.
 
 ## Journals
 
