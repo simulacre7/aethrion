@@ -69,7 +69,9 @@ defmodule Mix.Tasks.Demo.Interactive do
     }
 
     Display.message(
-      "Type help for commands, quit to exit. Try: say yuna sorry I forgot about you"
+      if session.locale == :ko,
+        do: "help로 명령어 보기, quit으로 종료. 이렇게 해 보세요: say yuna 잊어서 미안해",
+        else: "Type help for commands, quit to exit. Try: say yuna sorry I forgot about you"
     )
 
     if session.status?, do: Display.status(session.state)
@@ -131,7 +133,7 @@ defmodule Mix.Tasks.Demo.Interactive do
   end
 
   defp handle({:ok, :help}, session) do
-    Display.help()
+    Display.help(session.locale || :en)
     loop(session)
   end
 

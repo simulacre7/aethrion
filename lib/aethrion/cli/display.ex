@@ -36,7 +36,43 @@ defmodule Aethrion.CLI.Display do
     print("")
   end
 
-  def help do
+  def help(locale \\ :en)
+
+  def help(:ko) do
+    print_lines([
+      [:bright, "말하고 행동하기"],
+      "  say <캐릭터> <말>                           자유 입력; 의도를 해석해서 이벤트로 보냅니다",
+      "  message <누가> <누구에게> <tone> <말> [observed_by a,b]",
+      "                                              tone: warm(다정하게) | neutral(담담하게) | cold(차갑게) | hostile(모질게)",
+      "  gift <누가> <누구에게> <물건> [observed_by a,b]",
+      "  apologize <누가> <누구에게> <이유> [observed_by a,b]",
+      "  comfort <누가> <누구를>",
+      "  tick <시간>                                 시간을 흘려보냅니다",
+      "  here [a,b | none]                           곁에 있는 캐릭터; 당신이 하는 말과 행동을 목격합니다",
+      "",
+      [:bright, "살펴보기"],
+      "  status                                      캐릭터와 관계",
+      "  memories [캐릭터]                           캐릭터가 기억하는 것 (희미해진 기억은 흐리게)",
+      "  why <캐릭터> [필드]                          값이 어떻게 여기까지 왔는지, 예: why yuna jealousy",
+      "  why <누가>-><누구> <필드>                    관계에 대해서도, 예: why yuna->haru trust",
+      "  context <캐릭터>                            먼저 연락할 때 LLM이 보게 될 맥락",
+      "  opinion <캐릭터> <상대>                      한 사람이 다른 사람을 어떻게 보는지",
+      "  timeline                                    이번 세션의 이벤트",
+      "  digest                                      지난 요약 이후 달라진 것",
+      "  rules                                       규칙 파이프라인",
+      "",
+      [:bright, "세션"],
+      "  undo                                        마지막 명령 되돌리기",
+      "  save <경로> | load <경로>                    세계 상태를 JSON으로",
+      "  record <경로>                               이 세션을 다시 재생할 수 있는 시나리오로",
+      "  report <경로>                               이 세션을 HTML 리포트로",
+      "  help | quit (또는 exit)",
+      "",
+      [:faint, "명령마다 나오는 표를 숨기려면 --no-status로 시작하세요."]
+    ])
+  end
+
+  def help(_en) do
     print_lines([
       [:bright, "Talk and act"],
       "  say <character> <text>                      free text; intent is interpreted, then dispatched",
