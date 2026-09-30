@@ -93,4 +93,16 @@ defmodule Aethrion.TemplatesKoTest do
 
     assert Ko.render(scene.context) == ~s(Yuna는 Haru에게 네가 한 말을 전한다. "go away")
   end
+
+  test "every event in the bundled scenarios is described in Korean" do
+    for path <- Aethrion.Scenario.bundled(),
+        {:ok, scenario} = Aethrion.Scenario.load(path),
+        {:ok, result} = Aethrion.Scenario.run(scenario),
+        step <- result.steps ++ Enum.flat_map(result.branches, & &1.steps),
+        event <- step.events do
+      line = Ko.describe_event(event, &Aethrion.State.name(step.state, &1))
+      assert line =~ ~r/\p{Hangul}/u, "no Korean in #{inspect(line)}"
+      assert line == :unicode.characters_to_nfc_binary(line)
+    end
+  end
 end
