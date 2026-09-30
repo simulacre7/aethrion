@@ -15,21 +15,42 @@ defmodule Aethrion.Expression.Choices do
   end
 
   @doc false
-  # Whom the listener's gift went to, and when, or `:quiet`.
-  @spec jealous_choice(Request.t()) :: {:gift, String.t(), :earlier | :other_day} | :quiet
+  # Whom the listener's gift went to, and when, or `:quiet`; and whether the
+  # speaker can fairly feel forgotten (`:forgotten`) or, having heard from
+  # the listener lately or had a gift from them, only a little left out
+  # (`:left_out`).
+  @spec jealous_choice(Request.t()) ::
+          {:gift, String.t(), :earlier | :other_day, :forgotten | :left_out} | :quiet
   def jealous_choice(request) do
     between = {request.listener.id, request.speaker.id}
 
     case find_memory(request, &gift_to_someone_else?(&1, between)) do
       %{data: %{"to" => to}} = memory ->
         case Request.hours_ago(request, memory) do
-          hours when is_integer(hours) and hours > 12 -> {:gift, to, :other_day}
-          _recent -> {:gift, to, :earlier}
+          hours when is_integer(hours) and hours > 12 -> {:gift, to, :other_day, feeling(request)}
+          _recent -> {:gift, to, :earlier, feeling(request)}
         end
 
       nil ->
         :quiet
     end
+  end
+
+  defp feeling(request) do
+    listener = request.listener.id
+
+    remembered? =
+      Enum.any?(
+        request.memories,
+        &match?(
+          %{kind: :experienced, data: %{"event" => "gift_received", "from" => ^listener}},
+          &1
+        )
+      )
+
+    if remembered? or (is_integer(request.since_contact) and request.since_contact < 72),
+      do: :left_out,
+      else: :forgotten
   end
 
   @doc false

@@ -13,11 +13,13 @@ defmodule Aethrion.Expression.Templates do
   @spec render(Request.t()) :: String.t()
   def render(%Request{kind: :proactive_message, reason: :jealous} = request) do
     case Choices.jealous_choice(request) do
-      {:gift, to, :earlier} ->
-        "You looked happy with #{name(request, to)} earlier. I wondered if you forgot about me."
+      {:gift, to, when_seen, feeling} ->
+        moment = if when_seen == :earlier, do: "earlier", else: "the other day"
 
-      {:gift, to, :other_day} ->
-        "You looked happy with #{name(request, to)} the other day. I wondered if you forgot about me."
+        "You looked happy with #{name(request, to)} #{moment}. " <>
+          if feeling == :forgotten,
+            do: "I wondered if you forgot about me.",
+            else: "Silly of me, but I felt a little left out."
 
       :quiet ->
         "You've been quiet with me lately. I wondered if you forgot about me."

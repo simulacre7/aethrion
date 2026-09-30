@@ -80,10 +80,11 @@ defmodule Aethrion.Expression.Templates.Ko do
   @spec render(Request.t()) :: String.t()
   def render(%Request{kind: :proactive_message, reason: :jealous} = request) do
     case Choices.jealous_choice(request) do
-      {:gift, to, when_seen} ->
+      {:gift, to, when_seen, feeling} ->
         moment = if when_seen == :earlier, do: "아까", else: "지난번에"
 
-        "#{moment} #{with_particle(name(request, to), :and)} 있을 때 즐거워 보이더라. 혹시 나는 잊은 거 아니지?"
+        "#{moment} #{with_particle(name(request, to), :and)} 있을 때 즐거워 보이더라. " <>
+          if feeling == :forgotten, do: "혹시 나는 잊은 거 아니지?", else: "괜히 나만 좀 서운했어."
 
       :quiet ->
         "요즘 나한테 좀 조용하네. 혹시 나 잊은 거 아니지?"

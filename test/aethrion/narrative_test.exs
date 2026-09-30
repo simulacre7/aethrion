@@ -471,6 +471,21 @@ defmodule Aethrion.NarrativeTest do
   end
 
   describe "gifts" do
+    test "someone heard from lately feels left out rather than forgotten" do
+      seen = [flower_for_mina(), tick(2)]
+      jealous = &for(%{reason: :jealous} = o <- proactive(&1, "yuna"), do: o)
+
+      {_state, outputs} = run!(Runtime.demo_state(), seen)
+      assert [%{text: forgotten}] = jealous.(outputs)
+      assert forgotten =~ "forgot about me"
+
+      chatted = [Event.message_sent("user", "yuna", "Hey Yuna", tone: :neutral), tick(20)]
+      {_state, outputs} = run!(Runtime.demo_state(), chatted ++ seen)
+      assert [%{text: left_out, context: context}] = jealous.(outputs)
+      assert left_out =~ "a little left out"
+      assert Ko.render(context) =~ "서운했어"
+    end
+
     test "a second gift is not thanked the same way, and items are named in Korean" do
       gift = Event.gift_received("user", "haru", "chocolate")
       {_state, outputs} = run!(Runtime.demo_state(), [gift, gift])
