@@ -57,35 +57,33 @@ defmodule Mix.Tasks.Demo.Branches do
   end
 
   defp dispatch_and_print(state, event) do
-    Display.event(event)
+    {:ok, step} = Runtime.step(state, event)
 
-    {:ok, state, outputs, log} = Runtime.dispatch(state, event)
+    Display.event(step.event, state)
+    Enum.each(step.log, &Display.log/1)
 
-    Enum.each(log, &Display.log/1)
-    Enum.each(outputs, &Display.output/1)
-
-    {state, outputs}
+    {step.state, step.outputs}
   end
 
   defp print_summary({ignored_state, ignored_outputs}, {apology_state, apology_outputs}) do
     ignored_yuna = ignored_state.characters["yuna"].state
     apology_yuna = apology_state.characters["yuna"].state
 
-    ignored_message? = Enum.any?(ignored_outputs, &(&1.type == :proactive_message))
-    apology_message? = Enum.any?(apology_outputs, &(&1.type == :proactive_message))
-
     Display.message("\nBranch result")
 
-    Display.message(
-      "Ignored: Yuna jealousy=#{ignored_yuna.jealousy}, loneliness=#{ignored_yuna.loneliness}, proactive_message=#{ignored_message?}"
-    )
+    for {label, state, outputs, yuna} <- [
+          {"Ignored", ignored_state, ignored_outputs, ignored_yuna},
+          {"Apology", apology_state, apology_outputs, apology_yuna}
+        ] do
+      messages = Enum.count(outputs, &(&1.type == :proactive_message))
+      scenes = Enum.count(outputs, &(&1.type == :character_interaction))
 
-    Display.message(
-      "Apology: Yuna jealousy=#{apology_yuna.jealousy}, loneliness=#{apology_yuna.loneliness}, proactive_message=#{apology_message?}"
-    )
-
-    Display.message(
-      "Yuna trust toward user: #{State.get_relationship(apology_state, "yuna", "user").trust}"
-    )
+      Display.message(
+        "#{label}: Yuna jealousy=#{yuna.jealousy} loneliness=#{yuna.loneliness} " <>
+          "trust->user=#{State.get_relationship(state, "yuna", "user").trust} " <>
+          "trust->haru=#{State.get_relationship(state, "yuna", "haru").trust} " <>
+          "proactive_messages=#{messages} scenes=#{scenes}"
+      )
+    end
   end
 end

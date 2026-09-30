@@ -4,8 +4,11 @@ defmodule Aethrion.Rules.Autonomy do
 
   A character who is struggling (jealous, lonely, or upset) or who has the
   `:talkative` trait confides a notable firsthand memory (importance >= 60) to
-  their most trusted friend (trust >= 30) who has not heard about it yet. At
-  most one confidence per character per tick.
+  their most trusted friend (trust >= 30) who has not heard about it yet.
+  Talkative characters also pass on secondhand news (`:heard` memories with
+  importance >= 30). Because each retelling loses importance (see
+  `Aethrion.Rules.Gossip`), rumors die out after a few hops. At most one
+  confidence per character per tick.
 
   The confidence is enqueued as a `:gossip_shared` event, so it goes through
   validation and the gossip rules like any other event.
@@ -14,12 +17,13 @@ defmodule Aethrion.Rules.Autonomy do
   use Aethrion.Rule,
     id: :autonomy,
     description:
-      "Struggling or talkative characters confide a notable memory to their most trusted friend."
+      "Struggling or talkative characters confide a notable memory to their most trusted friend; talkative ones retell rumors."
 
   alias Aethrion.{Character, CharacterState, Event, Memories, Memory, State, Transition}
   alias Aethrion.Rules.Mood
 
   @notable_importance 60
+  @retell_importance 30
   @trust_threshold 30
 
   @impl true
@@ -42,7 +46,7 @@ defmodule Aethrion.Rules.Autonomy do
     candidate =
       state
       |> Memories.for_character(teller.id)
-      |> Enum.filter(&notable?/1)
+      |> Enum.filter(&notable?(&1, teller))
       |> Enum.find_value(fn memory ->
         case Enum.find(confidants, &(not Memories.knows_topic?(state, &1, memory.topic))) do
           nil -> nil
@@ -62,10 +66,13 @@ defmodule Aethrion.Rules.Autonomy do
     end
   end
 
-  defp notable?(%Memory{} = memory) do
-    memory.kind in [:experienced, :observed] and memory.importance >= @notable_importance and
-      is_binary(memory.topic)
+  defp notable?(%Memory{topic: topic}, _teller) when not is_binary(topic), do: false
+
+  defp notable?(%Memory{kind: :heard} = memory, teller) do
+    Character.trait?(teller, :talkative) and memory.importance >= @retell_importance
   end
+
+  defp notable?(%Memory{} = memory, _teller), do: memory.importance >= @notable_importance
 
   # Most trusted first; ties broken by id.
   defp confidants(state, teller_id) do

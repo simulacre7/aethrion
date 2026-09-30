@@ -1,0 +1,33 @@
+{
+  "name": "Rumor mill",
+  "description": "In a small circle of talkative friends, one witnessed gift travels from person to person along lines of trust, one confidence per hour, with each retelling carrying a little less weight.",
+  "world": {
+    "characters": [
+      {"id": "ari", "name": "Ari", "profile": "Notices everything and tells someone.", "traits": ["talkative"]},
+      {"id": "bo", "name": "Bo", "profile": "Ari's closest friend; passes things along.", "traits": ["talkative"]},
+      {"id": "cy", "name": "Cy", "profile": "Quiet, but trusts Bo completely.", "traits": ["talkative"]},
+      {"id": "dee", "name": "Dee", "profile": "The one who received the gift.", "traits": []},
+      {"id": "eli", "name": "Eli", "profile": "Keeps to themself.", "traits": []}
+    ],
+    "relationships": [
+      {"from": "ari", "to": "bo", "affinity": 30, "trust": 60},
+      {"from": "bo", "to": "cy", "affinity": 20, "trust": 50},
+      {"from": "cy", "to": "eli", "affinity": 10, "trust": 40},
+      {"from": "ari", "to": "user", "affinity": 5, "trust": 5}
+    ]
+  },
+  "events": [
+    {"type": "gift_received", "from": "user", "to": "dee", "item": "necklace", "observed_by": ["ari"], "at": "hour0"},
+    {"type": "time_tick", "now": "hour1", "hours": 1},
+    {"type": "time_tick", "now": "hour2", "hours": 1},
+    {"type": "time_tick", "now": "hour3", "hours": 1},
+    {"type": "time_tick", "now": "hour4", "hours": 1}
+  ],
+  "expect": [
+    {"memory": {"character": "bo", "kind": "heard", "source": "ari", "importance": 45}, "count": 1},
+    {"memory": {"character": "cy", "kind": "heard", "source": "bo", "importance": 30}, "count": 1},
+    {"memory": {"character": "eli", "kind": "heard", "source": "cy", "importance": 20}, "count": 1},
+    {"output": "character_interaction", "kind": "gossip", "count": 3},
+    {"output": "proactive_message", "count": 0}
+  ]
+}

@@ -3,7 +3,7 @@ defmodule Aethrion.Rules.Gossip do
   A character tells another about one of their memories.
 
   The listener gains a secondhand (`:heard`) memory of the same topic with
-  importance reduced by 20. Venting eases the teller's loneliness a little and
+  importance reduced by 15 (minimum 20). Venting eases the teller's loneliness a little and
   builds their trust in the listener. Knowledge spreads through the social
   graph this way, one deterministic step at a time.
   """
@@ -11,11 +11,11 @@ defmodule Aethrion.Rules.Gossip do
   use Aethrion.Rule,
     id: :gossip,
     description:
-      "Listener gains a secondhand memory (importance -20); teller loneliness -4 and trust toward listener +2."
+      "Listener gains a secondhand memory (importance -15, min 20); teller loneliness -4 and trust toward listener +2."
 
   alias Aethrion.{Expression, Memories, Memory, Output, State, Transition}
 
-  @importance_drop 20
+  @importance_drop 15
   @min_importance 20
   @loneliness_delta -4
   @trust_delta 2

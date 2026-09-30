@@ -1,0 +1,19 @@
+{
+  "name": "Long silence",
+  "description": "The user says one kind thing to Mina and then disappears for days. Loneliness builds until characters reach out, the kind words are quoted back while they are still remembered, and eventually even that memory fades.",
+  "world": "demo",
+  "events": [
+    {"type": "message_sent", "from": "user", "to": "mina", "text": "You made today better.", "tone": "warm", "at": "day1:20:00"},
+    {"type": "time_tick", "now": "day2:08:00", "hours": 12},
+    {"type": "time_tick", "now": "day2:20:00", "hours": 12},
+    {"type": "time_tick", "now": "day3:20:00", "hours": 24},
+    {"type": "time_tick", "now": "day4:20:00", "hours": 24}
+  ],
+  "expect": [
+    {"output": "proactive_message", "character": "yuna", "reason": "lonely", "at_least": 2},
+    {"output": "proactive_message", "character": "mina", "reason": "lonely", "text": "I keep thinking about what you said: \"You made today better.\" Do you have a minute to talk?", "count": 1},
+    {"character": "mina", "field": "loneliness", "equals": 100},
+    {"memory": {"character": "mina", "kind": "experienced", "faded": true}, "count": 1},
+    {"clock": 72}
+  ]
+}

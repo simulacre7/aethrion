@@ -116,7 +116,7 @@ defmodule Aethrion.Expression.Prompt do
   defp describe_actor(%{name: name} = actor) do
     details =
       [
-        actor[:profile],
+        actor[:profile] && String.trim_trailing(actor.profile, "."),
         traits(actor[:traits]),
         actor[:mood] && "mood: #{actor.mood}"
       ]

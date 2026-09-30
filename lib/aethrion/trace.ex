@@ -55,6 +55,9 @@ defmodule Aethrion.Trace do
       %{kind: :relationship, target: {from, to}, field: field, before: before, after: value} ->
         "#{prefix}: #{from}->#{to}.#{field} #{before} -> #{value}"
 
+      %{kind: :memory, field: field, before: before, after: value} when not is_nil(field) ->
+        "#{prefix}: #{entry.target}.#{field} #{inspect(before)} -> #{inspect(value)}"
+
       %{detail: detail} when is_binary(detail) ->
         "#{prefix}: #{detail}"
 

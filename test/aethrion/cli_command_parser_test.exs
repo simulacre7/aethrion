@@ -39,8 +39,37 @@ defmodule Aethrion.CLI.CommandParserTest do
 
   test "parses control commands" do
     assert {:ok, :status} = CommandParser.parse("status")
-    assert {:ok, :memories} = CommandParser.parse("memories")
+    assert {:ok, {:memories, nil}} = CommandParser.parse("memories")
+    assert {:ok, {:memories, "yuna"}} = CommandParser.parse("memories yuna")
+    assert {:ok, {:why, "yuna"}} = CommandParser.parse("why yuna")
+    assert {:ok, {:context, "haru"}} = CommandParser.parse("context haru")
+    assert {:ok, :timeline} = CommandParser.parse("timeline")
+    assert {:ok, :rules} = CommandParser.parse("rules")
+    assert {:ok, :undo} = CommandParser.parse("undo")
+    assert {:ok, {:save, "tmp/a.json"}} = CommandParser.parse("save tmp/a.json")
+    assert {:ok, {:load, "tmp/a.json"}} = CommandParser.parse("load tmp/a.json")
     assert {:ok, :help} = CommandParser.parse("help")
     assert {:ok, :quit} = CommandParser.parse("quit")
+  end
+
+  test "parses free text for intent interpretation" do
+    assert {:ok, {:say, "yuna", "sorry about earlier"}} =
+             CommandParser.parse("say yuna sorry about earlier")
+
+    assert {:error, _message} = CommandParser.parse("say yuna")
+  end
+
+  test "parses messages with a tone" do
+    assert {:ok,
+            %{type: :message_sent, from: "user", to: "mina", tone: :warm, text: "you did great"}} =
+             CommandParser.parse("message user mina warm you did great")
+
+    assert {:error, "tone must be one of: " <> _} =
+             CommandParser.parse("message user mina smug hi")
+  end
+
+  test "parses comfort" do
+    assert {:ok, %{type: :comfort_offered, from: "haru", to: "yuna"}} =
+             CommandParser.parse("comfort haru yuna")
   end
 end

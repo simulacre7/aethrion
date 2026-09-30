@@ -1,7 +1,24 @@
 defmodule Aethrion.CLI.Display do
   @moduledoc """
-  ANSI presentation helpers for demo CLI output.
+  ANSI presentation helpers for the demo and scenario CLIs.
   """
+
+  alias Aethrion.{Event, Memory, State, Trace}
+  alias Aethrion.Expression.Prompt
+
+  @log_tags %{
+    "Rule" => {"RULE", :magenta},
+    "State" => {"STATE", :yellow},
+    "Relation" => {"RELATION", :yellow},
+    "Mood" => {"MOOD", :light_yellow},
+    "Memory" => {"MEMORY", :green},
+    "Output" => {"SAYS", :cyan},
+    "Scene" => {"SCENE", :light_magenta},
+    "Event" => {"CASCADE", :light_blue},
+    "Cascade" => {"DROPPED", :red},
+    "Intent" => {"INTENT", :light_cyan},
+    "LLM" => {"LLM", :light_cyan}
+  }
 
   def banner do
     [
@@ -13,17 +30,34 @@ defmodule Aethrion.CLI.Display do
     |> print_lines()
   end
 
+  def heading(title, description \\ "") do
+    print(["\n", :bright, :cyan, title])
+    if description != "", do: print([:faint, wrap(description, 96)])
+    print("")
+  end
+
   def help do
     print_lines([
-      [:bright, "Commands"],
-      "  gift <from> <to> <item>",
-      "  gift <from> <to> <item> observed_by <character_id[,character_id]>",
+      [:bright, "Talk and act"],
+      "  say <character> <text>                      free text; intent is interpreted, then dispatched",
+      "  message <from> <to> <tone> <text>           tone: warm | neutral | cold | hostile",
+      "  gift <from> <to> <item> [observed_by a,b]",
       "  apologize <from> <to> <reason>",
+      "  comfort <from> <to>",
       "  tick <hours>",
-      "  status",
-      "  memories",
-      "  help",
-      "  quit"
+      "",
+      [:bright, "Inspect"],
+      "  status                                      characters and relationships",
+      "  memories [character]                        what characters remember (faded ones dimmed)",
+      "  why <character>                             every traced change to a character, by rule",
+      "  context <character>                         what an LLM would see for a proactive line",
+      "  timeline                                    events dispatched this session",
+      "  rules                                       the rule pipeline",
+      "",
+      [:bright, "Session"],
+      "  undo                                        revert the last command",
+      "  save <path> | load <path>",
+      "  help | quit"
     ])
   end
 
@@ -32,32 +66,38 @@ defmodule Aethrion.CLI.Display do
     |> IO.chardata_to_string()
   end
 
-  def status(state) do
-    print_section("Characters")
+  def status(%State{} = state) do
+    print_section("Characters", "clock #{state.clock}h")
 
     print_lines([
-      [:faint, "  name       mood       lonely  jealous"],
-      [:faint, "  ---------  ---------  ------  -------"]
+      [:faint, "  name       mood      lonely  jealous  joy  stress"],
+      [:faint, "  ---------  --------  ------  -------  ---  ------"]
     ])
 
-    state.characters
-    |> Map.values()
-    |> Enum.sort_by(& &1.id)
+    state
+    |> State.sorted_characters()
     |> Enum.each(fn character ->
+      cs = character.state
+
       print([
         "  ",
-        pad(character.name, 9),
-        pad(to_string(character.state.mood), 11),
-        pad(to_string(character.state.loneliness), 8),
-        to_string(character.state.jealousy)
+        pad(character.name, 11),
+        mood_color(cs.mood),
+        pad(to_string(cs.mood), 10),
+        :reset,
+        pad(to_string(cs.loneliness), 8),
+        pad(to_string(cs.jealousy), 9),
+        pad(to_string(cs.joy), 5),
+        to_string(cs.stress),
+        flags(cs)
       ])
     end)
 
     print_section("Relationships")
 
     print_lines([
-      [:faint, "  edge         affinity  trust  tension"],
-      [:faint, "  -----------  --------  -----  -------"]
+      [:faint, "  edge            affinity  trust  tension"],
+      [:faint, "  --------------  --------  -----  -------"]
     ])
 
     state.relationships
@@ -66,7 +106,7 @@ defmodule Aethrion.CLI.Display do
     |> Enum.each(fn relationship ->
       print([
         "  ",
-        pad("#{relationship.from}->#{relationship.to}", 13),
+        pad("#{relationship.from}->#{relationship.to}", 16),
         pad(to_string(relationship.affinity), 10),
         pad(to_string(relationship.trust), 7),
         to_string(relationship.tension)
@@ -74,52 +114,42 @@ defmodule Aethrion.CLI.Display do
     end)
 
     print("")
-
     state
   end
 
-  def memories([]) do
-    print_section("Memories")
-    print([:faint, "  none"])
+  def memories(%State{} = state, character_id \\ nil) do
+    print_section("Memories", "newest first")
+
+    memories =
+      Enum.filter(state.memories, &(is_nil(character_id) or &1.character_id == character_id))
+
+    if memories == [] do
+      print([:faint, "  none"])
+    else
+      Enum.each(memories, fn memory ->
+        style = if Memory.faded?(memory), do: :faint, else: :normal
+        source = if memory.source, do: " from #{State.name(state, memory.source)}", else: ""
+
+        print([
+          style,
+          "  ",
+          pad(State.name(state, memory.character_id), 8),
+          pad("#{memory.kind}#{source}", 18),
+          inspect(memory.content),
+          :faint,
+          "  strength #{memory.strength}/#{memory.importance}",
+          if(Memory.faded?(memory), do: " (faded)", else: "")
+        ])
+      end)
+    end
+
     print("")
   end
 
-  def memories(memories) do
-    print_section("Memories")
-
-    memories
-    |> Enum.reverse()
-    |> Enum.each(fn memory ->
-      print([
-        "  ",
-        :bright,
-        memory.character_id,
-        :reset,
-        " remembers ",
-        inspect(memory.content),
-        :faint,
-        " importance=#{memory.importance}"
-      ])
-    end)
-
-    print("")
+  def event(event, state \\ nil) do
+    names = if state, do: &State.name(state, &1), else: &Function.identity/1
+    print_tagged("EVENT", :blue, Event.describe(event, names))
   end
-
-  def event(event) do
-    print_tagged("EVENT", :blue, Aethrion.Event.describe(event))
-  end
-
-  @log_tags %{
-    "Rule" => {"RULE", :magenta},
-    "State" => {"STATE", :yellow},
-    "Relation" => {"RELATION", :yellow},
-    "Mood" => {"MOOD", :light_yellow},
-    "Memory" => {"MEMORY", :green},
-    "Output" => {"OUTPUT", :cyan},
-    "Scene" => {"SCENE", :light_magenta},
-    "Event" => {"EVENT", :light_blue},
-    "Cascade" => {"CASCADE", :red}
-  }
 
   def log(line) do
     with [_, tag, message] <- Regex.run(~r/^\[([^\]]+)\]\s*(.*)$/s, line),
@@ -130,32 +160,104 @@ defmodule Aethrion.CLI.Display do
     end
   end
 
-  def output(%{type: :proactive_message, character_id: character_id, reason: reason}) do
-    print_tagged("EFFECT", :cyan, "proactive_message #{character_id}->user reason=#{reason}")
+  def output(%{type: type} = output) do
+    detail =
+      case output do
+        %{type: :relationship_changed, from: from, to: to, delta: delta} ->
+          "#{from}->#{to} #{inspect(delta)}"
+
+        %{type: :memory_created, memory: memory} ->
+          memory.id
+
+        %{type: :mood_changed, character_id: id, to: mood} ->
+          "#{id} #{mood}"
+
+        %{type: :character_interaction, kind: kind, from: from, to: to} ->
+          "#{kind} #{from}->#{to}"
+
+        %{character_id: id, to: to} ->
+          "#{id}->#{to}" <> if(output[:reason], do: " reason=#{output.reason}", else: "")
+
+        _ ->
+          ""
+      end
+
+    print_tagged("EFFECT", :cyan, String.trim("#{type} #{detail}"))
   end
 
-  def output(%{type: :reply, character_id: character_id, to: to}) do
-    print_tagged("EFFECT", :cyan, "reply #{character_id}->#{to}")
+  @doc "Prints an output rendered by an expression adapter."
+  def expressed(%{text: text, expression: expression} = output) do
+    speaker = Map.get(output, :character_id) || Map.get(output, :from)
+    status = if expression.status == :ok, do: inspect(expression.adapter), else: "fallback"
+    print_tagged("LLM", :light_cyan, "#{speaker}: \"#{text}\"" <> faint(" (#{status})"))
   end
 
-  def output(%{type: :character_interaction, kind: kind, from: from, to: to}) do
-    print_tagged("EFFECT", :cyan, "character_interaction #{kind} #{from}->#{to}")
+  def explain(entries, character_id) do
+    print_section("Why", "every traced change concerning #{character_id}")
+
+    case Enum.filter(entries, &Trace.concerns?(&1, character_id)) do
+      [] ->
+        print([:faint, "  nothing yet"])
+
+      entries ->
+        entries
+        |> Enum.reject(&(&1.kind == :output))
+        |> Enum.each(&print(["  ", Trace.describe(&1)]))
+    end
+
+    print("")
   end
 
-  def output(%{type: :mood_changed, character_id: character_id, to: mood}) do
-    print_tagged("EFFECT", :cyan, "mood_changed #{character_id} #{mood}")
+  def context(request) do
+    print_section("Expression context", "the read-only snapshot an adapter receives")
+    request |> Prompt.render_context() |> String.split("\n") |> Enum.each(&print(["  ", &1]))
+    print("")
   end
 
-  def output(%{type: :relationship_changed, from: from, to: to, delta: delta}) do
-    print_tagged("EFFECT", :cyan, "relationship_changed #{from}->#{to} #{inspect(delta)}")
+  def timeline([]), do: print([:faint, "  no events yet"])
+
+  def timeline(events) do
+    print_section("Timeline")
+
+    Enum.each(events, fn event ->
+      print(["  ", :faint, pad(event.id, 5), :reset, Event.describe(event)])
+    end)
+
+    print("")
   end
 
-  def output(%{type: :memory_created, memory: memory}) do
-    print_tagged("EFFECT", :cyan, "memory_created #{memory.id}")
+  def rules(description) do
+    Enum.each(description, fn {type, rules} ->
+      print([:bright, if(type == :reactive, do: "after every event", else: to_string(type))])
+      Enum.each(rules, fn {id, text} -> print(["  ", pad(to_string(id), 14), :faint, text]) end)
+    end)
+
+    print("")
   end
 
-  def output(%{type: type}) do
-    print_tagged("EFFECT", :cyan, to_string(type))
+  def checks(checks) do
+    print_section("Expectations")
+
+    Enum.each(checks, fn check ->
+      if check.passed? do
+        print(["  ", :green, "pass ", :reset, check.description])
+      else
+        print([
+          "  ",
+          :red,
+          "FAIL ",
+          :reset,
+          check.description,
+          :faint,
+          "  actual: #{inspect(check.actual)}"
+        ])
+      end
+    end)
+
+    passed = Enum.count(checks, & &1.passed?)
+    color = if passed == length(checks), do: :green, else: :red
+    print(["\n  ", color, :bright, "#{passed}/#{length(checks)} expectations met"])
+    print("")
   end
 
   def error(error) do
@@ -164,8 +266,8 @@ defmodule Aethrion.CLI.Display do
 
   def message(message), do: print(message)
 
-  defp print_section(title) do
-    print(["\n\n", :bright, title])
+  defp print_section(title, note \\ nil) do
+    print(["\n", :bright, title, :reset, :faint, if(note, do: "  #{note}", else: "")])
   end
 
   defp print_tagged(tag, color, message) do
@@ -178,6 +280,35 @@ defmodule Aethrion.CLI.Display do
     chardata
     |> IO.ANSI.format(true)
     |> IO.puts()
+  end
+
+  defp faint(text), do: IO.ANSI.format([:faint, text], true) |> IO.chardata_to_string()
+
+  defp mood_color(:happy), do: :green
+  defp mood_color(:jealous), do: :red
+  defp mood_color(:lonely), do: :blue
+  defp mood_color(:upset), do: :magenta
+  defp mood_color(_mood), do: :normal
+
+  defp flags(cs) do
+    [if(cs.blocked?, do: " blocked"), if(not cs.active?, do: " inactive")]
+    |> Enum.reject(&is_nil/1)
+    |> case do
+      [] -> ""
+      flags -> IO.ANSI.format([:faint | flags], true) |> IO.chardata_to_string()
+    end
+  end
+
+  defp wrap(text, width) do
+    text
+    |> String.split(" ")
+    |> Enum.reduce([""], fn word, [line | rest] ->
+      if String.length(line) + String.length(word) + 1 > width,
+        do: [word, line | rest],
+        else: [String.trim_leading(line <> " " <> word) | rest]
+    end)
+    |> Enum.reverse()
+    |> Enum.join("\n")
   end
 
   defp pad(value, width) do

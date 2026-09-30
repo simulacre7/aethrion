@@ -1,6 +1,6 @@
 defmodule Aethrion.CLI.CommandParser do
   @moduledoc """
-  Parser for the interactive demo command language.
+  Parser for the interactive demo command language. See `Aethrion.CLI.Display.help/0`.
   """
 
   alias Aethrion.Event
@@ -17,7 +17,19 @@ defmodule Aethrion.CLI.CommandParser do
   defp do_parse(["quit"]), do: {:ok, :quit}
   defp do_parse(["exit"]), do: {:ok, :quit}
   defp do_parse(["status"]), do: {:ok, :status}
-  defp do_parse(["memories"]), do: {:ok, :memories}
+  defp do_parse(["memories"]), do: {:ok, {:memories, nil}}
+  defp do_parse(["memories", character]), do: {:ok, {:memories, character}}
+  defp do_parse(["why", character]), do: {:ok, {:why, character}}
+  defp do_parse(["context", character]), do: {:ok, {:context, character}}
+  defp do_parse(["timeline"]), do: {:ok, :timeline}
+  defp do_parse(["rules"]), do: {:ok, :rules}
+  defp do_parse(["undo"]), do: {:ok, :undo}
+  defp do_parse(["save", path]), do: {:ok, {:save, path}}
+  defp do_parse(["load", path]), do: {:ok, {:load, path}}
+
+  defp do_parse(["say", to | words]) when words != [] do
+    {:ok, {:say, to, Enum.join(words, " ")}}
+  end
 
   defp do_parse(["tick", hours]) do
     case Integer.parse(hours) do
@@ -42,6 +54,24 @@ defmodule Aethrion.CLI.CommandParser do
   defp do_parse(["apologize", from, to | reason_parts]) when reason_parts != [] do
     reason = Enum.join(reason_parts, " ")
     {:ok, Event.apology_offered(from, to, reason, at: "interactive:apology")}
+  end
+
+  defp do_parse(["message", from, to, tone | words]) when words != [] do
+    case Enum.find(Event.tones(), &(Atom.to_string(&1) == tone)) do
+      nil ->
+        {:error, "tone must be one of: #{Enum.map_join(Event.tones(), ", ", &Atom.to_string/1)}"}
+
+      tone ->
+        {:ok,
+         Event.message_sent(from, to, Enum.join(words, " "),
+           tone: tone,
+           at: "interactive:message"
+         )}
+    end
+  end
+
+  defp do_parse(["comfort", from, to]) do
+    {:ok, Event.comfort_offered(from, to, at: "interactive:comfort")}
   end
 
   defp do_parse(_tokens) do

@@ -16,7 +16,7 @@ defmodule Aethrion.SocialCascadeTest do
 
     assert heard.kind == :heard
     assert heard.source == "yuna"
-    assert heard.importance == 40
+    assert heard.importance == 45
     assert heard.topic == original.topic
     assert heard.data == original.data
     assert "haru" not in heard.related_characters

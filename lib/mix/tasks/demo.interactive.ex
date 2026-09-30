@@ -1,24 +1,79 @@
 defmodule Mix.Tasks.Demo.Interactive do
-  @moduledoc "Runs the interactive Aethrion CLI demo."
+  @moduledoc """
+  Runs the interactive Aethrion CLI demo.
+
+      mix demo.interactive
+      mix demo.interactive --llm anthropic
+      mix demo.interactive --llm openai
+      mix demo.interactive --effects
+
+  Options:
+
+  - `--llm anthropic|openai` - render character lines and interpret `say`
+    through a real model (see `Aethrion.LLM.Anthropic` and
+    `Aethrion.LLM.OpenAICompatible` for configuration). Without it, the
+    deterministic fake adapter is used. The simulation is identical either way.
+  - `--effects` - also print every structured output.
+  """
   @shortdoc "Runs the interactive Aethrion CLI demo"
 
   use Mix.Task
 
-  alias Aethrion.CLI.Display
-  alias Aethrion.CLI.CommandParser
-  alias Aethrion.Runtime
+  alias Aethrion.CLI.{CommandParser, Display}
+  alias Aethrion.{Expression, Intent, Pipeline, Runtime, State}
+  alias Aethrion.LLM.{Anthropic, FakeAdapter, OpenAICompatible}
+  alias Aethrion.Persistence.JsonFile
+
+  @switches [llm: :string, effects: :boolean]
 
   @impl Mix.Task
-  def run(_args) do
-    Display.banner()
-    Display.message("Type help for commands, quit to exit.")
+  def run(args) do
+    Mix.Task.run("app.start")
+    {opts, _rest, _invalid} = OptionParser.parse(args, strict: @switches)
 
-    Runtime.demo_state()
-    |> print_status()
-    |> loop()
+    Display.banner()
+
+    session = %{
+      state: Runtime.demo_state(),
+      undo: [],
+      trace: [],
+      events: [],
+      adapter: adapter(opts[:llm]),
+      effects?: Keyword.get(opts, :effects, false)
+    }
+
+    Display.message(
+      "Type help for commands, quit to exit. Try: say yuna sorry I forgot about you"
+    )
+
+    Display.status(session.state)
+    loop(session)
   end
 
-  defp loop(state) do
+  defp adapter(nil), do: nil
+
+  defp adapter(name) do
+    module =
+      case name do
+        "anthropic" -> Anthropic
+        "openai" -> OpenAICompatible
+        other -> Mix.raise("unknown --llm #{inspect(other)}; use anthropic or openai")
+      end
+
+    if module.configured?() do
+      Display.message("Expression adapter: #{inspect(module)}")
+      module
+    else
+      Display.message(
+        "#{inspect(module)} is not configured; using the deterministic fake adapter. " <>
+          "See its module docs for environment variables."
+      )
+
+      nil
+    end
+  end
+
+  defp loop(session) do
     case IO.gets(Display.prompt()) do
       :eof ->
         :ok
@@ -29,62 +84,161 @@ defmodule Mix.Tasks.Demo.Interactive do
       line ->
         line
         |> CommandParser.parse()
-        |> handle_command(state)
+        |> handle(session)
     end
   end
 
-  defp handle_command({:ok, :noop}, state), do: loop(state)
+  defp handle({:ok, :noop}, session), do: loop(session)
 
-  defp handle_command({:ok, :quit}, _state) do
+  defp handle({:ok, :quit}, _session) do
     Display.message("bye")
     :ok
   end
 
-  defp handle_command({:ok, :help}, state) do
+  defp handle({:ok, :help}, session) do
     Display.help()
-
-    loop(state)
+    loop(session)
   end
 
-  defp handle_command({:ok, :status}, state) do
-    state
-    |> print_status()
-    |> loop()
+  defp handle({:ok, :status}, session) do
+    Display.status(session.state)
+    loop(session)
   end
 
-  defp handle_command({:ok, :memories}, state) do
-    print_memories(state)
-    loop(state)
+  defp handle({:ok, {:memories, character}}, session) do
+    Display.memories(session.state, character)
+    loop(session)
   end
 
-  defp handle_command({:ok, event}, state) when is_map(event) do
-    case Runtime.dispatch(state, event) do
-      {:ok, state, outputs, log} ->
-        Enum.each(log, &Display.log/1)
-        print_outputs(outputs)
-        print_status(state)
-        loop(state)
+  defp handle({:ok, {:why, character}}, session) do
+    Display.explain(session.trace, character)
+    loop(session)
+  end
 
-      {:error, error} ->
-        Display.error(error)
-        loop(state)
+  defp handle({:ok, {:context, character}}, session) do
+    case State.character(session.state, character) do
+      nil ->
+        Display.message("ERROR unknown character #{inspect(character)}")
+
+      found ->
+        reason = if found.state.mood == :jealous, do: :jealous, else: :lonely
+
+        session.state
+        |> Expression.build_request(:proactive_message, character, "user", reason: reason)
+        |> Display.context()
+    end
+
+    loop(session)
+  end
+
+  defp handle({:ok, :timeline}, session) do
+    Display.timeline(Enum.reverse(session.events))
+    loop(session)
+  end
+
+  defp handle({:ok, :rules}, session) do
+    Display.rules(Pipeline.describe(Pipeline.default()))
+    loop(session)
+  end
+
+  defp handle({:ok, :undo}, %{undo: []} = session) do
+    Display.message("nothing to undo")
+    loop(session)
+  end
+
+  defp handle({:ok, :undo}, %{undo: [previous | rest]} = session) do
+    Display.message("undone")
+    Display.status(previous.state)
+
+    loop(%{
+      session
+      | state: previous.state,
+        trace: previous.trace,
+        events: previous.events,
+        undo: rest
+    })
+  end
+
+  defp handle({:ok, {:save, path}}, session) do
+    case JsonFile.save(session.state, path: path) do
+      :ok -> Display.message("saved to #{path}")
+      {:error, reason} -> Display.message("ERROR could not save: #{inspect(reason)}")
+    end
+
+    loop(session)
+  end
+
+  defp handle({:ok, {:load, path}}, session) do
+    case JsonFile.load(path: path) do
+      {:ok, state} ->
+        Display.message("loaded #{path}")
+        Display.status(state)
+        loop(%{remember(session) | state: state})
+
+      {:error, reason} ->
+        Display.message("ERROR could not load: #{inspect(reason)}")
+        loop(session)
     end
   end
 
-  defp handle_command({:error, message}, state) do
+  defp handle({:ok, {:say, to, text}}, session) do
+    case Intent.interpret(session.state, text, to: to, adapter: session.adapter || FakeAdapter) do
+      {:ok, event, meta} ->
+        source = if meta.status == :ok, do: inspect(meta.adapter), else: "fallback"
+
+        Display.log(
+          "[Intent] #{inspect(text)} -> #{event.type}" <>
+            if(event[:tone], do: " (#{event.tone})", else: "") <> " via #{source}"
+        )
+
+        dispatch(session, event)
+
+      {:error, error} ->
+        Display.error(error)
+        loop(session)
+    end
+  end
+
+  defp handle({:ok, event}, session) when is_map(event), do: dispatch(session, event)
+
+  defp handle({:error, message}, session) do
     Display.message("ERROR #{message}")
-    loop(state)
+    loop(session)
   end
 
-  defp print_status(state) do
-    Display.status(state)
+  defp dispatch(session, event) do
+    case Runtime.step(session.state, event) do
+      {:ok, step} ->
+        Display.event(step.event, session.state)
+        Enum.each(step.log, &Display.log/1)
+        if session.effects?, do: Enum.each(step.outputs, &Display.output/1)
+
+        if session.adapter do
+          step.outputs
+          |> Enum.filter(&Aethrion.Output.expressive?/1)
+          |> Expression.render(adapter: session.adapter)
+          |> Enum.each(&Display.expressed/1)
+        end
+
+        Display.status(step.state)
+
+        session
+        |> remember()
+        |> Map.merge(%{
+          state: step.state,
+          trace: session.trace ++ step.trace,
+          events: Enum.reverse(step.events, session.events)
+        })
+        |> loop()
+
+      {:error, error} ->
+        Display.error(error)
+        loop(session)
+    end
   end
 
-  defp print_memories(state) do
-    Display.memories(state.memories)
-  end
-
-  defp print_outputs(outputs) do
-    Enum.each(outputs, &Display.output/1)
+  defp remember(session) do
+    snapshot = Map.take(session, [:state, :trace, :events])
+    %{session | undo: Enum.take([snapshot | session.undo], 50)}
   end
 end
