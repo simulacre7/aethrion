@@ -46,13 +46,24 @@ defmodule Aethrion.Rules.Consolidation do
     min_group = Transition.param(transition, :min_group)
     state = transition.state
 
+    # One pass for candidates and existing impressions, so lookups do not
+    # rescan the memory list for every group.
+    {candidates, impressions} =
+      Enum.reduce(state.memories, {[], %{}}, fn memory, {candidates, impressions} ->
+        cond do
+          memory.kind == :impression -> {candidates, Map.put(impressions, memory.id, memory)}
+          candidate?(memory) -> {[memory | candidates], impressions}
+          true -> {candidates, impressions}
+        end
+      end)
+
     groups =
-      state.memories
-      |> Enum.filter(&candidate?/1)
+      candidates
+      |> Enum.reverse()
       |> Enum.group_by(&key/1)
       |> Enum.sort_by(fn {key, _memories} -> key end)
       |> Enum.map(fn {key, memories} ->
-        {key, memories, State.memory(state, impression_id(key))}
+        {key, memories, Map.get(impressions, impression_id(key))}
       end)
       |> Enum.filter(fn {_key, memories, existing} ->
         existing || length(memories) >= min_group
