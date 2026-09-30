@@ -390,6 +390,40 @@ defmodule Aethrion.NarrativeTest do
              ]
     end
 
+    test "a scene carries the bond its own event records" do
+      state =
+        State.new(
+          characters: [
+            %Aethrion.Character{id: "ana", name: "Ana"},
+            %Aethrion.Character{id: "ben", name: "Ben"}
+          ],
+          relationships: [
+            %Aethrion.Relationship{
+              from: "ana",
+              to: "ben",
+              affinity: 49,
+              trust: 30,
+              bond: :friendly
+            },
+            %Aethrion.Relationship{
+              from: "ben",
+              to: "ana",
+              affinity: 49,
+              trust: 30,
+              bond: :friendly
+            }
+          ]
+        )
+
+      {_state, outputs} = run!(state, [Event.time_spent_together("ana", "ben")])
+
+      assert [%{after: bond}] =
+               for(%{type: :bond_changed, from: "ana", to: "ben"} = o <- outputs, do: o)
+
+      assert [%{context: %{relationship: %{bond: ^bond}}}] =
+               of_type(outputs, :character_interaction)
+    end
+
     test "friends do not spend every afternoon the same way" do
       {_state, outputs} = run!(Runtime.demo_state(), List.duplicate(tick(24), 5))
 
@@ -773,6 +807,19 @@ defmodule Aethrion.NarrativeTest do
       assert told.(you: "user") =~ "what you said to Mara"
       assert told.(you: "player:sam") =~ "what Jo said to Mara"
       assert told.(you: "player:sam", locale: :ko) =~ "Jo가 Mara한테"
+    end
+
+    test "a quoted line stays said to whoever heard it, whoever reads the digest" do
+      {state, outputs} = run!(Runtime.demo_state(), [flower_for_mina(), tick(2)])
+
+      told =
+        outputs
+        |> Aethrion.Digest.of(state, you: "yuna", locale: :ko)
+        |> Enum.map(& &1.text)
+        |> Enum.find(&(&1 =~ "제법인데"))
+
+      assert told =~ "\"Yuna한테 들었어."
+      refute told =~ "너한테 들었어"
     end
 
     test "witnesses who speak up about the same thing use different words" do

@@ -394,15 +394,21 @@ defmodule Mix.Tasks.Demo.Interactive do
 
   defp resolve(state, typed) do
     key = String.downcase(typed)
+    korean = @korean_names[typed]
 
-    with nil <- Enum.find(Map.keys(state.characters), &(String.downcase(&1) == key)),
-         nil <-
-           Enum.find_value(state.characters, fn {id, character} ->
-             if String.downcase(character.name) == key, do: id
-           end),
-         nil <- if(State.character?(state, @korean_names[typed]), do: @korean_names[typed]) do
-      typed
+    cond do
+      State.character?(state, typed) -> typed
+      id = Enum.find(Map.keys(state.characters), &(String.downcase(&1) == key)) -> id
+      id = by_name(state, key) -> id
+      State.character?(state, korean) -> korean
+      true -> typed
     end
+  end
+
+  defp by_name(state, key) do
+    Enum.find_value(state.characters, fn {id, character} ->
+      if String.downcase(character.name) == key, do: id
+    end)
   end
 
   defp show_error(state, %Aethrion.Error{code: :unknown_character, details: %{character_id: id}})

@@ -50,7 +50,7 @@ defmodule Aethrion.Expression do
       listener: actor(state, listener_id),
       relationship: relationship(state, speaker_id, listener_id, Keyword.get(opts, :bond)),
       memories: Enum.map(memories, &memory_view/1),
-      names: names(state, [speaker_id, listener_id], memories),
+      names: names(state, [speaker_id, listener_id], memories, addressee(kind, listener_id)),
       tone: Keyword.get(opts, :tone),
       message: Keyword.get(opts, :message),
       since_contact:
@@ -205,7 +205,12 @@ defmodule Aethrion.Expression do
     }
   end
 
-  defp names(state, ids, memories) do
+  # Who "you" is in the line: whoever is spoken to, and in scenes, which are
+  # told to the user, the user.
+  defp addressee(kind, listener_id) when kind in [:reply, :proactive_message], do: listener_id
+  defp addressee(_kind, _listener_id), do: "user"
+
+  defp names(state, ids, memories, you) do
     memory_ids =
       Enum.flat_map(memories, fn memory ->
         data_ids = memory.data |> Map.take(["from", "to"]) |> Map.values()
@@ -215,7 +220,7 @@ defmodule Aethrion.Expression do
     (ids ++ memory_ids)
     |> Enum.filter(&is_binary/1)
     |> Enum.uniq()
-    |> Map.new(&{&1, display_name(state, &1)})
+    |> Map.new(&{&1, if(&1 == you, do: "you", else: State.name(state, &1))})
   end
 
   # The user is addressed directly in generated lines.

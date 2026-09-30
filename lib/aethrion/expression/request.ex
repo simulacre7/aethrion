@@ -15,7 +15,9 @@ defmodule Aethrion.Expression.Request do
     fields other than id and name may be nil for external actors such as `user`)
   - `relationship` - speaker -> listener `%{affinity, trust, tension, bond}`
   - `memories` - the speaker's selected memories as plain maps
-  - `names` - display names for every id referenced by the memories
+  - `names` - display names for every id referenced by the memories; in
+    replies and proactive messages the person spoken to is `"you"`, in
+    scenes the user
   - `tone` - the incoming tone for replies
   - `message` - for replies, the incoming text (the item for a gift, the
     reason for an apology)

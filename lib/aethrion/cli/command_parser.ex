@@ -20,15 +20,27 @@ defmodule Aethrion.CLI.CommandParser do
     "bond" => :bond
   }
 
+  # Every command word, for case, usage lines, and typo suggestions.
+  @commands ~w(apologize comfort context digest exit gift help here load memories message opinion quit record report rules save say status tick timeline undo why)
+
   # `resolve` turns what was typed where a character belongs ("Mina", "미나")
   # into an id; free text is left alone.
   def parse(line, resolve \\ & &1) when is_binary(line) do
     line
     |> String.trim()
     |> String.split(~r/\s+/, trim: true)
+    |> lower_command()
     |> resolve_names(resolve)
     |> do_parse()
   end
+
+  # "Say Mina hi" is "say Mina hi"; an unknown word is left for the error.
+  defp lower_command([command | args]) do
+    lower = String.downcase(command)
+    if lower in @commands, do: [lower | args], else: [command | args]
+  end
+
+  defp lower_command([]), do: []
 
   @one_name ~w(memories context say)
   @two_names ~w(opinion comfort gift apologize message)
@@ -45,6 +57,15 @@ defmodule Aethrion.CLI.CommandParser do
   defp resolve_names([command, name | rest], resolve) when command in @one_name,
     do: [command, resolve_one(name, resolve) | rest]
 
+  # Observers only follow text: the tone of a message is not text.
+  defp resolve_names(["message", from, to, tone | rest], resolve),
+    do: [
+      "message",
+      resolve_one(from, resolve),
+      resolve_one(to, resolve),
+      tone | resolve_observers(rest, resolve)
+    ]
+
   defp resolve_names([command, from, to | rest], resolve) when command in @two_names,
     do: [
       command,
@@ -60,8 +81,11 @@ defmodule Aethrion.CLI.CommandParser do
   # Observers come last: "... observed_by Yuna,Haru".
   defp resolve_observers(tokens, resolve) do
     case Enum.split(tokens, -2) do
-      {words, ["observed_by", names]} -> words ++ ["observed_by", resolve_list(names, resolve)]
-      _ -> tokens
+      {[_ | _] = words, ["observed_by", names]} ->
+        words ++ ["observed_by", resolve_list(names, resolve)]
+
+      _ ->
+        tokens
     end
   end
 
@@ -166,8 +190,6 @@ defmodule Aethrion.CLI.CommandParser do
   end
 
   # A known command with the wrong arguments gets its usage line.
-  @commands ~w(apologize comfort context digest exit gift help here load memories message opinion quit record report rules save say status tick timeline undo why)
-
   @usage %{
     "say" => "say <character> <text>",
     "message" => "message <from> <to> <tone> <text> [observed_by a,b]",

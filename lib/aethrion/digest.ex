@@ -265,19 +265,25 @@ defmodule Aethrion.Digest do
 
   # Rendered text for expressive outputs, in the digest's language.
   # A digest tells what already happened: scenes in the past tense.
-  # Lines are told again for the digest's reader: "you" is whoever `:you`
-  # names, whoever the line was first written for.
-  defp line(%{context: %Aethrion.Expression.Request{} = request}, %{locale: :ko} = say),
-    do: Ko.render(for_reader(request, say, "너"), tense: :past)
+  # Scenes are told again for the digest's reader ("you" is whoever `:you`
+  # names); what someone said stays said to the person it was said to.
+  defp line(%{context: %Aethrion.Expression.Request{} = request} = output, %{locale: :ko} = say),
+    do: Ko.render(for_reader(request, %{say | you: told_to(output, say)}, "너"), tense: :past)
 
-  # A line a model already phrased is kept as it is.
+  # A line a model already phrased is kept as it is, and so is speech.
   defp line(%{expression: %{status: :ok}} = output, %{locale: :en}), do: output.text
+
+  defp line(%{type: type} = output, _say) when type in [:reply, :proactive_message],
+    do: output.text
 
   defp line(%{context: %Aethrion.Expression.Request{} = request}, %{you: you} = say)
        when you != "user",
        do: Aethrion.Expression.Templates.render(for_reader(request, say, "you"))
 
   defp line(output, _say), do: output.text
+
+  defp told_to(%{type: type, to: to}, _say) when type in [:reply, :proactive_message], do: to
+  defp told_to(_output, say), do: say.you
 
   # The reader is "you"; everyone else, the first reader included, by name.
   defp for_reader(request, %{you: you, state: state}, word) do

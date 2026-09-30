@@ -27,13 +27,6 @@ defmodule Aethrion.Rules.Gossip do
         subject: event.to
       )
     else
-      request =
-        Expression.build_request(state, :character_interaction, event.from, event.to,
-          reason: :gossip,
-          memories: [memory],
-          bond: Aethrion.Rules.Bond.during(transition, event.from, event.to)
-        )
-
       transition
       |> Transition.update_memory(
         memory.id,
@@ -52,14 +45,28 @@ defmodule Aethrion.Rules.Gossip do
         :trust,
         Transition.param(transition, :trust_delta)
       )
-      |> Transition.emit(
-        Output.character_interaction(:gossip, event.from, event.to, request.fallback_text,
-          memory_refs: [memory.id],
-          context: request
-        )
-      )
-      |> Transition.log("[Scene] #{request.fallback_text}")
+      |> scene(memory)
     end
+  end
+
+  # Phrased once the telling has had its effect, so the scene carries the
+  # bond this event records.
+  defp scene(%Transition{event: event} = transition, memory) do
+    request =
+      Expression.build_request(transition.state, :character_interaction, event.from, event.to,
+        reason: :gossip,
+        memories: [memory],
+        bond: Aethrion.Rules.Bond.during(transition, event.from, event.to)
+      )
+
+    transition
+    |> Transition.emit(
+      Output.character_interaction(:gossip, event.from, event.to, request.fallback_text,
+        memory_refs: [memory.id],
+        context: request
+      )
+    )
+    |> Transition.log("[Scene] #{request.fallback_text}")
   end
 
   @doc false

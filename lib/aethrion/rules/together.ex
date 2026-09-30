@@ -35,15 +35,8 @@ defmodule Aethrion.Rules.Together do
   end
 
   @impl true
-  def apply(%Transition{event: event, state: state} = transition) do
+  def apply(%Transition{event: event} = transition) do
     pair = [{event.from, event.to}, {event.to, event.from}]
-
-    request =
-      Expression.build_request(state, :character_interaction, event.from, event.to,
-        reason: :together,
-        memories: [],
-        bond: Aethrion.Rules.Bond.during(transition, event.from, event.to)
-      )
 
     transition =
       transition
@@ -73,6 +66,20 @@ defmodule Aethrion.Rules.Together do
         )
       )
     end)
+    |> scene()
+  end
+
+  # Phrased once the afternoon has had its effect, so the scene carries the
+  # bond this event records.
+  defp scene(%Transition{event: event} = transition) do
+    request =
+      Expression.build_request(transition.state, :character_interaction, event.from, event.to,
+        reason: :together,
+        memories: [],
+        bond: Aethrion.Rules.Bond.during(transition, event.from, event.to)
+      )
+
+    transition
     |> Transition.emit(
       Output.character_interaction(:together, event.from, event.to, request.fallback_text,
         context: request

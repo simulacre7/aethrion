@@ -18,6 +18,15 @@ defmodule Aethrion.CLI.CommandParserTest do
 
     assert {:ok, %{from: "user", to: "haru", text: "hi Haru", observed_by: ["yuna"]}} =
              CommandParser.parse("message user Haru warm hi Haru observed_by 유나", resolve)
+
+    # Capitalized commands resolve too, and text is never taken for observers.
+    assert {:ok, {:say, "mina", "hello"}} = CommandParser.parse("Say MINA hello", resolve)
+
+    assert {:ok, %{text: "observed_by Haru", observed_by: []}} =
+             CommandParser.parse("message user MINA warm observed_by Haru", resolve)
+
+    assert {:ok, %{reason: "observed_by Haru", observed_by: []}} =
+             CommandParser.parse("apologize user MINA observed_by Haru", resolve)
   end
 
   test "parses gift command" do
