@@ -4,6 +4,22 @@ defmodule Aethrion.CLI.CommandParserTest do
 
   alias Aethrion.CLI.CommandParser
 
+  test "names in character positions are resolved; free text is left alone" do
+    resolve = fn name ->
+      Map.get(%{"MINA" => "mina", "유나" => "yuna", "Haru" => "haru"}, name, name)
+    end
+
+    assert {:ok, {:say, "mina", "MINA Haru"}} = CommandParser.parse("say MINA MINA Haru", resolve)
+
+    assert {:ok, {:why, {"haru", "user"}, :trust}} =
+             CommandParser.parse("why Haru->user trust", resolve)
+
+    assert {:ok, {:here, ["mina", "yuna"]}} = CommandParser.parse("here MINA,유나", resolve)
+
+    assert {:ok, %{from: "user", to: "haru", text: "hi Haru", observed_by: ["yuna"]}} =
+             CommandParser.parse("message user Haru warm hi Haru observed_by 유나", resolve)
+  end
+
   test "parses gift command" do
     assert {:ok,
             %{

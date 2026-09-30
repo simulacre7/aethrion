@@ -100,6 +100,9 @@ defmodule Aethrion.Expression.Templates do
       :spoiled ->
         "Another one? You're spoiling me."
 
+      :another ->
+        "Another present? Thank you so much!"
+
       :remembered ->
         "You thought of me? That means a lot."
 
@@ -120,6 +123,7 @@ defmodule Aethrion.Expression.Templates do
   def render(%Request{kind: :reply, tone: :apology} = request) do
     case Choices.apology_choice(request) do
       :settled -> "It's okay, really. We're good now."
+      :enough -> "You already apologized. It's okay, really."
       :keeps_apologizing -> "You keep saying sorry. I just need it to stop happening."
       :left_out -> "Thanks. I just wanted to feel remembered too."
       :nothing_to_forgive -> "You don't have to apologize. We're okay."
@@ -141,6 +145,7 @@ defmodule Aethrion.Expression.Templates do
       :short -> "You've been short with me lately."
       :benefit when tone == :hostile -> "That's not like you. Is something wrong?"
       :benefit -> "Oh... okay. Is everything alright?"
+      :hurt when tone == :hostile and mood != :upset -> first_hurt(Choices.temperament(request))
       :hurt -> reply(tone, mood)
     end
   end
@@ -335,6 +340,11 @@ defmodule Aethrion.Expression.Templates do
   defp reply(:hostile, :upset), do: "Please stop."
   defp reply(:hostile, _mood), do: "Why would you say that?"
   defp reply(_tone, _mood), do: "..."
+
+  defp first_hurt(:sensitive), do: "That really hurt. Why would you say that?"
+  defp first_hurt(:calm), do: "Okay. That was uncalled for."
+  defp first_hurt(:playful), do: "Wow. Tell me how you really feel."
+  defp first_hurt(nil), do: "Why would you say that?"
 
   defp name(request, id), do: Map.get(request.names, id, id)
 

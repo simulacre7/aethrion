@@ -74,6 +74,7 @@ defmodule Aethrion.Expression.Choices do
   # tension.
   @spec apology_choice(Request.t()) ::
           :settled
+          | :enough
           | :keeps_apologizing
           | :left_out
           | :nothing_to_forgive
@@ -104,7 +105,7 @@ defmodule Aethrion.Expression.Choices do
 
     cond do
       settled? -> :settled
-      earlier >= 2 -> :keeps_apologizing
+      earlier >= 2 -> apologizing_again(request, listener)
       left_out? and not harsh? -> :left_out
       not harsh? and tension(request) == 0 -> :nothing_to_forgive
       earlier == 1 -> :once_more
@@ -119,12 +120,14 @@ defmodule Aethrion.Expression.Choices do
   # to someone who felt left out by the giver since their last gift (reason
   # `:reassurance`, decided by `Aethrion.Rules.Reply`), as company to someone
   # lonely, and as a bit much when they keep coming.
-  @spec gift_choice(Request.t()) :: :wary | :reassured | :spoiled | :remembered | :close | :thanks
+  @spec gift_choice(Request.t()) ::
+          :wary | :reassured | :spoiled | :another | :remembered | :close | :thanks
   def gift_choice(%Request{speaker: %{mood: mood}} = request) do
     cond do
       wary_choice(:warm, request) != nil -> :wary
       request.reason == :reassurance -> :reassured
       (request.repeats || 1) >= 3 -> :spoiled
+      (request.repeats || 1) == 2 and mood in [:neutral, :happy] -> :another
       mood == :lonely -> :remembered
       match?(%{bond: :close}, request.relationship) -> :close
       true -> :thanks
@@ -156,6 +159,10 @@ defmodule Aethrion.Expression.Choices do
        do: from == listener and pattern in ["cold", "hostile"]
 
   defp harsh_from?(_memory, _listener), do: false
+
+  # Sorry again for the same thing, or once more after something new.
+  defp apologizing_again(request, listener),
+    do: if(forgiven?(request, listener), do: :enough, else: :keeps_apologizing)
 
   defp settled?(request, listener, 1),
     do: tension(request) < @guarded_tension and forgiven?(request, listener)
@@ -226,6 +233,15 @@ defmodule Aethrion.Expression.Choices do
     end
   end
 
+  @doc false
+  # How a character takes a first harsh word, by temperament: `:sensitive`,
+  # `:calm`, `:playful`, or `nil`.
+  @spec temperament(Request.t()) :: :sensitive | :calm | :playful | nil
+  def temperament(%Request{speaker: %{traits: traits}}) when is_list(traits),
+    do: Enum.find([:sensitive, :calm, :playful], &(&1 in traits))
+
+  def temperament(_request), do: nil
+
   defp escalation(:hostile, repeats, _mood) when repeats >= 3, do: :done
   defp escalation(:hostile, _repeats, :upset), do: :hurt
   defp escalation(:hostile, _repeats, _mood), do: :again
@@ -242,14 +258,22 @@ defmodule Aethrion.Expression.Choices do
     Enum.at(lines, rem(turn(request), length(lines)))
   end
 
-  # Plain messages are not remembered, so for them the hour turns the line.
-  defp turn(%Request{tone: :neutral, now: now}) when is_integer(now), do: now + div(now, 24)
+  # Plain messages are not remembered, so for them the hour turns the line,
+  # and a second message within the hour turns it again.
+  defp turn(%Request{tone: :neutral, now: now} = request) when is_integer(now),
+    do: now + div(now, 24) + same_hour(request)
+
   # A protest turns with the day too, so one speaking up again days later
   # does not repeat themselves.
   defp turn(%Request{reason: :protective, now: now} = request) when is_integer(now),
     do: (request.repeats || 1) - 1 + div(now, 24)
 
   defp turn(request), do: (request.repeats || 1) - 1 + folded(request)
+
+  defp same_hour(%Request{since_contact: 0, sequence: sequence}) when is_integer(sequence),
+    do: sequence
+
+  defp same_hour(_request), do: 0
 
   # What faded into an impression counts too, so the turn keeps going over
   # weeks, not only within the few days details are remembered.

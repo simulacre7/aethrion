@@ -142,7 +142,7 @@ defmodule Aethrion.Digest do
       item(
         :message,
         output,
-        "#{from} #{say.name.(output.to)}에게 먼저 연락했다: \"#{line(output, say)}\""
+        "#{from} #{say.name.(output.to)}에게 #{reached_out(output, :ko)}: \"#{line(output, say)}\""
       )
     ]
   end
@@ -154,7 +154,7 @@ defmodule Aethrion.Digest do
       item(
         :message,
         output,
-        "#{say.name.(output.character_id)} reached out to #{to}: \"#{output.text}\""
+        "#{say.name.(output.character_id)} #{reached_out(output, :en)} #{to}: \"#{output.text}\""
       )
     ]
   end
@@ -169,6 +169,12 @@ defmodule Aethrion.Digest do
   end
 
   defp event_item(_output, _say), do: []
+
+  # A protest is made on the spot, by someone who saw it happen.
+  defp reached_out(%{reason: :protective}, :en), do: "spoke up to"
+  defp reached_out(%{reason: :protective}, :ko), do: "바로 한마디 했다"
+  defp reached_out(_output, :en), do: "reached out to"
+  defp reached_out(_output, :ko), do: "먼저 연락했다"
 
   @doc false
   # A belief as a line, for other renderers (reports): `name` maps ids to

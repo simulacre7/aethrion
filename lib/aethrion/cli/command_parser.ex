@@ -20,12 +20,56 @@ defmodule Aethrion.CLI.CommandParser do
     "bond" => :bond
   }
 
-  def parse(line) when is_binary(line) do
+  # `resolve` turns what was typed where a character belongs ("Mina", "미나")
+  # into an id; free text is left alone.
+  def parse(line, resolve \\ & &1) when is_binary(line) do
     line
     |> String.trim()
     |> String.split(~r/\s+/, trim: true)
+    |> resolve_names(resolve)
     |> do_parse()
   end
+
+  @one_name ~w(memories context say)
+  @two_names ~w(opinion comfort gift apologize message)
+
+  defp resolve_names([command, target | rest], resolve) when command == "why" do
+    target =
+      target
+      |> String.split("->", parts: 2)
+      |> Enum.map_join("->", &resolve_one(&1, resolve))
+
+    [command, target | rest]
+  end
+
+  defp resolve_names([command, name | rest], resolve) when command in @one_name,
+    do: [command, resolve_one(name, resolve) | rest]
+
+  defp resolve_names([command, from, to | rest], resolve) when command in @two_names,
+    do: [
+      command,
+      resolve_one(from, resolve),
+      resolve_one(to, resolve) | resolve_observers(rest, resolve)
+    ]
+
+  defp resolve_names(["here" | names], resolve) when names != ["none"],
+    do: ["here" | Enum.map(names, &resolve_list(&1, resolve))]
+
+  defp resolve_names(tokens, _resolve), do: tokens
+
+  # Observers come last: "... observed_by Yuna,Haru".
+  defp resolve_observers(tokens, resolve) do
+    case Enum.split(tokens, -2) do
+      {words, ["observed_by", names]} -> words ++ ["observed_by", resolve_list(names, resolve)]
+      _ -> tokens
+    end
+  end
+
+  defp resolve_list(names, resolve),
+    do: names |> String.split(",") |> Enum.map_join(",", &resolve_one(&1, resolve))
+
+  defp resolve_one("", _resolve), do: ""
+  defp resolve_one(name, resolve), do: resolve.(name)
 
   defp do_parse([]), do: {:ok, :noop}
   defp do_parse(["help"]), do: {:ok, :help}

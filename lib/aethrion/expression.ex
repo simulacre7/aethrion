@@ -59,7 +59,8 @@ defmodule Aethrion.Expression do
         end),
       repeats: Keyword.get(opts, :repeats),
       goodwill: Keyword.get(opts, :goodwill),
-      now: state.clock
+      now: state.clock,
+      sequence: state.seq
     }
 
     %{request | fallback_text: Templates.render(request)}

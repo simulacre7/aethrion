@@ -87,7 +87,7 @@ defmodule Aethrion.Expression.Templates.Ko do
   def render(%Request{kind: :proactive_message, reason: :lonely} = request) do
     case Choices.lonely_choice(request) do
       {:quote, text} -> "네가 했던 말이 계속 생각나. \"#{text}\" 잠깐 얘기할 수 있어?"
-      {:gift, item} -> "네가 준 #{item}, 아직 가지고 있어. 잠깐 얘기할 수 있어?"
+      {:gift, item} -> "네가 준 #{item(item)}, 아직 가지고 있어. 잠깐 얘기할 수 있어?"
       :kind -> "넌 늘 나한테 다정했잖아. 너랑 얘기하던 게 그리워. 잠깐 시간 돼?"
       :reunion -> "며칠째 얘기를 못 했네. 잠깐 시간 돼?"
       :a_while -> "한동안 얘기를 못 했네. 잠깐 시간 돼?"
@@ -149,9 +149,10 @@ defmodule Aethrion.Expression.Templates.Ko do
       :wary -> "...고마워. 뭐라고 해야 할지 모르겠네."
       :reassured -> "나한테 주는 거야? ...나 잊은 줄 알았어."
       :spoiled -> "또 줘? 이러다 버릇 나빠지겠다."
+      :another -> "또 선물이야? 정말 고마워!"
       :remembered -> "내 생각 해 준 거야? 정말 고마워."
       :close -> Choices.pick(request, ["이런 거 안 해도 되는데! 너무 좋다.", "또 챙겨 준 거야? 진짜 고마워."])
-      :thanks when is_binary(item) -> "#{item}? 우와, 고마워!"
+      :thanks when is_binary(item) -> "#{gift_word(item)}? 우와, 고마워!"
       :thanks -> "나 주는 거야? 고마워!"
     end
   end
@@ -159,6 +160,7 @@ defmodule Aethrion.Expression.Templates.Ko do
   def render(%Request{kind: :reply, tone: :apology} = request) do
     case Choices.apology_choice(request) do
       :settled -> "알았어, 이제 진짜 괜찮아."
+      :enough -> "이미 사과했잖아. 정말 괜찮아."
       :keeps_apologizing -> "계속 미안하다고만 하네. 그냥 그런 일이 없었으면 좋겠어."
       :left_out -> "고마워. 나도 좀 챙겨 줬으면 해서 그랬어."
       :nothing_to_forgive -> "사과할 거 없어. 우리 괜찮아."
@@ -178,6 +180,7 @@ defmodule Aethrion.Expression.Templates.Ko do
       :short -> "요즘 나한테 좀 차갑네."
       :benefit when tone == :hostile -> "너답지 않은데. 무슨 일 있어?"
       :benefit -> "아... 그래. 괜찮은 거지?"
+      :hurt when tone == :hostile and mood != :upset -> first_hurt(Choices.temperament(request))
       :hurt -> reply(tone, mood)
     end
   end
@@ -234,8 +237,9 @@ defmodule Aethrion.Expression.Templates.Ko do
   # What was told, after "X는 Y에게".
   defp gossip(request, %{"event" => "gift_received", "to" => to} = data) do
     if to == request.speaker.id,
-      do: "#{actor(request, data["from"])} 준 #{with_particle(data["item"], :object)} 자랑한다.",
-      else: "#{actor(request, data["from"])} #{name(request, to)}한테 준 #{data["item"]} 얘기를 전한다."
+      do: "#{actor(request, data["from"])} 준 #{with_particle(item(data["item"]), :object)} 자랑한다.",
+      else:
+        "#{actor(request, data["from"])} #{name(request, to)}한테 준 #{item(data["item"])} 얘기를 전한다."
   end
 
   defp gossip(request, %{"event" => "message_sent", "tone" => tone} = data)
@@ -267,7 +271,7 @@ defmodule Aethrion.Expression.Templates.Ko do
     do: if(to == request.speaker.id, do: "자기", else: name(request, to))
 
   defp curious_line(:gift, to, data, request) do
-    heard = "#{to}한테 #{data["item"]} 줬다며?"
+    heard = "#{to}한테 #{item(data["item"])} 줬다며?"
 
     cond do
       :playful in request.speaker.traits -> heard <> " 제법인데."
@@ -321,6 +325,11 @@ defmodule Aethrion.Expression.Templates.Ko do
   defp reply(:hostile, _mood), do: "왜 그런 말을 해?"
   defp reply(_tone, _mood), do: "..."
 
+  defp first_hurt(:sensitive), do: "그 말 좀 아프다. 왜 그런 말을 해?"
+  defp first_hurt(:calm), do: "...그건 좀 너무했다."
+  defp first_hurt(:playful), do: "와, 속마음 제대로 말해 주네."
+  defp first_hurt(nil), do: "왜 그런 말을 해?"
+
   # How a Latin word's end is usually read in Korean. Vowels and -r, -w, -h
   # have no final consonant (flower 플라워, show 쇼, Smith 스미스), nor do
   # endings Korean reads with an added vowel: -s, -x, -f, -v, -z, -d (Alex
@@ -367,7 +376,7 @@ defmodule Aethrion.Expression.Templates.Ko do
 
     case event do
       %{type: :gift_received} ->
-        "#{subject.(event.from)} #{name.(event.to)}에게 #{with_particle(event.item, :object)} 준다" <>
+        "#{subject.(event.from)} #{name.(event.to)}에게 #{with_particle(item(event.item), :object)} 준다" <>
           seen_by(event, name)
 
       %{type: :message_sent} ->
@@ -427,7 +436,7 @@ defmodule Aethrion.Expression.Templates.Ko do
          %{"event" => "gift_received", "from" => from, "to" => to, "item" => item},
          names
        ),
-       do: "#{subject(names.(from))} #{names.(to)}에게 #{with_particle(item, :object)} 줬다."
+       do: "#{subject(names.(from))} #{names.(to)}에게 #{with_particle(item(item), :object)} 줬다."
 
   defp describe_data(
          %{"event" => "message_sent", "from" => from, "to" => to, "tone" => tone} = data,
@@ -476,6 +485,51 @@ defmodule Aethrion.Expression.Templates.Ko do
   def bond_label(:friendly), do: "친한 사이"
   def bond_label(:close), do: "가까운 사이"
   def bond_label(other), do: to_string(other)
+
+  @items %{
+    "book" => "책",
+    "bouquet" => "꽃다발",
+    "cake" => "케이크",
+    "card" => "카드",
+    "chocolate" => "초콜릿",
+    "coffee" => "커피",
+    "cookie" => "쿠키",
+    "cookies" => "쿠키",
+    "flower" => "꽃",
+    "flowers" => "꽃",
+    "gift" => "선물",
+    "letter" => "편지",
+    "map" => "지도",
+    "necklace" => "목걸이",
+    "notebook" => "공책",
+    "pastry box" => "빵 상자",
+    "pin" => "핀",
+    "postcard" => "엽서",
+    "ribbon" => "리본",
+    "ring" => "반지",
+    "scarf" => "목도리",
+    "snack" => "간식",
+    "star" => "별",
+    "tea" => "차"
+  }
+
+  @doc """
+  A gift's name in Korean: common items are translated ("flower" is "꽃"),
+  anything else is kept as the host wrote it.
+  """
+  @spec item(String.t() | nil) :: String.t() | nil
+  def item(name) when is_binary(name) do
+    key = name |> String.trim() |> String.downcase() |> String.replace(~r/^(a|an|the|some) /, "")
+    Map.get(@items, key, name)
+  end
+
+  def item(name), do: name
+
+  # "꽃? 우와": an untranslated English word is not echoed back.
+  defp gift_word(name) do
+    word = item(name)
+    if String.match?(word, ~r/\p{Hangul}/u), do: word, else: "선물이야"
+  end
 
   @doc """
   Appends the Korean particle that fits `word`'s final sound. `kind` is

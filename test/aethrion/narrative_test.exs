@@ -120,6 +120,18 @@ defmodule Aethrion.NarrativeTest do
       assert trust.(after_two) == trust.(after_one) - 6 + 4
     end
 
+    test "apologizing again for one thing is not taken as a pattern" do
+      events =
+        [Event.message_sent("user", "haru", "Useless.", tone: :hostile)] ++
+          List.duplicate(Event.apology_offered("user", "haru", "I was rude."), 4)
+
+      {_state, outputs} = run!(Runtime.demo_state(), events)
+      texts = for o <- replies(outputs, "haru"), o.tone == :apology, do: o.text
+
+      refute Enum.any?(texts, &(&1 =~ "keep saying sorry"))
+      assert List.last(texts) == "You already apologized. It's okay, really."
+    end
+
     test "an insult-and-apology cycle does not build trust" do
       cycle = fn i ->
         [
@@ -357,6 +369,27 @@ defmodule Aethrion.NarrativeTest do
       assert List.last(replies(outputs, "haru")).text =~ "hurt"
     end
 
+    test "several plain messages within an hour do not get the same reply" do
+      say = fn text -> Event.message_sent("user", "mina", text, tone: :neutral) end
+      {_state, outputs} = run!(Runtime.demo_state(), Enum.map(1..3, &say.("hi #{&1}")))
+
+      assert length(Enum.uniq(Enum.map(replies(outputs, "mina"), & &1.text))) >= 2
+    end
+
+    test "a first harsh word lands by temperament" do
+      hostile = fn to -> Event.message_sent("user", to, "Leave me alone.", tone: :hostile) end
+      {_state, outputs} = run!(Runtime.demo_state(), Enum.map(["mina", "yuna", "haru"], hostile))
+
+      texts = Enum.map(outputs |> of_type(:reply), & &1.text)
+      assert length(Enum.uniq(texts)) == 3
+
+      assert Enum.map(of_type(outputs, :reply), &Ko.render(&1.context)) == [
+               "왜 그런 말을 해?",
+               "그 말 좀 아프다. 왜 그런 말을 해?",
+               "...그건 좀 너무했다."
+             ]
+    end
+
     test "friends do not spend every afternoon the same way" do
       {_state, outputs} = run!(Runtime.demo_state(), List.duplicate(tick(24), 5))
 
@@ -368,6 +401,22 @@ defmodule Aethrion.NarrativeTest do
   end
 
   describe "gifts" do
+    test "a second gift is not thanked the same way, and items are named in Korean" do
+      gift = Event.gift_received("user", "haru", "chocolate")
+      {_state, outputs} = run!(Runtime.demo_state(), [gift, gift])
+
+      assert [first, second] = replies(outputs, "haru")
+      assert first.text != second.text
+      assert Ko.render(first.context) == "초콜릿? 우와, 고마워!"
+      assert Ko.render(second.context) == "또 선물이야? 정말 고마워!"
+
+      {_state, outputs} =
+        run!(Runtime.demo_state(), [Event.gift_received("user", "haru", "moonstone")])
+
+      assert [%{context: context}] = replies(outputs, "haru")
+      assert Ko.render(context) == "선물이야? 우와, 고마워!"
+    end
+
     test "a gift gets a reply that fits, and reassures someone jealous of that giver" do
       {state, _outputs} = run!(Runtime.demo_state(), [flower_for_mina()])
 
@@ -420,7 +469,7 @@ defmodule Aethrion.NarrativeTest do
                )
 
       assert scene.text == "Yuna tells Haru about getting a ribbon from you."
-      assert Ko.render(scene.context) == "Yuna는 Haru에게 네가 준 ribbon을 자랑한다."
+      assert Ko.render(scene.context) == "Yuna는 Haru에게 네가 준 리본을 자랑한다."
     end
   end
 
@@ -485,7 +534,7 @@ defmodule Aethrion.NarrativeTest do
     {:ok, result} = Aethrion.Scenario.run(scenario)
     html = result |> Aethrion.Report.html(locale: :ko) |> IO.iodata_to_binary()
 
-    assert html =~ ~s(<span class="memory-kind">직접</span>네가 Mina에게 flower를 줬다.)
+    assert html =~ ~s(<span class="memory-kind">직접</span>네가 Mina에게 꽃을 줬다.)
     refute html =~ ~s(</span>user gave mina a flower.)
   end
 
@@ -688,8 +737,8 @@ defmodule Aethrion.NarrativeTest do
         |> Aethrion.Digest.of(state, you: "player:sam", only_you: true)
         |> Enum.map(& &1.text)
 
-      refute Enum.any?(mine, &(&1 =~ "reached out to Alex"))
-      assert Enum.any?(texts, &(&1 =~ "reached out to Alex"))
+      refute Enum.any?(mine, &(&1 =~ "spoke up to Alex"))
+      assert Enum.any?(texts, &(&1 =~ "spoke up to Alex"))
     end
 
     test "another player's digest names the user instead of calling them you" do
@@ -866,7 +915,7 @@ defmodule Aethrion.NarrativeTest do
       assert "Yuna tells Haru about the ring you gave Mina." in texts
 
       ko = Enum.map(Aethrion.Digest.of(outputs, state, you: "alex", locale: :ko), & &1.text)
-      assert Enum.any?(ko, &(&1 =~ "네가 Mina한테 준 ring 얘기를 전했다."))
+      assert Enum.any?(ko, &(&1 =~ "네가 Mina한테 준 반지 얘기를 전했다."))
     end
   end
 

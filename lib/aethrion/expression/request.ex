@@ -32,6 +32,8 @@ defmodule Aethrion.Expression.Request do
     `nil` when not known
   - `now` - the simulated clock (hours) when the output was produced;
     `hours_ago/2` says how long ago a memory was formed
+  - `sequence` - how many events the world had processed then, so lines can
+    vary between several messages within one hour
   - `fallback_text` - the deterministic template text
   """
 
@@ -49,6 +51,7 @@ defmodule Aethrion.Expression.Request do
           repeats: pos_integer() | nil,
           goodwill: boolean() | nil,
           now: non_neg_integer() | nil,
+          sequence: non_neg_integer() | nil,
           fallback_text: String.t() | nil
         }
 
@@ -66,6 +69,7 @@ defmodule Aethrion.Expression.Request do
     repeats: nil,
     goodwill: nil,
     now: nil,
+    sequence: nil,
     fallback_text: nil
   ]
 

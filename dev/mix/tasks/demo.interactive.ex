@@ -120,7 +120,7 @@ defmodule Mix.Tasks.Demo.Interactive do
 
       line ->
         line
-        |> CommandParser.parse()
+        |> CommandParser.parse(&resolve(session.state, &1))
         |> handle(session)
     end
   end
@@ -166,7 +166,7 @@ defmodule Mix.Tasks.Demo.Interactive do
   defp handle({:ok, {:context, character}}, session) do
     case State.character(session.state, character) do
       nil ->
-        Display.message("ERROR unknown character #{inspect(character)}")
+        unknown_character(session.state, [character])
 
       found ->
         reason = if found.state.mood == :jealous, do: :jealous, else: :lonely
@@ -182,7 +182,7 @@ defmodule Mix.Tasks.Demo.Interactive do
   defp handle({:ok, {:opinion, character, other}}, session) do
     if State.character?(session.state, character),
       do: Display.opinion(session.state, character, other),
-      else: Display.message("ERROR unknown character #{inspect(character)}")
+      else: unknown_character(session.state, [character])
 
     loop(session)
   end
@@ -230,7 +230,7 @@ defmodule Mix.Tasks.Demo.Interactive do
   defp handle({:ok, {:save, path}}, session) do
     case JsonFile.save(session.state, path: path) do
       :ok -> Display.message("saved to #{path}")
-      {:error, error} -> Display.error(error)
+      {:error, error} -> show_error(session.state, error)
     end
 
     loop(session)
@@ -266,7 +266,7 @@ defmodule Mix.Tasks.Demo.Interactive do
          :ok <- File.write(path, Aethrion.Report.html(result, locale: session.locale || :en)) do
       Display.message("wrote #{path}")
     else
-      {:error, %Aethrion.Error{} = error} -> Display.error(error)
+      {:error, %Aethrion.Error{} = error} -> show_error(session.state, error)
       {:error, reason} -> Display.message("ERROR could not write report: #{:file.format_error(reason)}")
     end
 
@@ -299,7 +299,7 @@ defmodule Mix.Tasks.Demo.Interactive do
         })
 
       {:error, error} ->
-        Display.error(error)
+        show_error(session.state, error)
         loop(session)
     end
   end
@@ -332,7 +332,7 @@ defmodule Mix.Tasks.Demo.Interactive do
         dispatch(%{session | hinted?: session.hinted? or event.type == :message_sent}, event)
 
       {:error, error} ->
-        Display.error(error)
+        show_error(session.state, error)
         loop(session)
     end
   end
@@ -350,7 +350,7 @@ defmodule Mix.Tasks.Demo.Interactive do
         loop(%{session | present: present})
 
       unknown ->
-        Display.message("ERROR unknown character #{Enum.map_join(unknown, ", ", &inspect/1)}")
+        unknown_character(session.state, unknown)
         loop(session)
     end
   end
@@ -383,9 +383,51 @@ defmodule Mix.Tasks.Demo.Interactive do
   defp with_character(session, id, show) do
     if State.character?(session.state, id),
       do: show.(),
-      else: Display.message("ERROR unknown character #{inspect(id)}")
+      else: unknown_character(session.state, [id])
 
     loop(session)
+  end
+
+  # Names are matched without case, by id or display name, and the demo cast
+  # answers to its Korean names too.
+  @korean_names %{"미나" => "mina", "유나" => "yuna", "하루" => "haru"}
+
+  defp resolve(state, typed) do
+    key = String.downcase(typed)
+
+    with nil <- Enum.find(Map.keys(state.characters), &(String.downcase(&1) == key)),
+         nil <-
+           Enum.find_value(state.characters, fn {id, character} ->
+             if String.downcase(character.name) == key, do: id
+           end),
+         nil <- if(State.character?(state, @korean_names[typed]), do: @korean_names[typed]) do
+      typed
+    end
+  end
+
+  defp show_error(state, %Aethrion.Error{code: :unknown_character, details: %{character_id: id}})
+       when is_binary(id),
+       do: unknown_character(state, [id])
+
+  defp show_error(_state, error), do: Display.error(error)
+
+  defp unknown_character(state, names) do
+    ids = state.characters |> Map.keys() |> Enum.sort()
+
+    guess =
+      names
+      |> Enum.flat_map(fn name ->
+        ids
+        |> Enum.filter(&(String.jaro_distance(&1, String.downcase(name)) >= 0.75))
+        |> Enum.take(1)
+      end)
+
+    hint = if guess == [], do: "", else: " Did you mean #{Enum.join(guess, ", ")}?"
+
+    Display.message(
+      "ERROR unknown character #{Enum.map_join(names, ", ", &inspect/1)}." <>
+        hint <> " Characters: #{Enum.join(ids, ", ")}."
+    )
   end
 
   defp count(1, noun), do: "1 #{noun}"
@@ -450,7 +492,7 @@ defmodule Mix.Tasks.Demo.Interactive do
         |> loop()
 
       {:error, error} ->
-        Display.error(error)
+        show_error(session.state, error)
         loop(session)
     end
   end

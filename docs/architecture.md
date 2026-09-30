@@ -70,14 +70,14 @@ The same state, event, pipeline, and limits always produce the same `Step`. This
 | `relationships` | `%{{from, to} => %Relationship{}}`, directed; missing pairs read as all zeros |
 | `memories` | newest first; each has a `topic` linking everyone's memory of one event |
 | `clock`, `seq` | simulated hours; processed event count |
-| `cooldowns` | `%{key => clock}` for rate-limited behaviors |
+| `cooldowns` | `%{key => clock}` for rate-limited behaviors and last-contact times; keys about one topic are pruned on ticks; the rest are one per character or pair (last contact, brush-offs), so they grow with characters × people, not with time |
 | `tuning` | rule parameter overrides |
 
 `State.to_data/1` and `State.parse/2` convert to and from JSON-friendly data. Parsing validates untrusted input and never creates atoms.
 
 ## Memory
 
-Memories are created by rules (`remember/3`), decay with age (`MemoryDecay`), fold into impressions when faded (`Consolidation`), and are eventually forgotten. Retrieval (`Aethrion.Memories`) is a deterministic score over strength, focus, and recency: no embeddings. Memory work runs on every tick, so rules that touch memories use single passes (`Transition.map_memories/4`, `drop_memories/2`) and per-application indexes rather than per-character rescans.
+Memories are created by rules (`remember/3`), decay with age (`MemoryDecay`), fold into impressions when faded (`Consolidation`), and are eventually forgotten. Retrieval (`Aethrion.Memories`) is a deterministic score over strength, focus, and recency: no embeddings. Memory work runs on every tick, so rules that touch memories use single passes (`Transition.map_memories/4`, `drop_memories/2`) and per-application indexes rather than per-character rescans. Memories are one list rather than an index per character: a busy tick in a 200-character world with about 7,000 memories takes tens of milliseconds, and a simulated month there about 30 seconds. A per-character index is the next step if that becomes the bottleneck.
 
 ## The expression boundary
 

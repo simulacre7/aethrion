@@ -138,7 +138,7 @@ defmodule Aethrion.MixTasksTest do
       end)
       |> plain()
 
-    assert output =~ "KO       네가 Mina에게 flower를 준다 (Yuna 목격)"
+    assert output =~ "KO       네가 Mina에게 꽃을 준다 (Yuna 목격)"
   end
 
   test "characters who are here witness what is said" do
@@ -206,7 +206,9 @@ defmodule Aethrion.MixTasksTest do
 
     files = Path.wildcard(Path.join(dir, "*.html"))
     assert length(files) == length(Aethrion.Scenario.bundled())
-    assert File.read!(Path.join(dir, "01_the_flower.html")) =~ ~s(<ul class="digest" lang="ko">)
+
+    assert File.read!(Path.join(dir, "01_the_flower.ko.html")) =~
+             ~s(<ul class="digest" lang="ko">)
 
     assert_raise Mix.Error, ~r/unsupported locale "fr"/, fn ->
       Mix.Tasks.Aethrion.Report.run([hd(Aethrion.Scenario.bundled()), "--locale", "fr"])

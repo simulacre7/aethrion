@@ -41,8 +41,8 @@ defmodule Aethrion.TemplatesKoTest do
 
     assert texts == [
              "아까 Mina랑 있을 때 즐거워 보이더라. 혹시 나는 잊은 거 아니지?",
-             "Yuna는 Haru에게 네가 Mina한테 준 flower 얘기를 전한다.",
-             "Yuna한테 들었어. Mina한테 flower 줬다며? 제법인데.",
+             "Yuna는 Haru에게 네가 Mina한테 준 꽃 얘기를 전한다.",
+             "Yuna한테 들었어. Mina한테 꽃 줬다며? 제법인데.",
              "Haru는 한동안 Yuna 곁에 있어 준다. Yuna의 표정이 한결 가벼워진다."
            ]
 

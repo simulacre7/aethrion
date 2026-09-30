@@ -72,6 +72,9 @@ The social layer release: characters act on each other, every change is explaina
 - The scheduler's `:notify` message is `{:aethrion, scheduler_pid, {:scheduler_tick, result}}`, following the library's message convention.
 - Persistence adapters report "nothing saved yet" as `{:error, %Aethrion.Error{code: :not_found}}`, and every public function that can fail returns `%Aethrion.Error{}` with location details; `Aethrion.Error.format/1` renders the message with its location.
 - The `mix demo.*` tasks live in `dev/` and are no longer part of the package.
+- `mix aethrion.report --locale ko` writes `<name>.ko.html` by default, so it does not overwrite the English report.
+- The interactive demo matches character names without case, by id or display name (and the demo cast by their Korean names), and suggests the closest id for a typo.
+- Replies vary more: several plain messages within an hour, a second gift, and a first harsh word (by temperament) no longer get the same line; apologizing again for the same thing is not answered as a pattern. Korean lines name common gifts in Korean ("꽃"), and digests say a witness "spoke up" rather than "reached out".
 
 ### Fixed and hardened
 

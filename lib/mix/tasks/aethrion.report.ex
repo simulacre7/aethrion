@@ -11,7 +11,8 @@ defmodule Mix.Tasks.Aethrion.Report do
 
   Options:
 
-  - `--out` - output file (default: `tmp/<scenario file name>.html`)
+  - `--out` - output file (default: `tmp/<scenario file name>.html`, or
+    `.ko.html` with `--locale ko`, so the two languages sit side by side)
   - `--all` - render every bundled scenario
   - `--out-dir` - directory for `--all` (default: `tmp/reports`)
   - `--locale ko` - the report in Korean (scenario text stays as written)
@@ -40,11 +41,11 @@ defmodule Mix.Tasks.Aethrion.Report do
 
           Enum.map(
             Scenario.bundled(),
-            &{&1, Path.join(dir, Path.basename(&1, ".json") <> ".html")}
+            &{&1, Path.join(dir, Path.basename(&1, ".json") <> suffix(opts) <> ".html")}
           )
 
         {_all, [path]} ->
-          default = Path.join("tmp", Path.basename(path, ".json") <> ".html")
+          default = Path.join("tmp", Path.basename(path, ".json") <> suffix(opts) <> ".html")
           [{path, Keyword.get(opts, :out, default)}]
 
         _other ->
@@ -66,6 +67,8 @@ defmodule Mix.Tasks.Aethrion.Report do
       end
     end)
   end
+
+  defp suffix(opts), do: if(locale(opts[:locale]) == :ko, do: ".ko", else: "")
 
   defp locale(nil), do: :en
   defp locale("en"), do: :en
