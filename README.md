@@ -113,6 +113,7 @@ host event
 - **Rules** are small modules (`use Aethrion.Rule`) organized by an explicit `Aethrion.Pipeline`. Add your own, remove built-ins, or register new event types. `mix aethrion.rules` lists them.
 - **Cascades** let characters act on each other: observation, confiding, rumor, empathy, comfort, companionship.
 - **Reputation** carries how you treat one character to the others: whoever sees or hears about it judges you, and faded details become a lasting reputation.
+- **Bonds** name what each relationship has become (strained, friendly, close, ...) and announce when an event changes one.
 - **Traces** record every change: which rule, which event, before and after. `why yuna jealousy` in the interactive demo answers "why is Yuna this jealous?" with each change and the chain of events behind it.
 - **Memory** has kinds (experienced, observed, heard), sources, topics that link everyone's memory of the same event, age-based decay, and consolidation of faded experiences into lasting impressions. Retrieval is deterministic; no vector search.
 - **Tuning** makes every rule's numbers data: a world, saved state, or scenario can override them without code.
