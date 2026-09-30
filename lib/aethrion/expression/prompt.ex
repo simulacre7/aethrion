@@ -144,9 +144,8 @@ defmodule Aethrion.Expression.Prompt do
   defp incoming_line(%Request{message: message, tone: tone} = request) when is_binary(message) do
     away =
       case request.since_contact do
-        nil -> " (their first conversation)"
-        hours when hours >= 24 -> " (after #{hours} hours without talking)"
-        _hours -> ""
+        hours when is_integer(hours) and hours >= 24 -> " (after #{hours} hours without talking)"
+        _other -> ""
       end
 
     "Listener just said (#{tone})#{away}: #{message}"

@@ -85,4 +85,27 @@ defmodule Aethrion.ConsolidationTest do
 
     assert [%{kind: :impression} | _] = Memories.relevant(state, "mina", focus: ["user"])
   end
+
+  test "counts only read impressions under their own ids" do
+    stray =
+      Memory.new(
+        id: "seed-1",
+        character_id: "mina",
+        content: "x",
+        importance: 80,
+        created_at: "seed",
+        kind: :impression,
+        topic: "impression:mina:hostile:user",
+        data: %{
+          "event" => "impression",
+          "pattern" => "hostile",
+          "from" => "user",
+          "to" => "mina",
+          "count" => 4
+        }
+      )
+
+    state = %{Runtime.demo_state() | memories: [stray]}
+    assert Aethrion.Rules.Consolidation.counts(state, "mina", "user") == %{}
+  end
 end

@@ -166,9 +166,13 @@ defmodule Aethrion.Expression.Templates do
   end
 
   # Back after a long absence.
-  defp reunion_reply(tone, mood, request) when tone in [:warm, :neutral] do
+  # Only when nothing darker is going on: a jealous or upset mood, or a
+  # strained or estranged bond, speaks first.
+  defp reunion_reply(tone, mood, request)
+       when tone in [:warm, :neutral] and mood in [:neutral, :happy, :lonely] do
     cond do
       not Request.reunion?(request) -> nil
+      Map.get(request.relationship || %{}, :bond) in [:strained, :estranged] -> nil
       mood == :lonely -> "You're back... I missed you."
       tone == :warm -> "You're back! It's been a while. Thank you."
       true -> "Hey, it's been a while!"

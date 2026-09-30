@@ -324,6 +324,7 @@ defmodule Aethrion.Rules.Consolidation do
         } = memory <- state.memories,
         event in ["impression", "reputation"],
         is_integer(count),
+        memory.id == impression_id({character, event, pattern, actor}),
         not Memory.faded?(memory),
         into: %{} do
       {{if(event == "impression", do: "impression", else: "reputation"), pattern}, count}

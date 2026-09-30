@@ -282,13 +282,13 @@ defmodule Mix.Tasks.Demo.Interactive do
         )
 
         # The fake adapter only guesses from keywords; say so once.
-        if is_nil(session.adapter) and not session.hinted? do
+        if is_nil(session.adapter) and event.type == :message_sent and not session.hinted? do
           Display.message(
             "  (a keyword guess; for an exact tone use: message user #{to} <warm|neutral|cold|hostile> <text>)"
           )
         end
 
-        dispatch(%{session | hinted?: true}, event)
+        dispatch(%{session | hinted?: session.hinted? or event.type == :message_sent}, event)
 
       {:error, error} ->
         Display.error(error)

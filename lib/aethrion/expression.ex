@@ -160,6 +160,8 @@ defmodule Aethrion.Expression do
       importance: memory.importance,
       strength: memory.strength,
       source: memory.source,
+      topic: memory.topic,
+      created_tick: memory.created_tick,
       # Folded topics are bookkeeping, not something to phrase.
       data: Map.delete(memory.data, "topics")
     }

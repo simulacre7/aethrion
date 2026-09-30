@@ -115,6 +115,17 @@ defmodule Aethrion.ReputationTest do
       assert %{trust: 1} = to_user(state, "yuna")
     end
 
+    test "an apology does not excuse hostility that came after it" do
+      {state, _outputs} =
+        run!(world(), [
+          Event.apology_offered("user", "mina", "sorry", observed_by: ["haru"]),
+          message("user", "mina", :hostile, ["haru"])
+        ])
+
+      {_state, outputs} = dispatch!(state, message("user", "haru", :warm))
+      assert [%{text: "Thanks... but I saw what you said to Mina."}] = of_type(outputs, :reply)
+    end
+
     test "a witnessed apology takes the edge off a pointed reply" do
       {state, _outputs} =
         run!(world(), [
@@ -454,6 +465,14 @@ defmodule Aethrion.ReputationTest do
       refute MapSet.member?(live, "message:e1")
       refute "message:e1" in topics
       assert Enum.all?(topics, &MapSet.member?(live, &1))
+    end
+
+    test "pruning curiosity keys leaves other keys alone, whatever the ids" do
+      state =
+        State.new(characters: [character("curious")], cooldowns: %{"contact:curious:user" => 0})
+
+      {state, _outputs} = dispatch!(state, Event.time_tick("t", hours: 1))
+      assert Map.has_key?(state.cooldowns, "contact:curious:user")
     end
   end
 end

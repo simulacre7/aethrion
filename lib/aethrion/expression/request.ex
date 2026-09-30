@@ -64,23 +64,26 @@ defmodule Aethrion.Expression.Request do
   for a specific message, `:reputation` for a reputation impression (unless
   the speaker also holds a firsthand impression of the listener), or `nil`.
   A specific memory wins over the impression, and a remembered apology from
-  the listener to that person cancels it.
+  the listener to that person made after it cancels it.
   """
   @spec harshness_to_others(t()) :: {:observed | :heard, String.t()} | :reputation | nil
   def harshness_to_others(
         %__MODULE__{speaker: %{id: speaker}, listener: %{id: listener}} = request
       ) do
-    apologized_to =
-      for %{data: %{"event" => "apology_offered", "from" => ^listener, "to" => to}} <-
+    # When the listener last apologized to each person, as {tick, event}.
+    apologies =
+      for %{data: %{"event" => "apology_offered", "from" => ^listener, "to" => to}} = memory <-
             request.memories,
-          do: to
+          reduce: %{} do
+        acc -> Map.update(acc, to, moment(memory), &max(&1, moment(memory)))
+      end
 
     specific =
       Enum.find_value(request.memories, fn
-        %{kind: kind, data: %{"event" => "message_sent", "tone" => "hostile"} = data}
+        %{kind: kind, data: %{"event" => "message_sent", "tone" => "hostile"} = data} = memory
         when kind in [:observed, :heard] ->
           if data["from"] == listener and data["to"] != speaker and
-               data["to"] not in apologized_to,
+               not apologized_since?(apologies, data["to"], memory),
              do: {kind, data["to"]}
 
         _memory ->
@@ -110,5 +113,23 @@ defmodule Aethrion.Expression.Request do
       reputation? and not firsthand? -> :reputation
       true -> nil
     end
+  end
+
+  defp apologized_since?(apologies, target, memory) do
+    case Map.fetch(apologies, target) do
+      {:ok, apology} -> apology >= moment(memory)
+      :error -> false
+    end
+  end
+
+  # When a remembered event happened: its tick, then its event number.
+  defp moment(memory) do
+    number =
+      case Regex.run(~r/:e(\d+)$/, Map.get(memory, :topic) || "") do
+        [_, digits] -> String.to_integer(digits)
+        nil -> 0
+      end
+
+    {Map.get(memory, :created_tick, 0), number}
   end
 end

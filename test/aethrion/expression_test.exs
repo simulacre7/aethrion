@@ -168,6 +168,28 @@ defmodule Aethrion.ExpressionTest do
       assert context =~ "Listener just said (warm) (after 100 hours without talking): hi"
     end
 
+    test "a strained bond or a darker mood speaks before a reunion" do
+      strained =
+        Aethrion.State.new(
+          characters: [character("haru")],
+          relationships: [relationship("haru", "user", affinity: 30, trust: 20, tension: 40)]
+        )
+
+      {state, _reply} = talk(strained)
+      state = %{state | clock: state.clock + 100}
+      state = put_in(state.characters["haru"].state.loneliness, 0)
+      {_state, back} = talk(state)
+      assert back.text == "...Thanks, I guess."
+    end
+
+    test "prompts do not claim a first conversation without a record" do
+      {_state, reply} =
+        talk(Runtime.demo_state() |> then(&%{&1 | characters: Map.take(&1.characters, ["haru"])}))
+
+      {_system, context} = Aethrion.Expression.Prompt.render_parts(reply.context)
+      refute context =~ "first conversation"
+    end
+
     test "a lonely character says it missed you" do
       {state, _reply} = talk(quiet_world())
       {:ok, step} = Runtime.step(state, Event.time_tick("t", hours: 100))

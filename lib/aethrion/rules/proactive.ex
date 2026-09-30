@@ -202,7 +202,8 @@ defmodule Aethrion.Rules.Proactive do
 
     cooldowns =
       Map.filter(state.cooldowns, fn {key, _at} ->
-        not String.contains?(key, ":curious:") or MapSet.member?(live, key)
+        not (String.starts_with?(key, "proactive:") and String.contains?(key, ":curious:")) or
+          MapSet.member?(live, key)
       end)
 
     if map_size(cooldowns) == map_size(state.cooldowns),
@@ -252,7 +253,7 @@ defmodule Aethrion.Rules.Proactive do
 
     since_contact =
       case Map.fetch(state.cooldowns, Aethrion.Rules.Reply.contact_key(character.id, recipient)) do
-        {:ok, at} -> state.clock - at
+        {:ok, at} -> max(state.clock - at, 0)
         :error -> nil
       end
 

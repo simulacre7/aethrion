@@ -78,7 +78,7 @@ defmodule Aethrion.LLM.FakeAdapter do
 
     proposal =
       cond do
-        negated?(text, @apology) -> %{intent: :message, tone: :cold}
+        negated_apology?(text) -> %{intent: :message, tone: :cold}
         mentions?(text, @apology) -> %{intent: :apology}
         mentions?(text, @hostile) -> %{intent: :message, tone: :hostile}
         mentions?(text, @letdown) -> %{intent: :message, tone: :cold}
@@ -106,6 +106,13 @@ defmodule Aethrion.LLM.FakeAdapter do
   end
 
   # A negation within the few characters before a warm word.
+  # Only a negation right before the apology word ("not sorry", "안 미안해");
+  # "못 가서 미안해" or "I couldn't call, sorry" are still apologies.
+  defp negated_apology?(text) do
+    Regex.match?(~r/(?:\bnot|\bnever|n't)\s+(?:really\s+|at all\s+)?sorry/u, text) or
+      Regex.match?(~r/(?:안|전혀|하나도)\s*미안/u, text)
+  end
+
   defp negated?(text, words) do
     Enum.any?(words, fn word ->
       ~r/(?<![a-z])#{Regex.escape(word)}/u

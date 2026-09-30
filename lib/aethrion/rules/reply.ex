@@ -23,7 +23,7 @@ defmodule Aethrion.Rules.Reply do
 
       since_contact =
         case Map.fetch(state.cooldowns, key) do
-          {:ok, at} -> state.clock - at
+          {:ok, at} -> max(state.clock - at, 0)
           :error -> nil
         end
 

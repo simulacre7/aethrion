@@ -163,9 +163,13 @@ defmodule Aethrion.Expression.Templates.Ko do
     "#{with_particle(request.speaker.name, :subject)} 반응한다."
   end
 
-  defp reunion_reply(tone, mood, request) when tone in [:warm, :neutral] do
+  # Only when nothing darker is going on: a jealous or upset mood, or a
+  # strained or estranged bond, speaks first.
+  defp reunion_reply(tone, mood, request)
+       when tone in [:warm, :neutral] and mood in [:neutral, :happy, :lonely] do
     cond do
       not Request.reunion?(request) -> nil
+      Map.get(request.relationship || %{}, :bond) in [:strained, :estranged] -> nil
       mood == :lonely -> "왔구나... 보고 싶었어."
       tone == :warm -> "오랜만이야! 고마워."
       true -> "오랜만이네!"
