@@ -1,0 +1,89 @@
+{
+  "$schema": "../scenario.schema.json",
+  "name": "Company",
+  "description": "The user goes quiet for three days. Haru, who looks out for Yuna, keeps inviting her to spend the afternoon; Yuna likes Haru but not yet enough to ask first. Mina has no friend that close. Friendship buffers loneliness: Mina ends up the loneliest, and three afternoons together bring Yuna close enough to Haru to invite him herself next time.",
+  "tuning": {
+    "time_passage": {
+      "loneliness_per_hour": 1
+    }
+  },
+  "world": "demo",
+  "events": [
+    {
+      "type": "time_tick",
+      "now": "day1 12:00",
+      "hours": 12
+    },
+    {
+      "type": "time_tick",
+      "now": "day2 00:00",
+      "hours": 12
+    },
+    {
+      "type": "time_tick",
+      "now": "day2 12:00",
+      "hours": 12
+    },
+    {
+      "type": "time_tick",
+      "now": "day3 00:00",
+      "hours": 12
+    },
+    {
+      "type": "time_tick",
+      "now": "day3 12:00",
+      "hours": 12
+    },
+    {
+      "type": "time_tick",
+      "now": "day4 00:00",
+      "hours": 12
+    }
+  ],
+  "expect": [
+    {
+      "output": "character_interaction",
+      "kind": "together",
+      "from": "haru",
+      "to": "yuna",
+      "count": 3
+    },
+    {
+      "output": "proactive_message",
+      "character": "mina",
+      "reason": "lonely",
+      "count": 2
+    },
+    {
+      "character": "mina",
+      "field": "loneliness",
+      "at_least": 80
+    },
+    {
+      "character": "yuna",
+      "field": "loneliness",
+      "at_most": 60
+    },
+    {
+      "character": "haru",
+      "field": "loneliness",
+      "at_most": 40
+    },
+    {
+      "relationship": [
+        "yuna",
+        "haru"
+      ],
+      "field": "affinity",
+      "equals": 31
+    },
+    {
+      "memory": {
+        "character": "yuna",
+        "kind": "experienced",
+        "content": "yuna spent time with haru."
+      },
+      "count": 3
+    }
+  ]
+}

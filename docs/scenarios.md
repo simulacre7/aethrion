@@ -22,6 +22,7 @@ mix aethrion.report priv/scenarios/01_the_flower.json     # HTML report in tmp/
 | `07_crossroads.json` | One moment, four branches: say nothing, apologize, kind words, or snap. Compared side by side in the report. |
 | `08_old_friends.json` | Days of kindness, then silence, in a world tuned for days: conversations fade into lasting impressions, and the impression is what Mina remembers. |
 | `09_benefit_of_the_doubt.json` | The same hostile words land at half strength on a friend with a record of kindness, and in full on someone without one. |
+| `10_company.json` | Three quiet days: friends keep each other company while the character without a close friend grows loneliest. |
 
 ## Format
 
