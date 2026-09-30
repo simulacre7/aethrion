@@ -4,6 +4,17 @@ defmodule Aethrion.CLI.CommandParser do
 
   alias Aethrion.Event
 
+  @character_fields %{
+    "mood" => :mood,
+    "loneliness" => :loneliness,
+    "jealousy" => :jealousy,
+    "joy" => :joy,
+    "stress" => :stress,
+    "energy" => :energy
+  }
+
+  @relationship_fields %{"affinity" => :affinity, "trust" => :trust, "tension" => :tension}
+
   def parse(line) when is_binary(line) do
     line
     |> String.trim()
@@ -23,12 +34,12 @@ defmodule Aethrion.CLI.CommandParser do
   defp do_parse(["why", target, field]) do
     case String.split(target, "->", parts: 2) do
       [from, to] when from != "" and to != "" ->
-        with {:ok, field} <- field(field, ~w(affinity trust tension)) do
+        with {:ok, field} <- field(field, @relationship_fields) do
           {:ok, {:why, {from, to}, field}}
         end
 
       [character] ->
-        with {:ok, field} <- field(field, ~w(mood loneliness jealousy joy stress energy)) do
+        with {:ok, field} <- field(field, @character_fields) do
           {:ok, {:why, character, field}}
         end
 
@@ -97,10 +108,16 @@ defmodule Aethrion.CLI.CommandParser do
     {:error, "unknown command. Type help for available commands."}
   end
 
-  # Fields come from a fixed list, so no atoms are created from input.
+  # Fields map through literal atoms, so input never creates atoms and the
+  # lookup never depends on which modules happen to be loaded.
   defp field(name, allowed) do
-    if name in allowed,
-      do: {:ok, String.to_existing_atom(name)},
-      else: {:error, "field must be one of: #{Enum.join(allowed, ", ")}"}
+    case Map.fetch(allowed, name) do
+      {:ok, field} ->
+        {:ok, field}
+
+      :error ->
+        {:error,
+         "field must be one of: #{allowed |> Map.keys() |> Enum.sort() |> Enum.join(", ")}"}
+    end
   end
 end

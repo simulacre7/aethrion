@@ -1,5 +1,6 @@
 defmodule Aethrion.CLI.CommandParserTest do
   use ExUnit.Case, async: true
+  use ExUnitProperties
 
   alias Aethrion.CLI.CommandParser
 
@@ -73,5 +74,24 @@ defmodule Aethrion.CLI.CommandParserTest do
   test "parses comfort" do
     assert {:ok, %{type: :comfort_offered, from: "haru", to: "yuna"}} =
              CommandParser.parse("comfort haru yuna")
+  end
+
+  property "never raises, whatever is typed" do
+    words =
+      ~w(gift say message why context tick comfort apologize save load record report memories
+         status undo user mina yuna yuna->haru -> trust jealousy warm smug observed_by a,b,, 0 -1 quit)
+
+    check all(
+            tokens <-
+              list_of(one_of([member_of(words), string(:printable, max_length: 5)]),
+                max_length: 6
+              ),
+            max_runs: 500
+          ) do
+      line = Enum.join(tokens, " ")
+
+      assert match?({:ok, _}, CommandParser.parse(line)) or
+               match?({:error, _}, CommandParser.parse(line))
+    end
   end
 end
