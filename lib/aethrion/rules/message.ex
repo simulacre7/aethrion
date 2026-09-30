@@ -48,6 +48,7 @@ defmodule Aethrion.Rules.Message do
       hostile_tension: 10,
       hostile_stress: 20,
       hostile_joy: -10,
+      sensitive_stress: 10,
       warm_importance: 45,
       cold_importance: 35,
       hostile_importance: 65,
@@ -132,6 +133,25 @@ defmodule Aethrion.Rules.Message do
       min(base, -div(current * share * percent, 10_000))
     else
       base
+    end
+  end
+
+  # Sensitive characters take harsh words harder.
+  defp character_amount(
+         %Transition{event: %{tone: :hostile} = event, state: state} = transition,
+         :stress,
+         amount,
+         percent
+       ) do
+    case Aethrion.State.character(state, event.to) do
+      %Aethrion.Character{} = character ->
+        if Aethrion.Character.trait?(character, :sensitive),
+          do:
+            amount.(:stress) + div(Transition.param(transition, :sensitive_stress) * percent, 100),
+          else: amount.(:stress)
+
+      nil ->
+        amount.(:stress)
     end
   end
 

@@ -412,6 +412,14 @@ defmodule Aethrion.NarrativeTest do
       assert length(Enum.uniq(Enum.map(replies(outputs, "mina"), & &1.text))) >= 2
     end
 
+    test "sensitive characters take harsh words harder" do
+      hostile = fn to -> Event.message_sent("user", to, "Leave me alone.", tone: :hostile) end
+      {state, _outputs} = run!(Runtime.demo_state(), [hostile.("mina"), hostile.("yuna")])
+
+      assert character_state(state, "mina").stress == 20
+      assert character_state(state, "yuna").stress == 30
+    end
+
     test "a first harsh word lands by temperament" do
       hostile = fn to -> Event.message_sent("user", to, "Leave me alone.", tone: :hostile) end
       {_state, outputs} = run!(Runtime.demo_state(), Enum.map(["mina", "yuna", "haru"], hostile))

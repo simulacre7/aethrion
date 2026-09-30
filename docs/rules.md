@@ -59,7 +59,7 @@ Outputs report the delta that was actually applied after clamping. `energy` is r
 | `warm` | affinity +4, trust +2, loneliness -15 (or half of what built up, if more, after a quiet stretch: `warm_return_percent`), joy +8, tension -2 (not below 0) | yes (45) |
 | `neutral` | loneliness -6 | no |
 | `cold` | affinity -3, tension +4, joy -5 | yes (35) |
-| `hostile` | affinity -8, trust -6, tension +10, stress +20, joy -10 | yes (65) |
+| `hostile` | affinity -8, trust -6, tension +10, stress +20 (`:sensitive` +10), joy -10 | yes (65) |
 
 History changes how a message lands, through impressions built by consolidation:
 

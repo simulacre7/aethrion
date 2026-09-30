@@ -110,7 +110,7 @@
     },
     {
       "name": "Snap at Yuna",
-      "description": "The same words to Yuna, who has no history with the user to weigh against them, land in full.",
+      "description": "The same words to Yuna, who has no history with the user to weigh against them, land in full, and being sensitive, she takes them harder still.",
       "events": [
         {
           "type": "message_sent",
@@ -141,7 +141,7 @@
         {
           "character": "yuna",
           "field": "stress",
-          "equals": 20
+          "equals": 30
         },
         {
           "output": "reply",
