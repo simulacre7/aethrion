@@ -32,7 +32,8 @@ defmodule Aethrion.Report do
 
   - `:locale` - `:ko` renders every character line with the Korean templates
     (`Aethrion.Expression.Templates.Ko`); the rest of the report stays in
-    English. Defaults to `:en`, the deterministic fallback text.
+    English (the Korean lines are marked `lang="ko"`). Defaults to `:en`, the
+    deterministic fallback text.
   """
   @spec html(Scenario.Result.t(), keyword()) :: iodata()
   def html(%Scenario.Result{} = result, opts \\ []) do
@@ -50,7 +51,7 @@ defmodule Aethrion.Report do
     focused = %{result | state: view.(result.state)}
 
     [
-      "<!doctype html>\n<html lang=\"#{locale}\">\n<head>\n<meta charset=\"utf-8\">\n",
+      "<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n",
       "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n",
       "<title>",
       esc(scenario.name),
@@ -804,7 +805,9 @@ defmodule Aethrion.Report do
     lines = fn outputs ->
       Enum.map(outputs, fn
         %{context: %Aethrion.Expression.Request{} = request} = output ->
-          %{output | text: Aethrion.Expression.Templates.Ko.render(request)}
+          output
+          |> Map.put(:text, Aethrion.Expression.Templates.Ko.render(request))
+          |> Map.put(:lang, "ko")
 
         output ->
           output
@@ -851,7 +854,9 @@ defmodule Aethrion.Report do
       if(scene?, do: "", else: [" → ", esc(display(state, listener))]),
       "<span class=\"tag\">",
       esc(tag),
-      "</span></figcaption><blockquote>",
+      "</span></figcaption><blockquote",
+      if(output[:lang], do: [" lang=\"", output.lang, "\""], else: ""),
+      ">",
       esc(output.text),
       "</blockquote></figure>"
     ]

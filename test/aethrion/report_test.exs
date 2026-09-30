@@ -41,8 +41,8 @@ defmodule Aethrion.ReportTest do
   test "character lines can be rendered in Korean" do
     html = Report.html(result(), locale: :ko)
 
-    assert html =~ ~s(<html lang="ko">)
-    assert html =~ "아까 Mina랑 있을 때 즐거워 보이더라."
+    assert html =~ ~s(<html lang="en">)
+    assert html =~ ~s(<blockquote lang="ko">아까 Mina랑 있을 때 즐거워 보이더라.)
     # Speech bubbles change; the rule log stays as the rules wrote it.
     refute html =~ "<blockquote>You looked happy with Mina earlier."
     assert Report.html(result()) =~ "<blockquote>You looked happy with Mina earlier."
