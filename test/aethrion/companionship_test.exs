@@ -25,7 +25,7 @@ defmodule Aethrion.CompanionshipTest do
     assert [_tick, %{type: :time_spent_together, from: "ana", to: "ben", cause: "e1"}] =
              step.events
 
-    assert character_state(step.state, "ana").loneliness == 64 - 15
+    assert character_state(step.state, "ana").loneliness == 62 - 20
     assert character_state(step.state, "ben").joy == 6
     assert State.get_relationship(step.state, "ben", "ana").affinity == 2
     assert [%{kind: :together}] = of_type(step.outputs, :character_interaction)

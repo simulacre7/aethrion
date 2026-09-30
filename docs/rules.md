@@ -54,18 +54,18 @@ Outputs report the delta that was actually applied after clamping. `energy` is r
 
 | tone | receiver effects | remembered (importance) |
 | --- | --- | --- |
-| `warm` | affinity +4, trust +2, loneliness -8, joy +8 | yes (45) |
-| `neutral` | loneliness -4 | no |
+| `warm` | affinity +4, trust +2, loneliness -15, joy +8 | yes (45) |
+| `neutral` | loneliness -6 | no |
 | `cold` | affinity -3, tension +4, joy -5 | yes (35) |
 | `hostile` | affinity -8, trust -6, tension +10, stress +20, joy -10 | yes (65) |
 
 History changes how a message lands, through impressions built by consolidation:
 
-- **Goodwill** - if the receiver holds impressions of at least 3 kind acts from the sender (warm messages, gifts, comfort, time together), cold and hostile effects are halved (`goodwill_count`, `goodwill_percent`). Their reply reflects it: "That's not like you. Is something wrong?"
+- **Goodwill** - if the receiver holds impressions of at least 3 kind acts from the sender (warm messages, gifts, comfort, time together), and more kind acts than hostile messages (remembered ones, this one included, and impressions alike), cold and hostile effects are halved (`goodwill_count`, `goodwill_percent`). Their reply reflects it: "That's not like you. Is something wrong?" A cycle of kindness and insults runs out of goodwill.
 - **Wariness** - if the receiver holds an impression of at least 2 hostile messages from the sender, warm effects are halved (`wariness_count`, `wariness_percent`).
 - **Reputation** - only when the receiver holds no firsthand impression of the sender at all, what they have seen or heard counts, and for less: a reputation for hostility to others (2+) leaves 75% of a warm message's effect, and a reputation for warmth to others (3+) leaves 75% of a cold or hostile one's (`reputation_*` params). Any firsthand history takes precedence.
 
-**reply** - when someone outside the cast (such as the user) talks to an active, unblocked character, the character emits a `:reply` output phrased from their current mood and memories. Replies do not change state. A warm message from someone the character saw or heard be hostile to another character gets a pointed answer: "Thanks... but I saw what you said to Mina." A character remembers when each person last talked to them; after 72 simulated hours or more, warm and neutral replies say so ("You're back! It's been a while." or, if lonely, "You're back... I missed you."). When the character's mood is neutral or happy, the bond colors warm and neutral replies: a close friend says "You always know how to make my day.", a strained one "...Thanks, I guess."
+**reply** - when someone outside the cast (such as the user) talks to an active, unblocked character, the character emits a `:reply` output phrased from their current mood and memories. Replies do not change state. A warm message from someone the character saw or heard be hostile to another character gets a pointed answer: "Thanks... but I saw what you said to Mina." Hurt feelings speak before the mood: with a strained or estranged bond the bond answers ("...What do you want?"), and with tension of 10 or more a warm word gets "Thanks... I'm still a little hurt, though." A character remembers when each person last talked to them; after 72 simulated hours or more, warm and neutral replies say so ("You're back! It's been a while." or, if lonely, "You're back... I missed you."). When the character's mood is neutral or happy, the bond colors warm and neutral replies: a close friend says "You always know how to make my day." Harsh words bring up the whole record: every harsh message the character still remembers from the sender and what they make of the sender, so goodwill in the reply matches goodwill in the rule.
 
 **reputation** - characters judge people by how they treat others. For each witness in the message's (or apology's, see below) `observed_by` (never the sender or receiver, and never an inactive or blocked character):
 
@@ -78,15 +78,17 @@ History changes how a message lands, through impressions built by consolidation:
 | `cold` | trust -2, tension +2 |
 | `hostile` | trust -4, tension +4 |
 
-### `apology_offered` -> `apology`, `reputation`
+### `apology_offered` -> `apology`, `reply`, `reputation`
 
-The receiver: jealousy -15, loneliness -6, stress -10, trust toward the apologizer +8, tension toward the apologizer -10 (never below 0), remembers the apology (importance 70).
+The receiver: jealousy -15, loneliness -6, stress -10, trust toward the apologizer +8, tension toward the apologizer -10 (never below 0), remembers the apology (importance 70). Apologies wear thin: for each earlier apology from the same person the receiver still remembers (about a week), the trust gained and the tension eased are halved.
+
+The receiver replies (a `:reply` with tone `:apology`): gratefully the first time, "Okay... Just please don't make a habit of it." the second, and "You keep saying sorry. I just need it to stop happening." after that. A character who felt left out by a gift says "Thanks. I just wanted to feel remembered too.", one with nothing to forgive "You don't have to apologize. We're okay.", and one still tense "Thank you for saying that. I need a little time."
 
 Apologies take `observed_by` too. Witnesses remember it (importance 45), and those who care about the receiver (affinity >= 20) trust the apologizer +2 and ease tension toward them by 3 (never below 0); hearing about it through gossip counts for half. Making amends in public repairs a reputation, and a character who saw the apology no longer brings up the harsh words in replies.
 
 ### `time_tick` -> `time_passage`, `memory_decay`, `consolidation`, `autonomy`, `companionship`
 
-**time_passage** - advances `state.clock` by `hours`. For each active character, per hour: loneliness +4, joy -2, stress -2. Tension in every relationship eases by 2 for each simulated day boundary crossed (so the result does not depend on tick size). Jealousy does not fade with time alone; it takes an apology or comfort.
+**time_passage** - advances `state.clock` by `hours`. For each active character, per hour: joy -2, stress -2, and loneliness +2 for each hour 16 or more (`quiet_hours`) after they last had company. Anything that eases a character's loneliness (a warm or neutral message, a gift, an apology, comfort, gossip, time together) counts as company; a character who has never had company grows lonely from the start. For each simulated day boundary crossed, jealousy fades by 5 and tension in every relationship eases by 2. None of this depends on how time was split into ticks.
 
 **memory_decay** - recomputes each memory's strength from its age:
 
@@ -119,7 +121,7 @@ At most one confidence per character per tick. It is enqueued as a `gossip_share
 
 ### `time_spent_together` -> `together`
 
-Both characters: loneliness -15, joy +6, affinity toward each other +2, and both remember it (importance 40). Emits a `:character_interaction` scene of kind `:together`. Repeated outings consolidate into impressions and count as kindness for goodwill.
+Both characters: loneliness -20, joy +6, affinity toward each other +2, and both remember it (importance 40). Emits a `:character_interaction` scene of kind `:together`. Repeated outings consolidate into impressions and count as kindness for goodwill.
 
 ### `gossip_shared` -> `gossip`, `reputation`, `empathy`
 
@@ -165,7 +167,7 @@ Names what a directed relationship has become, first match wins:
 | `friendly` | affinity >= 25 and trust >= 15 |
 | `neutral` | otherwise |
 
-Bonds are derived, not stored (`Aethrion.Rules.Bond.derive/2`). After each event, every relationship the event changed is compared before and after; when its bond moved, the rule emits `:bond_changed` and logs `[Bond] Mina toward user: friendly -> strained`. Relationships an event did not touch never announce. Bonds appear in the CLI status table, reports, and expression requests.
+Bonds settle rather than flicker: once a relationship has a bond (recorded on the relationship as `bond`), it keeps it until the numbers move 5 points (`hysteresis`) past the threshold that would change it. A close friend stays close until affinity drops below 45; a strained relationship stays strained until tension falls below 15. Getting worse into strained or estranged, and getting closer, register at once. `Aethrion.Rules.Bond.derive/2` gives the current bond of any relationship. After each event, every relationship the event changed is compared before and after; when its bond moved, the rule emits `:bond_changed` and logs `[Bond] Mina toward user: friendly -> strained`. Relationships an event did not touch never announce. Bonds appear in the CLI status table, reports, and expression requests.
 
 ### `proactive`
 
@@ -174,11 +176,11 @@ Characters reach out to people (actors who are not characters, such as `user`) w
 | reason | condition | cooldown |
 | --- | --- | --- |
 | `jealous` | jealousy >= 15 and jealousy + loneliness >= 45 | 24 simulated hours |
-| `lonely` | loneliness >= 60 and jealousy < 15 | 24 simulated hours |
-| `protective` | saw a person be hostile to a character they care about (affinity >= 30) | 24 simulated hours per person and friend |
-| `curious` | holds secondhand news involving a person (not a character), and is `:playful` or has affinity >= 30 toward the user | once per topic |
+| `lonely` | loneliness >= 60, jealousy < 15, affinity >= 25 toward the person, no company for 6 hours, and not heading out with a friend this hour | 24 simulated hours, or 72 after a lonely message that got no reply |
+| `protective` | saw a person be hostile to a character they care about (affinity >= 30), and has not seen or heard them apologize since | once per incident, and 24 simulated hours per person and friend |
+| `curious` | holds secondhand news involving a person (not a character), and is `:playful` or has affinity >= 30 toward them; not about harsh words from someone they saw be hostile themselves | once per topic |
 
-Characters do not reach out to someone they feel tense toward (tension >= 10, parameter `avoid_tension`); they confide in friends instead.
+Characters do not reach out to someone they feel tense toward (tension >= 5, parameter `avoid_tension`: one hostile message keeps them away for about three days); they confide in friends instead. Lonely messages recall fond memories (kind words, a gift from the last three days, a record of kindness) only when nothing harsh stands between them, and mention how long it has been.
 
 Each message carries fallback text from deterministic templates, the ids of the memories it references, and a read-only context snapshot for optional LLM rendering (see [expression.md](expression.md)).
 

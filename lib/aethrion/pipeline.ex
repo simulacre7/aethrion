@@ -38,7 +38,7 @@ defmodule Aethrion.Pipeline do
       event_rules: %{
         gift_received: [Rules.Gift, Rules.Observation],
         message_sent: [Rules.Message, Rules.Reply, Rules.Reputation],
-        apology_offered: [Rules.Apology, Rules.Reputation],
+        apology_offered: [Rules.Apology, Rules.Reply, Rules.Reputation],
         time_tick: [
           Rules.TimePassage,
           Rules.MemoryDecay,

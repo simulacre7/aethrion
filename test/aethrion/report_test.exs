@@ -60,7 +60,7 @@ defmodule Aethrion.ReportTest do
     assert html =~ "<h3 class=\"sub\">Bond changes</h3>"
 
     assert html =~
-             ~r{Haru → You: neutral → <strong>friendly</strong> <span class="cause">e\d+</span> → <strong>close</strong> <span class="cause">e\d+</span> → <strong>friendly</strong>}
+             ~r{Haru → You: neutral → <strong>friendly</strong> <span class="cause">e\d+</span> → <strong>close</strong> <span class="cause">e\d+</span></li>}
 
     refute Report.html(result()) =~ "Bond changes"
   end

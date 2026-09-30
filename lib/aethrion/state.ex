@@ -356,7 +356,7 @@ defmodule Aethrion.State do
   end
 
   defp relationship_to_data(relationship) do
-    %{
+    data = %{
       "from" => relationship.from,
       "to" => relationship.to,
       "affinity" => relationship.affinity,
@@ -364,6 +364,11 @@ defmodule Aethrion.State do
       "tension" => relationship.tension,
       "tags" => Enum.map(relationship.tags, &atom_to_string/1)
     }
+
+    case relationship.bond do
+      nil -> data
+      bond -> Map.put(data, "bond", Atom.to_string(bond))
+    end
   end
 
   @doc false
@@ -374,7 +379,8 @@ defmodule Aethrion.State do
       affinity: Map.get(data, "affinity", 0),
       trust: Map.get(data, "trust", 0),
       tension: Map.get(data, "tension", 0),
-      tags: data |> Map.get("tags", []) |> Enum.map(&trait_from_data/1)
+      tags: data |> Map.get("tags", []) |> Enum.map(&trait_from_data/1),
+      bond: enum_from_data(Map.get(data, "bond"), Aethrion.Rules.Bond.bonds(), nil)
     }
   end
 
@@ -468,7 +474,8 @@ defmodule Aethrion.State do
   defp validate_relationship(relationship) do
     with :ok <- required(relationship, "from", &non_empty_string?/1),
          :ok <- required(relationship, "to", &non_empty_string?/1),
-         :ok <- optional(relationship, "tags", &string_list?/1) do
+         :ok <- optional(relationship, "tags", &string_list?/1),
+         :ok <- optional(relationship, "bond", &bond_name?/1) do
       in_range(relationship, @relationship_fields, -100, 100)
     end
   end
@@ -523,6 +530,9 @@ defmodule Aethrion.State do
       :error -> :ok
     end
   end
+
+  defp bond_name?(value),
+    do: Enum.any?(Aethrion.Rules.Bond.bonds(), &(Atom.to_string(&1) == value))
 
   defp check(true, _key), do: :ok
   defp check(false, key), do: invalid([key], "has an invalid value")

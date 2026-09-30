@@ -81,7 +81,8 @@
               "to": {"$ref": "#/definitions/id"},
               "affinity": {"$ref": "#/definitions/signed"},
               "trust": {"$ref": "#/definitions/signed"},
-              "tension": {"$ref": "#/definitions/signed"}
+              "tension": {"$ref": "#/definitions/signed"},
+              "bond": {"enum": ["estranged", "strained", "neutral", "friendly", "close"]}
             }
           }
         }

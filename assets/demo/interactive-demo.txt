@@ -17,7 +17,7 @@ MOOD     Mina neutral -> happy
 MOOD     Yuna neutral -> jealous
 user> tick 2
 EVENT    time passes +2h
-RULE     2h passed: loneliness +4 an hour for active characters, up to 100 (clock 2h)
+RULE     2h passed: loneliness +2 an hour for characters 16h or more without company (clock 2h)
 MOOD     Mina happy -> neutral
 SAYS     Yuna -> user: "You looked happy with Mina earlier. I wondered if you forgot about me."
 CASCADE  Yuna confides in Haru
@@ -40,7 +40,7 @@ INTENT   "thank you for looking after Yuna" -> message_sent (warm) via Aethrion.
 EVENT    user -> Haru (warm): thank you for looking after Yuna
 RELATION Haru affinity toward user +4
 RELATION Haru trust toward user +2
-STATE    Haru loneliness -8
+STATE    Haru loneliness -12
 STATE    Haru joy +8
 MEMORY   Haru remembers: "user said to haru (warm): "thank you for looking after Yuna""
 SAYS     Haru -> user: "That's sweet of you."

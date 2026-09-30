@@ -1,12 +1,7 @@
 {
   "$schema": "../scenario.schema.json",
   "name": "Company",
-  "description": "The user goes quiet for three days. Haru, who looks out for Yuna, keeps inviting Yuna to spend the afternoon; Yuna likes Haru but not yet enough to ask first. Mina has no friend that close. Friendship buffers loneliness: Mina ends up the loneliest, and three afternoons together bring Yuna close enough to Haru to be the one who asks next time.",
-  "tuning": {
-    "time_passage": {
-      "loneliness_per_hour": 1
-    }
-  },
+  "description": "The user goes quiet for four days. Haru, who looks out for Yuna, keeps inviting Yuna to spend the afternoon; Yuna likes Haru but not yet enough to ask first, and once, between afternoons, she writes to the user instead. Mina has no friend that close: she ends up the loneliest, reaches out to the user, and when nobody answers waits three days before trying again. Four afternoons together bring Yuna close enough to Haru to be the one who asks next time.",
   "world": "demo",
   "events": [
     {
@@ -38,6 +33,16 @@
       "type": "time_tick",
       "now": "day4 00:00",
       "hours": 12
+    },
+    {
+      "type": "time_tick",
+      "now": "day4 12:00",
+      "hours": 12
+    },
+    {
+      "type": "time_tick",
+      "now": "day5 00:00",
+      "hours": 12
     }
   ],
   "expect": [
@@ -45,8 +50,14 @@
       "output": "character_interaction",
       "kind": "together",
       "to": "yuna",
-      "count": 3,
+      "count": 4,
       "character": "haru"
+    },
+    {
+      "output": "proactive_message",
+      "character": "yuna",
+      "reason": "lonely",
+      "count": 1
     },
     {
       "output": "proactive_message",
@@ -75,7 +86,7 @@
         "haru"
       ],
       "field": "affinity",
-      "equals": 31
+      "equals": 33
     },
     {
       "memory": {
@@ -83,7 +94,7 @@
         "kind": "experienced",
         "content": "yuna spent time with haru."
       },
-      "count": 3
+      "count": 4
     }
   ]
 }

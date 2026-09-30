@@ -1,7 +1,7 @@
 {
   "$schema": "../scenario.schema.json",
   "name": "Two regulars",
-  "description": "Two people, Alex and Sam, visit the same three characters. Alex brings Mina a ring while Yuna watches. Yuna's jealousy is about Alex, so that is who Yuna writes to; Haru hears the story and asks Alex about it. A day later, Mina remembers the ring when reaching out to Alex, while Yuna's lonely message goes to Sam, the person Yuna feels closest to. Each character sends at most one message an hour, so Haru's second message waits.",
+  "description": "Two people, Alex and Sam, visit the same three characters. Alex brings Mina a ring while Yuna watches. Yuna's jealousy is about Alex, so that is who Yuna writes to; Haru hears the story and asks Alex about it; when Alex apologizes, Yuna admits she just wanted to feel remembered too. Two quiet days later, Mina remembers the ring when reaching out to Alex, Yuna's lonely message goes to Sam, the person Yuna feels closest to, and Haru, who only knows Alex, writes to Alex again.",
   "world": {
     "characters": [
       {
@@ -20,7 +20,7 @@
           "sensitive"
         ],
         "state": {
-          "loneliness": 20
+          "loneliness": 30
         }
       },
       {
@@ -55,13 +55,13 @@
       {
         "from": "haru",
         "to": "yuna",
-        "affinity": 30,
+        "affinity": 28,
         "trust": 35
       },
       {
         "from": "haru",
         "to": "alex",
-        "affinity": 15
+        "affinity": 25
       },
       {
         "from": "mina",
@@ -100,8 +100,8 @@
     },
     {
       "type": "time_tick",
-      "now": "wednesday",
-      "hours": 30
+      "now": "thursday",
+      "hours": 48
     }
   ],
   "expect": [

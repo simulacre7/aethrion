@@ -50,7 +50,8 @@ defmodule Aethrion.Expression do
       names: names(state, [speaker_id, listener_id], memories),
       tone: Keyword.get(opts, :tone),
       message: Keyword.get(opts, :message),
-      since_contact: Keyword.get(opts, :since_contact)
+      since_contact: Keyword.get(opts, :since_contact),
+      now: state.clock
     }
 
     %{request | fallback_text: Templates.render(request)}

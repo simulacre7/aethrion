@@ -91,9 +91,9 @@ defmodule Aethrion.RuntimeTest do
       {state, _outputs} = dispatch!(Runtime.demo_state(), Event.time_tick("test:t2", hours: 2))
 
       assert state.clock == 2
-      assert character_state(state, "mina").loneliness == 20
-      assert character_state(state, "yuna").loneliness == 34
-      assert character_state(state, "haru").loneliness == 16
+      assert character_state(state, "mina").loneliness == 16
+      assert character_state(state, "yuna").loneliness == 30
+      assert character_state(state, "haru").loneliness == 12
       assert character_state(state, "haru").last_active_at == "test:t2"
     end
 
@@ -107,7 +107,7 @@ defmodule Aethrion.RuntimeTest do
       assert character_state(state, "haru").loneliness == 8
     end
 
-    test "jealousy does not fade with time alone" do
+    test "jealousy fades a little each day, not each hour" do
       state =
         Runtime.demo_state()
         |> State.update_character_state("haru", &%{&1 | blocked?: true})
@@ -116,6 +116,33 @@ defmodule Aethrion.RuntimeTest do
         run!(state, [flower_for_mina(), Event.time_tick("test:t2", hours: 8)])
 
       assert character_state(state, "yuna").jealousy == 15
+
+      {state, _outputs} = dispatch!(state, Event.time_tick("test:t3", hours: 16))
+      assert character_state(state, "yuna").jealousy == 10
+    end
+
+    test "loneliness grows only after a quiet stretch" do
+      {state, _outputs} =
+        run!(Runtime.demo_state(), [
+          Event.message_sent("user", "mina", "Morning!", tone: :neutral),
+          Event.time_tick("t1", hours: 16)
+        ])
+
+      # Company at hour 0: no growth for 16 hours.
+      assert character_state(state, "mina").loneliness == 6
+
+      {state, _outputs} = dispatch!(state, Event.time_tick("t2", hours: 3))
+      assert character_state(state, "mina").loneliness == 6 + 3 * 2
+
+      # Splitting time differently gives the same result.
+      {split, _outputs} =
+        run!(Runtime.demo_state(), [
+          Event.message_sent("user", "mina", "Morning!", tone: :neutral),
+          Event.time_tick("t1", hours: 5),
+          Event.time_tick("t2", hours: 14)
+        ])
+
+      assert character_state(split, "mina").loneliness == 6 + 3 * 2
     end
   end
 
@@ -155,9 +182,11 @@ defmodule Aethrion.RuntimeTest do
     end
 
     test "a proactive message repeats only after its cooldown" do
+      # Jealous enough to still be jealous after it fades a day's worth.
       state =
         Runtime.demo_state()
         |> State.update_character_state("haru", &%{&1 | blocked?: true})
+        |> State.update_character_state("yuna", &%{&1 | jealousy: 30})
 
       {state, first} = run!(state, [flower_for_mina(), Event.time_tick("t2", hours: 2)])
       {state, during} = dispatch!(state, Event.time_tick("t3", hours: 10))
@@ -169,22 +198,28 @@ defmodule Aethrion.RuntimeTest do
     end
 
     test "lonely characters reach out when nobody has been in touch" do
-      {_state, outputs} = dispatch!(Runtime.demo_state(), Event.time_tick("t1", hours: 12))
+      {_state, outputs} = dispatch!(Runtime.demo_state(), Event.time_tick("t1", hours: 24))
 
       assert [%{reason: :lonely, text: "It's been quiet today." <> _}] =
                proactive(outputs, "mina")
 
-      assert [%{reason: :lonely}] = proactive(outputs, "yuna")
+      # Haru and Yuna have each other: an afternoon together instead of a message.
+      assert [] = proactive(outputs, "yuna")
       assert [] = proactive(outputs, "haru")
+
+      assert [%{kind: :together, character_id: "haru", to: "yuna"}] =
+               of_type(outputs, :character_interaction)
     end
 
     test "lonely messages recall the user's last kind words" do
       events = [
         Event.message_sent("user", "mina", "You did great today.", tone: :warm),
-        Event.time_tick("t1", hours: 16)
+        Event.time_tick("t1", hours: 34)
       ]
 
-      {_state, outputs} = run!(Runtime.demo_state(), events)
+      # Already a little lonely, so she misses the kind words before they fade.
+      state = State.update_character_state(Runtime.demo_state(), "mina", &%{&1 | loneliness: 40})
+      {_state, outputs} = run!(state, events)
 
       assert [%{reason: :lonely, text: text}] = proactive(outputs, "mina")
       assert text =~ "You did great today."
@@ -221,7 +256,7 @@ defmodule Aethrion.RuntimeTest do
 
       yuna = character_state(step.state, "yuna")
       assert yuna.jealousy == 10
-      assert yuna.loneliness == 18
+      assert yuna.loneliness == 14
       assert yuna.mood == :neutral
       assert State.get_relationship(step.state, "yuna", "haru").trust == 47
     end
@@ -238,7 +273,7 @@ defmodule Aethrion.RuntimeTest do
         ])
 
       assert character_state(state, "yuna").jealousy == 0
-      assert character_state(state, "yuna").loneliness == 28
+      assert character_state(state, "yuna").loneliness == 20
       assert [] = of_type(outputs, :proactive_message)
       assert [] = of_type(outputs, :character_interaction)
     end

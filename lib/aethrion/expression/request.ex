@@ -20,6 +20,8 @@ defmodule Aethrion.Expression.Request do
   - `since_contact` - for replies and proactive messages, simulated hours
     since the listener last talked to the speaker, or `nil` if they never
     have; `reunion?/1` says whether that is a long absence
+  - `now` - the simulated clock (hours) when the output was produced;
+    `hours_ago/2` says how long ago a memory was formed
   - `fallback_text` - the deterministic template text
   """
 
@@ -34,6 +36,7 @@ defmodule Aethrion.Expression.Request do
           tone: atom() | nil,
           message: String.t() | nil,
           since_contact: non_neg_integer() | nil,
+          now: non_neg_integer() | nil,
           fallback_text: String.t() | nil
         }
 
@@ -48,6 +51,7 @@ defmodule Aethrion.Expression.Request do
     tone: nil,
     message: nil,
     since_contact: nil,
+    now: nil,
     fallback_text: nil
   ]
 
@@ -57,6 +61,17 @@ defmodule Aethrion.Expression.Request do
   @spec reunion?(t()) :: boolean()
   def reunion?(%__MODULE__{since_contact: hours}),
     do: is_integer(hours) and hours >= @reunion_hours
+
+  @doc """
+  Simulated hours since `memory` (one of the request's memories) was formed,
+  or `nil` when the request or the memory does not say.
+  """
+  @spec hours_ago(t(), map()) :: non_neg_integer() | nil
+  def hours_ago(%__MODULE__{now: now}, %{created_tick: tick})
+      when is_integer(now) and is_integer(tick),
+      do: max(now - tick, 0)
+
+  def hours_ago(%__MODULE__{}, _memory), do: nil
 
   @doc """
   What the speaker knows about the listener being hostile to someone else,

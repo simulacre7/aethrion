@@ -85,6 +85,11 @@ defmodule Aethrion.Transition do
 
   Logs `[State] Name field +n` unless `log: false` is given. Changes that clamp
   to zero are skipped entirely.
+
+  Easing loneliness (a negative `:loneliness` delta) also records that the
+  character had company just now, even when loneliness was already zero:
+  loneliness only grows again after a quiet stretch (see
+  `Aethrion.Rules.TimePassage`).
   """
   @spec adjust_character(t(), String.t(), atom(), integer(), keyword()) :: t()
   def adjust_character(%__MODULE__{} = transition, character_id, field, delta, opts \\ [])
@@ -92,6 +97,11 @@ defmodule Aethrion.Transition do
     unless field in CharacterState.numeric_fields() do
       raise ArgumentError, "#{inspect(field)} is not a numeric character field"
     end
+
+    transition =
+      if field == :loneliness and delta < 0,
+        do: put_cooldown(transition, Aethrion.Rules.TimePassage.company_key(character_id)),
+        else: transition
 
     before = Map.fetch!(character_state(transition, character_id), field)
     value = CharacterState.clamp(before + delta)

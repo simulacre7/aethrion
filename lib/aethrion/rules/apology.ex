@@ -1,12 +1,17 @@
 defmodule Aethrion.Rules.Apology do
   @moduledoc """
   An apology eases jealousy, loneliness, and stress, and builds trust.
+
+  Apologies wear thin: for each earlier apology from the same person the
+  receiver still remembers (about a week), the trust gained and the tension
+  eased are halved, so a cycle of insults and apologies does not keep
+  building trust.
   """
 
   use Aethrion.Rule,
     id: :apology,
     description:
-      "Receiver: jealousy -15, loneliness -6, stress -10, trust +8 and tension -10 toward the apologizer, remembers the apology.",
+      "Receiver: jealousy -15, loneliness -6, stress -10, trust +8 and tension -10 toward the apologizer (halved per remembered earlier apology), remembers the apology.",
     params: [
       trust_delta: 8,
       jealousy_delta: -15,
@@ -16,7 +21,7 @@ defmodule Aethrion.Rules.Apology do
       importance: 70
     ]
 
-  alias Aethrion.{Memory, Transition}
+  alias Aethrion.{Memories, Memory, Transition}
 
   @doc false
   # Eases existing tension without pushing it below zero.
@@ -45,10 +50,21 @@ defmodule Aethrion.Rules.Apology do
         data: data(event)
       )
 
+    earlier = earlier_apologies(transition.state, event)
+    halve = &div(&1, Integer.pow(2, earlier))
+
+    note =
+      case earlier do
+        0 ->
+          "#{receiver_name} accepted an apology from #{event.from}"
+
+        n ->
+          "#{receiver_name} accepted an apology from #{event.from}, " <>
+            "but has heard #{n} before and trusts it less"
+      end
+
     transition
-    |> Transition.note("#{receiver_name} accepted an apology from #{event.from}",
-      subject: event.to
-    )
+    |> Transition.note(note, subject: event.to)
     |> Transition.adjust_character(
       event.to,
       :jealousy,
@@ -64,10 +80,23 @@ defmodule Aethrion.Rules.Apology do
       event.to,
       event.from,
       :trust,
-      Transition.param(transition, :trust_delta)
+      halve.(Transition.param(transition, :trust_delta))
     )
-    |> ease_tension(event.to, event.from, Transition.param(transition, :tension_delta))
+    |> ease_tension(event.to, event.from, halve.(Transition.param(transition, :tension_delta)))
     |> Transition.remember(memory)
+  end
+
+  @doc false
+  # Unfaded apologies the receiver remembers from the same person.
+  def earlier_apologies(state, %{from: from, to: to}) do
+    state
+    |> Memories.for_character(to)
+    |> Enum.count(
+      &match?(
+        %Memory{kind: :experienced, data: %{"event" => "apology_offered", "from" => ^from}},
+        &1
+      )
+    )
   end
 
   @doc false

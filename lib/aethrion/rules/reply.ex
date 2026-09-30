@@ -1,7 +1,9 @@
 defmodule Aethrion.Rules.Reply do
   @moduledoc """
   Characters reply when someone outside the cast (such as the user) talks to
-  them. The reply is an expressive output; the only state it keeps is when
+  them or apologizes to them (a reply with tone `:apology`, which sees every
+  apology from that person the character still remembers and the latest harsh
+  words that prompted it). The reply is an expressive output; the only state it keeps is when
   this person last talked to this character (the `"contact:<character>:<person>"`
   cooldown key), so the reply can notice a long absence
   (`Aethrion.Expression.Request` `:since_contact`).
@@ -10,7 +12,7 @@ defmodule Aethrion.Rules.Reply do
   use Aethrion.Rule,
     id: :reply,
     description:
-      "The receiver replies to external actors, phrased from their current mood and memories."
+      "The receiver replies to external actors' messages and apologies, phrased from their current mood and memories."
 
   alias Aethrion.{Character, Expression, Memories, Memory, Output, State, Transition}
 
@@ -27,17 +29,19 @@ defmodule Aethrion.Rules.Reply do
           :error -> nil
         end
 
+      {tone, message, memories} = incoming(state, event)
+
       request =
         Expression.build_request(state, :reply, event.to, event.from,
           reason: :reply,
-          tone: event.tone,
-          message: event.text,
+          tone: tone,
+          message: message,
           since_contact: since_contact,
-          memories: memories(state, event.to, event.from)
+          memories: memories
         )
 
       output =
-        Output.reply(event.to, event.from, event.tone, request.fallback_text,
+        Output.reply(event.to, event.from, tone, request.fallback_text,
           memory_refs: Enum.map(request.memories, & &1.id),
           context: request
         )
@@ -53,6 +57,77 @@ defmodule Aethrion.Rules.Reply do
 
   @doc false
   def contact_key(character, person), do: "contact:#{character}:#{person}"
+
+  defp incoming(state, %{type: :apology_offered} = event),
+    do: {:apology, event.reason, apology_memories(state, event.to, event.from)}
+
+  # Harsh words also bring up every harsh message the character still
+  # remembers from the sender and what they make of the sender, so the reply
+  # weighs the whole record, not the three most relevant memories.
+  defp incoming(state, %{tone: tone} = event) when tone in [:cold, :hostile] do
+    record =
+      state
+      |> Memories.for_character(event.to)
+      |> Enum.filter(fn memory ->
+        match?(
+          %Memory{
+            kind: :experienced,
+            data: %{"event" => "message_sent", "tone" => "hostile", "from" => from}
+          }
+          when from == event.from,
+          memory
+        ) or
+          match?(
+            %Memory{kind: :impression, data: %{"event" => "impression", "from" => from}}
+            when from == event.from,
+            memory
+          )
+      end)
+
+    {tone, event.text, Enum.uniq_by(memories(state, event.to, event.from) ++ record, & &1.id)}
+  end
+
+  defp incoming(state, event),
+    do: {event.tone, event.text, memories(state, event.to, event.from)}
+
+  # Every apology from the sender the character remembers, newest first, the
+  # latest harsh words from the sender to them, and the latest gift they saw
+  # the sender give someone else (what a jealous character may be owed an
+  # apology for).
+  defp apology_memories(state, character, sender) do
+    mine = Memories.for_character(state, character)
+
+    apologies =
+      Enum.filter(
+        mine,
+        &match?(
+          %Memory{kind: :experienced, data: %{"event" => "apology_offered", "from" => ^sender}},
+          &1
+        )
+      )
+
+    harsh =
+      Enum.find(mine, fn memory ->
+        match?(
+          %Memory{
+            kind: :experienced,
+            data: %{"event" => "message_sent", "from" => ^sender, "tone" => tone}
+          }
+          when tone in ["cold", "hostile"],
+          memory
+        )
+      end)
+
+    gift =
+      Enum.find(mine, fn memory ->
+        match?(
+          %Memory{kind: :observed, data: %{"event" => "gift_received", "from" => ^sender}},
+          memory
+        )
+      end)
+
+    apologies ++ List.wrap(harsh) ++ List.wrap(gift)
+  end
 
   # The usual relevant memories, plus any apology the sender made to someone
   # whose mistreatment is among them: a reply should not bring up harsh words

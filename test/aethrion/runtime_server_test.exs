@@ -225,7 +225,7 @@ defmodule Aethrion.RuntimeServerTest do
     assert_receive {:aethrion, _scheduler, {:scheduler_tick, {:ok, next_state, _outputs, _log}}},
                    1_000
 
-    assert next_state.characters["mina"].state.loneliness == 20
+    assert next_state.characters["mina"].state.loneliness == 16
     assert RuntimeServer.get_state(server).clock >= 2
   end
 

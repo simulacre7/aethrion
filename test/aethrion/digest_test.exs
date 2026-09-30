@@ -6,7 +6,8 @@ defmodule Aethrion.DigestTest do
   alias Aethrion.{Digest, Event, Runtime, State}
 
   defp digest(events, opts \\ []) do
-    {:ok, state, steps} = Runtime.run(Runtime.demo_state(), events)
+    {start, opts} = Keyword.pop_lazy(opts, :state, &Runtime.demo_state/0)
+    {:ok, state, steps} = Runtime.run(start, events)
     Digest.of(Enum.flat_map(steps, & &1.outputs), state, opts)
   end
 
@@ -31,12 +32,24 @@ defmodule Aethrion.DigestTest do
   end
 
   test "moods are grouped, and only ones worth telling" do
-    items = digest([Event.time_tick("t", hours: 30)])
+    # Haru and Yuna are not close enough to keep each other company.
+    apart =
+      Runtime.demo_state()
+      |> State.update_relationship("haru", "yuna", &%{&1 | affinity: 0})
+      |> State.update_relationship("yuna", "haru", &%{&1 | affinity: 0})
+
+    items = digest([Event.time_tick("t", hours: 30)], state: apart)
 
     assert [%{kind: :mood, text: "Haru, Mina, and Yuna are lonely."}] =
              Enum.filter(items, &(&1.kind == :mood))
 
-    assert [%{text: "Haru, Mina, Yuna는 외로워졌다."}] =
+    assert [%{text: "Haru, Mina와 Yuna는 외로워졌다."}] =
+             [Event.time_tick("t", hours: 30)]
+             |> digest(locale: :ko, state: apart)
+             |> Enum.filter(&(&1.kind == :mood))
+
+    # Together, Haru is fine.
+    assert [%{text: "Mina와 Yuna는 외로워졌다."}] =
              [Event.time_tick("t", hours: 30)]
              |> digest(locale: :ko)
              |> Enum.filter(&(&1.kind == :mood))

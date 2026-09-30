@@ -7,8 +7,8 @@ defmodule Aethrion.Rules.Together do
   use Aethrion.Rule,
     id: :together,
     description:
-      "Both: loneliness -15, joy +6, affinity toward each other +2; both remember the time together.",
-    params: [loneliness_delta: -15, joy_delta: 6, affinity_delta: 2, importance: 40]
+      "Both: loneliness -20, joy +6, affinity toward each other +2; both remember the time together.",
+    params: [loneliness_delta: -20, joy_delta: 6, affinity_delta: 2, importance: 40]
 
   alias Aethrion.{Expression, Memory, Output, Transition}
 

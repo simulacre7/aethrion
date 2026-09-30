@@ -12,18 +12,26 @@ defmodule Aethrion.Rules.Bond do
   | `:friendly` | affinity >= 25 and trust >= 15 |
   | `:neutral` | otherwise |
 
-  Bonds are not stored: `derive/2` computes them from any relationship. After
-  every event this reactive rule compares the bond of each relationship the
-  event changed before and after, and emits a `:bond_changed` output when it
+  Bonds settle rather than flicker. Once a relationship has a bond, it keeps
+  it until the numbers move `hysteresis` (5) points past the threshold that
+  would change it: a close friend stays close until affinity drops below 45,
+  and a strained relationship stays strained until tension falls below 15.
+  Things getting worse (becoming strained or estranged) still register at
+  once, and so does getting closer.
+
+  After every event this reactive rule compares the bond of each relationship
+  the event changed before and after, records it on the relationship
+  (`Aethrion.Relationship` `:bond`), and emits a `:bond_changed` output when it
   moved, so hosts can react to "Mina and the user became close" without
   watching numbers. Relationships the event did not touch never announce, so
-  loading a world does not produce a burst of changes.
+  loading a world does not produce a burst of changes. `derive/2` gives the
+  current bond of any relationship.
   """
 
   use Aethrion.Rule,
     id: :bond,
     description:
-      "Announces bond changes: estranged (tension>=50 or affinity<=-30) > strained (tension>=20 or trust<=-10) > close (affinity>=50, trust>=30) > friendly (affinity>=25, trust>=15) > neutral.",
+      "Announces bond changes: estranged (tension>=50 or affinity<=-30) > strained (tension>=20 or trust<=-10) > close (affinity>=50, trust>=30) > friendly (affinity>=25, trust>=15) > neutral; a bond holds until 5 points past its threshold.",
     params: [
       estranged_tension: 50,
       estranged_affinity: -30,
@@ -32,7 +40,8 @@ defmodule Aethrion.Rules.Bond do
       close_affinity: 50,
       close_trust: 30,
       friendly_affinity: 25,
-      friendly_trust: 15
+      friendly_trust: 15,
+      hysteresis: 5
     ]
 
   alias Aethrion.{Output, Relationship, State, Transition}
@@ -67,6 +76,8 @@ defmodule Aethrion.Rules.Bond do
       before = derive(struct(now, fields), thresholds)
       after_bond = derive(now, thresholds)
 
+      transition = record(transition, now, after_bond)
+
       if before == after_bond do
         transition
       else
@@ -83,8 +94,18 @@ defmodule Aethrion.Rules.Bond do
     end)
   end
 
+  defp record(transition, %Relationship{bond: bond}, bond), do: transition
+
+  defp record(transition, %Relationship{from: from, to: to}, bond) do
+    Transition.put_state(
+      transition,
+      State.update_relationship(transition.state, from, to, &%{&1 | bond: bond})
+    )
+  end
+
   @doc """
-  The bond of a relationship. Pass the world state to honor its
+  The bond of a relationship: from its numbers, and from the bond it last had
+  (see hysteresis above). Pass the world state to honor its
   `Aethrion.Tuning` overrides; without it the defaults are used.
   """
   @spec derive(Relationship.t(), State.t() | map() | nil) :: bond()
@@ -93,7 +114,45 @@ defmodule Aethrion.Rules.Bond do
   def derive(%Relationship{} = r, %State{} = world), do: derive(r, thresholds(world))
   def derive(%Relationship{} = r, nil), do: derive(r, Map.new(params()))
 
-  def derive(%Relationship{} = r, %{} = t) do
+  def derive(%Relationship{bond: last} = r, %{} = t) do
+    now = from_numbers(r, t)
+
+    if last in [nil, now] or not keeps?(last, now, r, t), do: now, else: last
+  end
+
+  # Getting worse into strained or estranged, and getting closer, register at
+  # once; easing out of a bad bond or drifting out of a good one needs the
+  # margin.
+  defp keeps?(last, now, r, t) do
+    cond do
+      now in [:strained, :estranged] and rank(now) < rank(last) -> false
+      last in [:close, :friendly] and rank(now) < rank(last) -> holds?(last, r, t)
+      last in [:strained, :estranged] and rank(now) > rank(last) -> holds?(last, r, t)
+      true -> false
+    end
+  end
+
+  defp holds?(:close, r, t),
+    do: r.affinity >= t.close_affinity - t.hysteresis and r.trust >= t.close_trust - t.hysteresis
+
+  defp holds?(:friendly, r, t),
+    do:
+      r.affinity >= t.friendly_affinity - t.hysteresis and
+        r.trust >= t.friendly_trust - t.hysteresis
+
+  defp holds?(:strained, r, t),
+    do:
+      r.tension >= t.strained_tension - t.hysteresis or
+        r.trust <= t.strained_trust + t.hysteresis
+
+  defp holds?(:estranged, r, t),
+    do:
+      r.tension >= t.estranged_tension - t.hysteresis or
+        r.affinity <= t.estranged_affinity + t.hysteresis
+
+  defp rank(bond), do: Enum.find_index(@bonds, &(&1 == bond))
+
+  defp from_numbers(%Relationship{} = r, t) do
     cond do
       r.tension >= t.estranged_tension or r.affinity <= t.estranged_affinity -> :estranged
       r.tension >= t.strained_tension or r.trust <= t.strained_trust -> :strained

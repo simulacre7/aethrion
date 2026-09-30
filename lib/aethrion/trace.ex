@@ -13,8 +13,8 @@ defmodule Aethrion.Trace do
   - `:memory` - a memory was created or updated (`target` is the memory id)
   - `:output` - an output was emitted (`target` is the output type)
   - `:event` - a follow-up event was enqueued or dropped (`target` is the event type)
-  - `:bond` - a relationship's derived bond changed (`target` is `{from, to}`,
-    `field` is `:bond`); bonds are not stored, see `Aethrion.Rules.Bond`
+  - `:bond` - a relationship's bond changed (`target` is `{from, to}`,
+    `field` is `:bond`), see `Aethrion.Rules.Bond`
   - `:note` - a rule decision without a direct state change
 
   `subject` is the character primarily affected, when there is one.

@@ -42,7 +42,8 @@ defmodule Aethrion.JournalTest do
     header = path |> File.read!() |> String.split("\n") |> hd() |> Jason.decode!()
     assert header["aethrion"] == Mix.Project.config()[:version]
 
-    assert ExUnit.CaptureLog.capture_log(fn -> Journal.read(path) end) == ""
+    # Other async tests may log meanwhile; only the version warning matters.
+    refute ExUnit.CaptureLog.capture_log(fn -> Journal.read(path) end) =~ "written by Aethrion"
 
     File.write!(path, Jason.encode!(%{header | "aethrion" => "0.1.0"}) <> "\n")
 

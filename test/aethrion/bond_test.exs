@@ -128,7 +128,7 @@ defmodule Aethrion.BondTest do
 
     test "when the mood has nothing to say, the bond does" do
       assert reply_for([affinity: 60, trust: 40], :warm) ==
-               {"You always know how to make my day.", "역시 너밖에 없다. 고마워."}
+               {"You always know how to make my day.", "역시 너밖에 없어. 고마워."}
 
       assert reply_for([affinity: 30, trust: 20, tension: 25], :warm) ==
                {"...Thanks, I guess.", "...그래, 고마워."}

@@ -5,8 +5,8 @@ defmodule Aethrion.Rules.Message do
 
   | tone     | receiver effects                                                         |
   | -------- | ------------------------------------------------------------------------ |
-  | warm     | affinity +4, trust +2, loneliness -8, joy +8, remembers it               |
-  | neutral  | loneliness -4                                                            |
+  | warm     | affinity +4, trust +2, loneliness -15, joy +8, remembers it              |
+  | neutral  | loneliness -6                                                            |
   | cold     | affinity -3, tension +4, joy -5, remembers it                            |
   | hostile  | affinity -8, trust -6, tension +10, stress +20, joy -10, remembers it    |
 
@@ -14,8 +14,10 @@ defmodule Aethrion.Rules.Message do
   `Aethrion.Rules.Consolidation` from faded memories:
 
   - **Goodwill.** If the receiver holds impressions of at least 3 kind acts
-    (warm messages, gifts, comfort, time together) from the sender, cold and hostile effects
-    are halved: the receiver gives the sender the benefit of the doubt.
+    (warm messages, gifts, comfort, time together) from the sender, and more
+    kind acts than hostile messages (remembered ones and impressions alike),
+    cold and hostile effects are halved: the receiver gives the sender the
+    benefit of the doubt.
   - **Wariness.** If the receiver holds an impression of at least 2 hostile
     messages from the sender, warm effects are halved.
 
@@ -33,9 +35,9 @@ defmodule Aethrion.Rules.Message do
     params: [
       warm_affinity: 4,
       warm_trust: 2,
-      warm_loneliness: -8,
+      warm_loneliness: -15,
       warm_joy: 8,
-      neutral_loneliness: -4,
+      neutral_loneliness: -6,
       cold_affinity: -3,
       cold_tension: 4,
       cold_joy: -5,
@@ -57,7 +59,7 @@ defmodule Aethrion.Rules.Message do
       reputation_wariness_percent: 75
     ]
 
-  alias Aethrion.{Memory, Transition}
+  alias Aethrion.{Memories, Memory, Transition}
   alias Aethrion.Rules.Consolidation
 
   @kind_patterns ["warm", "gift", "comfort", "together"]
@@ -114,7 +116,8 @@ defmodule Aethrion.Rules.Message do
     firsthand? = Enum.any?(@firsthand_patterns, &(count.(&1) > 0))
 
     cond do
-      event.tone in [:cold, :hostile] and kindness.(count) >= param.(:goodwill_count) ->
+      event.tone in [:cold, :hostile] and kindness.(count) >= param.(:goodwill_count) and
+          kindness.(count) > count.("hostile") + recent_hostility(state, event) ->
         {Transition.note(
            transition,
            "#{receiver} gives #{sender} the benefit of the doubt after a long record of kindness",
@@ -149,6 +152,25 @@ defmodule Aethrion.Rules.Message do
       true ->
         {transition, 100}
     end
+  end
+
+  # Hostile messages from the sender that the receiver still remembers in
+  # detail (not yet folded into an impression), counting this one.
+  defp recent_hostility(state, %{from: sender, to: receiver, tone: tone}) do
+    current = if tone == :hostile, do: 1, else: 0
+
+    state
+    |> Memories.for_character(receiver)
+    |> Enum.count(
+      &match?(
+        %Memory{
+          kind: :experienced,
+          data: %{"event" => "message_sent", "tone" => "hostile", "from" => ^sender}
+        },
+        &1
+      )
+    )
+    |> Kernel.+(current)
   end
 
   defp memory(event, importance) do

@@ -1179,7 +1179,13 @@ defmodule Aethrion.Report do
     kind: %{experienced: "직접", observed: "목격", heard: "전해 들음", impression: "인상"},
     scene: %{gossip: "털어놓기", comfort: "위로", together: "함께"},
     reaches_out: %{jealous: "질투", lonely: "외로움", curious: "궁금함", protective: "편들기"},
-    reply: %{warm: "다정한 말", neutral: "평범한 말", cold: "차가운 말", hostile: "모진 말"},
+    reply: %{
+      warm: "다정한 말",
+      neutral: "평범한 말",
+      cold: "차가운 말",
+      hostile: "모진 말",
+      apology: "사과"
+    },
     trait: %{sensitive: "예민함", calm: "차분함", playful: "장난스러움", talkative: "수다스러움"},
     rule: %{mood: "기분"},
     event: %{

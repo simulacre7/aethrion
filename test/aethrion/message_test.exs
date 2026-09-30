@@ -15,7 +15,7 @@ defmodule Aethrion.MessageTest do
     relationship = State.get_relationship(state, "mina", "user")
     assert relationship.affinity == 44
     assert relationship.trust == 27
-    assert character_state(state, "mina").loneliness == 4
+    assert character_state(state, "mina").loneliness == 0
     assert character_state(state, "mina").joy == 8
 
     assert [%{memory: %{kind: :experienced, importance: 45, data: %{"tone" => "warm"}}}] =
@@ -25,7 +25,7 @@ defmodule Aethrion.MessageTest do
   test "neutral messages only ease loneliness and are not remembered" do
     {state, outputs} = send_to_mina(:neutral)
 
-    assert character_state(state, "mina").loneliness == 8
+    assert character_state(state, "mina").loneliness == 6
     assert State.get_relationship(state, "mina", "user").affinity == 40
     assert [] = of_type(outputs, :memory_created)
   end
@@ -130,7 +130,7 @@ defmodule Aethrion.MessageTest do
         Runtime.step(state, Event.message_sent("user", "mina", "sorry, you ok?", tone: :warm))
 
       assert State.get_relationship(step.state, "mina", "user").affinity == 2
-      assert character_state(step.state, "mina").loneliness == 46
+      assert character_state(step.state, "mina").loneliness == 43
       assert Enum.any?(step.log, &(&1 =~ "wary of kindness"))
     end
 

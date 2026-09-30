@@ -141,7 +141,7 @@ defmodule Aethrion.RegressionTest do
     {_state, outputs} =
       run!(state, [
         Event.gift_received("haru", "mina", "ring", observed_by: ["yuna"]),
-        Event.time_tick("t", hours: 1)
+        Event.time_tick("t", hours: 2)
       ])
 
     assert [%{reason: :jealous, text: text}] = proactive(outputs, "yuna")

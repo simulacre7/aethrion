@@ -54,7 +54,7 @@ Aethrion.State.new(
 | field | meaning |
 | --- | --- |
 | `characters` | `%{id => %Aethrion.Character{}}`; each has a `state` (`%Aethrion.CharacterState{}`) |
-| `relationships` | `%{{from, to} => %Aethrion.Relationship{}}`, directed |
+| `relationships` | `%{{from, to} => %Aethrion.Relationship{}}`, directed; `bond` is the last bond announced (read the current one with `Aethrion.Rules.Bond.derive/2`) |
 | `memories` | `[%Aethrion.Memory{}]`, newest first |
 | `clock` | simulated hours elapsed |
 | `seq` | events processed; used for event ids |
@@ -229,6 +229,8 @@ Aethrion.Rules.Consolidation.counts(state, "mina", "user")
 Aethrion.Rules.Bond.derive(Aethrion.State.get_relationship(state, "mina", "user"), state)
 #=> :friendly   # one of Aethrion.Rules.Bond.bonds(), worst to closest
 ```
+
+A bond holds until the numbers move 5 points past the threshold that would change it, so `derive/2` reads the relationship's recorded `bond` as well as its numbers.
 
 ## Expression and intent
 

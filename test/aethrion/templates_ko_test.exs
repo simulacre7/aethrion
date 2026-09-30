@@ -43,7 +43,7 @@ defmodule Aethrion.TemplatesKoTest do
              "아까 Mina랑 있을 때 즐거워 보이더라. 혹시 나는 잊은 거 아니지?",
              "Yuna는 Haru에게 네가 Mina한테 준 flower 이야기를 털어놓는다.",
              "Yuna한테 들었어. Mina한테 flower 줬다며? 제법인데.",
-             "Haru는 한동안 Yuna 곁에 있어 준다. Yuna가 조금 가벼워진 얼굴이다."
+             "Haru는 한동안 Yuna 곁에 있어 준다. Yuna의 표정이 한결 가벼워진다."
            ]
 
     # Only text changes; every other field, and the state, is untouched.
@@ -96,7 +96,7 @@ defmodule Aethrion.TemplatesKoTest do
 
     [scene] = of_type(step.outputs, :character_interaction)
 
-    assert Ko.render(scene.context) == ~s(Yuna는 Haru에게 네가 한 말을 전한다. "go away")
+    assert Ko.render(scene.context) == ~s(Yuna는 Haru에게 네가 자기한테 한 말을 전한다. "go away")
   end
 
   test "every event in the bundled scenarios is described in Korean" do

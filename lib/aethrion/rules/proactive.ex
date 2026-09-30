@@ -12,14 +12,14 @@ defmodule Aethrion.Rules.Proactive do
   `"user"`.
 
   Characters do not reach out to someone they currently feel tense toward
-  (tension >= 10); they turn to friends instead.
+  (tension >= 5); they turn to friends instead.
 
   | reason     | condition                                                  | cooldown |
   | ---------- | ---------------------------------------------------------- | -------- |
   | `:jealous` | jealousy >= 15 and jealousy + loneliness >= 45             | 24h      |
-  | `:lonely`  | loneliness >= 60 and jealousy < 15                         | 24h      |
+  | `:lonely`  | loneliness >= 60, jealousy < 15, affinity >= 25 toward the person, no company for 6h, and not heading out with a friend this hour | 24h, or 72h after a lonely message that got no reply |
   | `:protective` | saw a person be hostile to a character they care about (affinity >= 30), and has not seen or heard them apologize since | once per incident, and 24h per person and friend |
-  | `:curious` | heard secondhand news about a person and is `:playful` or has affinity >= 30 toward them | once per topic |
+  | `:curious` | heard secondhand news about a person and is `:playful` or has affinity >= 30 toward them; not about harsh words from someone they saw be hostile themselves | once per topic |
 
   Reasons are tried in the order of the table.
   """
@@ -27,19 +27,23 @@ defmodule Aethrion.Rules.Proactive do
   use Aethrion.Rule,
     id: :proactive,
     description:
-      "Jealous (pressure>=45), protective (saw hostility to a friend), lonely (>=60), or curious (heard news about someone) characters message that person; one message an hour at most, each reason at most once a day.",
+      "Jealous (pressure>=45), protective (saw hostility to a friend), lonely (>=60, affinity>=25), or curious (heard news about someone) characters message that person; one message an hour at most, each reason at most once a day, lonely messages every 3 days when unanswered.",
     params: [
       jealousy_floor: 15,
       pressure_threshold: 45,
       loneliness_threshold: 60,
+      lonely_affinity: 25,
       cooldown_hours: 24,
+      unanswered_hours: 72,
+      alone_hours: 6,
       curious_affinity: 30,
       protective_affinity: 30,
-      avoid_tension: 10,
+      avoid_tension: 5,
       min_gap_hours: 1
     ]
 
   alias Aethrion.{Character, Expression, Memories, Memory, Output, State, Transition}
+  alias Aethrion.Rules.TimePassage
 
   @default_recipient "user"
 
@@ -52,7 +56,12 @@ defmodule Aethrion.Rules.Proactive do
     # (affinity rising, tension easing, a character being unblocked).
     {heard, witnessed} = secondhand_about_people(state)
 
-    params = params |> Map.put(:heard, heard) |> Map.put(:witnessed, witnessed)
+    params =
+      params
+      |> Map.put(:heard, heard)
+      |> Map.put(:witnessed, witnessed)
+      |> Map.put(:heading_out, heading_out(transition))
+
     outgoing = State.relationships_by_from(state)
 
     transition = prune_once_keys(transition, heard, witnessed)
@@ -146,11 +155,16 @@ defmodule Aethrion.Rules.Proactive do
     end
   end
 
+  # Reach out to the closest person, unless going out with a friend this hour
+  # anyway. After a lonely message that got no reply, wait longer.
   defp trigger(:lonely, state, %Character{id: id, state: cs}, [closest | _], params) do
     key = "proactive:#{id}:lonely"
 
     if cs.loneliness >= params.loneliness_threshold and cs.jealousy < params.jealousy_floor and
-         State.cooldown_ready?(state, key, params.cooldown_hours) do
+         not MapSet.member?(params.heading_out, id) and
+         State.cooldown_ready?(state, TimePassage.company_key(id), params.alone_hours) and
+         State.get_relationship(state, id, closest).affinity >= params.lonely_affinity and
+         State.cooldown_ready?(state, key, lonely_cooldown(state, id, key, closest, params)) do
       {:lonely, key, closest, []}
     end
   end
@@ -193,6 +207,7 @@ defmodule Aethrion.Rules.Proactive do
       key = "proactive:#{id}:curious:#{memory.topic}"
 
       with person when not is_nil(person) <- Enum.find(people, &Memory.involves?(memory, &1)),
+           false <- saw_it_firsthand?(memory, Map.get(params.witnessed, id, [])),
            true <-
              Character.trait?(character, :playful) or
                State.get_relationship(state, id, person).affinity >= params.curious_affinity,
@@ -203,6 +218,42 @@ defmodule Aethrion.Rules.Proactive do
       end
     end)
   end
+
+  defp lonely_cooldown(state, id, key, person, params) do
+    case Map.fetch(state.cooldowns, key) do
+      {:ok, sent} ->
+        replied? =
+          case Map.fetch(state.cooldowns, Aethrion.Rules.Reply.contact_key(id, person)) do
+            {:ok, contact} -> contact >= sent
+            :error -> false
+          end
+
+        if replied?, do: params.cooldown_hours, else: params.unanswered_hours
+
+      :error ->
+        params.cooldown_hours
+    end
+  end
+
+  # Characters about to spend time together this tick (enqueued by
+  # `Aethrion.Rules.Companionship`).
+  defp heading_out(%Transition{follow_ups: follow_ups}) do
+    for %{type: :time_spent_together, from: from, to: to} <- follow_ups,
+        id <- [from, to],
+        into: MapSet.new(),
+        do: id
+  end
+
+  # Hearing about harsh words from someone they saw be hostile themselves is
+  # not news worth asking about.
+  defp saw_it_firsthand?(
+         %Memory{data: %{"event" => "message_sent", "tone" => tone, "from" => person}},
+         witnessed
+       )
+       when tone in ["hostile", "cold"],
+       do: Enum.any?(witnessed, &(&1.data["from"] == person))
+
+  defp saw_it_firsthand?(_memory, _witnessed), do: false
 
   # The person apologized to the friend after the hostility (event ids count up).
   defp made_amends?(%Memory{data: %{"from" => person, "to" => friend}} = hostile, apologies) do

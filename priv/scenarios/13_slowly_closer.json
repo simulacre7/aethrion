@@ -1,7 +1,7 @@
 {
   "$schema": "../scenario.schema.json",
   "name": "Slowly closer",
-  "description": "The user is kind to Haru a little every day for a week: a warm word most mornings, a small gift, and some company on two hard days. Nothing dramatic happens, but the bond moves from neutral to friendly to close, and the kind days fold into a lasting impression. Then comes a bad day and a harsh word. Haru takes it at half strength and asks if something is wrong, but the bond still slips back to friendly.",
+  "description": "The user is kind to Haru a little every day for a week: a warm word most mornings, a small gift, and some company on two hard days. Nothing dramatic happens, but the bond moves from neutral to friendly to close, and the kind days fold into a lasting impression. After two quiet days Haru writes first, remembering the notebook. Then comes a bad day and a harsh word. Haru takes it at half strength and asks if something is wrong; one harsh word is not enough to undo a close bond.",
   "world": {
     "characters": [
       {
@@ -133,13 +133,6 @@
       "output": "bond_changed",
       "from": "haru",
       "to": "user",
-      "after": "friendly",
-      "count": 2
-    },
-    {
-      "output": "bond_changed",
-      "from": "haru",
-      "to": "user",
       "before": "neutral",
       "after": "friendly",
       "count": 1
@@ -148,6 +141,7 @@
       "output": "bond_changed",
       "from": "haru",
       "to": "user",
+      "before": "friendly",
       "after": "close",
       "count": 1
     },
@@ -155,15 +149,20 @@
       "output": "bond_changed",
       "from": "haru",
       "to": "user",
-      "before": "close",
-      "after": "friendly",
-      "count": 1
+      "count": 2
     },
     {
       "memory": {
         "character": "haru",
         "content": "user has been warm to haru 5 times."
       },
+      "count": 1
+    },
+    {
+      "output": "proactive_message",
+      "character": "haru",
+      "reason": "lonely",
+      "text": "I still have the notebook you gave me. Do you have a minute to talk?",
       "count": 1
     },
     {
@@ -178,7 +177,7 @@
         "user"
       ],
       "field": "bond",
-      "equals": "friendly"
+      "equals": "close"
     }
   ]
 }

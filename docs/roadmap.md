@@ -220,7 +220,7 @@ TODO:
 - [x] Witnesses for messages and apologies; judgement by those who care about the receiver, at half strength from hearsay.
 - [x] Reputation impressions from faded secondhand memories, counted once per event and weighed below firsthand history.
 - [x] Characters speak up to someone who was hostile to a friend.
-- [x] Derived bonds with announced, explainable changes; bonds color replies.
+- [x] Bonds with announced, explainable changes that settle instead of flickering; bonds color replies.
 - [x] Characters notice how long it has been since a person last talked to them.
 - [x] Journals that stay fast to start (compaction) and warn when replayed by another version.
 

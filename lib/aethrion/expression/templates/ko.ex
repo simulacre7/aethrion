@@ -15,37 +15,29 @@ defmodule Aethrion.Expression.Templates.Ko do
   sound of each name, for Hangul and Latin-script names alike.
   """
 
-  alias Aethrion.Expression.Request
+  alias Aethrion.Expression.{Request, Templates}
 
   @doc "Renders a request in Korean."
   def render(%Request{kind: :proactive_message, reason: :jealous} = request) do
-    case find(request, &gift_from_listener_to_other?(&1, request)) do
-      %{"to" => to} ->
-        "아까 #{with_particle(name(request, to), :and)} 있을 때 즐거워 보이더라. 혹시 나는 잊은 거 아니지?"
+    case Templates.jealous_choice(request) do
+      {:gift, to, when_seen} ->
+        moment = if when_seen == :earlier, do: "아까", else: "지난번에"
 
-      nil ->
+        "#{moment} #{with_particle(name(request, to), :and)} 있을 때 즐거워 보이더라. 혹시 나는 잊은 거 아니지?"
+
+      :quiet ->
         "요즘 나한테 좀 조용하네. 혹시 나 잊은 거 아니지?"
     end
   end
 
   def render(%Request{kind: :proactive_message, reason: :lonely} = request) do
-    between = {request.listener.id, request.speaker.id}
-
-    cond do
-      data = find(request, &warm_message?(&1, between)) ->
-        "네가 했던 말이 계속 생각나. \"#{data["text"]}\" 잠깐 얘기할 수 있어?"
-
-      data = find(request, &gift?(&1, between)) ->
-        "네가 준 #{data["item"]}, 아직 가지고 있어. 잠깐 얘기할 수 있어?"
-
-      find(request, &kind_impression?(&1, between)) ->
-        "넌 늘 나한테 다정했잖아. 얘기하고 싶어. 잠깐 시간 돼?"
-
-      Request.reunion?(request) ->
-        "며칠째 얘기를 못 했네. 잠깐 시간 돼?"
-
-      true ->
-        "오늘은 좀 조용하네. 잠깐 얘기할 수 있어?"
+    case Templates.lonely_choice(request) do
+      {:quote, text} -> "네가 했던 말이 계속 생각나. \"#{text}\" 잠깐 얘기할 수 있어?"
+      {:gift, item} -> "네가 준 #{item}, 아직 가지고 있어. 잠깐 얘기할 수 있어?"
+      :kind -> "넌 늘 나한테 다정했잖아. 얘기하고 싶어. 잠깐 시간 돼?"
+      :reunion -> "며칠째 얘기를 못 했네. 잠깐 시간 돼?"
+      :a_while -> "한동안 얘기를 못 했네. 잠깐 시간 돼?"
+      :today -> "오늘은 좀 조용하네. 잠깐 얘기할 수 있어?"
     end
   end
 
@@ -77,9 +69,10 @@ defmodule Aethrion.Expression.Templates.Ko do
           do: heard <> " 제법인데.",
           else: heard <> " 나한테 할 말 없어?"
 
-      %{source: source, data: %{"event" => "message_sent", "tone" => tone}}
+      %{source: source, data: %{"event" => "message_sent", "tone" => tone} = data}
       when tone in ["hostile", "cold"] ->
-        "#{name(request, source)}한테 네가 한 말 들었어. 너답지 않던데, 무슨 일 있어?"
+        "#{name(request, source)}한테 들었어. 네가 #{name(request, data["to"])}한테 그런 말 했다며? " <>
+          "너답지 않던데, 무슨 일 있어?"
 
       %{source: source} ->
         "#{name(request, source)}한테 네 얘기 좀 들었어. 네 입장도 듣고 싶은데?"
@@ -93,9 +86,21 @@ defmodule Aethrion.Expression.Templates.Ko do
     "#{with_particle(request.speaker.name, :topic)} 할 말이 있는 것 같다."
   end
 
+  def render(%Request{kind: :reply, tone: :apology} = request) do
+    case Templates.apology_choice(request) do
+      :keeps_apologizing -> "계속 미안하다고만 하네. 그냥 그런 일이 없었으면 좋겠어."
+      :left_out -> "고마워. 나도 챙겨 줬으면 했을 뿐이야."
+      :nothing_to_forgive -> "사과할 거 없어. 우리 괜찮아."
+      :once_more -> "알았어... 그래도 자꾸 그러진 말아 줘."
+      :needs_time -> "말해 줘서 고마워. 조금만 시간을 줘."
+      :shaken -> "아직 좀 놀랐지만, 고마워."
+      :accepted -> "그렇게 말해 줘서 고마워. 정말 힘이 돼."
+    end
+  end
+
   def render(%Request{kind: :reply, tone: tone, speaker: %{mood: mood}} = request)
       when tone in [:cold, :hostile] do
-    if find(request, &kind_impression?(&1, {request.listener.id, request.speaker.id})) do
+    if Templates.benefit_of_doubt?(request) do
       if tone == :hostile, do: "너답지 않은데. 무슨 일 있어?", else: "아... 그래. 괜찮은 거지?"
     else
       reply(tone, mood)
@@ -114,13 +119,15 @@ defmodule Aethrion.Expression.Templates.Ko do
         "...고마워. 그런데 네가 다른 사람들한테 어떻게 하는지 들었어."
 
       nil ->
-        reunion_reply(:warm, mood, request) || bond_reply(:warm, mood, request) ||
-          reply(:warm, mood)
+        wary_reply(:warm, request) || reunion_reply(:warm, mood, request) ||
+          bond_reply(:warm, mood, request) || reply(:warm, mood)
     end
   end
 
-  def render(%Request{kind: :reply, tone: tone, speaker: %{mood: mood}} = request),
-    do: reunion_reply(tone, mood, request) || bond_reply(tone, mood, request) || reply(tone, mood)
+  def render(%Request{kind: :reply, tone: tone, speaker: %{mood: mood}} = request) do
+    wary_reply(tone, request) || reunion_reply(tone, mood, request) ||
+      bond_reply(tone, mood, request) || reply(tone, mood)
+  end
 
   def render(%Request{kind: :character_interaction, reason: :gossip} = request) do
     teller = request.speaker.name
@@ -143,7 +150,13 @@ defmodule Aethrion.Expression.Templates.Ko do
             do: "네가",
             else: with_particle(name(request, data["from"]), :subject)
 
-        "#{with_particle(teller, :topic)} #{listener}에게 #{said} 한 말을 전한다. \"#{data["text"]}\""
+        # Said to the teller themselves ("자기한테"), or to someone else.
+        to =
+          if data["to"] == request.speaker.id,
+            do: "자기한테",
+            else: "#{name(request, data["to"])}한테"
+
+        "#{with_particle(teller, :topic)} #{listener}에게 #{said} #{to} 한 말을 전한다. \"#{data["text"]}\""
 
       _ ->
         "#{with_particle(teller, :topic)} #{listener}에게 속마음을 털어놓는다."
@@ -156,7 +169,7 @@ defmodule Aethrion.Expression.Templates.Ko do
 
   def render(%Request{kind: :character_interaction, reason: :comfort} = request) do
     "#{with_particle(request.speaker.name, :topic)} 한동안 #{request.listener.name} 곁에 있어 준다. " <>
-      "#{with_particle(request.listener.name, :subject)} 조금 가벼워진 얼굴이다."
+      "#{request.listener.name}의 표정이 한결 가벼워진다."
   end
 
   def render(%Request{} = request) do
@@ -178,20 +191,28 @@ defmodule Aethrion.Expression.Templates.Ko do
 
   defp reunion_reply(_tone, _mood, _request), do: nil
 
-  defp bond_reply(tone, mood, %Request{relationship: %{bond: bond}})
-       when mood in [:neutral, :happy] do
-    case {tone, bond} do
-      {:warm, :close} -> "역시 너밖에 없다. 고마워."
-      {:warm, :strained} -> "...그래, 고마워."
-      {:warm, :estranged} -> "이제 와서 왜 잘해 주는 건데?"
-      {:neutral, :close} -> "왔어? 무슨 일이야?"
-      {:neutral, :strained} -> "...무슨 일인데?"
-      {:neutral, :estranged} -> "별로 얘기하고 싶지 않아."
-      _other -> nil
+  defp wary_reply(tone, request) do
+    case Templates.wary_choice(tone, request) do
+      {:bond, bond} -> bond_line(tone, bond)
+      :guarded when tone == :warm -> "고마워... 그래도 아직 좀 서운해."
+      :guarded -> "...응, 왜."
+      nil -> nil
     end
   end
 
+  defp bond_reply(tone, mood, %Request{relationship: %{bond: bond}})
+       when mood in [:neutral, :happy],
+       do: bond_line(tone, bond)
+
   defp bond_reply(_tone, _mood, _request), do: nil
+
+  defp bond_line(:warm, :close), do: "역시 너밖에 없어. 고마워."
+  defp bond_line(:warm, :strained), do: "...그래, 고마워."
+  defp bond_line(:warm, :estranged), do: "이제 와서 왜 잘해 주는 건데?"
+  defp bond_line(:neutral, :close), do: "왔어? 무슨 일이야?"
+  defp bond_line(:neutral, :strained), do: "...무슨 일인데?"
+  defp bond_line(:neutral, :estranged), do: "별로 얘기하고 싶지 않아."
+  defp bond_line(_tone, _bond), do: nil
 
   defp reply(:warm, :happy), do: "덕분에 기분 좋아졌어. 고마워."
   defp reply(:warm, :jealous), do: "...고마워. 그 말이 듣고 싶었나 봐."
@@ -328,30 +349,6 @@ defmodule Aethrion.Expression.Templates.Ko do
       false -> false
     end
   end
-
-  defp find(request, fun), do: request.memories |> Enum.map(& &1.data) |> Enum.find(fun)
-
-  defp gift_from_listener_to_other?(%{"event" => "gift_received"} = data, request),
-    do: data["from"] == request.listener.id and data["to"] != request.speaker.id
-
-  defp gift_from_listener_to_other?(_data, _request), do: false
-
-  defp warm_message?(%{"event" => "message_sent", "tone" => "warm"} = data, {from, to}),
-    do: data["from"] == from and data["to"] == to
-
-  defp warm_message?(_data, _between), do: false
-
-  defp gift?(%{"event" => "gift_received"} = data, {from, to}),
-    do: data["from"] == from and data["to"] == to
-
-  defp gift?(_data, _between), do: false
-
-  defp kind_impression?(%{"event" => "impression"} = data, {from, to}),
-    do:
-      data["from"] == from and data["to"] == to and
-        data["pattern"] in ["warm", "gift", "comfort", "together"]
-
-  defp kind_impression?(_data, _between), do: false
 
   defp name(_request, "user"), do: "너"
   defp name(request, id), do: Map.get(request.names, id, id)

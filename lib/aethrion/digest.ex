@@ -235,12 +235,19 @@ defmodule Aethrion.Digest do
         :upset -> "속상해졌다"
       end
 
-    "#{Ko.with_particle(Enum.join(names, ", "), :topic)} #{feeling}."
+    "#{Ko.with_particle(ko_list(names), :topic)} #{feeling}."
   end
 
   defp mood_line(["you"], mood, _say), do: "You are #{mood}."
   defp mood_line([name], mood, _say), do: "#{name} is #{mood}."
   defp mood_line(names, mood, _say), do: "#{and_list(names)} are #{mood}."
+
+  # "Mina, Yuna와 Haru": the particle follows the second-to-last name.
+  defp ko_list([one]), do: one
+
+  defp ko_list(names) do
+    Ko.with_particle(Enum.join(Enum.drop(names, -1), ", "), :with) <> " " <> List.last(names)
+  end
 
   defp and_list([one]), do: one
   defp and_list([a, b]), do: "#{a} and #{b}"
