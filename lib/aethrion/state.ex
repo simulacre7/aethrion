@@ -266,6 +266,11 @@ defmodule Aethrion.State do
   """
   @spec from_data(map(), keyword()) :: t()
   def from_data(data, opts \\ []) when is_map(data) do
+    # Traits become atoms only if a loaded rule uses them; load the rules first.
+    opts
+    |> Keyword.get(:pipeline, Aethrion.Pipeline.default())
+    |> Aethrion.Pipeline.ensure_loaded()
+
     new(
       characters: Enum.map(Map.get(data, "characters", []), &character_from_data/1),
       relationships: Enum.map(Map.get(data, "relationships", []), &relationship_from_data/1),

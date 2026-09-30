@@ -53,6 +53,24 @@ defmodule Aethrion.Pipeline do
     }
   end
 
+  @doc """
+  Loads every rule module in the pipeline.
+
+  Converting untrusted strings to atoms only accepts atoms that already exist
+  (traits, custom event fields). Rules create the atoms they use when their
+  module is loaded, so this runs before such conversions; otherwise the result
+  would depend on which modules happened to be loaded already.
+  """
+  def ensure_loaded(%__MODULE__{} = pipeline) do
+    pipeline.event_rules
+    |> Map.values()
+    |> List.flatten()
+    |> Enum.concat(pipeline.reactive_rules)
+    |> Enum.each(&Code.ensure_loaded/1)
+
+    pipeline
+  end
+
   @doc "Event types that have at least one rule."
   def event_types(%__MODULE__{event_rules: event_rules}) do
     event_rules |> Map.keys() |> Enum.sort()

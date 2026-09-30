@@ -507,4 +507,26 @@ defmodule Aethrion.RegressionTest do
                Enum.find(step.events, &(&1.type == :gossip_shared))
     end
   end
+
+  describe "fresh VM" do
+    # Atom conversion of traits and custom event fields must not depend on which
+    # modules happen to be loaded. A new VM loads modules lazily, like `mix run`.
+    test "traits in a loaded world keep their meaning before any rule has run" do
+      paths =
+        [
+          Mix.Project.compile_path()
+          | Path.wildcard(Path.join(Mix.Project.build_path(), "lib/*/ebin"))
+        ]
+        |> Enum.uniq()
+        |> Enum.flat_map(&["-pa", &1])
+
+      code = """
+      {:ok, s} = Aethrion.Scenario.load("priv/scenarios/04_rumor_mill.json")
+      IO.write(inspect(s.state.characters["ari"].traits))
+      """
+
+      {output, 0} = System.cmd("elixir", paths ++ ["-e", code], cd: File.cwd!())
+      assert output == "[:talkative]"
+    end
+  end
 end

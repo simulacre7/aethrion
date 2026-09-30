@@ -40,6 +40,11 @@ jobs:
       - name: Check bundled scenarios
         run: mix aethrion.scenario --all --quiet
 
+      # Each scenario in a fresh VM, so results cannot depend on which modules
+      # an earlier scenario happened to load.
+      - name: Check each scenario in isolation
+        run: for f in priv/scenarios/*.json; do mix aethrion.scenario "$f" --quiet || exit 1; done
+
       - name: Dialyzer
         run: MIX_ENV=dev mix dialyzer
 

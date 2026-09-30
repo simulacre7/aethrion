@@ -228,6 +228,9 @@ defmodule Aethrion.Event do
   defp custom_from_data(type, _data, nil), do: unsupported(type)
 
   defp custom_from_data(type, data, pipeline) do
+    # Field atoms exist once the rules that read them are loaded.
+    Aethrion.Pipeline.ensure_loaded(pipeline)
+
     case Enum.find(Aethrion.Pipeline.event_types(pipeline), &(Atom.to_string(&1) == type)) do
       nil ->
         unsupported(type)

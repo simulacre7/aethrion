@@ -20,6 +20,12 @@ defmodule Aethrion.Character do
   @enforce_keys [:id, :name]
   defstruct [:id, :name, profile: "", traits: [], state: %CharacterState{}]
 
+  @doc """
+  Traits the built-in rules read. Custom rules may read others; persisted
+  traits become atoms only when some loaded rule uses them.
+  """
+  def known_traits, do: [:sensitive, :calm, :playful, :talkative]
+
   @doc "Returns true when the character has `trait`."
   def trait?(%__MODULE__{traits: traits}, trait), do: trait in traits
 
