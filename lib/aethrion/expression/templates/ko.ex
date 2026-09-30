@@ -72,7 +72,9 @@ defmodule Aethrion.Expression.Templates.Ko do
 
       %{source: source, data: %{"event" => "message_sent", "tone" => tone} = data}
       when tone in ["hostile", "cold"] ->
-        "#{name(request, source)}한테 들었어. 네가 #{name(request, data["to"])}한테 그런 말 했다며? " <>
+        to = if data["to"] == source, do: "걔", else: name(request, data["to"])
+
+        "#{name(request, source)}한테 들었어. 네가 #{to}한테 그런 말 했다며? " <>
           "너답지 않던데, 무슨 일 있어?"
 
       %{source: source} ->
@@ -94,7 +96,8 @@ defmodule Aethrion.Expression.Templates.Ko do
       :spoiled -> "또 줘? 이러다 버릇 나빠지겠다."
       :remembered -> "내 생각 해 준 거야? 정말 고마워."
       :close -> "이런 거 안 해도 되는데! 너무 좋다."
-      :thanks -> "#{with_particle(item, :subject)} 마음에 들어. 고마워!"
+      :thanks when is_binary(item) -> "#{with_particle(item, :subject)} 마음에 들어. 고마워!"
+      :thanks -> "마음에 들어. 고마워!"
     end
   end
 

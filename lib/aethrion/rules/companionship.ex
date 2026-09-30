@@ -46,12 +46,27 @@ defmodule Aethrion.Rules.Companionship do
         friend ->
           event = Event.time_spent_together(character.id, friend, at: transition.event.now)
 
-          {Transition.enqueue(transition, event),
-           busy |> MapSet.put(character.id) |> MapSet.put(friend)}
+          transition =
+            transition
+            |> Transition.enqueue(event)
+            |> Transition.put_cooldown(outing_key(character.id))
+            |> Transition.put_cooldown(outing_key(friend))
+
+          {transition, busy |> MapSet.put(character.id) |> MapSet.put(friend)}
       end
     end)
     |> elem(0)
   end
+
+  @doc """
+  True when `character_id` is heading out with a friend this hour (an outing
+  this rule enqueued at the current clock), so other rules can leave them be.
+  """
+  @spec heading_out?(State.t(), String.t()) :: boolean()
+  def heading_out?(%State{} = state, character_id),
+    do: Map.get(state.cooldowns, outing_key(character_id)) == state.clock
+
+  defp outing_key(id), do: "outing:#{id}"
 
   # With a positive threshold only existing relationships can clear it (missing
   # ones count as 0). A threshold of 0 or less also admits characters with no

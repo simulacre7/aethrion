@@ -21,17 +21,17 @@ defmodule Aethrion.Rules.Together do
   # Time together deepens a friendship up to a point; past `affinity_cap`,
   # afternoons are comfortable rather than ever closer.
   defp grow_fonder(transition, me, other) do
-    if Aethrion.State.get_relationship(transition.state, me, other).affinity <
-         Transition.param(transition, :affinity_cap),
-       do:
-         Transition.adjust_relationship(
-           transition,
-           me,
-           other,
-           :affinity,
-           Transition.param(transition, :affinity_delta)
-         ),
-       else: transition
+    room =
+      Transition.param(transition, :affinity_cap) -
+        Aethrion.State.get_relationship(transition.state, me, other).affinity
+
+    case min(Transition.param(transition, :affinity_delta), room) do
+      delta when delta > 0 ->
+        Transition.adjust_relationship(transition, me, other, :affinity, delta)
+
+      _none ->
+        transition
+    end
   end
 
   @impl true

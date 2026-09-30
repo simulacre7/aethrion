@@ -29,7 +29,7 @@ defmodule Aethrion.Rules.Proactive do
   use Aethrion.Rule,
     id: :proactive,
     description:
-      "Jealous (pressure>=45), protective (saw hostility to a friend), lonely (>=60, affinity>=25), or curious (heard news about someone) characters message that person; one message an hour at most, each reason at most once a day, lonely messages every 3 days when unanswered.",
+      "Jealous (pressure>=45), protective (saw hostility to a friend), lonely (>=60, affinity>=25), or curious (heard news about someone) characters message that person; one message an hour at most, each reason at most once a day, lonely messages every 3 days when unanswered and weekly after a week of silence.",
     params: [
       jealousy_floor: 15,
       pressure_threshold: 45,
@@ -46,7 +46,7 @@ defmodule Aethrion.Rules.Proactive do
     ]
 
   alias Aethrion.{Character, Expression, Memories, Memory, Output, State, Transition}
-  alias Aethrion.Rules.TimePassage
+  alias Aethrion.Rules.{Companionship, TimePassage}
 
   @default_recipient "user"
 
@@ -59,11 +59,7 @@ defmodule Aethrion.Rules.Proactive do
     # (affinity rising, tension easing, a character being unblocked).
     {heard, witnessed} = secondhand_about_people(state)
 
-    params =
-      params
-      |> Map.put(:heard, heard)
-      |> Map.put(:witnessed, witnessed)
-      |> Map.put(:heading_out, heading_out(transition))
+    params = params |> Map.put(:heard, heard) |> Map.put(:witnessed, witnessed)
 
     outgoing = State.relationships_by_from(state)
 
@@ -166,11 +162,11 @@ defmodule Aethrion.Rules.Proactive do
     key = "proactive:#{id}:lonely"
 
     if cs.loneliness >= params.loneliness_threshold and cs.jealousy < params.jealousy_floor and
-         not MapSet.member?(params.heading_out, id) and
+         not Companionship.heading_out?(state, id) and
          State.cooldown_ready?(state, TimePassage.company_key(id), params.alone_hours) and
          State.get_relationship(state, id, closest).affinity >= params.lonely_affinity and
-         State.cooldown_ready?(state, key, lonely_cooldown(state, id, key, closest, params)) do
-      {:lonely, key, closest, ignored: unanswered?(state, id, key, closest)}
+         State.cooldown_ready?(state, key, lonely_cooldown(state, id, closest, params)) do
+      {:lonely, [key, lonely_key(id, closest)], closest, ignored: unanswered?(state, id, closest)}
     end
   end
 
@@ -228,17 +224,20 @@ defmodule Aethrion.Rules.Proactive do
 
   # A day between lonely messages; three after one went unanswered, and a
   # week once there has been a week of silence.
-  defp lonely_cooldown(state, id, key, person, params) do
+  defp lonely_cooldown(state, id, person, params) do
     cond do
-      not unanswered?(state, id, key, person) -> params.cooldown_hours
+      not unanswered?(state, id, person) -> params.cooldown_hours
       silence(state, id, person) >= 168 -> 168
       true -> params.unanswered_hours
     end
   end
 
-  # The last lonely message got no reply.
-  defp unanswered?(state, id, key, person) do
-    case Map.fetch(state.cooldowns, key) do
+  # When a lonely message last went to this person.
+  defp lonely_key(id, person), do: "proactive:#{id}:lonely:#{person}"
+
+  # The last lonely message to this person got no reply.
+  defp unanswered?(state, id, person) do
+    case Map.fetch(state.cooldowns, lonely_key(id, person)) do
       {:ok, sent} ->
         case Map.fetch(state.cooldowns, Aethrion.Rules.Reply.contact_key(id, person)) do
           {:ok, contact} -> contact < sent
@@ -271,15 +270,6 @@ defmodule Aethrion.Rules.Proactive do
       :affinity,
       Transition.param(transition, :ignored_affinity)
     )
-  end
-
-  # Characters about to spend time together this tick (enqueued by
-  # `Aethrion.Rules.Companionship`).
-  defp heading_out(%Transition{follow_ups: follow_ups}) do
-    for %{type: :time_spent_together, from: from, to: to} <- follow_ups,
-        id <- [from, to],
-        into: MapSet.new(),
-        do: id
   end
 
   # Hearing about harsh words from someone they saw be hostile themselves is

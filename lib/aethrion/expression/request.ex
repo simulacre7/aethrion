@@ -16,13 +16,17 @@ defmodule Aethrion.Expression.Request do
   - `memories` - the speaker's selected memories as plain maps
   - `names` - display names for every id referenced by the memories
   - `tone` - the incoming tone for replies
-  - `message` - the incoming text for replies
+  - `message` - for replies, the incoming text (the item for a gift, the
+    reason for an apology)
   - `since_contact` - for replies and proactive messages, simulated hours
     since the listener last talked to the speaker, or `nil` if they never
     have; `reunion?/1` says whether that is a long absence
-  - `repeats` - for replies, how many messages in this tone from the listener
-    the speaker still remembers, this one included (at least 1), so a reply
-    can vary or escalate
+  - `repeats` - for replies, how many messages in this tone (or gifts, or
+    apologies) from the listener the speaker still remembers, this one
+    included (at least 1), so a reply can vary or escalate
+  - `goodwill` - for replies to cold or hostile words, whether the rules gave
+    the listener the benefit of the doubt (`Aethrion.Rules.Message`), or
+    `nil` when not known
   - `now` - the simulated clock (hours) when the output was produced;
     `hours_ago/2` says how long ago a memory was formed
   - `fallback_text` - the deterministic template text
@@ -40,6 +44,7 @@ defmodule Aethrion.Expression.Request do
           message: String.t() | nil,
           since_contact: non_neg_integer() | nil,
           repeats: pos_integer() | nil,
+          goodwill: boolean() | nil,
           now: non_neg_integer() | nil,
           fallback_text: String.t() | nil
         }
@@ -56,6 +61,7 @@ defmodule Aethrion.Expression.Request do
     message: nil,
     since_contact: nil,
     repeats: nil,
+    goodwill: nil,
     now: nil,
     fallback_text: nil
   ]

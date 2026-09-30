@@ -38,6 +38,7 @@ defmodule Aethrion.Rules.Reply do
           message: message,
           since_contact: since_contact,
           repeats: repeats,
+          goodwill: Aethrion.Rules.Message.goodwill?(state, event),
           memories: memories
         )
 
@@ -70,8 +71,17 @@ defmodule Aethrion.Rules.Reply do
     {:gift, event.item, with_record(state, event), repeats(state, event, gift?)}
   end
 
-  defp incoming(state, %{type: :apology_offered} = event),
-    do: {:apology, event.reason, apology_memories(state, event.to, event.from), 1}
+  defp incoming(state, %{type: :apology_offered} = event) do
+    apology? =
+      &match?(
+        %Memory{kind: :experienced, data: %{"event" => "apology_offered", "from" => from}}
+        when from == event.from,
+        &1
+      )
+
+    {:apology, event.reason, apology_memories(state, event.to, event.from),
+     repeats(state, event, apology?)}
+  end
 
   defp incoming(state, event) do
     tone = Atom.to_string(event.tone)

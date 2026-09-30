@@ -114,7 +114,8 @@ defmodule Aethrion.Expression.Templates do
       :spoiled -> "Another one? You're spoiling me."
       :remembered -> "You thought of me? That means a lot."
       :close -> "You didn't have to! I love it."
-      :thanks -> "Thank you for the #{item}!"
+      :thanks when is_binary(item) -> "Thank you for the #{item}!"
+      :thanks -> "Thank you, I love it!"
     end
   end
 
@@ -410,9 +411,14 @@ defmodule Aethrion.Expression.Templates do
   def together_choice(_request), do: 0
 
   @doc false
-  # A record of kindness earns the benefit of the doubt, unless there has
-  # been as much hostility.
-  def benefit_of_doubt?(request), do: kindness(request) > hostility(request)
+  # A record of kindness (3 kind acts, as `Aethrion.Rules.Message` counts
+  # them by default) earns the benefit of the doubt, unless there has been as
+  # much hostility.
+  # The rules' own verdict when the request carries it.
+  def benefit_of_doubt?(%Request{goodwill: goodwill}) when is_boolean(goodwill), do: goodwill
+
+  def benefit_of_doubt?(request),
+    do: kindness(request) >= 3 and kindness(request) > hostility(request)
 
   @doc false
   # How harsh words land. The first gets hurt or, with a record of kindness,

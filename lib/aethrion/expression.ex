@@ -52,6 +52,7 @@ defmodule Aethrion.Expression do
       message: Keyword.get(opts, :message),
       since_contact: Keyword.get(opts, :since_contact),
       repeats: Keyword.get(opts, :repeats),
+      goodwill: Keyword.get(opts, :goodwill),
       now: state.clock
     }
 

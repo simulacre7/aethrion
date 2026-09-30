@@ -180,14 +180,20 @@ defmodule Aethrion.NarrativeTest do
     end
 
     test "a hurt character keeps their distance for days" do
+      # Without Haru to keep her company, a lonely Yuna would write to the user.
+      alone = State.update_character_state(Runtime.demo_state(), "haru", &%{&1 | blocked?: true})
+      days = [tick(24), tick(24)]
+      to_user = fn outputs -> for %{to: "user"} = o <- proactive(outputs, "yuna"), do: o end
+
+      {_state, outputs} = run!(alone, days)
+      assert [_ | _] = to_user.(outputs)
+
       {_state, outputs} =
-        run!(Runtime.demo_state(), [
-          Event.message_sent("user", "yuna", "You're so needy.", tone: :hostile),
-          tick(24),
-          tick(24)
+        run!(alone, [
+          Event.message_sent("user", "yuna", "You're so needy.", tone: :hostile) | days
         ])
 
-      assert [] = for(%{to: "user"} = o <- proactive(outputs, "yuna"), do: o)
+      assert [] = to_user.(outputs)
     end
 
     test "jealousy fades within days, and old news is 'the other day'" do
@@ -273,20 +279,15 @@ defmodule Aethrion.NarrativeTest do
     end
 
     test "Korean curiosity names who was spoken to" do
-      state =
-        Runtime.demo_state()
-        |> State.update_relationship("haru", "user", &%{&1 | affinity: 40})
-        |> State.update_relationship("haru", "yuna", &%{&1 | trust: 50})
-
       {_state, outputs} =
-        run!(state, [
+        run!(Runtime.demo_state(), [
           Event.message_sent("user", "mina", "Not now.", tone: :hostile, observed_by: ["yuna"]),
-          tick(3)
+          Event.gossip_shared("yuna", "haru", "memory:yuna:observed:e1")
         ])
 
-      for %{reason: :curious} = message <- proactive(outputs, "haru") do
-        assert Ko.render(message.context) =~ "네가 Mina한테 그런 말 했다며?"
-      end
+      assert [%{reason: :curious} = message] = proactive(outputs, "haru")
+      assert message.text =~ "Yuna told me what you said to Mina."
+      assert Ko.render(message.context) =~ "Yuna한테 들었어. 네가 Mina한테 그런 말 했다며?"
     end
   end
 
@@ -374,20 +375,40 @@ defmodule Aethrion.NarrativeTest do
 
   describe "speaking up" do
     test "a friend who saw the apology does not protest later, however it fades" do
-      state = State.update_relationship(Runtime.demo_state(), "yuna", "user", &%{&1 | tension: 0})
+      # Yuna cares about Haru, but has just written to someone, so she cannot
+      # speak up in the same hour; the apology comes before she can.
+      state =
+        Runtime.demo_state()
+        |> State.update_relationship("yuna", "haru", &%{&1 | affinity: 40})
+        |> then(&%{&1 | cooldowns: Map.put(&1.cooldowns, "proactive:yuna", 0)})
 
-      {_state, outputs} =
-        run!(state, [
-          Event.message_sent("user", "haru", "You're useless.",
-            tone: :hostile,
-            observed_by: ["yuna"]
-          ),
-          Event.apology_offered("user", "haru", "Sorry, that was cruel.", observed_by: ["yuna"]),
-          tick(24),
-          tick(72)
-        ])
+      insult =
+        Event.message_sent("user", "haru", "You're useless.",
+          tone: :hostile,
+          observed_by: ["yuna"]
+        )
 
-      assert [] = for(%{reason: :protective} = o <- proactive(outputs, "yuna"), do: o)
+      apology =
+        Event.apology_offered("user", "haru", "Sorry, that was cruel.", observed_by: ["yuna"])
+
+      protests = fn outputs ->
+        for %{reason: :protective} = o <- proactive(outputs, "yuna"), do: o
+      end
+
+      # Without the apology she speaks up once she can.
+      {_state, outputs} = run!(state, [insult, tick(24)])
+      assert [_] = protests.(outputs)
+
+      # With it she never does, even after her memory of the apology fades
+      # (sooner than her memory of the insult).
+      {after_week, outputs} = run!(state, [insult, apology, tick(24), tick(72)])
+      assert [] = protests.(outputs)
+
+      assert Enum.any?(
+               after_week.memories,
+               &(&1.character_id == "yuna" and &1.data["event"] == "apology_offered" and
+                   Aethrion.Memory.faded?(&1))
+             )
     end
 
     test "tension does not stop a friend from speaking up" do
@@ -415,6 +436,90 @@ defmodule Aethrion.NarrativeTest do
 
     assert html =~ ~s(<span class="memory-kind">직접</span>네가 Mina에게 flower를 줬다.)
     refute html =~ ~s(</span>user gave mina a flower.)
+  end
+
+  describe "review findings" do
+    test "being ignored is charged only to whoever was written to" do
+      state =
+        State.update_relationship(Runtime.demo_state(), "mina", "bob", &%{&1 | affinity: 39})
+
+      {state, outputs} = run!(state, List.duplicate(tick(24), 12))
+
+      # Ignored by the user, Mina turns to Bob; only Bob's own silence costs
+      # affinity toward Bob, from her second message to him on.
+      to_bob = for %{to: "bob"} = o <- proactive(outputs, "mina"), do: o.text
+      assert [first | _] = to_bob
+      refute first == "I guess you've been busy. I'll be here whenever you want to talk."
+
+      assert State.get_relationship(state, "mina", "bob").affinity ==
+               39 - 2 * (length(to_bob) - 1)
+    end
+
+    test "nobody writes while heading out, even when gossip is processed first" do
+      state =
+        put_in(Runtime.demo_state().characters["mina"].traits, [:talkative])
+        |> State.update_relationship("mina", "haru", &%{&1 | trust: 40})
+
+      {:ok, step} =
+        Runtime.step(elem(run!(state, [Event.gift_received("user", "mina", "tea")]), 0), tick(24))
+
+      outing =
+        for %{kind: :together} = scene <- of_type(step.outputs, :character_interaction),
+            id <- [scene.character_id, scene.to],
+            do: id
+
+      assert outing != []
+
+      for id <- outing do
+        assert [] = for(%{reason: :lonely} = o <- proactive(step.outputs, id), do: o)
+      end
+    end
+
+    test "a reply gives the benefit of the doubt only when the rules do" do
+      {_state, outputs} =
+        run!(Runtime.demo_state(), [
+          Event.message_sent("user", "haru", "Thanks!", tone: :warm),
+          Event.message_sent("user", "haru", "You're great.", tone: :warm),
+          tick(240),
+          Event.message_sent("user", "haru", "Useless.", tone: :hostile)
+        ])
+
+      refute List.last(replies(outputs, "haru")).text ==
+               "That's not like you. Is something wrong?"
+    end
+
+    test "gift and apology replies tell a model what happened, and count repeats" do
+      {_state, outputs} =
+        run!(Runtime.demo_state(), [
+          Event.gift_received("user", "haru", "tea"),
+          Event.apology_offered("user", "haru", "Sorry."),
+          Event.apology_offered("user", "haru", "Sorry again.")
+        ])
+
+      [gift, _first, second] = replies(outputs, "haru")
+
+      assert Aethrion.Expression.Prompt.render_context(gift.context) =~
+               "Listener just gave the speaker: tea"
+
+      assert Aethrion.Expression.Prompt.render_context(second.context) =~
+               "Listener just apologized: Sorry again."
+
+      assert second.context.repeats == 2
+    end
+
+    test "a host-built gift request without an item still renders" do
+      request = %Aethrion.Expression.Request{
+        kind: :reply,
+        reason: :reply,
+        tone: :gift,
+        speaker: %{id: "mina", name: "Mina", traits: [], mood: :neutral},
+        listener: %{id: "user", name: "you"},
+        relationship: %{affinity: 0, trust: 0, tension: 0, bond: :neutral}
+      }
+
+      assert Aethrion.Expression.Templates.render(request) == "Thank you, I love it!"
+      assert Ko.render(request) == "마음에 들어. 고마워!"
+    end
   end
 
   defp tick(hours), do: Event.time_tick("t", hours: hours)

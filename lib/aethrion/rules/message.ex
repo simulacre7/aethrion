@@ -108,7 +108,6 @@ defmodule Aethrion.Rules.Message do
     counts = Consolidation.counts(state, event.to, event.from)
     count = &Map.get(counts, {"impression", &1}, 0)
     reputation = &Map.get(counts, {"reputation", &1}, 0)
-    kindness = fn count -> Enum.sum(Enum.map(@kind_patterns, count)) end
     receiver = Transition.name(transition, event.to)
     sender = Transition.name(transition, event.from)
     param = &Transition.param(transition, &1)
@@ -116,8 +115,7 @@ defmodule Aethrion.Rules.Message do
     firsthand? = Enum.any?(@firsthand_patterns, &(count.(&1) > 0))
 
     cond do
-      event.tone in [:cold, :hostile] and kindness.(count) >= param.(:goodwill_count) and
-          kindness.(count) > count.("hostile") + recent_hostility(state, event) ->
+      goodwill?(state, event) ->
         {Transition.note(
            transition,
            "#{receiver} gives #{sender} the benefit of the doubt after a long record of kindness",
@@ -156,22 +154,39 @@ defmodule Aethrion.Rules.Message do
 
   # Hostile messages from the sender that the receiver still remembers in
   # detail (not yet folded into an impression), counting this one.
-  defp recent_hostility(state, %{from: sender, to: receiver, tone: tone}) do
+  defp recent_hostility(state, %{from: sender, to: receiver, tone: tone} = event) do
     current = if tone == :hostile, do: 1, else: 0
+    this_one = topic(event)
 
     state
     |> Memories.for_character(receiver)
     |> Enum.count(
-      &match?(
-        %Memory{
-          kind: :experienced,
-          data: %{"event" => "message_sent", "tone" => "hostile", "from" => ^sender}
-        },
-        &1
-      )
+      &(match?(
+          %Memory{
+            kind: :experienced,
+            data: %{"event" => "message_sent", "tone" => "hostile", "from" => ^sender}
+          },
+          &1
+        ) and &1.topic != this_one)
     )
     |> Kernel.+(current)
   end
+
+  @doc false
+  # Whether cold or hostile `event` lands at goodwill strength: the same
+  # answer before or after this rule has remembered the message, so a reply
+  # can ask too.
+  @spec goodwill?(Aethrion.State.t(), map()) :: boolean()
+  def goodwill?(state, %{tone: tone} = event) when tone in [:cold, :hostile] do
+    counts = Consolidation.counts(state, event.to, event.from)
+    count = &Map.get(counts, {"impression", &1}, 0)
+    kindness = @kind_patterns |> Enum.map(count) |> Enum.sum()
+
+    kindness >= Aethrion.Tuning.get(state, __MODULE__, :goodwill_count) and
+      kindness > count.("hostile") + recent_hostility(state, event)
+  end
+
+  def goodwill?(_state, _event), do: false
 
   defp memory(event, importance) do
     Memory.new(

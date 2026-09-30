@@ -167,7 +167,11 @@ defmodule Aethrion.Expression.Prompt do
         _other -> ""
       end
 
-    "Listener just said (#{tone})#{away}: #{message}"
+    case tone do
+      :gift -> "Listener just gave the speaker#{away}: #{message}"
+      :apology -> "Listener just apologized#{away}: #{message}"
+      tone -> "Listener just said (#{tone})#{away}: #{message}"
+    end
   end
 
   defp incoming_line(_request), do: nil
