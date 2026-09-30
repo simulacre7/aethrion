@@ -173,6 +173,10 @@ defmodule Aethrion.NarrativeTest do
       {state, _} = run!(low, [insult.("haru"), sorry.("haru")])
       assert trust.(state, "haru") == 3
 
+      # Two insults, one apology: still behind.
+      {state, _} = run!(low, [insult.("haru"), insult.("haru"), sorry.("haru")])
+      assert trust.(state, "haru") < 3
+
       # An apology seen made to someone else is not the last one to oneself:
       # one's own still gives back what the insult took.
       {seen, _} =

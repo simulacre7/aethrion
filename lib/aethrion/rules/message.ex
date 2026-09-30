@@ -276,7 +276,10 @@ defmodule Aethrion.Rules.Message do
       kind: :experienced,
       topic: topic(event),
       data:
-        if(trust_lost > 0, do: Map.put(data(event), "trust_lost", trust_lost), else: data(event))
+        if(event.tone == :hostile,
+          do: Map.put(data(event), "trust_lost", trust_lost),
+          else: data(event)
+        )
     )
   end
 
