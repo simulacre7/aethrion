@@ -60,6 +60,10 @@ The social layer release: characters act on each other, every change is explaina
 - Gift and apology memory ids include the event id.
 - The demo world gains relationships between Haru, Yuna, and Mina.
 - Persistence writes format version 2 and still reads v0.1 data.
+- Event constructors default `:at` to `"unspecified"` instead of `"demo:t0"`.
+- The scheduler's `:notify` message is `{:aethrion, scheduler_pid, {:scheduler_tick, result}}`, following the library's message convention.
+- Persistence adapters report "nothing saved yet" as `{:error, %Aethrion.Error{code: :not_found}}`, and every public function that can fail returns `%Aethrion.Error{}` with location details.
+- The `mix demo.*` tasks live in `dev/` and are no longer part of the package.
 
 ### Fixed and hardened
 
