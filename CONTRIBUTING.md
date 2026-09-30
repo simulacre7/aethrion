@@ -22,7 +22,7 @@ mix demo.drama
 - Keep new dependencies minimal. Runtime dependencies are currently just `jason`.
 - Document public event and output shapes when changing them (`docs/api.md`, `docs/rules.md`).
 - Give every new expressive line an English and a Korean template (`Aethrion.Expression.Templates`, `...Templates.Ko`); the tests render every bundled scenario in Korean.
-- The READMEs quote real demo and scenario output, and the tests check it. If a change alters those lines, update the READMEs.
+- The READMEs and the recorded demo quote real output, and the tests check it. If a change alters those lines, update the READMEs, and re-record the demo with `node scripts/record_demo_cast.mjs` (then `scripts/render_demo_assets.sh` for the SVG).
 - Convert untrusted strings to atoms only through explicit maps or `String.to_existing_atom/1` after `Aethrion.Pipeline.ensure_loaded/1`; CI runs each scenario in a fresh VM to catch load-order bugs.
 
 See [docs/architecture.md](docs/architecture.md) for how the pieces fit together.

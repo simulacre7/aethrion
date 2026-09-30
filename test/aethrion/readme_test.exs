@@ -53,4 +53,23 @@ defmodule Aethrion.ReadmeTest do
              "README quotes a context line the demo no longer prints: #{line}"
     end
   end
+
+  test "the recorded demo transcript is what the demo prints now" do
+    transcript = File.read!("assets/demo/interactive-demo.txt")
+
+    commands =
+      for "user> " <> command <- String.split(transcript, "\n"), command != "", do: command
+
+    output =
+      capture_io(Enum.join(commands, "\n") <> "\n", fn ->
+        Mix.Tasks.Demo.Interactive.run(["--no-status"])
+      end)
+      |> plain()
+
+    for line <- String.split(transcript, "\n", trim: true),
+        not String.starts_with?(line, "user> ") do
+      assert output =~ line,
+             "the recorded transcript shows a line the demo no longer prints: #{line}"
+    end
+  end
 end
