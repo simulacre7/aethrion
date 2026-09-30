@@ -18,6 +18,9 @@ defmodule Mix.Tasks.Demo.Interactive do
   - `--effects` - also print every structured output.
   - `--no-status` - do not print the status tables after every event (use
     `status` to see them).
+
+  `here haru,yuna` puts characters in the room: they witness every gift and
+  message that does not name its own witnesses (`here none` clears it).
   """
   @shortdoc "Runs the interactive Aethrion CLI demo"
 
@@ -47,6 +50,7 @@ defmodule Mix.Tasks.Demo.Interactive do
       outputs: [],
       adapter: adapter(opts[:llm]),
       locale: locale(opts[:locale]),
+      present: [],
       effects?: Keyword.get(opts, :effects, false),
       status?: Keyword.get(opts, :status, true)
     }
@@ -271,6 +275,24 @@ defmodule Mix.Tasks.Demo.Interactive do
     end
   end
 
+  defp handle({:ok, {:here, :show}}, session) do
+    Display.message(present_line(session.state, session.present))
+    loop(session)
+  end
+
+  defp handle({:ok, {:here, characters}}, session) do
+    case Enum.reject(characters, &State.character?(session.state, &1)) do
+      [] ->
+        present = Enum.uniq(characters)
+        Display.message(present_line(session.state, present))
+        loop(%{session | present: present})
+
+      unknown ->
+        Display.message("ERROR unknown character #{Enum.map_join(unknown, ", ", &inspect/1)}")
+        loop(session)
+    end
+  end
+
   defp handle({:ok, event}, session) when is_map(event), do: dispatch(session, event)
 
   defp handle({:error, message}, session) do
@@ -278,7 +300,28 @@ defmodule Mix.Tasks.Demo.Interactive do
     loop(session)
   end
 
+  defp present_line(_state, []), do: "nobody else is here"
+
+  defp present_line(state, present) do
+    "present: #{Enum.map_join(present, ", ", &State.name(state, &1))} " <>
+      "(they witness what is said and given)"
+  end
+
+  # Characters who are present witness gifts and messages that do not name
+  # their own witnesses.
+  defp with_witnesses(%{type: type} = event, [_ | _] = present)
+       when type in [:gift_received, :message_sent] do
+    case Map.get(event, :observed_by, []) do
+      [] -> Map.put(event, :observed_by, present -- [event.from, event.to])
+      _named -> event
+    end
+  end
+
+  defp with_witnesses(event, _present), do: event
+
   defp dispatch(session, event) do
+    event = with_witnesses(event, session.present)
+
     case Runtime.step(session.state, event) do
       {:ok, step} ->
         Display.event(step.event, session.state)

@@ -76,6 +76,19 @@ defmodule Aethrion.MixTasksTest do
     assert File.read!(out) =~ "<h2>Timeline</h2>"
   end
 
+  test "characters who are here witness what is said" do
+    input =
+      "here haru\nmessage user yuna hostile leave me alone\nhere none\ngift user mina pin\nquit\n"
+
+    output =
+      capture_io(input, fn -> Mix.Tasks.Demo.Interactive.run(["--no-status"]) end) |> plain()
+
+    assert output =~ "present: Haru"
+    assert output =~ "user -> Yuna (hostile): leave me alone (seen by Haru)"
+    assert output =~ "Haru saw user be hostile to Yuna and trusts user less"
+    assert output =~ "user gives Mina a pin\n"
+  end
+
   @tag :tmp_dir
   test "journal task compacts and archives", %{tmp_dir: dir} do
     path = Path.join(dir, "world.jsonl")

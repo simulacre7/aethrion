@@ -62,6 +62,12 @@ defmodule Aethrion.CLI.CommandParserTest do
     assert {:error, _message} = CommandParser.parse("say yuna")
   end
 
+  test "parses who is here" do
+    assert {:ok, {:here, :show}} = CommandParser.parse("here")
+    assert {:ok, {:here, []}} = CommandParser.parse("here none")
+    assert {:ok, {:here, ["haru", "yuna"]}} = CommandParser.parse("here haru, yuna")
+  end
+
   test "parses witnesses at the end of a message" do
     assert {:ok, %{text: "you ruin everything", observed_by: ["haru", "yuna"]}} =
              CommandParser.parse(
