@@ -48,6 +48,61 @@ defmodule Aethrion.MixTasksTest do
     refute output =~ "FAIL"
   end
 
+  defmodule JoyfulGift do
+    use Aethrion.Rule,
+      id: :joyful_gift,
+      description: "Gifts bring extra joy.",
+      params: [bonus: 30]
+
+    @impl true
+    def apply(transition) do
+      Aethrion.Transition.adjust_character(
+        transition,
+        transition.event.to,
+        :joy,
+        Aethrion.Transition.param(transition, :bonus)
+      )
+    end
+
+    def pipeline,
+      do: Aethrion.Pipeline.append(Aethrion.Pipeline.default(), :gift_received, __MODULE__)
+  end
+
+  @tag :tmp_dir
+  test "scenario task runs custom rules with --pipeline", %{tmp_dir: dir} do
+    path = Path.join(dir, "joyful.json")
+
+    File.write!(
+      path,
+      Jason.encode!(%{
+        "name" => "Joyful gift",
+        "world" => "demo",
+        "tuning" => %{"joyful_gift" => %{"bonus" => 40}},
+        "events" => [
+          %{"type" => "gift_received", "from" => "user", "to" => "mina", "item" => "tea"}
+        ],
+        "expect" => [%{"character" => "mina", "field" => "joy", "equals" => 60}]
+      })
+    )
+
+    output =
+      capture_io(fn ->
+        Mix.Tasks.Aethrion.Scenario.run([
+          path,
+          "--quiet",
+          "--pipeline",
+          "Aethrion.MixTasksTest.JoyfulGift.pipeline"
+        ])
+      end)
+      |> plain()
+
+    assert output =~ "1/1 expectations met"
+
+    assert_raise Mix.Error, ~r/--pipeline Nope.nothing/, fn ->
+      Mix.Tasks.Aethrion.Scenario.run([path, "--pipeline", "Nope.nothing"])
+    end
+  end
+
   test "scenario task can emit json" do
     [path | _] = Aethrion.Scenario.bundled()
     output = capture_io(fn -> Mix.Tasks.Aethrion.Scenario.run([path, "--json"]) end)

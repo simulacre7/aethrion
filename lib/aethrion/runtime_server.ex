@@ -7,7 +7,7 @@ defmodule Aethrion.RuntimeServer do
 
   - **State ownership** - the current `Aethrion.State` lives in the process.
   - **Subscriptions** - processes can `subscribe/1` to receive every dispatched
-    step and every expression rendering.
+    step and every expression rendering, as `{:aethrion, tag, payload}`.
   - **History** - the host events dispatched so far, for replay and debugging.
   - **Snapshots** - with `:persistence`, the state is saved after each dispatch
     and restored on start, so a supervised restart resumes where it left off.
@@ -61,6 +61,10 @@ defmodule Aethrion.RuntimeServer do
     `compact_journal/1`) after this many host events, so a long-running world
     starts quickly. A failed compaction is logged and retried after the next
     event; the journal stays valid either way.
+  - `:subscribers` - a started `:pg` scope to keep subscribers in, so they
+    survive a restart of this server (`Aethrion.World` provides one)
+  - `:tag` - what subscriber messages carry as their second element (default:
+    this server's pid; `Aethrion.World` uses the world's name)
   - `:expression` - keyword options enabling asynchronous rendering:
     `:adapter` (required), `:adapter_opts`, `:timeout` (ms, default
     #{@default_expression_timeout}), `:task_supervisor` (a `Task.Supervisor`;
@@ -98,7 +102,9 @@ defmodule Aethrion.RuntimeServer do
 
   @doc """
   Replaces the current state, for example after loading a save. History is
-  cleared because it no longer describes how the state was reached.
+  cleared because it no longer describes how the state was reached. A
+  journaled server starts its journal over from the new state (the events
+  before it are gone, as after compaction); a snapshotting one saves it.
   """
   @spec put_state(server(), State.t()) :: :ok | {:error, Aethrion.Error.t()}
   def put_state(server, %State{} = state), do: GenServer.call(server, {:put_state, state})
@@ -144,6 +150,10 @@ defmodule Aethrion.RuntimeServer do
          history: [],
          history_limit: Keyword.get(opts, :history_limit, @default_history_limit),
          subscribers: %{},
+         # A :pg scope holding subscribers outside this process, so they
+         # survive a restart (Aethrion.World provides one).
+         pg: Keyword.get(opts, :subscribers),
+         tag: Keyword.get(opts, :tag, self()),
          expression: expression,
          pending: %{}
        }}
@@ -182,14 +192,12 @@ defmodule Aethrion.RuntimeServer do
 
   def handle_call(:get_state, _from, server), do: {:reply, server.world, server}
 
-  def handle_call({:put_state, _state}, _from, %{journal: path} = server) when is_binary(path) do
-    error =
-      Aethrion.Error.new(
-        :journal_enabled,
-        "put_state/2 is not allowed while journaling; the journal would no longer replay"
-      )
-
-    {:reply, {:error, error}, server}
+  # A journaled world starts its journal over from the new state.
+  def handle_call({:put_state, state}, _from, %{journal: path} = server) when is_binary(path) do
+    case Aethrion.Journal.rewrite(path, state) do
+      :ok -> {:reply, :ok, %{server | world: state, history: [], since_compaction: 0}}
+      error -> {:reply, error, server}
+    end
   end
 
   def handle_call({:put_state, state}, _from, server) do
@@ -210,6 +218,13 @@ defmodule Aethrion.RuntimeServer do
     end
   end
 
+  def handle_call({:subscribe, pid}, _from, %{pg: scope} = server) when not is_nil(scope) do
+    unless pid in :pg.get_local_members(scope, :subscribers),
+      do: :ok = :pg.join(scope, :subscribers, pid)
+
+    {:reply, :ok, server}
+  end
+
   def handle_call({:subscribe, pid}, _from, server) do
     if Map.has_key?(server.subscribers, pid) do
       {:reply, :ok, server}
@@ -217,6 +232,11 @@ defmodule Aethrion.RuntimeServer do
       ref = Process.monitor(pid)
       {:reply, :ok, put_in(server.subscribers[pid], ref)}
     end
+  end
+
+  def handle_call({:unsubscribe, pid}, _from, %{pg: scope} = server) when not is_nil(scope) do
+    _left_or_not_joined = :pg.leave(scope, :subscribers, pid)
+    {:reply, :ok, server}
   end
 
   def handle_call({:unsubscribe, pid}, _from, server) do
@@ -338,7 +358,7 @@ defmodule Aethrion.RuntimeServer do
 
   defp journal_world(path, fallback, replay_opts) do
     if File.exists?(path) do
-      case Aethrion.Journal.replay(path, replay_opts) do
+      case check_then_replay(path, replay_opts) do
         {:ok, state, steps} ->
           {:ok, state, length(steps)}
 
@@ -351,6 +371,14 @@ defmodule Aethrion.RuntimeServer do
            :ok <- Aethrion.Journal.create(path, state) do
         {:ok, state, 0}
       end
+    end
+  end
+
+  # Refuse a journal whose tuning the pipeline cannot hold: starting anyway
+  # would drop that tuning, and the next compaction would lose it for good.
+  defp check_then_replay(path, replay_opts) do
+    with :ok <- Aethrion.Journal.check_tuning(path, Keyword.fetch!(replay_opts, :pipeline)) do
+      Aethrion.Journal.replay(path, replay_opts)
     end
   end
 
@@ -481,7 +509,13 @@ defmodule Aethrion.RuntimeServer do
   end
 
   defp broadcast(server, payload) do
-    for pid <- Map.keys(server.subscribers), do: send(pid, {:aethrion, self(), payload})
+    subscribers =
+      case server.pg do
+        nil -> Map.keys(server.subscribers)
+        scope -> :pg.get_local_members(scope, :subscribers)
+      end
+
+    for pid <- subscribers, do: send(pid, {:aethrion, server.tag, payload})
     server
   end
 

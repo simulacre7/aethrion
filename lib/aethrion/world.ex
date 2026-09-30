@@ -19,13 +19,19 @@ defmodule Aethrion.World do
 
   The children are started in this order under a `:rest_for_one` strategy:
 
-  1. `Task.Supervisor` for expression rendering
-  2. `Aethrion.RuntimeServer`
-  3. `Aethrion.Scheduler` (when `:scheduler` is given)
+  1. a `:pg` scope holding subscribers
+  2. `Task.Supervisor` for expression rendering
+  3. `Aethrion.RuntimeServer`
+  4. `Aethrion.Scheduler` (when `:scheduler` is given)
 
   If the runtime server crashes it restarts from the last persisted snapshot
-  (when `:persistence` is given), and the scheduler restarts after it. A crash
-  inside an expression adapter never reaches the runtime.
+  or journal (when `:persistence` or `:journal` is given), and the scheduler
+  restarts after it; subscribers stay subscribed. A crash inside an
+  expression adapter never reaches the runtime.
+
+  Subscribers receive `{:aethrion, world_name, {:dispatched, step}}` and, with
+  `:expression`, `{:aethrion, world_name, {:expressed, output}}`, so one
+  process can listen to many worlds.
   """
 
   use Supervisor
@@ -37,8 +43,13 @@ defmodule Aethrion.World do
 
   Options:
 
-  - `:name` (required) - an atom identifying the world
-  - `:initial_state` - the starting `Aethrion.State` (default: demo state)
+  - `:name` (required) - an atom identifying the world. Each world
+    registers a few processes under names derived from it, and atoms are
+    never freed, so for an open-ended number of users keep worlds for active
+    users only rather than one per user ever seen.
+  - `:initial_state` - the starting `Aethrion.State` (default: demo state);
+    ignored when the journal or snapshot already exists, which wins. To load
+    a save into a running world, use `put_state/2`.
   - `:pipeline` - an `Aethrion.Pipeline`
   - `:persistence` - `{adapter, opts}`, see `Aethrion.RuntimeServer`
   - `:journal` - path of an `Aethrion.Journal` to rebuild from and append to
@@ -69,7 +80,9 @@ defmodule Aethrion.World do
     runtime_opts =
       [
         name: runtime(name),
-        initial_state: Keyword.get(opts, :initial_state, Runtime.demo_state())
+        initial_state: Keyword.get(opts, :initial_state, Runtime.demo_state()),
+        subscribers: subscribers(name),
+        tag: name
       ] ++
         Keyword.take(opts, [
           :pipeline,
@@ -93,6 +106,7 @@ defmodule Aethrion.World do
 
     children =
       [
+        %{id: :subscribers, start: {:pg, :start_link, [subscribers(name)]}},
         {Task.Supervisor, name: task_supervisor(name)},
         {RuntimeServer, runtime_opts}
       ] ++ scheduler
@@ -108,6 +122,10 @@ defmodule Aethrion.World do
   @spec scheduler(atom()) :: module()
   def scheduler(name), do: Module.concat([__MODULE__, to_string(name), "Scheduler"])
 
+  @doc false
+  # The :pg scope holding subscribers, so they outlive a runtime restart.
+  def subscribers(name), do: Module.concat([__MODULE__, to_string(name), "Subscribers"])
+
   @doc "Registered name of the world's expression task supervisor."
   @spec task_supervisor(atom()) :: module()
   def task_supervisor(name), do: Module.concat([__MODULE__, to_string(name), "TaskSupervisor"])
@@ -116,15 +134,35 @@ defmodule Aethrion.World do
   @spec supervisor_name(atom()) :: module()
   def supervisor_name(name), do: Module.concat([__MODULE__, to_string(name)])
 
+  @doc """
+  The world's supervisor pid, or `nil` when it is not running: for example to
+  stop a world started under a `DynamicSupervisor` with
+  `DynamicSupervisor.terminate_child/2`.
+  """
+  @spec whereis(atom()) :: pid() | nil
+  def whereis(name), do: Process.whereis(supervisor_name(name))
+
   @doc "See `Aethrion.RuntimeServer.dispatch/2`."
   @spec dispatch(atom(), Aethrion.Event.t()) ::
           {:ok, Aethrion.State.t(), [map()], [String.t()]} | {:error, Aethrion.Error.t()}
-  def dispatch(name, event), do: RuntimeServer.dispatch(runtime(name), event)
+  def dispatch(name, event),
+    do: running(name, fn -> RuntimeServer.dispatch(runtime(name), event) end)
 
   @doc "See `Aethrion.RuntimeServer.step/2`."
   @spec step(atom(), Aethrion.Event.t()) ::
           {:ok, Aethrion.Step.t()} | {:error, Aethrion.Error.t()}
-  def step(name, event), do: RuntimeServer.step(runtime(name), event)
+  def step(name, event), do: running(name, fn -> RuntimeServer.step(runtime(name), event) end)
+
+  # A world that is not running is an error value, not an exit.
+  defp running(name, call) do
+    call.()
+  catch
+    :exit, {:noproc, _call} ->
+      {:error,
+       Aethrion.Error.new(:world_not_running, "no world named #{inspect(name)} is running", %{
+         world: name
+       })}
+  end
 
   @doc "Current state of the world."
   @spec get_state(atom()) :: Aethrion.State.t()

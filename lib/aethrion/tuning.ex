@@ -53,8 +53,19 @@ defmodule Aethrion.Tuning do
   def put(%State{} = state, rule, key, value) when is_integer(value) do
     module = resolve(rule)
 
-    unless module && Keyword.has_key?(module.params(), key) do
-      raise ArgumentError, "unknown rule parameter #{inspect(rule)}.#{inspect(key)}"
+    cond do
+      is_nil(module) ->
+        raise ArgumentError,
+              "unknown rule #{inspect(rule)}; built-in rules can be named by id, " <>
+                "others by their module (Tuning.put(state, MyRule, #{inspect(key)}, value))"
+
+      not Keyword.has_key?(module.params(), key) ->
+        raise ArgumentError,
+              "#{inspect(module)} has no parameter #{inspect(key)}; " <>
+                "it has #{inspect(Keyword.keys(module.params()))}"
+
+      true ->
+        :ok
     end
 
     tuning = Map.update(state.tuning, module.id(), %{key => value}, &Map.put(&1, key, value))

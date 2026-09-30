@@ -48,7 +48,8 @@ defmodule Aethrion.Intent do
   @doc """
   Interprets `text` sent from `:from` (default `"user"`) to character `:to`.
 
-  Options: `:to` (required), `:from`, `:at`, `:adapter`, `:adapter_opts`.
+  Options: `:to` (required), `:from`, `:at`, `:observed_by` (characters who
+  witness it), `:adapter`, `:adapter_opts`.
 
   Returns `{:ok, event, meta}` or `{:error, %Aethrion.Error{}}` when the text is
   empty or the target is unknown.
@@ -82,7 +83,11 @@ defmodule Aethrion.Intent do
         }
 
         {proposal, meta} = propose(adapter, request, Keyword.get(opts, :adapter_opts, []))
-        {:ok, build_event(proposal, request, Keyword.get(opts, :at, "unspecified")), meta}
+
+        event_opts =
+          [at: Keyword.get(opts, :at, "unspecified")] ++ Keyword.take(opts, [:observed_by])
+
+        {:ok, build_event(proposal, request, event_opts), meta}
     end
   end
 
@@ -157,12 +162,12 @@ defmodule Aethrion.Intent do
 
   defp to_enum(_value, _allowed), do: nil
 
-  defp build_event(%{intent: :apology}, request, at) do
-    Event.apology_offered(request.from, request.to, request.text, at: at)
+  defp build_event(%{intent: :apology}, request, event_opts) do
+    Event.apology_offered(request.from, request.to, request.text, event_opts)
   end
 
-  defp build_event(%{intent: :message, tone: tone}, request, at) do
-    Event.message_sent(request.from, request.to, request.text, tone: tone, at: at)
+  defp build_event(%{intent: :message, tone: tone}, request, event_opts) do
+    Event.message_sent(request.from, request.to, request.text, [tone: tone] ++ event_opts)
   end
 
   defp listener(state, id) do

@@ -26,7 +26,7 @@ defmodule Aethrion.Error do
   | `:journal_mismatch` | replaying a journal assigned a different event id than recorded |
   | `:journal_changed` | a journal changed on disk while it was being compacted |
   | `:journal_failed` | a runtime server could not append to its journal |
-  | `:journal_enabled` | `put_state/2` was called on a journaling runtime server |
+  | `:world_not_running` | `Aethrion.World.dispatch/2` or `step/2` named a world that is not running |
   | `:invalid_snapshot` | a saved snapshot exists but cannot be loaded |
   | `:invalid_options` | required options are missing or conflict |
   | `:already_exists` | a file that must be new already exists |

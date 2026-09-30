@@ -42,7 +42,7 @@ The social layer release: characters act on each other, every change is explaina
 
 **Runtime and persistence**
 
-- `Aethrion.World` supervises a runtime server, a scheduler, and rendering tasks.
+- `Aethrion.World` supervises a runtime server, a scheduler, and rendering tasks. Subscribers stay subscribed when the runtime restarts and receive `{:aethrion, world_name, payload}`, so one process can listen to many worlds; `dispatch/2` and `step/2` on a world that is not running return `:world_not_running`; `whereis/1` finds a world to stop; `put_state/2` loads a save into a journaled world by starting its journal over.
 - `Aethrion.RuntimeServer` gains subscriptions, event history, cascade limits, snapshot persistence with restore, and asynchronous rendering with timeouts and crash isolation. A rule that raises rejects the event (`:rule_failed`) instead of crashing the world.
 - `Aethrion.Journal`: a world as its starting state plus an append-only log of host events. Replay rebuilds it exactly and detects mismatches; servers can journal every dispatch and rebuild from it on start. Compaction (`Journal.compact/2`, `World.compact_journal/1`, the `:journal_compact_every` option, `mix aethrion.journal --compact`) restarts a journal from the current state, optionally archiving the old one. Journal headers record the Aethrion version, and reading one written by another version logs a warning. A last line cut short by a crash is dropped (and repaired by a server on start); snapshots are written atomically.
 
@@ -50,6 +50,7 @@ The social layer release: characters act on each other, every change is explaina
 
 - JSON scenarios with a world, events, expectations, branches, tuning, and custom events (`Aethrion.Scenario`, `mix aethrion.scenario`), with a JSON Schema. Fourteen bundled scenarios run in the test suite, one with a Korean cast.
 - Self-contained HTML reports (`mix aethrion.report`, `--locale ko` for a Korean report, memories included) with charts, what each character has come to believe, a relationship graph with bond changes, the timeline, and branch comparison.
+- `mix aethrion.scenario --pipeline Module.function` runs scenarios of custom rules. `Intent.interpret/3` takes `:observed_by`. A runtime server refuses to start from a journal whose tuning its pipeline cannot hold, instead of dropping it.
 - `mix aethrion.journal` replays a journal, prints its digest, and exports it as a scenario or report.
 - Interactive CLI: `say`, `message`, `comfort`, `here` (witnesses), `opinion`, `digest`, `why`, `context`, `timeline`, `rules`, `undo`, `save`, `load`, `record`, `report`, `--llm`, and `--locale ko`.
 - A tutorial (English and Korean), a cookbook for hosts, rules reference, expression guide, scenario format, and API reference; a benchmark in `bench/`.

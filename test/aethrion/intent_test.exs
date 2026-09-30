@@ -104,6 +104,14 @@ defmodule Aethrion.IntentTest do
     assert {:error, %{code: :unknown_character}} = Intent.interpret(state, "hi", to: "nobody")
   end
 
+  test "witnesses given to interpret are on the event", %{state: state} do
+    assert {:ok, %{observed_by: ["haru"]}, _meta} =
+             Intent.interpret(state, "you're the worst", to: "mina", observed_by: ["haru"])
+
+    assert {:ok, %{type: :apology_offered, observed_by: ["haru"]}, _meta} =
+             Intent.interpret(state, "sorry", to: "mina", observed_by: ["haru"])
+  end
+
   test "the fake adapter reads everyday Korean the way it is meant" do
     cases = [
       {"고맙다", :warm},

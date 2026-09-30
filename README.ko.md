@@ -246,7 +246,7 @@ children = [
 ]
 
 Supervisor.start_link(children, strategy: :one_for_one)
-Aethrion.World.subscribe(:garden)   # {:aethrion, pid, {:dispatched, step}}, {:expressed, output} 수신
+Aethrion.World.subscribe(:garden)   # {:aethrion, :garden, {:dispatched, step}}, {:expressed, output} 수신
 ```
 
 `persistence:` 대신 `journal: "tmp/garden.jsonl"`을 쓰면 추가 전용 이벤트 로그가 남습니다. 세계는 로그를 재생해 그대로 복원되고, `mix aethrion.journal`로 어떤 저널이든 리포트로 만들 수 있습니다.

@@ -3,7 +3,7 @@ defmodule Aethrion.JournalTest do
 
   import Aethrion.TestHelpers
 
-  alias Aethrion.{Event, Journal, Runtime, RuntimeServer, Scenario, World}
+  alias Aethrion.{Event, Journal, Runtime, RuntimeServer, Scenario, State, World}
 
   setup do
     path =
@@ -130,10 +130,52 @@ defmodule Aethrion.JournalTest do
       {:ok, second} = RuntimeServer.start_link(journal: path)
       assert RuntimeServer.get_state(second) == state
 
-      assert {:error, %{code: :journal_enabled}} =
-               RuntimeServer.put_state(second, Runtime.demo_state())
-
+      # Loading a save starts the journal over from it, and survives a restart.
+      loaded = State.update_character_state(Runtime.demo_state(), "mina", &%{&1 | joy: 42})
+      assert :ok = RuntimeServer.put_state(second, loaded)
       GenServer.stop(second)
+
+      {:ok, third} = RuntimeServer.start_link(journal: path)
+      assert RuntimeServer.get_state(third) == loaded
+      GenServer.stop(third)
+    end
+
+    defmodule Sparkle do
+      use Aethrion.Rule, id: :sparkle, description: "Test rule.", params: [shine: 1]
+      @impl true
+      def apply(transition), do: transition
+    end
+
+    test "a server refuses a journal whose tuning its pipeline cannot hold", %{path: path} do
+      pipeline = Aethrion.Pipeline.append(Aethrion.Pipeline.default(), :gift_received, Sparkle)
+      state = Aethrion.Tuning.put(Runtime.demo_state(), Sparkle, :shine, 5)
+      :ok = Journal.create(path, state)
+
+      assert {:error, {%Aethrion.Error{code: :invalid_options}, _child}} =
+               start_supervised({RuntimeServer, journal: path})
+
+      assert {:ok, server} = start_supervised({RuntimeServer, journal: path, pipeline: pipeline})
+      assert Aethrion.Tuning.get(RuntimeServer.get_state(server), Sparkle, :shine) == 5
+    end
+
+    test "a world keeps its subscribers across a runtime restart, and says its name", %{
+      path: path
+    } do
+      name = :"journal_subs_#{System.unique_integer([:positive])}"
+      start_supervised!({World, name: name, journal: path})
+      :ok = World.subscribe(name)
+
+      runtime = Process.whereis(World.runtime(name))
+      ref = Process.monitor(runtime)
+      Process.exit(runtime, :kill)
+      assert_receive {:DOWN, ^ref, :process, ^runtime, :killed}
+      Process.sleep(50)
+
+      assert {:ok, _state, _outputs, _log} = World.dispatch(name, flower_for_mina())
+      assert_receive {:aethrion, ^name, {:dispatched, _step}}
+
+      assert {:error, %{code: :world_not_running}} =
+               World.dispatch(:"no_such_world_#{name}", flower_for_mina())
     end
 
     test "a world restarts from its journal", %{path: path} do

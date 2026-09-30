@@ -125,7 +125,7 @@ Every public function that can fail returns `{:error, %Aethrion.Error{}}`:
 | `:journal_mismatch` | replaying a journal assigned a different event id than recorded |
 | `:journal_changed` | a journal changed on disk while `Journal.compact/2` was compacting it |
 | `:journal_failed` | (RuntimeServer) the journal could not be written; the event was rejected and state kept |
-| `:journal_enabled` | (RuntimeServer) `put_state/2` was called while journaling |
+| `:world_not_running` | (World) `dispatch/2` or `step/2` named a world that is not running |
 | `:invalid_snapshot` | a saved snapshot exists but cannot be loaded |
 | `:invalid_options` | required options are missing or conflict |
 | `:already_exists` | a file that must be new already exists |
@@ -283,9 +283,11 @@ A world supervises a `Task.Supervisor` for rendering, an `Aethrion.RuntimeServer
 Subscriber messages:
 
 ```elixir
-{:aethrion, server_pid, {:dispatched, %Aethrion.Step{}}}
-{:aethrion, server_pid, {:expressed, output}}   # when :expression is configured
+{:aethrion, tag, {:dispatched, %Aethrion.Step{}}}
+{:aethrion, tag, {:expressed, output}}   # when :expression is configured
 ```
+
+`tag` is the world's name for an `Aethrion.World` (so one process can listen to many worlds), and the server's pid for a bare `RuntimeServer` unless it was given `tag:`. A World keeps its subscribers outside the runtime server, so they stay subscribed when it restarts.
 
 ### Scheduler
 

@@ -8,12 +8,15 @@ defmodule Mix.Tasks.Aethrion.Scenario do
       mix aethrion.scenario --all
       mix aethrion.scenario my_scenario.json --quiet
       mix aethrion.scenario my_scenario.json --json
+      mix aethrion.scenario test/scenarios/favorite_gift.json --pipeline MyGame.Rules.pipeline
 
   Options:
 
   - `--all` - run every bundled scenario
   - `--quiet` - only print expectation results
   - `--json` - print the final state, outputs, and checks as JSON
+  - `--pipeline Module.function` - run with the `Aethrion.Pipeline` that
+    function returns (it takes no arguments), for scenarios of custom rules
 
   Exits with a non-zero status when any expectation fails.
   """
@@ -23,7 +26,7 @@ defmodule Mix.Tasks.Aethrion.Scenario do
   alias Aethrion.CLI.Display
   alias Aethrion.{Output, Scenario, State}
 
-  @switches [all: :boolean, quiet: :boolean, json: :boolean]
+  @switches [all: :boolean, quiet: :boolean, json: :boolean, pipeline: :string]
 
   @impl Mix.Task
   def run(args) do
@@ -36,6 +39,7 @@ defmodule Mix.Tasks.Aethrion.Scenario do
       Mix.raise("usage: mix aethrion.scenario PATH [PATH...] | --all")
     end
 
+    opts = Keyword.put(opts, :pipeline, pipeline(opts[:pipeline]))
     results = Enum.map(paths, &run_one(&1, opts))
     failed = Enum.count(results, &(!&1))
 
@@ -51,8 +55,10 @@ defmodule Mix.Tasks.Aethrion.Scenario do
   end
 
   defp run_one(path, opts) do
-    with {:ok, scenario} <- Scenario.load(path),
-         {:ok, result} <- Scenario.run(scenario) do
+    pipeline = Keyword.take(opts, [:pipeline]) |> Enum.reject(&match?({_, nil}, &1))
+
+    with {:ok, scenario} <- Scenario.load(path, pipeline),
+         {:ok, result} <- Scenario.run(scenario, pipeline) do
       if opts[:json] do
         IO.puts(Jason.encode!(json(result), pretty: true))
       else
@@ -66,6 +72,30 @@ defmodule Mix.Tasks.Aethrion.Scenario do
         Mix.shell().error("in #{path}")
         false
     end
+  end
+
+  defp pipeline(nil), do: nil
+
+  # "MyGame.Rules.pipeline": a module that already exists and a function of
+  # no arguments on it, so no atoms are made from input.
+  defp pipeline(spec) do
+    with [module_name, function_name] <- String.split(spec, ~r/\.(?=[^.]+$)/),
+         module when is_atom(module) <- existing_atom("Elixir." <> module_name),
+         {:module, _} <- Code.ensure_loaded(module),
+         function when is_atom(function) <- existing_atom(function_name),
+         true <- function_exported?(module, function, 0),
+         %Aethrion.Pipeline{} = pipeline <- apply(module, function, []) do
+      pipeline
+    else
+      _other ->
+        Mix.raise("--pipeline #{spec}: expected Module.function returning an Aethrion.Pipeline")
+    end
+  end
+
+  defp existing_atom(name) do
+    String.to_existing_atom(name)
+  rescue
+    ArgumentError -> nil
   end
 
   defp print(result, opts) do

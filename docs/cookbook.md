@@ -34,19 +34,21 @@ state = Aethrion.World.get_state(world)
 Then handle messages in the process that subscribed:
 
 ```elixir
-def handle_info({:aethrion, _server, {:expressed, %{type: type} = output}}, socket)
+# The second element is the world's name, so one process can serve many worlds.
+# Subscriptions survive a runtime restart.
+def handle_info({:aethrion, _world, {:expressed, %{type: type} = output}}, socket)
     when type in [:proactive_message, :reply] do
   # output.text is the model's line, or the deterministic fallback
   {:noreply, push_line(socket, output.character_id, output.text)}
 end
 
-def handle_info({:aethrion, _server, {:dispatched, step}}, socket) do
+def handle_info({:aethrion, _world, {:dispatched, step}}, socket) do
   # step.outputs has everything else: mood_changed, bond_changed, ...
   {:noreply, update_panels(socket, step)}
 end
 ```
 
-When the user comes back, show what happened while they were away. Keep the outputs from the subscription (or from `Aethrion.Journal.replay/2`) since their last visit:
+When the user comes back, show what happened while they were away. Keep the outputs from the subscription since their last visit (store them yourself: a compacted journal starts over from the current state, so it cannot replay what came before):
 
 ```elixir
 Aethrion.Digest.of(outputs_since_last_visit, Aethrion.World.get_state(world), locale: :ko)
@@ -54,6 +56,8 @@ Aethrion.Digest.of(outputs_since_last_visit, Aethrion.World.get_state(world), lo
 ```
 
 `examples/companion_week.exs` plays ten days of this with the demo cast (five days of mornings with a harsh word and an apology, then five days away) and prints the digest on return, in English and Korean.
+
+To load a save into a running world, `Aethrion.World.put_state(world, state)` (a journaled world starts its journal over from it). A world's `:initial_state` only applies when no journal or snapshot exists yet. World names are atoms, so start worlds for active users and stop idle ones (`DynamicSupervisor.terminate_child(sup, Aethrion.World.whereis(name))`) rather than keeping one per user ever seen.
 
 The simulation never waits for the model: `dispatch` returns as soon as the rules have run, and each line arrives when it is rendered (or its fallback, if the model is slow or fails).
 
