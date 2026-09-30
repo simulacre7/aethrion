@@ -40,9 +40,11 @@ defmodule Aethrion.Transition do
   ]
 
   @doc false
+  @spec new(State.t(), map()) :: t()
   def new(%State{} = state, event), do: %__MODULE__{state: state, event: event}
 
   @doc false
+  @spec put_rule(t(), atom()) :: t()
   def put_rule(%__MODULE__{} = transition, rule) when is_atom(rule) do
     if Code.ensure_loaded?(rule) and function_exported?(rule, :id, 0),
       do: %{transition | rule: rule.id(), rule_module: rule},
@@ -54,6 +56,7 @@ defmodule Aethrion.Transition do
   `Aethrion.Tuning` if present, otherwise the rule's declared default.
   Raises for parameters the rule does not declare.
   """
+  @spec param(t(), atom()) :: integer()
   def param(%__MODULE__{rule_module: module, state: state}, key) when is_atom(module) do
     Aethrion.Tuning.get(state, module, key)
   end
@@ -70,9 +73,11 @@ defmodule Aethrion.Transition do
   end
 
   @doc "Display name for a character id, or the id itself for external actors."
+  @spec name(t(), String.t()) :: String.t()
   def name(%__MODULE__{state: state}, id), do: State.name(state, id)
 
   @doc "Current state of a character."
+  @spec character_state(t(), String.t()) :: CharacterState.t()
   def character_state(%__MODULE__{state: state}, id), do: state.characters[id].state
 
   @doc """
@@ -81,6 +86,7 @@ defmodule Aethrion.Transition do
   Logs `[State] Name field +n` unless `log: false` is given. Changes that clamp
   to zero are skipped entirely.
   """
+  @spec adjust_character(t(), String.t(), atom(), integer(), keyword()) :: t()
   def adjust_character(%__MODULE__{} = transition, character_id, field, delta, opts \\ [])
       when is_integer(delta) do
     unless field in CharacterState.numeric_fields() do
@@ -109,6 +115,7 @@ defmodule Aethrion.Transition do
   Sets a non-numeric character field such as `:mood` or `:last_active_at`.
   Records a trace entry when the value changes; never logs.
   """
+  @spec set_character(t(), String.t(), atom(), term()) :: t()
   def set_character(%__MODULE__{} = transition, character_id, field, value) do
     before = Map.fetch!(character_state(transition, character_id), field)
 
@@ -128,6 +135,7 @@ defmodule Aethrion.Transition do
   `:relationship_changed` output with the applied delta. Pass `log: false` or
   `output: false` for routine background changes.
   """
+  @spec adjust_relationship(t(), String.t(), String.t(), atom(), integer(), keyword()) :: t()
   def adjust_relationship(%__MODULE__{} = transition, from, to, field, delta, opts \\ [])
       when is_integer(delta) do
     unless field in Relationship.fields() do
@@ -169,6 +177,7 @@ defmodule Aethrion.Transition do
   Stores a memory and emits `:memory_created`. The memory's `created_tick` is
   set to the current clock unless `created_tick:` is given.
   """
+  @spec remember(t(), Memory.t(), keyword()) :: t()
   def remember(%__MODULE__{} = transition, %Memory{} = memory, opts \\ []) do
     memory = %{memory | created_tick: Keyword.get(opts, :created_tick, transition.state.clock)}
     state = State.add_memory(transition.state, memory)
@@ -185,6 +194,7 @@ defmodule Aethrion.Transition do
   Updates an existing memory with `fun`. Records a trace entry for `field` when
   given, so decay and sharing remain inspectable.
   """
+  @spec update_memory(t(), String.t(), (Memory.t() -> Memory.t()), keyword()) :: t()
   def update_memory(%__MODULE__{} = transition, memory_id, fun, opts \\ []) do
     case State.memory(transition.state, memory_id) do
       nil ->
@@ -217,6 +227,7 @@ defmodule Aethrion.Transition do
   each memory whose `field` changed. Use this instead of calling
   `update_memory/4` in a loop, which is quadratic in the number of memories.
   """
+  @spec map_memories(t(), atom(), (Memory.t() -> Memory.t()), keyword()) :: t()
   def map_memories(%__MODULE__{} = transition, field, fun, opts \\ []) when is_atom(field) do
     on_change = Keyword.get(opts, :on_change, fn transition, _before, _after -> transition end)
 
@@ -246,6 +257,7 @@ defmodule Aethrion.Transition do
   Removes every memory for which `fun` returns true, tracing each removal.
   Use sparingly: forgotten memories cannot be inspected any more.
   """
+  @spec drop_memories(t(), (Memory.t() -> as_boolean(term()))) :: t()
   def drop_memories(%__MODULE__{} = transition, fun) do
     {dropped, kept} = Enum.split_with(transition.state.memories, fun)
 
@@ -263,6 +275,7 @@ defmodule Aethrion.Transition do
   @doc """
   Emits an output, tagging it with the current event id and rule.
   """
+  @spec emit(t(), map()) :: t()
   def emit(%__MODULE__{} = transition, output) do
     output = Map.merge(output, %{event_id: event_id(transition), rule: transition.rule})
     subject = Map.get(output, :character_id) || Map.get(output, :from)
@@ -274,6 +287,7 @@ defmodule Aethrion.Transition do
   end
 
   @doc "Appends a log line."
+  @spec log(t(), String.t()) :: t()
   def log(%__MODULE__{} = transition, line) do
     %{transition | log: [line | transition.log]}
   end
@@ -284,6 +298,8 @@ defmodule Aethrion.Transition do
   change. `kind` is the `Aethrion.Trace` kind; `opts` takes `:detail` and a
   `:log` line.
   """
+  @spec derived(t(), Trace.kind(), String.t() | nil, term(), atom(), term(), term(), keyword()) ::
+          t()
   def derived(%__MODULE__{} = transition, kind, subject, target, field, before, value, opts \\ [])
       when is_atom(kind) and is_atom(field) do
     transition
@@ -300,6 +316,7 @@ defmodule Aethrion.Transition do
   Records a rule decision that did not directly change state, and logs it as
   `[Rule] text`.
   """
+  @spec note(t(), String.t(), keyword()) :: t()
   def note(%__MODULE__{} = transition, text, opts \\ []) do
     transition
     |> add_trace(:note, Keyword.get(opts, :subject), nil, nil, nil, nil, detail: text)
@@ -310,6 +327,7 @@ defmodule Aethrion.Transition do
   Enqueues a follow-up event. It is validated and processed after the current
   event, with `:cause` pointing at the current event id.
   """
+  @spec enqueue(t(), map()) :: t()
   def enqueue(%__MODULE__{} = transition, %{type: type} = event) do
     event = Map.put(event, :cause, event_id(transition))
 
@@ -318,21 +336,26 @@ defmodule Aethrion.Transition do
   end
 
   @doc "See `Aethrion.State.cooldown_ready?/3`."
+  @spec cooldown_ready?(t(), String.t(), non_neg_integer()) :: boolean()
   def cooldown_ready?(%__MODULE__{state: state}, key, hours),
     do: State.cooldown_ready?(state, key, hours)
 
   @doc "Records that a rate-limited behavior fired now."
+  @spec put_cooldown(t(), String.t()) :: t()
   def put_cooldown(%__MODULE__{} = transition, key) do
     %{transition | state: State.put_cooldown(transition.state, key)}
   end
 
   @doc "Replaces the state directly. Prefer the tracked helpers."
+  @spec put_state(t(), State.t()) :: t()
   def put_state(%__MODULE__{} = transition, %State{} = state), do: %{transition | state: state}
 
   @doc "Id of the event being processed."
+  @spec event_id(t()) :: String.t() | nil
   def event_id(%__MODULE__{event: event}), do: Map.get(event, :id)
 
   @doc "Formats an integer delta with an explicit sign."
+  @spec signed(integer()) :: String.t()
   def signed(delta) when delta >= 0, do: "+#{delta}"
   def signed(delta), do: "#{delta}"
 

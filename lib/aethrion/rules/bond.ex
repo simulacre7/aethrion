@@ -40,6 +40,7 @@ defmodule Aethrion.Rules.Bond do
   @bonds [:estranged, :strained, :close, :friendly, :neutral]
 
   @doc "Every bond, from worst to best-established."
+  @spec bonds() :: [atom()]
   def bonds, do: @bonds
 
   @impl true
@@ -84,6 +85,8 @@ defmodule Aethrion.Rules.Bond do
   The bond of a relationship. Pass the world state to honor its
   `Aethrion.Tuning` overrides; without it the defaults are used.
   """
+  @spec derive(Relationship.t(), State.t() | map() | nil) ::
+          :estranged | :strained | :close | :friendly | :neutral
   def derive(relationship, world_or_thresholds \\ nil)
 
   def derive(%Relationship{} = r, %State{} = world), do: derive(r, thresholds(world))
@@ -100,6 +103,7 @@ defmodule Aethrion.Rules.Bond do
   end
 
   @doc "The world's bond thresholds, honoring tuning."
+  @spec thresholds(State.t()) :: %{atom() => integer()}
   def thresholds(%State{} = world) do
     Map.new(params(), fn {key, _default} -> {key, Aethrion.Tuning.get(world, __MODULE__, key)} end)
   end

@@ -34,6 +34,7 @@ defmodule Aethrion.Report do
     (`Aethrion.Expression.Templates.Ko`); the rest of the report stays in
     English. Defaults to `:en`, the deterministic fallback text.
   """
+  @spec html(Scenario.Result.t(), keyword()) :: iodata()
   def html(%Scenario.Result{} = result, opts \\ []) do
     locale = Keyword.get(opts, :locale, :en)
     result = localize(result, locale)

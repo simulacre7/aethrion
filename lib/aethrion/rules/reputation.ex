@@ -89,6 +89,7 @@ defmodule Aethrion.Rules.Reputation do
   Reads a memory's data as a treatment: `{actor, target, tone}` for a warm,
   cold, or hostile message, or `nil`.
   """
+  @spec treatment(map()) :: {String.t(), String.t(), :warm | :cold | :hostile} | nil
   def treatment(%{"event" => "message_sent", "from" => from, "to" => to, "tone" => tone})
       when is_map_key(@treatments, tone),
       do: {from, to, Map.fetch!(@treatments, tone)}

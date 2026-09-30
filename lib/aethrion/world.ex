@@ -101,39 +101,53 @@ defmodule Aethrion.World do
   end
 
   @doc "Registered name of the world's runtime server."
+  @spec runtime(atom()) :: module()
   def runtime(name), do: Module.concat([__MODULE__, to_string(name), "Runtime"])
 
   @doc "Registered name of the world's scheduler."
+  @spec scheduler(atom()) :: module()
   def scheduler(name), do: Module.concat([__MODULE__, to_string(name), "Scheduler"])
 
   @doc "Registered name of the world's expression task supervisor."
+  @spec task_supervisor(atom()) :: module()
   def task_supervisor(name), do: Module.concat([__MODULE__, to_string(name), "TaskSupervisor"])
 
   @doc false
+  @spec supervisor_name(atom()) :: module()
   def supervisor_name(name), do: Module.concat([__MODULE__, to_string(name)])
 
   @doc "See `Aethrion.RuntimeServer.dispatch/2`."
+  @spec dispatch(atom(), Aethrion.Event.t()) ::
+          {:ok, State.t(), [map()], [String.t()]} | {:error, Aethrion.Error.t()}
   def dispatch(name, event), do: RuntimeServer.dispatch(runtime(name), event)
 
   @doc "See `Aethrion.RuntimeServer.step/2`."
+  @spec step(atom(), Aethrion.Event.t()) ::
+          {:ok, Aethrion.Step.t()} | {:error, Aethrion.Error.t()}
   def step(name, event), do: RuntimeServer.step(runtime(name), event)
 
   @doc "Current state of the world."
+  @spec state(atom()) :: Aethrion.State.t()
   def state(name), do: RuntimeServer.get_state(runtime(name))
 
   @doc "Host events dispatched so far."
+  @spec history(atom()) :: [Aethrion.Event.t()]
   def history(name), do: RuntimeServer.history(runtime(name))
 
   @doc "See `Aethrion.RuntimeServer.subscribe/2`."
+  @spec subscribe(atom(), pid()) :: :ok
   def subscribe(name, pid \\ self()), do: RuntimeServer.subscribe(runtime(name), pid)
 
   @doc "See `Aethrion.RuntimeServer.unsubscribe/2`."
+  @spec unsubscribe(atom(), pid()) :: :ok
   def unsubscribe(name, pid \\ self()), do: RuntimeServer.unsubscribe(runtime(name), pid)
 
   @doc "See `Aethrion.RuntimeServer.put_state/2`."
+  @spec put_state(atom(), Aethrion.State.t()) :: :ok | {:error, Aethrion.Error.t()}
   def put_state(name, state), do: RuntimeServer.put_state(runtime(name), state)
 
   @doc "Compacts the world's journal. See `Aethrion.RuntimeServer.compact_journal/1`."
+  @spec compact_journal(atom()) :: :ok | {:error, Aethrion.Error.t()}
   def compact_journal(name), do: RuntimeServer.compact_journal(runtime(name))
 
   defp expression_opts(_name, nil), do: []

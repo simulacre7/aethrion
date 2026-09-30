@@ -109,6 +109,7 @@ defmodule Aethrion.Rules.Consolidation do
   memory of one of the covered interactions, or a secondhand one of how
   someone talked to another character.
   """
+  @spec consolidatable?(Memory.t()) :: boolean()
   def consolidatable?(%Memory{} = memory), do: not is_nil(classify(memory))
 
   defp candidate?(%Memory{} = memory) do
@@ -283,6 +284,7 @@ defmodule Aethrion.Rules.Consolidation do
   `"warm"`, `"gift"`, `"hostile"`) from `actor`. Zero without an impression,
   or when the impression itself has faded.
   """
+  @spec impression_count(State.t(), String.t(), String.t(), String.t()) :: non_neg_integer()
   def impression_count(%State{} = state, character, pattern, actor) do
     count(state, {character, "impression", pattern, actor})
   end
@@ -292,6 +294,7 @@ defmodule Aethrion.Rules.Consolidation do
   toward other characters, from a reputation impression. Zero without one, or
   when it has faded.
   """
+  @spec reputation_count(State.t(), String.t(), String.t(), String.t()) :: non_neg_integer()
   def reputation_count(%State{} = state, character, pattern, actor) do
     count(state, {character, "reputation", pattern, actor})
   end

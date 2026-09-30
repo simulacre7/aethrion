@@ -17,6 +17,7 @@ defmodule Aethrion.Memories do
   @recency_step 2
 
   @doc "A character's memories, newest first."
+  @spec for_character(State.t(), String.t(), keyword()) :: [Memory.t()]
   def for_character(%State{} = state, character_id, opts \\ []) do
     include_faded? = Keyword.get(opts, :include_faded, false)
 
@@ -26,11 +27,13 @@ defmodule Aethrion.Memories do
   end
 
   @doc "The `limit` most recent memories."
+  @spec recent(State.t(), String.t(), non_neg_integer(), keyword()) :: [Memory.t()]
   def recent(%State{} = state, character_id, limit \\ 5, opts \\ []) do
     state |> for_character(character_id, opts) |> Enum.take(limit)
   end
 
   @doc "The `limit` most important memories; ties go to the newer memory."
+  @spec important(State.t(), String.t(), non_neg_integer(), keyword()) :: [Memory.t()]
   def important(%State{} = state, character_id, limit \\ 5, opts \\ []) do
     state
     |> for_character(character_id, opts)
@@ -41,6 +44,7 @@ defmodule Aethrion.Memories do
   end
 
   @doc "Memories involving `other_id`, newest first."
+  @spec about(State.t(), String.t(), String.t(), keyword()) :: [Memory.t()]
   def about(%State{} = state, character_id, other_id, opts \\ []) do
     state
     |> for_character(character_id, opts)
@@ -52,6 +56,7 @@ defmodule Aethrion.Memories do
   or an impression that folded in a memory of it (so a story the character
   has forgotten the details of is still not news to them).
   """
+  @spec knows_topic?(State.t(), String.t(), String.t() | nil) :: boolean()
   def knows_topic?(%State{} = state, character_id, topic) do
     Enum.any?(state.memories, &(&1.character_id == character_id and topic in topics(&1)))
   end
@@ -60,6 +65,7 @@ defmodule Aethrion.Memories do
   The topics a memory stands for: its own, plus for an impression every topic
   folded into it.
   """
+  @spec topics(Memory.t()) :: [String.t() | nil]
   def topics(%Memory{kind: :impression, topic: topic, data: %{"topics" => [_ | _] = folded}}),
     do: [topic | folded]
 
@@ -74,6 +80,7 @@ defmodule Aethrion.Memories do
 
   Options: `:focus` (character ids), `:limit` (default 3), `:include_faded`.
   """
+  @spec relevant(State.t(), String.t(), keyword()) :: [Memory.t()]
   def relevant(%State{} = state, character_id, opts \\ []) do
     focus = Keyword.get(opts, :focus, [])
     limit = Keyword.get(opts, :limit, 3)
