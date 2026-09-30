@@ -146,14 +146,13 @@ defmodule Aethrion.CLI.CommandParser do
     end
   end
 
-  defp do_parse(["gift", from, to, item]) do
-    {:ok, Event.gift_received(from, to, item, observed_by: [], at: "interactive:gift")}
-  end
+  # The item is the rest of the line: "gift user mina pastry box".
+  defp do_parse(["gift", from, to | item_parts]) when item_parts != [] do
+    {words, observed_by} = trailing_observers(item_parts)
 
-  defp do_parse(["gift", from, to, item, "observed_by", observers]) do
     {:ok,
-     Event.gift_received(from, to, item,
-       observed_by: observers(observers),
+     Event.gift_received(from, to, Enum.join(words, " "),
+       observed_by: observed_by,
        at: "interactive:gift"
      )}
   end

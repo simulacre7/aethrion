@@ -29,6 +29,14 @@ defmodule Aethrion.CLI.CommandParserTest do
              CommandParser.parse("apologize user MINA observed_by Haru", resolve)
   end
 
+  test "a gift's item can be several words" do
+    assert {:ok, %{item: "pastry box", observed_by: ["yuna"]}} =
+             CommandParser.parse("gift user mina pastry box observed_by yuna")
+
+    assert {:ok, %{item: "pastry box", observed_by: []}} =
+             CommandParser.parse("gift user mina pastry box")
+  end
+
   test "parses gift command" do
     assert {:ok,
             %{

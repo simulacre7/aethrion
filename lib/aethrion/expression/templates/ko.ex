@@ -327,7 +327,7 @@ defmodule Aethrion.Expression.Templates.Ko do
 
   defp first_hurt(:sensitive), do: "그 말 좀 아프다. 왜 그런 말을 해?"
   defp first_hurt(:calm), do: "...그건 좀 너무했다."
-  defp first_hurt(:playful), do: "와, 속마음 제대로 말해 주네."
+  defp first_hurt(:playful), do: "와, 돌려 말하지도 않네?"
   defp first_hurt(nil), do: "왜 그런 말을 해?"
 
   # How a Latin word's end is usually read in Korean. Vowels and -r, -w, -h
@@ -501,16 +501,15 @@ defmodule Aethrion.Expression.Templates.Ko do
     "letter" => "편지",
     "map" => "지도",
     "necklace" => "목걸이",
-    "notebook" => "공책",
-    "pastry box" => "빵 상자",
-    "pin" => "핀",
+    "notebook" => "노트",
+    "pastry box" => "디저트 상자",
+    "pin" => "배지",
     "postcard" => "엽서",
     "ribbon" => "리본",
     "ring" => "반지",
     "scarf" => "목도리",
     "snack" => "간식",
-    "star" => "별",
-    "tea" => "차"
+    "tea" => "홍차"
   }
 
   @doc """
