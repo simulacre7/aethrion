@@ -13,7 +13,12 @@ defmodule Aethrion.CLI.CommandParser do
     "energy" => :energy
   }
 
-  @relationship_fields %{"affinity" => :affinity, "trust" => :trust, "tension" => :tension}
+  @relationship_fields %{
+    "affinity" => :affinity,
+    "trust" => :trust,
+    "tension" => :tension,
+    "bond" => :bond
+  }
 
   def parse(line) when is_binary(line) do
     line

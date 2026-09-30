@@ -13,12 +13,14 @@ defmodule Aethrion.Trace do
   - `:memory` - a memory was created or updated (`target` is the memory id)
   - `:output` - an output was emitted (`target` is the output type)
   - `:event` - a follow-up event was enqueued or dropped (`target` is the event type)
+  - `:bond` - a relationship's derived bond changed (`target` is `{from, to}`,
+    `field` is `:bond`); bonds are not stored, see `Aethrion.Rules.Bond`
   - `:note` - a rule decision without a direct state change
 
   `subject` is the character primarily affected, when there is one.
   """
 
-  @type kind :: :character | :relationship | :memory | :output | :event | :note
+  @type kind :: :character | :relationship | :bond | :memory | :output | :event | :note
 
   @type t :: %__MODULE__{
           event_id: String.t() | nil,
@@ -39,7 +41,10 @@ defmodule Aethrion.Trace do
   either side of a relationship change.
   """
   def concerns?(%__MODULE__{subject: id}, id) when is_binary(id), do: true
-  def concerns?(%__MODULE__{kind: :relationship, target: {_, id}}, id), do: true
+
+  def concerns?(%__MODULE__{kind: kind, target: {_, id}}, id) when kind in [:relationship, :bond],
+    do: true
+
   def concerns?(%__MODULE__{}, _id), do: false
 
   @doc """
@@ -52,7 +57,8 @@ defmodule Aethrion.Trace do
       %{kind: :character, field: field, before: before, after: value} ->
         "#{prefix}: #{entry.target}.#{field} #{format(before)} -> #{format(value)}"
 
-      %{kind: :relationship, target: {from, to}, field: field, before: before, after: value} ->
+      %{kind: kind, target: {from, to}, field: field, before: before, after: value}
+      when kind in [:relationship, :bond] ->
         "#{prefix}: #{from}->#{to}.#{field} #{before} -> #{value}"
 
       %{kind: :memory, field: field, before: before, after: value} when not is_nil(field) ->

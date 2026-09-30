@@ -67,11 +67,13 @@ defmodule Aethrion.Rules.Bond do
       if before == after_bond do
         transition
       else
+        line =
+          "#{Transition.name(transition, from)} toward #{Transition.name(transition, to)}: #{before} -> #{after_bond}"
+
         transition
-        |> Transition.note(
-          "#{Transition.name(transition, from)} toward #{Transition.name(transition, to)}: #{before} -> #{after_bond}",
-          subject: from,
-          log: "Bond"
+        |> Transition.derived(:bond, from, {from, to}, :bond, before, after_bond,
+          detail: line,
+          log: "[Bond] #{line}"
         )
         |> Transition.emit(Output.bond_changed(from, to, before, after_bond))
       end

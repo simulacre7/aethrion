@@ -279,13 +279,31 @@ defmodule Aethrion.Transition do
   end
 
   @doc """
+  Records a change to a value derived from the state rather than stored in
+  it, such as a relationship's bond, so it can be explained like any other
+  change. `kind` is the `Aethrion.Trace` kind; `opts` takes `:detail` and a
+  `:log` line.
+  """
+  def derived(%__MODULE__{} = transition, kind, subject, target, field, before, value, opts \\ [])
+      when is_atom(kind) and is_atom(field) do
+    transition
+    |> add_trace(kind, subject, target, field, before, value, detail: Keyword.get(opts, :detail))
+    |> then(fn transition ->
+      case Keyword.get(opts, :log) do
+        nil -> transition
+        line -> log(transition, line)
+      end
+    end)
+  end
+
+  @doc """
   Records a rule decision that did not directly change state, and logs it as
-  `[Rule] text` (or under another tag with `log: "Tag"`).
+  `[Rule] text`.
   """
   def note(%__MODULE__{} = transition, text, opts \\ []) do
     transition
     |> add_trace(:note, Keyword.get(opts, :subject), nil, nil, nil, nil, detail: text)
-    |> log("[#{Keyword.get(opts, :log, "Rule")}] #{text}")
+    |> log("[Rule] #{text}")
   end
 
   @doc """

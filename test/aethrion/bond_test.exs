@@ -41,7 +41,12 @@ defmodule Aethrion.BondTest do
              of_type(step.outputs, :bond_changed)
 
     assert "[Bond] Mina toward user: friendly -> strained" in step.log
-    assert Enum.any?(step.trace, &(&1.rule == :bond and &1.detail =~ "friendly -> strained"))
+
+    assert [%{rule: :bond, before: :friendly, after: :strained, event_id: "e2"}] =
+             Aethrion.Explain.relationship([step], "mina", "user", :bond)
+
+    assert {:ok, {:why, {"mina", "user"}, :bond}} =
+             Aethrion.CLI.CommandParser.parse("why mina->user bond")
   end
 
   test "untouched relationships never announce, even if their bond is stale" do

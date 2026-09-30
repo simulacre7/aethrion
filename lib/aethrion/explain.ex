@@ -63,13 +63,17 @@ defmodule Aethrion.Explain do
   end
 
   @doc """
-  Changes to a relationship field (`:affinity`, `:trust`, or `:tension`), oldest first.
+  Changes to a relationship field (`:affinity`, `:trust`, `:tension`, or the
+  derived `:bond`), oldest first.
   """
   def relationship(trace, events, from, to, field) when is_atom(field) do
     target = {from, to}
 
     trace
-    |> Enum.filter(&match?(%Trace{kind: :relationship, target: ^target, field: ^field}, &1))
+    |> Enum.filter(fn entry ->
+      entry.kind in [:relationship, :bond] and
+        match?(%Trace{target: ^target, field: ^field}, entry)
+    end)
     |> changes(events)
   end
 
