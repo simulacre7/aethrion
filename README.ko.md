@@ -316,5 +316,6 @@ flowchart TD
 - [docs/scenarios.md](docs/scenarios.md) - 시나리오 형식
 - [docs/api.md](docs/api.md) - 공개 API
 - [docs/architecture.md](docs/architecture.md) - 내부 구조 (기여자용, 영문)
+- [docs/faq.md](docs/faq.md) - 왜 LLM이 아닌 규칙인가, 왜 캐릭터당 프로세스가 아닌가, 규모 (영문)
 - [docs/roadmap.md](docs/roadmap.md) - 다음 계획
 - [CHANGELOG.md](CHANGELOG.md)
