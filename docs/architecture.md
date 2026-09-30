@@ -121,8 +121,10 @@ Aethrion uses one process per *world*, not per character. The alternatives were 
 | to add | touch |
 | --- | --- |
 | a rule | a module with `use Aethrion.Rule`; register it in `Pipeline.default/0` (or a host pipeline); document it in `docs/rules.md`; add a scenario |
-| an event type | a constructor, `describe/2`, and `from_data` builder in `Event`; validation in `Validator`; the scenario schema; docs |
+| an event type | a constructor, `describe/2`, and `from_data` builder in `Event`; `Templates.Ko.describe_event/2`; validation in `Validator`; the scenario schema; docs |
 | an impression pattern | `interaction/1` in `Rules.Consolidation` and its content line; history effects in the rule that reads it |
 | an output type | a constructor in `Output`; `Display` and `Report` rendering; docs |
 | a template line | `Expression.Templates` and `Expression.Templates.Ko` |
+| a report string | `english/1` and `korean/1` in `Report` (English output must stay byte-identical) |
+| a digest line | `Digest`, in both languages |
 | an LLM provider | a module implementing `Aethrion.LLM.Adapter`, using `Expression.Prompt` and `LLM.HTTP` |
