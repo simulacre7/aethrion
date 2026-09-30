@@ -40,7 +40,7 @@ Options for all three:
 | `:max_depth` | 4 | maximum follow-up generations |
 | `:max_events` | 32 | maximum events processed per dispatch |
 
-`Aethrion.dispatch/3`, `Aethrion.step/3`, `Aethrion.run/3`, `Aethrion.demo_state/0`, and `Aethrion.new_state/1` delegate to these.
+`Aethrion.dispatch/3`, `Aethrion.step/3`, `Aethrion.run/3`, and `Aethrion.demo_state/0` delegate to these; `Aethrion.new_state/1` delegates to `Aethrion.State.new/1`.
 
 ## State
 
@@ -154,10 +154,11 @@ Tuning lives in `state.tuning`, persists with the state, and can be set in a sce
 {:ok, step} = Aethrion.step(state, event)
 
 step.trace
-|> Enum.filter(&Aethrion.Trace.concerns?(&1, "yuna"))
+|> Enum.filter(&(Aethrion.Trace.concerns?(&1, "yuna") and &1.kind in [:character, :relationship]))
 |> Enum.map(&Aethrion.Trace.describe/1)
 #=> ["e1 observation: yuna.jealousy 0 -> 15",
-#    "e1 observation: yuna->mina.tension 0 -> 8", ...]
+#    "e1 observation: yuna->mina.tension 0 -> 8",
+#    "e1 mood: yuna.mood neutral -> jealous"]
 ```
 
 To explain a single value, with the chain of events that caused each change:

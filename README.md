@@ -175,14 +175,9 @@ RELATION Yuna trust toward user +8
 MEMORY   Yuna remembers: "user apologized to yuna: sorry I forgot about you"
 MOOD     Yuna jealous -> neutral
 
-user> why yuna
-  e1 observation: yuna.jealousy 0 -> 15
-  e1 observation: yuna->mina.tension 0 -> 8
-  e1 mood: yuna.mood neutral -> jealous
-  e2 apology: yuna.jealousy 15 -> 0
-  e2 apology: yuna->user.trust 20 -> 28
-  e2 mood: yuna.mood jealous -> neutral
-  ...
+user> why yuna jealousy
+  jealousy 0 -> 15 by observation in e1: user gives Mina a flower (seen by Yuna)
+  jealousy 15 -> 0 by apology in e2: user apologizes to Yuna: sorry I forgot about you
 
 user> context yuna
   Speaker: Yuna (Sensitive, observant, and afraid of being forgotten; traits: observant, sensitive; mood: neutral)
@@ -255,7 +250,7 @@ updated state + structured outputs
 - LLM inference is usually the slowest part of the system.
 - Aethrion keeps authoritative simulation state outside the LLM server.
 - Many state transitions require no LLM round trip at all.
-- LLM calls can be timed out, retried, rate-limited, cached, or skipped.
+- LLM calls are timed out and can be skipped; retries, rate limits, and caching are left to the adapter or host.
 - If an LLM call fails, deterministic state still advances.
 - If an LLM response should affect the world, it must return as a new event and pass through rules again.
 

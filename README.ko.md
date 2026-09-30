@@ -180,14 +180,9 @@ RELATION Yuna trust toward user +8
 MEMORY   Yuna remembers: "user apologized to yuna: sorry I forgot about you"
 MOOD     Yuna jealous -> neutral
 
-user> why yuna
-  e1 observation: yuna.jealousy 0 -> 15
-  e1 observation: yuna->mina.tension 0 -> 8
-  e1 mood: yuna.mood neutral -> jealous
-  e2 apology: yuna.jealousy 15 -> 0
-  e2 apology: yuna->user.trust 20 -> 28
-  e2 mood: yuna.mood jealous -> neutral
-  ...
+user> why yuna jealousy
+  jealousy 0 -> 15 by observation in e1: user gives Mina a flower (seen by Yuna)
+  jealousy 15 -> 0 by apology in e2: user apologizes to Yuna: sorry I forgot about you
 ```
 
 명령어: `say`, `message`, `gift`, `apologize`, `comfort`, `tick`, `status`, `memories`, `why`, `context`, `timeline`, `rules`, `undo`, `save`, `load`, `record`(플레이 세션을 재생 가능한 시나리오로 저장), `report`(세션을 HTML 리포트로 저장).
@@ -252,7 +247,7 @@ updated state + structured outputs
 - LLM 추론은 보통 시스템에서 가장 느린 부분입니다.
 - Aethrion은 권위 있는 시뮬레이션 상태를 LLM 서버 밖에 둡니다.
 - 많은 상태 전이는 LLM 왕복이 전혀 필요 없습니다.
-- LLM 호출은 timeout, retry, rate limit, cache, skip할 수 있습니다.
+- LLM 호출에는 timeout이 걸리고 생략할 수 있습니다. retry, rate limit, cache는 adapter나 host의 몫입니다.
 - LLM 호출이 실패해도 결정론적 상태는 계속 진행됩니다.
 - LLM 응답이 세계에 영향을 주어야 한다면, 새 이벤트로 돌아와 규칙을 다시 통과해야 합니다.
 

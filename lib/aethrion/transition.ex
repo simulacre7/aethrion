@@ -4,9 +4,9 @@ defmodule Aethrion.Transition do
 
   A transition wraps the state being advanced for one event. Rules call helpers
   such as `adjust_character/4` or `remember/2` instead of editing state
-  directly; each helper applies the change, clamps it, and records the matching
-  output, log line, and `Aethrion.Trace` entry tagged with the current rule and
-  event id.
+  directly; each helper applies the change, clamps it, and records an
+  `Aethrion.Trace` entry tagged with the current rule and event id. Relationship
+  changes and memories also emit outputs, and most helpers add a log line.
 
   Rules may also `enqueue/2` follow-up events. The runtime validates and
   processes them after the current event, so derived social behavior (a

@@ -25,6 +25,19 @@ defmodule Aethrion.Rules.Message do
     description:
       "Tone-driven effects on the receiver: warm comforts, cold cools, hostile hurts; notable messages are remembered.",
     params: [
+      warm_affinity: 4,
+      warm_trust: 2,
+      warm_loneliness: -8,
+      warm_joy: 8,
+      neutral_loneliness: -4,
+      cold_affinity: -3,
+      cold_tension: 4,
+      cold_joy: -5,
+      hostile_affinity: -8,
+      hostile_trust: -6,
+      hostile_tension: 10,
+      hostile_stress: 20,
+      hostile_joy: -10,
       warm_importance: 45,
       cold_importance: 35,
       hostile_importance: 65,
@@ -37,30 +50,31 @@ defmodule Aethrion.Rules.Message do
   alias Aethrion.{Memory, Transition}
   alias Aethrion.Rules.Consolidation
 
+  # Which fields each tone touches; the amounts are params named <tone>_<field>.
   @effects %{
-    warm: [relationship: [affinity: 4, trust: 2], character: [loneliness: -8, joy: 8]],
-    neutral: [relationship: [], character: [loneliness: -4]],
-    cold: [relationship: [affinity: -3, tension: 4], character: [joy: -5]],
-    hostile: [
-      relationship: [affinity: -8, trust: -6, tension: 10],
-      character: [stress: 20, joy: -10]
-    ]
+    warm: [relationship: [:affinity, :trust], character: [:loneliness, :joy]],
+    neutral: [relationship: [], character: [:loneliness]],
+    cold: [relationship: [:affinity, :tension], character: [:joy]],
+    hostile: [relationship: [:affinity, :trust, :tension], character: [:stress, :joy]]
   }
 
   @impl true
   def apply(%Transition{event: event} = transition) do
     effects = Map.fetch!(@effects, event.tone)
     {transition, percent} = history_modifier(transition)
-    scale = fn delta -> div(delta * percent, 100) end
+
+    amount = fn field ->
+      div(Transition.param(transition, :"#{event.tone}_#{field}") * percent, 100)
+    end
 
     transition =
-      Enum.reduce(effects[:relationship], transition, fn {field, delta}, transition ->
-        Transition.adjust_relationship(transition, event.to, event.from, field, scale.(delta))
+      Enum.reduce(effects[:relationship], transition, fn field, transition ->
+        Transition.adjust_relationship(transition, event.to, event.from, field, amount.(field))
       end)
 
     transition =
-      Enum.reduce(effects[:character], transition, fn {field, delta}, transition ->
-        Transition.adjust_character(transition, event.to, field, scale.(delta))
+      Enum.reduce(effects[:character], transition, fn field, transition ->
+        Transition.adjust_character(transition, event.to, field, amount.(field))
       end)
 
     case event.tone do
