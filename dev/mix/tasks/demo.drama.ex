@@ -18,7 +18,8 @@ defmodule Mix.Tasks.Demo.Drama do
 
   @impl Mix.Task
   def run(args) do
-    {opts, _rest, _invalid} = OptionParser.parse(args, strict: [effects: :boolean])
+    {opts, _paths} =
+      Aethrion.CLI.TaskArgs.parse!(args, [effects: :boolean], "mix demo.drama [--effects]", 0)
     Display.banner()
 
     state = Runtime.demo_state()

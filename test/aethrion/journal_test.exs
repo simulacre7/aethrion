@@ -151,8 +151,10 @@ defmodule Aethrion.JournalTest do
       state = Aethrion.Tuning.put(Runtime.demo_state(), Sparkle, :shine, 5)
       :ok = Journal.create(path, state)
 
-      assert {:error, {%Aethrion.Error{code: :invalid_options}, _child}} =
-               start_supervised({RuntimeServer, journal: path})
+      ExUnit.CaptureLog.capture_log(fn ->
+        assert {:error, {%Aethrion.Error{code: :invalid_options}, _child}} =
+                 start_supervised({RuntimeServer, journal: path})
+      end)
 
       assert {:ok, server} = start_supervised({RuntimeServer, journal: path, pipeline: pipeline})
       assert Aethrion.Tuning.get(RuntimeServer.get_state(server), Sparkle, :shine) == 5

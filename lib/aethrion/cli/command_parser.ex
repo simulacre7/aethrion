@@ -122,6 +122,8 @@ defmodule Aethrion.CLI.CommandParser do
   end
 
   # A known command with the wrong arguments gets its usage line.
+  @commands ~w(apologize comfort context digest exit gift help here load memories message opinion quit record report rules save say status tick timeline undo why)
+
   @usage %{
     "say" => "say <character> <text>",
     "message" => "message <from> <to> <tone> <text> [observed_by a,b]",
@@ -143,8 +145,21 @@ defmodule Aethrion.CLI.CommandParser do
     {:error, "usage: #{Map.fetch!(@usage, command)}"}
   end
 
-  defp do_parse(_tokens) do
-    {:error, "unknown command. Type help for available commands."}
+  # A mistyped or capitalized command gets the one it probably meant.
+  defp do_parse([command | args]) do
+    lower = String.downcase(command)
+
+    cond do
+      lower != command and lower in @commands ->
+        do_parse([lower | args])
+
+      guess = Enum.max_by(@commands, &String.jaro_distance(&1, lower), fn -> nil end) ->
+        if String.jaro_distance(guess, lower) >= 0.8,
+          do:
+            {:error,
+             "unknown command #{command}; did you mean #{guess}? Type help for all commands."},
+          else: {:error, "unknown command #{command}. Type help for available commands."}
+    end
   end
 
   # Text followed by "observed_by a,b"; too short to be both, it is all text.

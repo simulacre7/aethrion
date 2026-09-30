@@ -26,8 +26,11 @@ end
 IO.puts("\n== what characters said")
 
 for %{text: text} = output <- step.outputs, Aethrion.Output.expressive?(output) do
-  speaker = output.character_id
-  IO.puts("#{speaker}: #{text}")
+  # Scenes between characters are narration; the rest is someone speaking.
+  case output do
+    %{type: :character_interaction} -> IO.puts("(#{text})")
+    %{character_id: speaker} -> IO.puts("#{speaker}: #{text}")
+  end
 end
 
 IO.puts("\n== why Yuna feels the way she does")

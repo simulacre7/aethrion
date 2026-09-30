@@ -31,7 +31,7 @@ Aethrion은 현재 **early alpha**(v0.2) 단계입니다.
 mix deps.get
 mix test
 mix demo.drama                 # host 이벤트 2개와 그로부터 이어지는 모든 일
-mix demo.interactive --locale ko   # 캐릭터와 대화하고(한국어 입력 가능), 왜 그렇게 느끼는지 물어보기
+mix demo.interactive --locale ko   # 캐릭터와 대화하고(한국어 입력 가능), 왜 그렇게 느끼는지 물어보기 (--no-status로 출력 줄이기)
 mix aethrion.scenario --all    # 번들 시나리오 실행 및 기대값 검증
 mix aethrion.report priv/scenarios/01_the_flower.json --locale ko   # tmp/에 한국어 HTML 리포트 생성
 ```

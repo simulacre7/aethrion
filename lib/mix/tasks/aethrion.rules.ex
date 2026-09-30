@@ -13,8 +13,9 @@ defmodule Mix.Tasks.Aethrion.Rules do
   alias Aethrion.Pipeline
 
   @impl Mix.Task
-  def run(_args) do
+  def run(args) do
     Mix.Task.run("app.start")
+    Aethrion.CLI.TaskArgs.parse!(args, [], "mix aethrion.rules", 0)
     params = Map.new(Aethrion.Tuning.describe(Aethrion.State.new()))
 
     for {type, rules} <- Pipeline.describe(Pipeline.default()) do

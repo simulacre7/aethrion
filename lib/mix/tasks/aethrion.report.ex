@@ -23,10 +23,12 @@ defmodule Mix.Tasks.Aethrion.Report do
 
   @switches [out: :string, all: :boolean, out_dir: :string, locale: :string]
 
+  @usage "mix aethrion.report PATH [--out FILE] [--locale en|ko] | --all [--out-dir DIR]"
+
   @impl Mix.Task
   def run(args) do
     Mix.Task.run("app.start")
-    {opts, paths, _invalid} = OptionParser.parse(args, strict: @switches)
+    {opts, paths} = Aethrion.CLI.TaskArgs.parse!(args, @switches, @usage, 1)
 
     targets =
       case {opts[:all], paths} do
@@ -43,15 +45,19 @@ defmodule Mix.Tasks.Aethrion.Report do
           [{path, Keyword.get(opts, :out, default)}]
 
         _other ->
-          Mix.raise("usage: mix aethrion.report PATH [--out FILE] | --all [--out-dir DIR]")
+          Mix.raise("usage: #{@usage}")
       end
 
     Enum.each(targets, fn {path, out} ->
       with {:ok, scenario} <- Scenario.load(path),
            {:ok, result} <- Scenario.run(scenario) do
-        File.mkdir_p!(Path.dirname(out))
-        File.write!(out, Report.html(result, locale: locale(opts[:locale])))
+        Aethrion.CLI.TaskArgs.write!(out, Report.html(result, locale: locale(opts[:locale])))
         Mix.shell().info("#{scenario.name} -> #{out}")
+
+        unless Scenario.passed?(result) do
+          failed = Enum.count(result.checks, &(not &1.passed?))
+          Mix.shell().error("  #{failed} expectation(s) not met; see the report's last section")
+        end
       else
         {:error, error} -> Mix.raise("could not render #{path}: #{Aethrion.Error.format(error)}")
       end

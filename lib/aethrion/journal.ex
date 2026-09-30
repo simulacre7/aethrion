@@ -260,12 +260,30 @@ defmodule Aethrion.Journal do
     })
   end
 
+  # A scenario file handed to a journal reader gets a pointer, not a parse error.
+  defp not_a_scenario(contents) do
+    case Jason.decode(contents) do
+      {:ok, %{"events" => _}} -> {:error, invalid_journal(1, :scenario)}
+      _journal_or_garbage -> :ok
+    end
+  end
+
+  # The location (line) is added by `Aethrion.Error.format/1`.
   defp invalid_journal(line, reason) do
-    Error.new(:invalid_journal, "invalid journal at line #{line}: #{inspect(reason)}", %{
+    Error.new(:invalid_journal, "invalid journal: #{describe(reason)}", %{
       line: line,
       reason: reason
     })
   end
+
+  defp describe(%Jason.DecodeError{} = error), do: "not JSON (#{Exception.message(error)})"
+  defp describe(:missing_header), do: "the first line is not a journal header"
+
+  defp describe(:scenario),
+    do: "this looks like a scenario file; run it with mix aethrion.scenario"
+
+  defp describe(reason) when is_binary(reason), do: reason
+  defp describe(reason), do: inspect(reason)
 
   defp safe_encode(event) do
     event |> Event.to_data() |> Jason.encode()
@@ -286,6 +304,7 @@ defmodule Aethrion.Journal do
   @spec read(Path.t(), keyword()) :: {:ok, State.t(), [Event.t()]} | {:error, Error.t()}
   def read(path, opts \\ []) do
     with {:ok, contents} <- read_file(path),
+         :ok <- not_a_scenario(contents),
          {:ok, contents} <- drop_torn_line(path, contents, Keyword.get(opts, :repair, false)) do
       lines =
         contents
@@ -364,7 +383,9 @@ defmodule Aethrion.Journal do
 
       {:error, reason} ->
         {:error,
-         Error.new(:io_error, "could not read #{path}: #{inspect(reason)}", %{reason: reason})}
+         Error.new(:io_error, "could not read #{path}: #{:file.format_error(reason)}", %{
+           reason: reason
+         })}
     end
   end
 
@@ -449,6 +470,9 @@ defmodule Aethrion.Journal do
 
       {:error, reason} ->
         {:error, invalid_journal(1, reason)}
+
+      {:ok, %{"events" => _}} ->
+        {:error, invalid_journal(1, :scenario)}
 
       _other ->
         {:error, invalid_journal(1, :missing_header)}

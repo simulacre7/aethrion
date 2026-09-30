@@ -44,9 +44,11 @@ defmodule Example.Listener do
         {:aethrion, _world, {:dispatched, step}} ->
           IO.puts("dispatched #{step.event.id} #{Aethrion.Event.describe(step.event)}")
 
+        {:aethrion, _world, {:expressed, %{type: :character_interaction} = output}} ->
+          IO.puts("  (#{output.text})  [#{output.expression.status}]")
+
         {:aethrion, _world, {:expressed, output}} ->
-          speaker = output.character_id
-          IO.puts("  #{speaker}: #{output.text}  [#{output.expression.status}]")
+          IO.puts("  #{output.character_id}: #{output.text}  [#{output.expression.status}]")
       after
         remaining -> :ok
       end

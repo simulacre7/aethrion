@@ -37,7 +37,13 @@ defmodule Mix.Tasks.Demo.Interactive do
   @impl Mix.Task
   def run(args) do
     Mix.Task.run("app.start")
-    {opts, _rest, _invalid} = OptionParser.parse(args, strict: @switches)
+    {opts, _paths} =
+      Aethrion.CLI.TaskArgs.parse!(
+        args,
+        @switches,
+        "mix demo.interactive [--llm anthropic|openai] [--locale ko] [--no-status] [--effects]",
+        0
+      )
 
     # Read and write UTF-8 even when the shell's locale does not say so, so
     # Korean (or any non-ASCII) input is not mangled.

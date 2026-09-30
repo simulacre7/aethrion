@@ -66,7 +66,9 @@ defmodule Aethrion.CLI.Display do
       "  save <path> | load <path>                   world state as JSON",
       "  record <path>                               this session as a replayable scenario",
       "  report <path>                               this session as an HTML report",
-      "  help | quit"
+      "  help | quit (or exit)",
+      "",
+      [:faint, "Start with --no-status to hide the tables after each command."]
     ])
   end
 
@@ -293,7 +295,7 @@ defmodule Aethrion.CLI.Display do
         hours -> "#{hours} hours ago"
       end
 
-    print(["  ", pad("last spoke", 11), :faint, last_talked])
+    print(["  ", pad("#{to} wrote", 11), :faint, last_talked])
 
     opinion_lines("believes", beliefs, fn memory ->
       scope = if memory.data["event"] == "reputation", do: "reputation", else: "firsthand"

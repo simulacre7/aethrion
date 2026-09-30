@@ -14,7 +14,8 @@ defmodule Mix.Tasks.Aethrion.Scenario do
 
   - `--all` - run every bundled scenario
   - `--quiet` - only print expectation results
-  - `--json` - print the final state, outputs, and checks as JSON
+  - `--json` - print the final state, outputs, and checks as JSON (an array
+    when several scenarios run)
   - `--pipeline Module.function` - run with the `Aethrion.Pipeline` that
     function returns (it takes no arguments), for scenarios of custom rules
 
@@ -31,7 +32,13 @@ defmodule Mix.Tasks.Aethrion.Scenario do
   @impl Mix.Task
   def run(args) do
     Mix.Task.run("app.start")
-    {opts, paths, _invalid} = OptionParser.parse(args, strict: @switches)
+
+    {opts, paths} =
+      Aethrion.CLI.TaskArgs.parse!(
+        args,
+        @switches,
+        "mix aethrion.scenario PATH [PATH...] | --all [--quiet] [--json] [--pipeline Module.function]"
+      )
 
     paths = if opts[:all], do: Scenario.bundled(), else: paths
 
@@ -41,7 +48,17 @@ defmodule Mix.Tasks.Aethrion.Scenario do
 
     opts = Keyword.put(opts, :pipeline, pipeline(opts[:pipeline]))
     results = Enum.map(paths, &run_one(&1, opts))
-    failed = Enum.count(results, &(!&1))
+    failed = Enum.count(results, &(!&1.passed))
+
+    # One JSON document: an object for one scenario, an array for several.
+    if opts[:json] do
+      documents = for %{json: json} <- results, json != nil, do: json
+
+      case {paths, documents} do
+        {[_one], [document]} -> IO.puts(Jason.encode!(document, pretty: true))
+        _several -> IO.puts(Jason.encode!(documents, pretty: true))
+      end
+    end
 
     if length(results) > 1 and !opts[:json] do
       Display.message(
@@ -59,18 +76,13 @@ defmodule Mix.Tasks.Aethrion.Scenario do
 
     with {:ok, scenario} <- Scenario.load(path, pipeline),
          {:ok, result} <- Scenario.run(scenario, pipeline) do
-      if opts[:json] do
-        IO.puts(Jason.encode!(json(result), pretty: true))
-      else
-        print(result, opts)
-      end
-
-      Scenario.passed?(result)
+      unless opts[:json], do: print(result, opts)
+      %{passed: Scenario.passed?(result), json: if(opts[:json], do: json(result))}
     else
       {:error, %Aethrion.Error{} = error} ->
         Display.error(error)
         Mix.shell().error("in #{path}")
-        false
+        %{passed: false, json: nil}
     end
   end
 

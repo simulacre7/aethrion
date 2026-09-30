@@ -31,7 +31,7 @@ Aethrion is **early alpha** (v0.2).
 mix deps.get
 mix test
 mix demo.drama                 # two host events and everything they cascade into
-mix demo.interactive           # talk to the characters, ask why they feel what they feel
+mix demo.interactive           # talk to the characters, ask why they feel what they feel (--no-status for less output)
 mix aethrion.scenario --all    # run the bundled scenarios and check their expectations
 mix aethrion.report priv/scenarios/01_the_flower.json   # HTML report in tmp/
 ```

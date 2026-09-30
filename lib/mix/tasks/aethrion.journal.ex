@@ -47,16 +47,21 @@ defmodule Mix.Tasks.Aethrion.Journal do
   def run(args) do
     Mix.Task.run("app.start")
 
+    :io.setopts(:standard_io, encoding: :unicode)
+
     case OptionParser.parse(args, strict: @switches) do
       {opts, [path], []} ->
         if opts[:archive] && !opts[:compact],
           do: Mix.raise("--archive only applies with --compact")
 
+        # Check the locale before any output.
+        locale(opts)
         replay(path, opts)
 
       _ ->
         Mix.raise(
-          "usage: mix aethrion.journal PATH [--scenario FILE] [--report FILE] [--compact [--archive FILE]]"
+          "usage: mix aethrion.journal PATH [--digest] [--locale en|ko] [--scenario FILE] " <>
+            "[--report FILE] [--compact [--archive FILE]] [--max-depth N] [--max-events N]"
         )
     end
   end
@@ -86,16 +91,14 @@ defmodule Mix.Tasks.Aethrion.Journal do
       {:ok, data} = Journal.to_scenario(path, limits(opts))
 
       if out = opts[:scenario] do
-        File.mkdir_p!(Path.dirname(out))
-        File.write!(out, Jason.encode!(data, pretty: true))
+        Aethrion.CLI.TaskArgs.write!(out, Jason.encode!(data, pretty: true))
         Display.message("scenario -> #{out}")
       end
 
       if out = opts[:report] do
         {:ok, scenario} = data |> Jason.encode!() |> Jason.decode!() |> Scenario.from_data()
         {:ok, result} = Scenario.run(scenario)
-        File.mkdir_p!(Path.dirname(out))
-        File.write!(out, Report.html(result, locale: locale(opts)))
+        Aethrion.CLI.TaskArgs.write!(out, Report.html(result, locale: locale(opts)))
         Display.message("report -> #{out}")
       end
     end

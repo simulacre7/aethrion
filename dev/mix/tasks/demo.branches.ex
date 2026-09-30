@@ -19,8 +19,9 @@ defmodule Mix.Tasks.Demo.Branches do
   @scenario "07_crossroads.json"
 
   @impl Mix.Task
-  def run(_args) do
+  def run(args) do
     Mix.Task.run("app.start")
+    Aethrion.CLI.TaskArgs.parse!(args, [], "mix demo.branches", 0)
     Display.banner()
 
     path = Enum.find(Scenario.bundled(), &(Path.basename(&1) == @scenario))
