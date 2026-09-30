@@ -24,6 +24,13 @@ mix demo.drama
 - Keep new dependencies minimal. Runtime dependencies are currently just `jason`.
 - Document public event and output shapes when changing them (`docs/api.md`, `docs/rules.md`).
 
+## Layout
+
+- `lib/` - the library, including the `mix aethrion.*` tasks that ship with it
+- `dev/` - the `mix demo.*` tasks; compiled in dev and test only, not packaged
+- `priv/scenarios/` - bundled scenarios, run by the test suite
+- `examples/`, `bench/`, `scripts/` - runnable examples, the benchmark, demo recording
+
 ## Useful Entry Points
 
 - `Aethrion.Runtime.step/3` and `Aethrion.Pipeline`

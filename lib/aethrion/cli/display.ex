@@ -1,7 +1,6 @@
 defmodule Aethrion.CLI.Display do
-  @moduledoc """
-  ANSI presentation helpers for the demo and scenario CLIs.
-  """
+  @moduledoc false
+  # ANSI presentation helpers for the demo and scenario CLIs.
 
   alias Aethrion.{Event, Memory, State, Trace}
   alias Aethrion.Expression.Prompt

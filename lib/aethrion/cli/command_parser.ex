@@ -1,7 +1,6 @@
 defmodule Aethrion.CLI.CommandParser do
-  @moduledoc """
-  Parser for the interactive demo command language. See `Aethrion.CLI.Display.help/0`.
-  """
+  @moduledoc false
+  # Parser for the interactive demo command language. See `Aethrion.CLI.Display.help/0`.
 
   alias Aethrion.Event
 

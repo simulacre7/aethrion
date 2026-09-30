@@ -28,7 +28,10 @@ defmodule Aethrion.MixProject do
     ]
   end
 
-  defp elixirc_paths(:test), do: ["lib", "test/support"]
+  # dev/ holds the demo tasks (mix demo.*). They run in this repository but are
+  # not part of the package, so projects depending on Aethrion don't get them.
+  defp elixirc_paths(:test), do: ["lib", "dev", "test/support"]
+  defp elixirc_paths(:dev), do: ["lib", "dev"]
   defp elixirc_paths(_env), do: ["lib"]
 
   # Run "mix help deps" to learn about dependencies.
@@ -110,8 +113,7 @@ defmodule Aethrion.MixProject do
           Aethrion.Report,
           Aethrion.Journal,
           ~r/Aethrion\.Persistence/
-        ],
-        CLI: [~r/Aethrion\.CLI\./]
+        ]
       ]
     ]
   end
