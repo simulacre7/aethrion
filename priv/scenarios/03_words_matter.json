@@ -70,7 +70,7 @@
         "user"
       ],
       "field": "tension",
-      "equals": 20
+      "equals": 10
     },
     {
       "relationship": [

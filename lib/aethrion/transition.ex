@@ -125,7 +125,8 @@ defmodule Aethrion.Transition do
 
   @doc """
   Adds `delta` to a relationship field, clamped to `-100..100`, and emits a
-  `:relationship_changed` output with the applied delta.
+  `:relationship_changed` output with the applied delta. Pass `log: false` or
+  `output: false` for routine background changes.
   """
   def adjust_relationship(%__MODULE__{} = transition, from, to, field, delta, opts \\ [])
       when is_integer(delta) do
@@ -142,9 +143,21 @@ defmodule Aethrion.Transition do
       state = State.update_relationship(transition.state, from, to, &Map.put(&1, field, value))
       applied = value - before
 
-      %{transition | state: state}
-      |> add_trace(:relationship, from, {from, to}, field, before, value)
-      |> emit(Output.relationship_changed(from, to, %{field => applied}))
+      transition =
+        add_trace(
+          %{transition | state: state},
+          :relationship,
+          from,
+          {from, to},
+          field,
+          before,
+          value
+        )
+
+      if(Keyword.get(opts, :output, true),
+        do: emit(transition, Output.relationship_changed(from, to, %{field => applied})),
+        else: transition
+      )
       |> maybe_log(
         Keyword.get(opts, :log, true),
         "[Relation] #{name(transition, from)} #{field} toward #{name(transition, to)} #{signed(applied)}"

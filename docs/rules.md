@@ -68,11 +68,11 @@ History changes how a message lands, through impressions built by consolidation:
 
 ### `apology_offered` -> `apology`
 
-The receiver: jealousy -15, loneliness -6, stress -10, trust toward the apologizer +8, remembers the apology (importance 70).
+The receiver: jealousy -15, loneliness -6, stress -10, trust toward the apologizer +8, tension toward the apologizer -10 (never below 0), remembers the apology (importance 70).
 
 ### `time_tick` -> `time_passage`, `memory_decay`, `consolidation`, `autonomy`, `companionship`
 
-**time_passage** - advances `state.clock` by `hours`. For each active character, per hour: loneliness +4, joy -2, stress -2. Jealousy does not fade with time alone; it takes an apology or comfort.
+**time_passage** - advances `state.clock` by `hours`. For each active character, per hour: loneliness +4, joy -2, stress -2. Tension in every relationship eases by 2 for each simulated day boundary crossed (so the result does not depend on tick size). Jealousy does not fade with time alone; it takes an apology or comfort.
 
 **memory_decay** - recomputes each memory's strength from its age:
 
@@ -115,7 +115,7 @@ Because each retelling loses importance and retelling needs importance >= 30, a 
 
 ### `comfort_offered` -> `comfort`
 
-The receiver: loneliness -12, jealousy -5, stress -10, trust +5 and affinity +3 toward the comforter, remembers being comforted (importance 55). Emits a `:character_interaction` scene when the comforter is a character.
+The receiver: loneliness -12, jealousy -5, stress -10, trust +5, affinity +3, and tension -5 (never below 0) toward the comforter, remembers being comforted (importance 55). Emits a `:character_interaction` scene when the comforter is a character.
 
 ## Reactive rules
 

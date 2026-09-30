@@ -7,13 +7,14 @@ defmodule Aethrion.Rules.Comfort do
   use Aethrion.Rule,
     id: :comfort,
     description:
-      "Receiver: loneliness -12, jealousy -5, stress -10, trust +5 and affinity +3 toward the comforter, remembers it.",
+      "Receiver: loneliness -12, jealousy -5, stress -10, trust +5, affinity +3, and tension -5 toward the comforter, remembers it.",
     params: [
       loneliness_delta: -12,
       jealousy_delta: -5,
       stress_delta: -10,
       trust_delta: 5,
       affinity_delta: 3,
+      tension_delta: -5,
       importance: 55
     ]
 
@@ -38,6 +39,11 @@ defmodule Aethrion.Rules.Comfort do
         event.from,
         :affinity,
         param(transition, :affinity_delta)
+      )
+      |> Aethrion.Rules.Apology.ease_tension(
+        event.to,
+        event.from,
+        param(transition, :tension_delta)
       )
       |> Transition.remember(
         Memory.new(

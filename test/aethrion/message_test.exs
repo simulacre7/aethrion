@@ -146,4 +146,43 @@ defmodule Aethrion.MessageTest do
       assert State.get_relationship(state, "mina", "user").tension == 0
     end
   end
+
+  describe "tension easing" do
+    test "an apology eases tension toward the apologizer, never below zero" do
+      {state, _outputs} =
+        run!(Runtime.demo_state(), [
+          Event.message_sent("user", "mina", "ugh", tone: :cold),
+          Event.apology_offered("user", "mina", "sorry")
+        ])
+
+      assert State.get_relationship(state, "mina", "user").tension == 0
+    end
+
+    test "tension fades by day boundaries, however time is split" do
+      {state, _outputs} =
+        dispatch!(Runtime.demo_state(), Event.message_sent("user", "mina", "ugh", tone: :hostile))
+
+      {one, _outputs} = dispatch!(state, Event.time_tick("t", hours: 72))
+      {hourly, _outputs} = run!(state, for(_ <- 1..72, do: Event.time_tick("t", hours: 1)))
+
+      assert State.get_relationship(one, "mina", "user").tension == 4
+      assert State.get_relationship(hourly, "mina", "user").tension == 4
+    end
+
+    test "fading tension is traced but does not flood outputs or the log" do
+      {state, _outputs} =
+        dispatch!(Runtime.demo_state(), Event.message_sent("user", "mina", "ugh", tone: :hostile))
+
+      {:ok, step} = Runtime.step(state, Event.time_tick("t", hours: 24))
+
+      assert Enum.any?(step.trace, &(&1.rule == :time_passage and &1.field == :tension))
+
+      refute Enum.any?(
+               step.outputs,
+               &(&1.type == :relationship_changed and &1.rule == :time_passage)
+             )
+
+      refute Enum.any?(step.log, &(&1 =~ "tension toward"))
+    end
+  end
 end

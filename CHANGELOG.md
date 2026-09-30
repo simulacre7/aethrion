@@ -36,6 +36,7 @@ The social layer release: characters now act on each other, every change is expl
 ### Changed
 
 - Proactive messages go to people other than `"user"` when a world has them: jealousy to the gift's giver, loneliness to the closest person, curiosity to the person the news is about.
+- Tension eases: apologies (-10) and comfort (-5) reduce tension toward the other person, and all tension fades 2 per simulated day. Previously it could only rise, so a character could stay unwilling to reach out forever.
 - Characters do not proactively reach out to someone they feel tense toward (tension >= 10, `proactive.avoid_tension`); they confide in friends instead.
 - Untrusted data is validated: `Aethrion.State.parse/1` checks shapes, types, and ranges; unknown traits stay strings instead of becoming atoms; a runtime server refuses to start from an unreadable snapshot rather than overwrite it.
 - Hand-built event maps may omit `:at`, `:now`, `:observed_by`, and `:tone`. Inactive or blocked characters cannot comfort or gossip (`:unavailable_character`), and characters cannot give themselves gifts.

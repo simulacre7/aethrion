@@ -6,16 +6,27 @@ defmodule Aethrion.Rules.Apology do
   use Aethrion.Rule,
     id: :apology,
     description:
-      "Receiver: jealousy -15, loneliness -6, stress -10, trust toward apologizer +8, remembers the apology.",
+      "Receiver: jealousy -15, loneliness -6, stress -10, trust +8 and tension -10 toward the apologizer, remembers the apology.",
     params: [
       trust_delta: 8,
       jealousy_delta: -15,
       loneliness_delta: -6,
       stress_delta: -10,
+      tension_delta: -10,
       importance: 70
     ]
 
   alias Aethrion.{Memory, Transition}
+
+  @doc false
+  # Eases existing tension without pushing it below zero.
+  def ease_tension(transition, from, to, delta) do
+    current = Aethrion.State.get_relationship(transition.state, from, to).tension
+
+    if current > 0,
+      do: Transition.adjust_relationship(transition, from, to, :tension, max(delta, -current)),
+      else: transition
+  end
 
   @impl true
   def apply(%Transition{event: event} = transition) do
@@ -60,6 +71,7 @@ defmodule Aethrion.Rules.Apology do
       :trust,
       Transition.param(transition, :trust_delta)
     )
+    |> ease_tension(event.to, event.from, Transition.param(transition, :tension_delta))
     |> Transition.remember(memory)
   end
 end

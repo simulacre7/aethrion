@@ -8,8 +8,8 @@ defmodule Aethrion.Rules.TimePassage do
   use Aethrion.Rule,
     id: :time_passage,
     description:
-      "Advances the clock; per hour for active characters: loneliness +4, joy -2, stress -2.",
-    params: [loneliness_per_hour: 4, joy_per_hour: -2, stress_per_hour: -2]
+      "Advances the clock; per hour for active characters: loneliness +4, joy -2, stress -2; tension eases 2 per day.",
+    params: [loneliness_per_hour: 4, joy_per_hour: -2, stress_per_hour: -2, tension_per_day: -2]
 
   alias Aethrion.{State, Transition}
 
@@ -33,10 +33,40 @@ defmodule Aethrion.Rules.TimePassage do
         |> Transition.set_character(character.id, :last_active_at, now)
       end)
 
-    Transition.note(
-      transition,
+    transition
+    |> Transition.note(
       "time_tick increased loneliness +#{loneliness} for active characters " <>
         "(clock #{transition.state.clock}h)"
     )
+    |> ease_tension(state.clock, transition.state.clock)
+  end
+
+  # Tension eases once per simulated day boundary crossed, so the result does
+  # not depend on how time was split into ticks.
+  defp ease_tension(transition, from_clock, to_clock) do
+    days = div(to_clock, 24) - div(from_clock, 24)
+    delta = days * Transition.param(transition, :tension_per_day)
+
+    if delta == 0 do
+      transition
+    else
+      transition.state.relationships
+      |> Map.values()
+      |> Enum.filter(&(&1.tension > 0))
+      |> Enum.sort_by(&{&1.from, &1.to})
+      |> Enum.reduce(transition, fn relationship, transition ->
+        change = max(delta, -relationship.tension)
+
+        Transition.adjust_relationship(
+          transition,
+          relationship.from,
+          relationship.to,
+          :tension,
+          change,
+          log: false,
+          output: false
+        )
+      end)
+    end
   end
 end
