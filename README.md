@@ -159,7 +159,7 @@ outputs = Aethrion.Expression.render(outputs, adapter: Aethrion.LLM.Anthropic)
 
 Every expressive output carries deterministic fallback text and a read-only context snapshot (profile, mood, relationship, selected memories). Adapters never receive the state. If a model fails, times out, or refuses, the fallback text is used and the world moves on.
 
-Language is an expression concern too: the fake adapter ships Korean templates (`mix demo.interactive --locale ko`), and the simulation is identical in every language.
+Language is an expression concern too: the fake adapter ships Korean templates and reads Korean input (`mix demo.interactive --locale ko`), model adapters take `language: "Korean"`, reports can be written in Korean (`--locale ko`), and the simulation is identical in every language.
 
 Adapters: `Aethrion.LLM.Anthropic`, `Aethrion.LLM.OpenAICompatible` (OpenAI, vLLM, Ollama, llama.cpp), and the deterministic `Aethrion.LLM.FakeAdapter`. Both network adapters use Erlang's built-in `:httpc`. See [docs/expression.md](docs/expression.md).
 
