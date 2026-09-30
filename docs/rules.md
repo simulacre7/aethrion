@@ -137,7 +137,7 @@ Emits `:mood_changed` when a mood changes.
 
 ### `proactive`
 
-Characters reach out to the user when pressure crosses a threshold. At most one proactive message per character per event; the first matching reason wins.
+Characters reach out to people (actors who are not characters, such as `user`) when pressure crosses a threshold. Jealousy goes to whoever gave the gift they saw, loneliness to the person they feel closest to, and curiosity to the person the news is about; a world with no relationships to people addresses `user`. At most one proactive message per character per event; the first matching reason wins.
 
 | reason | condition | cooldown |
 | --- | --- | --- |

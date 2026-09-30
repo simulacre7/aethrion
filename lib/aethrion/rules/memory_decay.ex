@@ -16,7 +16,9 @@ defmodule Aethrion.Rules.MemoryDecay do
   Faded memories are kept for inspection but no longer selected as context.
   Once a memory has been faded for `forget_after_hours` (30 simulated days by
   default), it is forgotten: removed from the state, so long-running worlds do
-  not grow without bound. Impressions keep the patterns.
+  not grow without bound. Impressions are never forgotten, and a memory that
+  can be part of a pattern (see `Aethrion.Rules.Consolidation`) is only
+  forgotten after it has been consolidated into one, so patterns survive.
   """
 
   use Aethrion.Rule,
@@ -62,14 +64,23 @@ defmodule Aethrion.Rules.MemoryDecay do
     keep_for = Transition.param(transition, :forget_after_hours)
 
     forgotten? = fn memory ->
-      case fade_tick(memory, unit(memory, units)) do
-        nil -> false
-        faded_at -> Memory.faded?(memory) and clock - faded_at >= keep_for
+      with true <- forgettable?(memory),
+           faded_at when not is_nil(faded_at) <- fade_tick(memory, unit(memory, units)) do
+        Memory.faded?(memory) and clock - faded_at >= keep_for
+      else
+        _ -> false
       end
     end
 
     Transition.drop_memories(transition, forgotten?)
   end
+
+  defp forgettable?(%Memory{kind: :impression}), do: false
+
+  defp forgettable?(%Memory{consolidated_into: nil} = memory),
+    do: not Aethrion.Rules.Consolidation.consolidatable?(memory)
+
+  defp forgettable?(%Memory{}), do: true
 
   @doc "Strength of `memory` at simulated hour `clock`."
   def strength_at(%Memory{} = memory, clock, unit \\ 96) do

@@ -35,10 +35,13 @@ The social layer release: characters now act on each other, every change is expl
 
 ### Changed
 
+- Proactive messages go to people other than `"user"` when a world has them: jealousy to the gift's giver, loneliness to the closest person, curiosity to the person the news is about.
 - Characters do not proactively reach out to someone they feel tense toward (tension >= 10, `proactive.avoid_tension`); they confide in friends instead.
 - Untrusted data is validated: `Aethrion.State.parse/1` checks shapes, types, and ranges; unknown traits stay strings instead of becoming atoms; a runtime server refuses to start from an unreadable snapshot rather than overwrite it.
 - Hand-built event maps may omit `:at`, `:now`, `:observed_by`, and `:tone`. Inactive or blocked characters cannot comfort or gossip (`:unavailable_character`), and characters cannot give themselves gifts.
 - A rule that raises inside a `RuntimeServer` rejects the event with `:rule_failed` instead of crashing the world.
+- Event time labels (`:at`, `:now`) must be strings. A journaling server writes the journal before committing state: events that would not replay unchanged are rejected, and a failed write rejects the event with `:journal_failed`.
+- Impressions are never forgotten, and memories that can join a pattern are forgotten only after consolidation, so impressions do not depend on tick size.
 
 - `Aethrion.Runtime.dispatch/2` is now `dispatch/3` with options; the two-argument form still works.
 - The v0.1 rule modules (`GiftRules`, `JealousyRules`, `LonelinessRules`, `ReconciliationRules`) are replaced by one module per rule under `Aethrion.Rules`.

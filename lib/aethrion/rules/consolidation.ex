@@ -10,10 +10,12 @@ defmodule Aethrion.Rules.Consolidation do
   memory such as `"user has been warm to mina 3 times."`.
 
   Covered interactions: gifts received, warm/cold/hostile messages, apologies,
-  and comfort. The impression's importance grows with the count
+  comfort, and time together. The impression's importance grows with the count
   (`base_importance + per_occurrence * count`, capped at `max_importance`),
   and later faded memories of the same pattern update it in place. Original
-  memories are kept, marked with `consolidated_into`.
+  memories are kept, marked with `consolidated_into`, until they are forgotten
+  (see `Aethrion.Rules.MemoryDecay`); impressions themselves are never
+  forgotten.
 
   An impression dates from when its latest memory faded, and decays more
   slowly than ordinary memories (see `Aethrion.Rules.MemoryDecay`).
@@ -66,6 +68,14 @@ defmodule Aethrion.Rules.Consolidation do
     Enum.reduce(groups, transition, fn {key, memories, existing}, transition ->
       consolidate(transition, key, memories, existing)
     end)
+  end
+
+  @doc """
+  Returns true when `memory` can become part of an impression: a firsthand
+  memory of one of the covered interactions.
+  """
+  def consolidatable?(%Memory{} = memory) do
+    memory.kind == :experienced and not is_nil(pattern(memory))
   end
 
   defp candidate?(%Memory{} = memory) do

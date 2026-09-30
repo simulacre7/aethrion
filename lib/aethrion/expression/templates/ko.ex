@@ -155,20 +155,24 @@ defmodule Aethrion.Expression.Templates.Ko do
 
   @doc false
   def batchim?(word) do
-    case word |> String.trim() |> String.last() do
-      nil ->
-        false
-
-      last ->
-        <<codepoint::utf8>> = last
-
-        cond do
-          # Hangul syllables: a final consonant exists when (code - 0xAC00) % 28 != 0.
-          codepoint in 0xAC00..0xD7A3 -> rem(codepoint - 0xAC00, 28) != 0
-          # Latin names read with a final consonant sound when they end in one.
-          String.match?(last, ~r/^[a-zA-Z]$/) -> not String.match?(last, ~r/^[aeiouyAEIOUY]$/)
-          true -> false
-        end
+    # Compose first (macOS and some inputs use decomposed Hangul), then read the
+    # last letter, skipping trailing emoji, punctuation, and variation selectors.
+    word
+    |> :unicode.characters_to_nfc_binary()
+    |> String.to_charlist()
+    |> Enum.reverse()
+    |> Enum.find_value(false, fn codepoint ->
+      cond do
+        # Hangul syllables: a final consonant exists when (code - 0xAC00) % 28 != 0.
+        codepoint in 0xAC00..0xD7A3 -> {:ok, rem(codepoint - 0xAC00, 28) != 0}
+        # Latin names read with a final consonant sound when they end in one.
+        codepoint in ?a..?z or codepoint in ?A..?Z -> {:ok, codepoint not in ~c"aeiouyAEIOUY"}
+        true -> nil
+      end
+    end)
+    |> case do
+      {:ok, batchim?} -> batchim?
+      false -> false
     end
   end
 

@@ -357,4 +357,150 @@ defmodule Aethrion.RegressionTest do
       assert after_load =~ "nothing yet"
     end
   end
+
+  describe "third review" do
+    alias Aethrion.{Journal, Tuning}
+
+    setup do
+      path =
+        Path.join(System.tmp_dir!(), "aethrion-r3-#{System.unique_integer([:positive])}.jsonl")
+
+      on_exit(fn -> File.rm(path) end)
+      %{path: path}
+    end
+
+    test "time labels must be strings" do
+      assert {:error, %{code: :invalid_event, details: %{field: :at}}} =
+               Runtime.dispatch(Runtime.demo_state(), %{
+                 type: :gift_received,
+                 from: "user",
+                 to: "mina",
+                 item: "x",
+                 at: {2026, 1, 1}
+               })
+
+      assert {:error, %{code: :invalid_event, details: %{field: :now}}} =
+               Runtime.dispatch(Runtime.demo_state(), %{
+                 type: :time_tick,
+                 hours: 1,
+                 now: ~U[2026-01-01 00:00:00Z]
+               })
+    end
+
+    test "events that would not replay unchanged are rejected before the state changes", %{
+      path: path
+    } do
+      defmodule Stamp do
+        use Aethrion.Rule, id: :stamp_test, description: "Test rule."
+        @impl true
+        def apply(transition), do: transition
+      end
+
+      pipeline = Aethrion.Pipeline.append(Aethrion.Pipeline.default(), :stamp_test, Stamp)
+      server = start_supervised!({RuntimeServer, journal: path, pipeline: pipeline})
+      before = RuntimeServer.get_state(server)
+
+      # An atom value comes back from JSON as a string.
+      assert {:error,
+              %{code: :invalid_event, message: "event cannot be journaled faithfully" <> _}} =
+               RuntimeServer.dispatch(server, %{type: :stamp_test, mood: :sparkly})
+
+      assert RuntimeServer.get_state(server) == before
+
+      assert {:ok, _state, _outputs, _log} =
+               RuntimeServer.dispatch(server, %{type: :stamp_test, note: "ok"})
+
+      assert {:ok, _state, [_step]} = Journal.replay(path, pipeline: pipeline)
+    end
+
+    test "a failed journal append rejects the event and keeps the journal replayable", %{
+      path: path
+    } do
+      server = start_supervised!({RuntimeServer, journal: path})
+      {:ok, state, _outputs, _log} = RuntimeServer.dispatch(server, flower_for_mina())
+
+      File.chmod!(path, 0o444)
+
+      capture_log(fn ->
+        assert {:error, %{code: :journal_failed}} =
+                 RuntimeServer.dispatch(server, Event.time_tick("t", hours: 1))
+      end)
+
+      File.chmod!(path, 0o644)
+
+      assert RuntimeServer.get_state(server) == state
+      assert {:ok, ^state, _steps} = Journal.replay(path)
+    end
+
+    test "journal headers are written atomically and validated", %{path: path} do
+      :ok = Journal.create(path, Runtime.demo_state())
+      assert {:error, :already_exists} = Journal.create(path, Runtime.demo_state())
+      refute File.exists?(path <> ".tmp")
+
+      File.write!(path, ~s({"aethrion_journal": 1}\n))
+      assert {:error, {:invalid_journal, 1, :missing_state}} = Journal.read(path)
+    end
+
+    test "impressions form the same way however time is split, even across forgetting" do
+      warm = fn text -> Event.message_sent("user", "mina", text, tone: :warm) end
+      base = [warm.("a"), warm.("b"), warm.("c")]
+      impression = &State.memory(&1, "memory:mina:impression:warm:user")
+
+      {one, _outputs} = run!(Runtime.demo_state(), base ++ [Event.time_tick("t", hours: 1000)])
+
+      {ten, _outputs} =
+        run!(Runtime.demo_state(), base ++ for(_ <- 1..10, do: Event.time_tick("t", hours: 100)))
+
+      assert impression.(one).data["count"] == 3
+      assert impression.(ten).data["count"] == 3
+    end
+
+    test "sparse patterns still consolidate" do
+      warm = fn text -> Event.message_sent("user", "mina", text, tone: :warm) end
+      days = for _ <- 1..35, do: Event.time_tick("t", hours: 24)
+
+      {state, _outputs} =
+        run!(
+          Runtime.demo_state(),
+          [warm.("a")] ++ days ++ [warm.("b"), Event.time_tick("t", hours: 200)]
+        )
+
+      assert State.memory(state, "memory:mina:impression:warm:user").data["count"] == 2
+    end
+
+    test "curiosity can fire on any event, not only ticks and gossip" do
+      state =
+        Runtime.demo_state()
+        |> State.update_relationship("yuna", "user", &%{&1 | affinity: 25})
+        |> State.update_relationship("mina", "yuna", &%{&1 | trust: 40})
+
+      {state, _outputs} =
+        run!(state, [
+          Event.gift_received("user", "haru", "tea", observed_by: ["mina"]),
+          Event.gossip_shared("mina", "yuna", "memory:mina:observed:e1")
+        ])
+
+      {_state, outputs} =
+        run!(state, [
+          Event.message_sent("user", "yuna", "hi", tone: :warm),
+          Event.message_sent("user", "yuna", "hello again", tone: :warm)
+        ])
+
+      assert [%{reason: :curious}] = proactive(outputs, "yuna")
+    end
+
+    test "a confiding threshold of zero admits characters without a relationship" do
+      state =
+        Runtime.demo_state()
+        |> Tuning.put(:autonomy, :trust_threshold, 0)
+        |> State.update_relationship("mina", "yuna", &%{&1 | trust: 0})
+        |> State.update_character_state("mina", &%{&1 | loneliness: 70})
+
+      {state, _outputs} = dispatch!(state, Event.gift_received("user", "mina", "flower"))
+      {:ok, step} = Runtime.step(state, Event.time_tick("t", hours: 1))
+
+      assert %{type: :gossip_shared, from: "mina", to: "haru"} =
+               Enum.find(step.events, &(&1.type == :gossip_shared))
+    end
+  end
 end

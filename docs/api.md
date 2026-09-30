@@ -113,8 +113,9 @@ Every output carries `:rule` and `:event_id`.
 | `:unavailable_character` | an inactive or blocked character was asked to comfort, gossip, or spend time together |
 | `:unsupported_event` | no rules are registered for the event type |
 | `:rule_failed` | (RuntimeServer only) a rule raised; the event was rejected and state kept |
+| `:journal_failed` | (RuntimeServer only) the journal could not be written; the event was rejected and state kept |
 
-Optional fields may be omitted from hand-built event maps: `:at` and `:now` default to `"unspecified"`, `:observed_by` to `[]`, and `:tone` to `:neutral`.
+Optional fields may be omitted from hand-built event maps: `:at` and `:now` default to `"unspecified"`, `:observed_by` to `[]`, and `:tone` to `:neutral`. When given, `:at` and `:now` must be strings. A journaling runtime server also rejects events that would not come back unchanged from JSON (for example an atom or tuple in a custom field).
 
 ## Rules and pipeline
 

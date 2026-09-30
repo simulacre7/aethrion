@@ -137,15 +137,23 @@ defmodule Aethrion.RuntimeServer do
   def handle_call({:step, event}, _from, server) do
     case safe_step(server, event) do
       {:ok, %Step{} = step} ->
-        server =
-          %{server | world: step.state}
-          |> record_history(step.event)
-          |> persist()
-          |> journal(step.event)
-          |> broadcast({:dispatched, step})
-          |> render_async(step.outputs)
+        # The journal is written before the state is committed, so a failed
+        # write rejects the event instead of leaving a journal that no longer
+        # replays to the live world.
+        case journal(server, step.event) do
+          :ok ->
+            server =
+              %{server | world: step.state}
+              |> record_history(step.event)
+              |> persist()
+              |> broadcast({:dispatched, step})
+              |> render_async(step.outputs)
 
-        {:reply, {:ok, step}, server}
+            {:reply, {:ok, step}, server}
+
+          {:error, error} ->
+            {:reply, {:error, error}, server}
+        end
 
       {:error, error} ->
         {:reply, {:error, error}, server}
@@ -366,16 +374,30 @@ defmodule Aethrion.RuntimeServer do
     end
   end
 
-  defp journal(%{journal: nil} = server, _event), do: server
+  defp journal(%{journal: nil}, _event), do: :ok
 
   defp journal(%{journal: path} = server, event) do
-    case Aethrion.Journal.append(path, event) do
+    case Aethrion.Journal.append(path, event, pipeline: server.pipeline) do
       :ok ->
-        server
+        :ok
+
+      {:error, {:not_replayable, reason}} ->
+        {:error,
+         %Aethrion.Error{
+           code: :invalid_event,
+           message: "event cannot be journaled faithfully: #{inspect(reason)}",
+           details: %{reason: reason}
+         }}
 
       {:error, reason} ->
         Logger.error("Aethrion.RuntimeServer could not append to its journal: #{inspect(reason)}")
-        server
+
+        {:error,
+         %Aethrion.Error{
+           code: :journal_failed,
+           message: "could not append to the journal: #{inspect(reason)}",
+           details: %{reason: reason}
+         }}
     end
   end
 

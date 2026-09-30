@@ -31,7 +31,13 @@ defmodule Aethrion.Rules.Companionship do
         if MapSet.member?(busy, character.id),
           do: nil,
           else:
-            closest_friend(state, Map.get(outgoing, character.id, []), threshold, busy, cooldown)
+            closest_friend(
+              state,
+              candidates(state, character.id, outgoing, threshold),
+              threshold,
+              busy,
+              cooldown
+            )
 
       case friend do
         nil ->
@@ -47,8 +53,18 @@ defmodule Aethrion.Rules.Companionship do
     |> elem(0)
   end
 
-  # Highest affinity first; ties broken by id. Only existing relationships can
-  # clear the threshold, so the character's outgoing relationships suffice.
+  # With a positive threshold only existing relationships can clear it (missing
+  # ones count as 0). A threshold of 0 or less also admits characters with no
+  # relationship at all.
+  defp candidates(state, id, _outgoing, threshold) when threshold <= 0 do
+    state
+    |> State.sorted_characters()
+    |> Enum.map(&State.get_relationship(state, id, &1.id))
+  end
+
+  defp candidates(_state, id, outgoing, _threshold), do: Map.get(outgoing, id, [])
+
+  # Highest affinity first; ties broken by id.
   defp closest_friend(state, relationships, threshold, busy, cooldown) do
     relationships
     |> Enum.filter(fn %{from: id, to: friend, affinity: affinity} ->

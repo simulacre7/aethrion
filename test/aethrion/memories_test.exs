@@ -120,33 +120,51 @@ defmodule Aethrion.MemoriesTest do
   end
 
   test "memories faded for long enough are forgotten, with a trace" do
-    state = State.new(characters: [character("mina"), character("haru")])
+    state = State.new(characters: [character("mina"), character("haru"), character("ana")])
 
     {state, _outputs} =
-      dispatch!(state, Aethrion.Event.message_sent("haru", "mina", "hm", tone: :cold))
+      dispatch!(state, Aethrion.Event.gift_received("haru", "ana", "pin", observed_by: ["mina"]))
 
-    [memory] = state.memories
-    faded_at = Aethrion.Rules.MemoryDecay.fade_tick(memory)
+    observed = State.memory(state, "memory:mina:observed:e1")
+    faded_at = Aethrion.Rules.MemoryDecay.fade_tick(observed)
 
     {:ok, step} = Runtime.step(state, Event.time_tick("t", hours: faded_at + 719))
-    assert [_] = step.state.memories
+    assert State.memory(step.state, observed.id)
 
     {:ok, step} = Runtime.step(step.state, Event.time_tick("t", hours: 1))
-    assert [] = step.state.memories
+    refute State.memory(step.state, observed.id)
     assert Enum.any?(step.trace, &((&1.detail || "") =~ "mina forgot"))
+
+    # Ana's own memory of the gift could still become part of a pattern, so it stays.
+    assert State.memory(step.state, "memory:ana:gift:e1")
+  end
+
+  test "pattern memories are forgotten only after consolidation, impressions never" do
+    state = State.new(characters: [character("mina"), character("haru")])
+    warm = &Aethrion.Event.message_sent("haru", "mina", &1, tone: :warm)
+
+    {state, _outputs} = run!(state, [warm.("a"), Event.time_tick("t", hours: 2000)])
+    assert [%{consolidated_into: nil}] = state.memories
+
+    # The long tick consolidates both; the next one forgets the consolidated details.
+    {state, _outputs} =
+      run!(state, [warm.("b"), Event.time_tick("t", hours: 5000), Event.time_tick("t", hours: 1)])
+
+    assert [%Memory{kind: :impression, content: "haru has been warm to mina 2 times."}] =
+             state.memories
   end
 
   test "forgetting is tunable" do
     state =
-      State.new(characters: [character("mina"), character("haru")])
+      State.new(characters: [character("mina"), character("haru"), character("ana")])
       |> Aethrion.Tuning.put(:memory_decay, :forget_after_hours, 0)
 
     {state, _outputs} =
       run!(state, [
-        Aethrion.Event.message_sent("haru", "mina", "hm", tone: :cold),
+        Aethrion.Event.gift_received("haru", "ana", "pin", observed_by: ["mina"]),
         Event.time_tick("t", hours: 100)
       ])
 
-    assert [] = state.memories
+    refute State.memory(state, "memory:mina:observed:e1")
   end
 end

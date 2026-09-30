@@ -16,6 +16,10 @@ defmodule Aethrion.TemplatesKoTest do
     assert Ko.with_particle("Ivy", :topic) == "Ivy는"
     assert Ko.with_particle("Haru", :with) == "Haru와"
     assert Ko.with_particle("Sol", :with) == "Sol과"
+    assert Ko.with_particle(:unicode.characters_to_nfd_binary("민아"), :subject) =~ "가"
+    assert Ko.with_particle("하늘❤️", :subject) == "하늘❤️이"
+    assert Ko.with_particle("Zoe\u0308", :subject) == "Zoe\u0308가"
+    assert Ko.with_particle("", :topic) == "는"
   end
 
   test "the fake adapter renders every expressive output in Korean without touching the simulation" do

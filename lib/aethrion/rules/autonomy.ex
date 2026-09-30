@@ -53,12 +53,10 @@ defmodule Aethrion.Rules.Autonomy do
          known,
          outgoing
        ) do
+    threshold = Transition.param(transition, :trust_threshold)
+
     confidants =
-      confidants(
-        state,
-        Map.get(outgoing, teller.id, []),
-        Transition.param(transition, :trust_threshold)
-      )
+      confidants(state, candidates(state, teller.id, outgoing, threshold), threshold)
 
     thresholds =
       {Transition.param(transition, :notable_importance),
@@ -104,8 +102,17 @@ defmodule Aethrion.Rules.Autonomy do
     do: memory.importance >= notable
 
   # Most trusted first; ties broken by id.
-  # Only relationships that exist can clear the threshold (missing ones are 0),
-  # so the teller's outgoing relationships are enough.
+  # With a positive threshold only existing relationships can clear it (missing
+  # ones count as 0), so the teller's outgoing relationships are enough. A
+  # threshold of 0 or less also admits characters with no relationship at all.
+  defp candidates(state, id, _outgoing, threshold) when threshold <= 0 do
+    state
+    |> State.sorted_characters()
+    |> Enum.map(&State.get_relationship(state, id, &1.id))
+  end
+
+  defp candidates(_state, id, outgoing, _threshold), do: Map.get(outgoing, id, [])
+
   defp confidants(state, relationships, trust_threshold) do
     relationships
     |> Enum.filter(fn relationship ->

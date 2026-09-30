@@ -8,7 +8,7 @@ defmodule Aethrion.Validator do
   def validate_dispatch(%State{} = state, %{type: type} = event, %Pipeline{} = pipeline)
       when is_atom(type) do
     if Pipeline.handles?(pipeline, type) do
-      validate_event(state, event)
+      with :ok <- require_labels(event), do: validate_event(state, event)
     else
       {:error,
        error(:unsupported_event, "unsupported event type: #{inspect(type)}", %{type: type})}
@@ -21,6 +21,20 @@ defmodule Aethrion.Validator do
 
   def validate_dispatch(_state, _event, _pipeline) do
     {:error, error(:invalid_state, "state must be an Aethrion.State struct")}
+  end
+
+  # Time labels are free-form strings. Other values (tuples, DateTimes) would
+  # not survive persistence or journaling unchanged.
+  defp require_labels(%{type: :time_tick} = event), do: require_label(event, :now)
+
+  defp require_labels(%{type: type} = event) do
+    if type in Event.types(), do: require_label(event, :at), else: :ok
+  end
+
+  defp require_label(event, field) do
+    if is_binary(Map.get(event, field)),
+      do: :ok,
+      else: {:error, error(:invalid_event, "#{field} must be a string label", %{field: field})}
   end
 
   defp validate_event(state, %{type: :gift_received} = event) do

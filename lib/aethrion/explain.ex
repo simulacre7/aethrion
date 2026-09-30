@@ -6,12 +6,19 @@ defmodule Aethrion.Explain do
   and `relationship/5` return every change to a single value, in order, with
   the rule that made it and the chain of events that led there:
 
-      {:ok, step} = Aethrion.step(state, Aethrion.Event.time_tick("t", hours: 2))
+      events = [
+        Aethrion.Event.gift_received("user", "mina", "flower", observed_by: ["yuna"]),
+        Aethrion.Event.time_tick("t", hours: 2)
+      ]
 
-      step.trace
-      |> Aethrion.Explain.character(step.events, "yuna", :jealousy)
+      {:ok, _state, steps} = Aethrion.run(Aethrion.demo_state(), events)
+
+      steps
+      |> Enum.flat_map(& &1.trace)
+      |> Aethrion.Explain.character(Enum.flat_map(steps, & &1.events), "yuna", :jealousy)
       |> Aethrion.Explain.describe()
-      #=> ["jealousy 15 -> 10 by comfort in e4: haru comforts yuna <- yuna confides in haru <- time passes +2h"]
+      #=> ["jealousy 0 -> 15 by observation in e1: user gives mina a flower (seen by yuna)",
+      #    "jealousy 15 -> 10 by comfort in e4: haru comforts yuna <- yuna confides in haru <- time passes +2h"]
   """
 
   alias Aethrion.{Event, Trace}

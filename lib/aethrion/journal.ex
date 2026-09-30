@@ -29,30 +29,64 @@ defmodule Aethrion.Journal do
 
   @doc """
   Creates a journal at `path` whose starting state is `state`. Fails if the
-  file already exists.
+  file already exists. The header is written to a temporary file and renamed
+  into place, so a failed create never leaves a half-written journal.
   """
   def create(path, %State{} = state) do
     header = %{"aethrion_journal" => @version, "state" => State.to_data(state)}
+    tmp = path <> ".tmp"
 
-    with :ok <- File.mkdir_p(Path.dirname(path)) do
-      case File.open(path, [:write, :exclusive, :utf8]) do
-        {:ok, file} ->
-          IO.write(file, Jason.encode!(header) <> "\n")
-          File.close(file)
+    cond do
+      File.exists?(path) ->
+        {:error, :already_exists}
 
-        {:error, :eexist} ->
-          {:error, :already_exists}
+      true ->
+        with :ok <- File.mkdir_p(Path.dirname(path)),
+             :ok <- File.write(tmp, Jason.encode!(header) <> "\n"),
+             :ok <- File.rename(tmp, path) do
+          :ok
+        else
+          {:error, reason} ->
+            File.rm(tmp)
+            {:error, reason}
+        end
+    end
+  end
 
-        {:error, reason} ->
-          {:error, reason}
-      end
+  @doc """
+  Encodes a processed host event as a journal line, or returns
+  `{:error, {:not_replayable, reason}}` if the event would not come back
+  unchanged from JSON (for example a tuple or DateTime in a field, or a custom
+  field value that is an atom). Pass the world's `pipeline:` for custom events.
+  """
+  def encode(%{type: _type} = event, opts \\ []) do
+    event = Map.delete(event, :cause)
+
+    with {:ok, json} <- safe_encode(event),
+         {:ok, decoded} <- Jason.decode(json),
+         {:ok, replayed} <- Event.from_data(decoded, Keyword.take(opts, [:pipeline])),
+         true <- Map.put(replayed, :id, Map.get(event, :id)) == event do
+      {:ok, json}
+    else
+      false -> {:error, {:not_replayable, :changes_through_json}}
+      {:error, reason} -> {:error, {:not_replayable, reason}}
     end
   end
 
   @doc "Appends one processed host event (with its assigned `:id`)."
-  def append(path, %{type: _type} = event) do
-    line = event |> Map.delete(:cause) |> Event.to_data() |> Jason.encode!()
-    File.write(path, line <> "\n", [:append, :utf8])
+  def append(path, %{type: _type} = event, opts \\ []) do
+    with {:ok, line} <- encode(event, opts) do
+      append_line(path, line)
+    end
+  end
+
+  @doc false
+  def append_line(path, line), do: File.write(path, line <> "\n", [:append, :utf8])
+
+  defp safe_encode(event) do
+    event |> Event.to_data() |> Jason.encode()
+  rescue
+    exception -> {:error, Exception.message(exception)}
   end
 
   @doc """
@@ -145,6 +179,9 @@ defmodule Aethrion.Journal do
          {:ok, state} <- State.parse(data, Keyword.take(opts, [:pipeline])) do
       {:ok, state}
     else
+      {:ok, %{"aethrion_journal" => @version}} ->
+        {:error, {:invalid_journal, 1, :missing_state}}
+
       {:ok, %{"aethrion_journal" => version}} ->
         {:error, {:invalid_journal, 1, {:unsupported_version, version}}}
 
