@@ -62,11 +62,13 @@ defmodule Aethrion.Error do
   end
 
   @doc """
-  Describes the location in an error's details (`:branch`, `:index`, `:line`,
-  `:path`), or returns `nil` when there is none. File names are left out:
-  messages about files already name them.
+  Describes the location in an error (or its details map): `:branch`,
+  `:index`, `:line`, `:path`. Returns `nil` when there is none. File names
+  are left out: messages about files already name them.
   """
-  @spec location(map()) :: String.t() | nil
+  @spec location(t() | map()) :: String.t() | nil
+  def location(%__MODULE__{details: details}), do: location(details)
+
   def location(details) when is_map(details) do
     [
       branch: &"branch #{inspect(&1)}",

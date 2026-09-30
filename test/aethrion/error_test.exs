@@ -20,6 +20,7 @@ defmodule Aethrion.ErrorTest do
 
       assert Error.format(Error.new(:invalid_state, "broken", %{path: []})) == "broken"
       assert Error.format(Error.new(:not_found, "missing")) == "missing"
+      assert Error.location(Error.new(:invalid_journal, "x", %{line: 2})) == "line 2"
     end
   end
 
