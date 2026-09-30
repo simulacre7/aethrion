@@ -426,7 +426,7 @@ defmodule Aethrion.Rules.Proactive do
 
     quoted =
       if reason == :lonely and
-           match?({:quote, _text}, Aethrion.Expression.Templates.lonely_choice(request)),
+           match?({:quote, _text}, Aethrion.Expression.Choices.lonely_choice(request)),
          do: [quoted_key(character.id, recipient)],
          else: []
 

@@ -15,7 +15,7 @@ defmodule Aethrion.Expression.Templates.Ko do
   sound of each name, for Hangul and Latin-script names alike.
   """
 
-  alias Aethrion.Expression.{Request, Templates}
+  alias Aethrion.Expression.{Choices, Request}
 
   # Latin words that end in a pronounced e (애니메, 우쿨렐레), unlike Jane or Nicole.
   @spoken_e ~w(anime sesame penne persephone karaoke ukulele adobe finale chile tamale pele)
@@ -73,7 +73,7 @@ defmodule Aethrion.Expression.Templates.Ko do
   @doc "Renders a request in Korean."
   @spec render(Request.t()) :: String.t()
   def render(%Request{kind: :proactive_message, reason: :jealous} = request) do
-    case Templates.jealous_choice(request) do
+    case Choices.jealous_choice(request) do
       {:gift, to, when_seen} ->
         moment = if when_seen == :earlier, do: "아까", else: "지난번에"
 
@@ -85,7 +85,7 @@ defmodule Aethrion.Expression.Templates.Ko do
   end
 
   def render(%Request{kind: :proactive_message, reason: :lonely} = request) do
-    case Templates.lonely_choice(request) do
+    case Choices.lonely_choice(request) do
       {:quote, text} -> "네가 했던 말이 계속 생각나. \"#{text}\" 잠깐 얘기할 수 있어?"
       {:gift, item} -> "네가 준 #{item}, 아직 가지고 있어. 잠깐 얘기할 수 있어?"
       :kind -> "넌 늘 나한테 다정했잖아. 너랑 얘기하던 게 그리워. 잠깐 시간 돼?"
@@ -112,7 +112,7 @@ defmodule Aethrion.Expression.Templates.Ko do
               "#{friend}한테 말하는 거 봤어. 그러면 안 돼."
             ]
 
-        Templates.pick(request, lines)
+        Choices.pick(request, lines)
 
       nil ->
         if calm?,
@@ -155,7 +155,7 @@ defmodule Aethrion.Expression.Templates.Ko do
   end
 
   def render(%Request{kind: :reply, tone: :gift, message: item} = request) do
-    case Templates.gift_choice(request) do
+    case Choices.gift_choice(request) do
       :wary -> "...고마워. 뭐라고 해야 할지 모르겠네."
       :reassured -> "나한테 주는 거야? ...나 잊은 줄 알았어."
       :spoiled -> "또 줘? 이러다 버릇 나빠지겠다."
@@ -167,7 +167,7 @@ defmodule Aethrion.Expression.Templates.Ko do
   end
 
   def render(%Request{kind: :reply, tone: :apology} = request) do
-    case Templates.apology_choice(request) do
+    case Choices.apology_choice(request) do
       :keeps_apologizing -> "계속 미안하다고만 하네. 그냥 그런 일이 없었으면 좋겠어."
       :left_out -> "고마워. 나도 좀 챙겨 줬으면 해서 그랬어."
       :nothing_to_forgive -> "사과할 거 없어. 우리 괜찮아."
@@ -180,7 +180,7 @@ defmodule Aethrion.Expression.Templates.Ko do
 
   def render(%Request{kind: :reply, tone: tone, speaker: %{mood: mood}} = request)
       when tone in [:cold, :hostile] do
-    case Templates.harsh_choice(tone, request) do
+    case Choices.harsh_choice(tone, request) do
       :silent -> "..."
       :done -> "더는 너랑 이런 얘기 안 할래."
       :again -> "또? 대체 왜 그러는 거야?"
@@ -204,13 +204,13 @@ defmodule Aethrion.Expression.Templates.Ko do
 
       nil ->
         wary_reply(:warm, request) || reunion_reply(:warm, mood, request) ||
-          bond_reply(:warm, mood, request) || Templates.pick(request, reply(:warm, mood))
+          bond_reply(:warm, mood, request) || Choices.pick(request, reply(:warm, mood))
     end
   end
 
   def render(%Request{kind: :reply, tone: tone, speaker: %{mood: mood}} = request) do
     wary_reply(tone, request) || reunion_reply(tone, mood, request) ||
-      bond_reply(tone, mood, request) || Templates.pick(request, reply(tone, mood))
+      bond_reply(tone, mood, request) || Choices.pick(request, reply(tone, mood))
   end
 
   def render(%Request{kind: :character_interaction, reason: :gossip} = request) do
@@ -261,7 +261,7 @@ defmodule Aethrion.Expression.Templates.Ko do
     pair =
       "#{with_particle(request.speaker.name, :with)} #{with_particle(request.listener.name, :topic)}"
 
-    case Templates.together_choice(request) do
+    case Choices.together_choice(request) do
       0 -> "#{pair} 함께 조용한 오후를 보낸다."
       1 -> "#{pair} 한참을 걸으며 이런저런 이야기를 나눈다."
       2 -> "#{pair} 같이 저녁을 먹고 늦게까지 이야기한다."
@@ -294,7 +294,7 @@ defmodule Aethrion.Expression.Templates.Ko do
   defp reunion_reply(_tone, _mood, _request), do: nil
 
   defp wary_reply(tone, request) do
-    case Templates.wary_choice(tone, request) do
+    case Choices.wary_choice(tone, request) do
       {:bond, bond} -> bond_line(tone, bond)
       :guarded when tone == :warm -> "고마워... 그래도 아직 좀 서운해."
       :guarded -> "...응, 왜."
@@ -304,7 +304,7 @@ defmodule Aethrion.Expression.Templates.Ko do
 
   defp bond_reply(tone, mood, %Request{relationship: %{bond: bond}} = request)
        when mood in [:neutral, :happy],
-       do: Templates.pick(request, bond_line(tone, bond))
+       do: Choices.pick(request, bond_line(tone, bond))
 
   defp bond_reply(_tone, _mood, _request), do: nil
 
