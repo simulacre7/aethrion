@@ -211,11 +211,32 @@ TODO:
 - [x] Compare branches of the same world side by side (scenario branches and report comparison).
 - [x] Record interactive sessions as scenario files.
 
+## Phase 9: Social Depth
+
+Goal: make how the user treats one character matter to the others, and let relationships read like relationships.
+
+TODO:
+
+- [x] Witnesses for messages and apologies; judgement by those who care about the receiver, at half strength from hearsay.
+- [x] Reputation impressions from faded secondhand memories, counted once per event and weighed below firsthand history.
+- [x] Characters speak up to someone who was hostile to a friend.
+- [x] Derived bonds with announced, explainable changes; bonds color replies.
+- [x] Characters notice how long it has been since a person last talked to them.
+- [x] Journals that stay fast to start (compaction) and warn when replayed by another version.
+
+Success criteria:
+
+- A harsh word in front of a friend changes more than one relationship, and every effect can be explained.
+- Long-running worlds stay bounded in memory, cooldowns, and journal size.
+
 ## Near-Term Priority
 
 Recommended next tasks:
 
 1. Publish to Hex once the event and output shapes settle.
-2. Explore per-character processes only if a concrete runtime need appears.
+2. Index memories per character: queries scan every memory, which is fine for hundreds of characters but dominates ticks past about 10,000 memories.
+3. Try the Anthropic and OpenAI-compatible adapters against real providers (so far they are tested against a local stub server).
+4. Offer a way to migrate a journal across versions instead of only warning.
+5. Explore per-character processes only if a concrete runtime need appears.
 
 Phoenix, vector databases, and distributed BEAM remain out of scope until the core runtime interface is stable.
