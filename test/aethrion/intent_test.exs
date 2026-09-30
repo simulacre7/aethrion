@@ -155,7 +155,16 @@ defmodule Aethrion.IntentTest do
       {"이제 그만해도 돼, 고마워", :warm},
       {"고맙지도 않아", :cold},
       {"ㄱㅅ", :warm},
-      {"thanks for nothing", :cold}
+      {"thanks for nothing", :cold},
+      {"그동안 고마웠어. 사랑해!", :warm},
+      {"오랫동안 보고 싶었어", :warm},
+      {"은비랑 하나도 좋아하더라", :warm},
+      {"기분 안 좋아 보이네, 괜찮아?", :warm},
+      {"하나도 안 고마워", :cold},
+      {"안 좋아", :cold},
+      {"고생했어", :warm},
+      {"입 다물어", :hostile},
+      {"귀찮아", :cold}
     ]
 
     for {text, expected} <- cases do

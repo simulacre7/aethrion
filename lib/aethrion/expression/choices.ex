@@ -73,7 +73,8 @@ defmodule Aethrion.Expression.Choices do
   # felt left out, unneeded when nothing was wrong, and slower to heal fresh
   # tension.
   @spec apology_choice(Request.t()) ::
-          :keeps_apologizing
+          :settled
+          | :keeps_apologizing
           | :left_out
           | :nothing_to_forgive
           | :once_more
@@ -89,20 +90,7 @@ defmodule Aethrion.Expression.Choices do
         &match?(%{data: %{"event" => "apology_offered", "from" => ^listener}}, &1)
       ) - 1
 
-    harsh? =
-      Enum.any?(
-        request.memories,
-        &(match?(
-            %{data: %{"event" => "message_sent", "from" => ^listener, "tone" => t}}
-            when t in ["cold", "hostile"],
-            &1
-          ) or
-            match?(
-              %{data: %{"event" => "impression", "from" => ^listener, "pattern" => p}}
-              when p in ["cold", "hostile"],
-              &1
-            ))
-      )
+    harsh? = Enum.any?(request.memories, &harsh_from?(&1, listener))
 
     left_out? =
       Enum.any?(
@@ -110,7 +98,12 @@ defmodule Aethrion.Expression.Choices do
         &match?(%{kind: :observed, data: %{"event" => "gift_received", "from" => ^listener}}, &1)
       )
 
+    # An apology after one that already came after the latest harsh words is
+    # for something already forgiven.
+    settled? = earlier >= 1 and forgiven?(request, listener)
+
     cond do
+      settled? -> :settled
       earlier >= 2 -> :keeps_apologizing
       left_out? and not harsh? -> :left_out
       not harsh? and tension(request) == 0 -> :nothing_to_forgive
@@ -148,6 +141,49 @@ defmodule Aethrion.Expression.Choices do
   end
 
   def together_choice(_request), do: 0
+
+  # Harsh words from `listener`, remembered or folded into an impression.
+  defp harsh_from?(
+         %{data: %{"event" => "message_sent", "from" => from, "tone" => tone}},
+         listener
+       ),
+       do: from == listener and tone in ["cold", "hostile"]
+
+  defp harsh_from?(
+         %{data: %{"event" => "impression", "from" => from, "pattern" => pattern}},
+         listener
+       ),
+       do: from == listener and pattern in ["cold", "hostile"]
+
+  defp harsh_from?(_memory, _listener), do: false
+
+  defp forgiven?(request, listener) do
+    numbers = fn match? ->
+      request.memories
+      |> Enum.filter(match?)
+      |> Enum.map(&Aethrion.Memories.event_number/1)
+      |> Enum.reject(&is_nil/1)
+      |> Enum.sort(:desc)
+    end
+
+    apologies =
+      numbers.(&match?(%{data: %{"event" => "apology_offered", "from" => ^listener}}, &1))
+
+    harsh =
+      numbers.(
+        &match?(
+          %{data: %{"event" => "message_sent", "from" => ^listener, "tone" => t}}
+          when t in ["cold", "hostile"],
+          &1
+        )
+      )
+
+    case {apologies, harsh} do
+      {[_current, previous | _], [latest_harsh | _]} -> previous > latest_harsh
+      {[_current, _previous | _], []} -> true
+      _other -> false
+    end
+  end
 
   @doc false
   # A record of kindness (3 kind acts, as `Aethrion.Rules.Message` counts
@@ -203,6 +239,11 @@ defmodule Aethrion.Expression.Choices do
 
   # Plain messages are not remembered, so for them the hour turns the line.
   defp turn(%Request{tone: :neutral, now: now}) when is_integer(now), do: now + div(now, 24)
+  # A protest turns with the day too, so one speaking up again days later
+  # does not repeat themselves.
+  defp turn(%Request{reason: :protective, now: now} = request) when is_integer(now),
+    do: (request.repeats || 1) - 1 + div(now, 24)
+
   defp turn(request), do: (request.repeats || 1) - 1 + folded(request)
 
   # What faded into an impression counts too, so the turn keeps going over

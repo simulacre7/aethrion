@@ -47,7 +47,7 @@ defmodule Aethrion.LLM.FakeAdapter do
              "stop it"
            ] ++
              ["꺼져", "닥쳐", "짜증", "바보", "멍청", "한심", "질렸", "재수 없", "재수없", "지긋지긋"] ++
-             ["연락하지 마", "상종", "역겨", "저리 가"]
+             ["연락하지 마", "상종", "역겨", "저리 가", "입 다물", "이기적", "그 모양"]
   # "그만해", but not "걱정 그만해" or "그만해도 돼".
   @stop ~r/(?<!걱정 )그만해(?!도)/u
   # Harsh only when aimed at the listener: "너 싫어", not "비 와서 싫어".
@@ -89,6 +89,12 @@ defmodule Aethrion.LLM.FakeAdapter do
     "멋있",
     "반가",
     "수고했",
+    "수고 많",
+    "고생했",
+    "고생 많",
+    "잘 자",
+    "조심히",
+    "도와줄게",
     "축하",
     "힘내",
     "자랑스러",
@@ -100,10 +106,15 @@ defmodule Aethrion.LLM.FakeAdapter do
              ["실망", "서운", "따위", "필요 없어"]
   # A warm word or an apology right after a negation is cold ("not happy", "하나도 안 고마워"),
   # except in idioms that stay warm.
-  @negations ["not ", "n't ", "never ", "no longer "] ++ ["안 ", "못 ", "하나도", "전혀"]
+  # Korean negations stand on their own: "안 " after a space ("하나도 안 고마워"),
+  # not inside a word ("그동안", "오랫동안"); "하나도" only before 안/못
+  # (it is also a name).
+  @negations ["not ", "n't ", "never ", "no longer "]
+  @korean_negation ~r/\s(?:안|못|전혀)\s|하나도\s+(?:안|못)/u
   # Korean also negates after the word: "보고 싶지 않아", "좋아하는 척하지 마".
   @negated_after ~r/(?:고맙|고마|좋|보고\s*싶|사랑|반가)\S*\s*(?:지(?:는|도)?\s*않|지\s*마|척)/u
-  @warm_idioms ["can't thank", "cannot thank", "couldn't be happier", "never been happier"]
+  @warm_idioms ["can't thank", "cannot thank", "couldn't be happier", "never been happier"] ++
+                 ["괜찮아?", "괜찮니?", "괜찮은 거야?"]
   # Brush-offs as phrases: "busy" or "later" alone are ordinary ("see you
   # later!", "are you busy tonight?").
   @cold [
@@ -116,7 +127,7 @@ defmodule Aethrion.LLM.FakeAdapter do
           "i am busy",
           "too busy"
         ] ++
-          ["됐어", "나중에 얘기", "나중에 해", "바빠", "상관없", "알아서 해"]
+          ["됐어", "됐거든", "나중에 얘기", "나중에 해", "바빠", "상관없", "상관하지 마", "알아서 해", "귀찮"]
   # "몰라" on its own, not "잘 몰라서 그러는데".
   @dont_know ~r/몰라(?!서)|나중에[\s.!?~]*$/u
 
@@ -200,8 +211,17 @@ defmodule Aethrion.LLM.FakeAdapter do
       ~r/(?<![a-z])#{Regex.escape(word)}/u
       |> Regex.scan(text, return: :index)
       |> Enum.any?(fn [{start, _length}] ->
-        before = binary_part(text, max(start - 12, 0), min(start, 12))
-        Enum.any?(@negations, &String.contains?(before, &1))
+        # The few characters before the word (by character, not byte, so
+        # Korean is never cut in half).
+        # A leading space stands for the start of the text, so "안 좋아" counts
+        # but the end of "그동안" cut off by the window does not.
+        prefix = binary_part(text, 0, start)
+
+        before =
+          if String.length(prefix) <= 8, do: " " <> prefix, else: String.slice(prefix, -8..-1//1)
+
+        Enum.any?(@negations, &String.contains?(before, &1)) or
+          Regex.match?(@korean_negation, before)
       end)
     end)
   end

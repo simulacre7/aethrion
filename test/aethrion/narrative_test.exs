@@ -152,6 +152,18 @@ defmodule Aethrion.NarrativeTest do
       assert Ko.render(reply.context) == "고마워. 나도 좀 챙겨 줬으면 해서 그랬어."
     end
 
+    test "apologizing again for something already forgiven is settled, not a pattern" do
+      {_state, outputs} =
+        run!(Runtime.demo_state(), [
+          Event.message_sent("user", "mina", "Go away.", tone: :hostile),
+          Event.apology_offered("user", "mina", "Sorry."),
+          tick(48),
+          Event.apology_offered("user", "mina", "Still sorry about that.")
+        ])
+
+      assert %{text: "It's okay, really. We're good now."} = List.last(replies(outputs, "mina"))
+    end
+
     test "an apology out of nowhere is waved off" do
       {_state, outputs} =
         run!(Runtime.demo_state(), [Event.apology_offered("user", "haru", "Sorry about earlier.")])
@@ -611,7 +623,7 @@ defmodule Aethrion.NarrativeTest do
       }
 
       assert Aethrion.Expression.Templates.render(request) == "Thank you, I love it!"
-      assert Ko.render(request) == "마음에 들어. 고마워!"
+      assert Ko.render(request) == "나 주는 거야? 고마워!"
     end
   end
 

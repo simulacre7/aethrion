@@ -105,7 +105,11 @@ defmodule Aethrion.Expression.Templates.Ko do
 
         lines =
           if calm?,
-            do: ["#{friend}한테 한 말은 좀 모질었어. 무슨 일 있어?", "#{friend}한테 그런 말은 좀 아니었어. 괜찮은 거야?"],
+            do: [
+              "#{friend}한테 한 말은 좀 모질었어. 무슨 일 있어?",
+              "#{friend}한테 그런 말은 좀 아니었어. 괜찮은 거야?",
+              "#{friend}한테 말하는 거 봤어. 요즘 무슨 일 있어?"
+            ],
             else: [
               "#{friend}한테 한 말, 좀 심했어. 걔는 그런 말 들을 이유 없었어.",
               "#{friend}한테 왜 그렇게 말했어? 그건 좀 너무했어.",
@@ -146,14 +150,15 @@ defmodule Aethrion.Expression.Templates.Ko do
       :reassured -> "나한테 주는 거야? ...나 잊은 줄 알았어."
       :spoiled -> "또 줘? 이러다 버릇 나빠지겠다."
       :remembered -> "내 생각 해 준 거야? 정말 고마워."
-      :close -> "이런 거 안 해도 되는데! 너무 좋다."
-      :thanks when is_binary(item) -> "#{with_particle(item, :subject)} 마음에 들어. 고마워!"
-      :thanks -> "마음에 들어. 고마워!"
+      :close -> Choices.pick(request, ["이런 거 안 해도 되는데! 너무 좋다.", "또 챙겨 준 거야? 진짜 고마워."])
+      :thanks when is_binary(item) -> "#{item}? 우와, 고마워!"
+      :thanks -> "나 주는 거야? 고마워!"
     end
   end
 
   def render(%Request{kind: :reply, tone: :apology} = request) do
     case Choices.apology_choice(request) do
+      :settled -> "알았어, 이제 진짜 괜찮아."
       :keeps_apologizing -> "계속 미안하다고만 하네. 그냥 그런 일이 없었으면 좋겠어."
       :left_out -> "고마워. 나도 좀 챙겨 줬으면 해서 그랬어."
       :nothing_to_forgive -> "사과할 거 없어. 우리 괜찮아."
@@ -263,7 +268,12 @@ defmodule Aethrion.Expression.Templates.Ko do
 
   defp curious_line(:gift, to, data, request) do
     heard = "#{to}한테 #{data["item"]} 줬다며?"
-    if :playful in request.speaker.traits, do: heard <> " 제법인데.", else: heard <> " 나한테 할 말 없어?"
+
+    cond do
+      :playful in request.speaker.traits -> heard <> " 제법인데."
+      :calm in request.speaker.traits -> heard <> " #{to} 좋아했겠다."
+      true -> heard <> " 나한테 할 말 없어?"
+    end
   end
 
   defp curious_line(:harsh, to, _data, _request),
@@ -299,12 +309,12 @@ defmodule Aethrion.Expression.Templates.Ko do
   defp reply(:warm, :jealous), do: "...고마워. 그 말이 듣고 싶었나 봐."
   defp reply(:warm, :lonely), do: ["오늘 그 말이 정말 필요했어.", "고마워. 좀 외로웠거든.", "네 연락 받으니까 좀 낫다."]
   defp reply(:warm, :upset), do: "아직 좀 속상하지만, 고마워."
-  defp reply(:warm, _mood), do: ["다정하네.", "고마워, 진심으로.", "넌 참 다정하다. 고마워."]
+  defp reply(:warm, _mood), do: ["그 말 들으니까 좋다. 고마워.", "헤헤, 고마워.", "고마워, 진심으로."]
   defp reply(:neutral, :happy), do: "응! 무슨 일이야?"
   defp reply(:neutral, :jealous), do: "아, 안녕."
   defp reply(:neutral, :lonely), do: "연락 줘서 반가워."
   defp reply(:neutral, :upset), do: "...왜?"
-  defp reply(:neutral, _mood), do: ["응, 무슨 일이야?", "응, 왜?", "나야 뭐 그럭저럭. 너는?"]
+  defp reply(:neutral, _mood), do: ["응, 무슨 일이야?", "응, 왜?", "응.", "그래, 알았어."]
   defp reply(:cold, :jealous), do: "그래, 알겠어."
   defp reply(:cold, _mood), do: "아... 그래."
   defp reply(:hostile, :upset), do: "그만해 줘."
@@ -372,7 +382,7 @@ defmodule Aethrion.Expression.Templates.Ko do
         "#{hours}시간이 흐른다"
 
       %{type: :gossip_shared} ->
-        "#{with_particle(name.(event.from), :topic)} #{name.(event.to)}에게 속마음을 털어놓는다"
+        "#{with_particle(name.(event.from), :topic)} #{name.(event.to)}에게 이야기를 전한다"
 
       %{type: :comfort_offered} ->
         "#{subject.(event.from)} #{with_particle(name.(event.to), :object)} 위로한다"
@@ -406,7 +416,7 @@ defmodule Aethrion.Expression.Templates.Ko do
         memory.content
 
       {text, %{kind: :heard, source: source}} when is_binary(source) ->
-        "#{names.(source)}한테 들음: #{text}"
+        "#{names.(source)}에게서: #{text}"
 
       {text, _memory} ->
         text

@@ -136,7 +136,8 @@ defmodule Aethrion.BondTest do
       assert reply_for([tension: 60], :neutral) ==
                {"I don't really want to talk.", "별로 얘기하고 싶지 않아."}
 
-      assert reply_for([affinity: 30, trust: 20], :warm) == {"That's sweet of you.", "다정하네."}
+      assert reply_for([affinity: 30, trust: 20], :warm) ==
+               {"That's sweet of you.", "그 말 들으니까 좋다. 고마워."}
     end
 
     test "a mood still speaks first" do

@@ -243,8 +243,9 @@ defmodule Aethrion.Digest do
   defp ko_remembers("comfort", actor, times),
     do: "#{actor}에게 #{times} 위로받은 걸 기억한다."
 
-  defp ko_remembers("together", actor, times),
-    do: "#{Ko.with_particle(actor, :with)} 함께 보낸 #{times}의 시간을 기억한다."
+  # How many afternoons is not the point in Korean: that they matter is.
+  defp ko_remembers("together", actor, _times),
+    do: "#{Ko.with_particle(actor, :with)} 함께 보낸 시간을 소중히 기억한다."
 
   defp ko_remembers(tone, actor, times),
     do: "#{Ko.subject(actor)} #{times} #{Ko.adverb(tone)} 말한 걸 기억한다."

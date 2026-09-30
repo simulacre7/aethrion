@@ -60,7 +60,8 @@ defmodule Aethrion.Expression.Templates do
           if calm?,
             do: [
               "What you said to #{friend} was unkind. Is everything okay?",
-              "That was a hard thing to say to #{friend}. Are you alright?"
+              "That was a hard thing to say to #{friend}. Are you alright?",
+              "I saw how you spoke to #{friend}. Is something going on with you?"
             ],
             else: [
               "That was harsh, what you said to #{friend}. #{friend} didn't deserve that.",
@@ -90,18 +91,35 @@ defmodule Aethrion.Expression.Templates do
 
   def render(%Request{kind: :reply, tone: :gift, message: item} = request) do
     case Choices.gift_choice(request) do
-      :wary -> "...Thanks. I don't know what to say."
-      :reassured -> "For me? ...I thought you'd forgotten about me."
-      :spoiled -> "Another one? You're spoiling me."
-      :remembered -> "You thought of me? That means a lot."
-      :close -> "You didn't have to! I love it."
-      :thanks when is_binary(item) -> "Thank you for the #{item}!"
-      :thanks -> "Thank you, I love it!"
+      :wary ->
+        "...Thanks. I don't know what to say."
+
+      :reassured ->
+        "For me? ...I thought you'd forgotten about me."
+
+      :spoiled ->
+        "Another one? You're spoiling me."
+
+      :remembered ->
+        "You thought of me? That means a lot."
+
+      :close ->
+        Choices.pick(request, [
+          "You didn't have to! I love it.",
+          "You spoil me. Thank you, really."
+        ])
+
+      :thanks when is_binary(item) ->
+        "Thank you for the #{item}!"
+
+      :thanks ->
+        "Thank you, I love it!"
     end
   end
 
   def render(%Request{kind: :reply, tone: :apology} = request) do
     case Choices.apology_choice(request) do
+      :settled -> "It's okay, really. We're good now."
       :keeps_apologizing -> "You keep saying sorry. I just need it to stop happening."
       :left_out -> "Thanks. I just wanted to feel remembered too."
       :nothing_to_forgive -> "You don't have to apologize. We're okay."
@@ -219,9 +237,11 @@ defmodule Aethrion.Expression.Templates do
           {"told me you gave #{name(request, data["to"])} #{with_article(data["item"])}",
            "mentioned you gave #{name(request, data["to"])} #{with_article(data["item"])}"}
 
-    if :playful in request.speaker.traits,
-      do: "#{teller} #{told}. Smooth.",
-      else: "#{teller} #{mentioned}. Is there something I should know?"
+    cond do
+      :playful in request.speaker.traits -> "#{teller} #{told}. Smooth."
+      :calm in request.speaker.traits -> "#{teller} #{mentioned}. I bet that made their day."
+      true -> "#{teller} #{mentioned}. Is there something I should know?"
+    end
   end
 
   defp curious_line(:harsh, teller, data, source, request) do
@@ -306,7 +326,10 @@ defmodule Aethrion.Expression.Templates do
   defp reply(:neutral, :jealous), do: "Oh. Hi."
   defp reply(:neutral, :lonely), do: "Hey... it's good to hear from you."
   defp reply(:neutral, :upset), do: "...What is it?"
-  defp reply(:neutral, _mood), do: ["I'm listening.", "Yeah? What's up?", "Not much here. You?"]
+
+  defp reply(:neutral, _mood),
+    do: ["I'm listening.", "Yeah? What's up?", "Okay.", "Mm-hm. Go on."]
+
   defp reply(:cold, :jealous), do: "Right. I get it."
   defp reply(:cold, _mood), do: "Oh. Okay."
   defp reply(:hostile, :upset), do: "Please stop."
