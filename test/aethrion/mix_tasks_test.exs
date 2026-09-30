@@ -61,4 +61,16 @@ defmodule Aethrion.MixTasksTest do
     assert output =~ "after every event (reactive)"
     assert output =~ "1. mood"
   end
+
+  test "report task writes html" do
+    out =
+      Path.join(System.tmp_dir!(), "aethrion-report-#{System.unique_integer([:positive])}.html")
+
+    on_exit(fn -> File.rm(out) end)
+    [path | _] = Aethrion.Scenario.bundled()
+
+    capture_io(fn -> Mix.Tasks.Aethrion.Report.run([path, "--out", out]) end)
+
+    assert File.read!(out) =~ "<h2>Timeline</h2>"
+  end
 end
