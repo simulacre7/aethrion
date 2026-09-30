@@ -55,11 +55,22 @@ event.type
 - The event is built by the normal constructors and returned, not dispatched. It still passes validation and rules like any host event.
 - On errors or invalid proposals, the deterministic keyword interpreter in `Aethrion.LLM.FakeAdapter` is used and `meta.status` is `:fallback`.
 
+## Languages
+
+Because rendering only changes text, language is an expression concern. The fake adapter ships Korean templates, with particles chosen from each name's final sound:
+
+```elixir
+Aethrion.Expression.render(outputs, adapter: Aethrion.LLM.FakeAdapter, adapter_opts: [locale: :ko])
+#=> "아까 Mina랑 있을 때 즐거워 보이더라. 혹시 나는 잊은 거 아니지?"
+```
+
+`mix demo.interactive --locale ko` shows every line in both languages. A model adapter can do the same by adding a language instruction to the prompt.
+
 ## Adapters
 
 | Adapter | Use |
 | --- | --- |
-| `Aethrion.LLM.FakeAdapter` | Default. Deterministic templates and a keyword lexicon. Used by tests and demos. |
+| `Aethrion.LLM.FakeAdapter` | Default. Deterministic templates and a keyword lexicon. Used by tests and demos. `adapter_opts: [locale: :ko]` renders Korean templates. |
 | `Aethrion.LLM.Anthropic` | Anthropic Messages API. Default model `claude-opus-5-5` at `low` effort, with the server-side refusal fallback enabled for models that support it. |
 | `Aethrion.LLM.OpenAICompatible` | Any Chat Completions server: OpenAI, vLLM, Ollama, llama.cpp server, LM Studio. |
 

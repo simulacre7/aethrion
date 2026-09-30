@@ -2,8 +2,10 @@ defmodule Aethrion.LLM.FakeAdapter do
   @moduledoc """
   Deterministic adapter used by tests, demos, and as the default.
 
-  `render/2` returns the request's deterministic template text. `interpret/2`
-  uses a small keyword lexicon. Neither reads nor mutates runtime state.
+  `render/2` returns the request's deterministic template text, or the Korean
+  template with `locale: :ko` (see `Aethrion.Expression.Templates.Ko`).
+  `interpret/2` uses a small keyword lexicon. Neither reads nor mutates
+  runtime state.
   """
 
   @behaviour Aethrion.LLM.Adapter
@@ -28,8 +30,11 @@ defmodule Aethrion.LLM.FakeAdapter do
   @cold ["whatever", "busy", "later", "don't care", "not now"]
 
   @impl true
-  def render(%Request{} = request, _opts \\ []) do
-    {:ok, request.fallback_text || Templates.render(request)}
+  def render(%Request{} = request, opts \\ []) do
+    case Keyword.get(opts, :locale, :en) do
+      :ko -> {:ok, Templates.Ko.render(request)}
+      _en -> {:ok, request.fallback_text || Templates.render(request)}
+    end
   end
 
   @impl true

@@ -13,6 +13,8 @@ defmodule Mix.Tasks.Demo.Interactive do
     through a real model (see `Aethrion.LLM.Anthropic` and
     `Aethrion.LLM.OpenAICompatible` for configuration). Without it, the
     deterministic fake adapter is used. The simulation is identical either way.
+  - `--locale ko` - also show every character line rendered with the Korean
+    templates. The simulation is identical in every language.
   - `--effects` - also print every structured output.
   - `--no-status` - do not print the status tables after every event (use
     `status` to see them).
@@ -26,7 +28,7 @@ defmodule Mix.Tasks.Demo.Interactive do
   alias Aethrion.LLM.{Anthropic, FakeAdapter, OpenAICompatible}
   alias Aethrion.Persistence.JsonFile
 
-  @switches [llm: :string, effects: :boolean, status: :boolean]
+  @switches [llm: :string, effects: :boolean, status: :boolean, locale: :string]
 
   @impl Mix.Task
   def run(args) do
@@ -44,6 +46,7 @@ defmodule Mix.Tasks.Demo.Interactive do
       host_events: [],
       outputs: [],
       adapter: adapter(opts[:llm]),
+      locale: locale(opts[:locale]),
       effects?: Keyword.get(opts, :effects, false),
       status?: Keyword.get(opts, :status, true)
     }
@@ -55,6 +58,11 @@ defmodule Mix.Tasks.Demo.Interactive do
     if session.status?, do: Display.status(session.state)
     loop(session)
   end
+
+  defp locale(nil), do: nil
+  defp locale("ko"), do: :ko
+  defp locale("en"), do: nil
+  defp locale(other), do: Mix.raise("unknown --locale #{inspect(other)}; use ko or en")
 
   defp adapter(nil), do: nil
 
@@ -276,11 +284,21 @@ defmodule Mix.Tasks.Demo.Interactive do
         Enum.each(step.log, &Display.log/1)
         if session.effects?, do: Enum.each(step.outputs, &Display.output/1)
 
-        if session.adapter do
-          step.outputs
-          |> Enum.filter(&Aethrion.Output.expressive?/1)
-          |> Expression.render(adapter: session.adapter)
-          |> Enum.each(&Display.expressed/1)
+        cond do
+          session.adapter ->
+            step.outputs
+            |> Enum.filter(&Aethrion.Output.expressive?/1)
+            |> Expression.render(adapter: session.adapter)
+            |> Enum.each(&Display.expressed/1)
+
+          session.locale ->
+            step.outputs
+            |> Enum.filter(&Aethrion.Output.expressive?/1)
+            |> Expression.render(adapter: FakeAdapter, adapter_opts: [locale: session.locale])
+            |> Enum.each(&Display.expressed(&1, session.locale |> to_string() |> String.upcase()))
+
+          true ->
+            :ok
         end
 
         if session.status?, do: Display.status(step.state)
