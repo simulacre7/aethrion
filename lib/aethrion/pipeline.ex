@@ -32,6 +32,7 @@ defmodule Aethrion.Pipeline do
   @doc """
   The built-in rule pipeline.
   """
+  @spec default() :: t()
   def default do
     %__MODULE__{
       event_rules: %{
@@ -65,19 +66,23 @@ defmodule Aethrion.Pipeline do
   end
 
   @doc "Event types that have at least one rule."
+  @spec event_types(t()) :: [atom()]
   def event_types(%__MODULE__{event_rules: event_rules}) do
     event_rules |> Map.keys() |> Enum.sort()
   end
 
   @doc "Returns true when the pipeline knows how to handle `type`."
+  @spec handles?(t(), atom()) :: boolean()
   def handles?(%__MODULE__{event_rules: event_rules}, type), do: Map.has_key?(event_rules, type)
 
   @doc "Rules that run for an event of `type`, including reactive rules."
+  @spec rules_for(t(), atom()) :: [module()]
   def rules_for(%__MODULE__{} = pipeline, type) do
     Map.get(pipeline.event_rules, type, []) ++ pipeline.reactive_rules
   end
 
   @doc "Appends `rule` to the rules for `type`, registering the type if needed."
+  @spec append(t(), atom(), module()) :: t()
   def append(%__MODULE__{} = pipeline, type, rule) when is_atom(type) and is_atom(rule) do
     update_in(
       pipeline.event_rules,
@@ -86,11 +91,13 @@ defmodule Aethrion.Pipeline do
   end
 
   @doc "Inserts `rule` before the other rules for `type`."
+  @spec prepend(t(), atom(), module()) :: t()
   def prepend(%__MODULE__{} = pipeline, type, rule) when is_atom(type) and is_atom(rule) do
     update_in(pipeline.event_rules, &Map.update(&1, type, [rule], fn rules -> [rule | rules] end))
   end
 
   @doc "Removes `rule` from every event type and from the reactive rules."
+  @spec remove(t(), module()) :: t()
   def remove(%__MODULE__{} = pipeline, rule) do
     %__MODULE__{
       event_rules: Map.new(pipeline.event_rules, fn {type, rules} -> {type, rules -- [rule]} end),
@@ -103,6 +110,7 @@ defmodule Aethrion.Pipeline do
   before `Aethrion.Rules.Bond` when the pipeline has it, so relationship
   changes the new rule makes are announced as bond changes too.
   """
+  @spec add_reactive(t(), module()) :: t()
   def add_reactive(%__MODULE__{} = pipeline, rule) when is_atom(rule) do
     {before, rest} = Enum.split_while(pipeline.reactive_rules, &(&1 != Rules.Bond))
     %{pipeline | reactive_rules: before ++ [rule | rest]}
@@ -112,6 +120,7 @@ defmodule Aethrion.Pipeline do
   Describes the pipeline as `[{type, [{rule_id, description}]}]`, with reactive
   rules listed under `:reactive`.
   """
+  @spec describe(t()) :: [{atom(), [{atom(), String.t()}]}]
   def describe(%__MODULE__{} = pipeline) do
     event_rows =
       for type <- event_types(pipeline) do

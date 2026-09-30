@@ -33,6 +33,7 @@ defmodule Aethrion.Explain do
   Changes to a character field across a list of `Aethrion.Step`s (as returned
   by `Aethrion.Runtime.run/3`), oldest first.
   """
+  @spec character([Aethrion.Step.t()], String.t(), atom()) :: [change()]
   def character(steps, character_id, field) when is_list(steps) and is_atom(field) do
     {trace, events} = from_steps(steps)
     character(trace, events, character_id, field)
@@ -41,6 +42,7 @@ defmodule Aethrion.Explain do
   @doc """
   Changes to a relationship field across a list of `Aethrion.Step`s, oldest first.
   """
+  @spec relationship([Aethrion.Step.t()], String.t(), String.t(), atom()) :: [change()]
   def relationship(steps, from, to, field) when is_list(steps) and is_atom(field) do
     {trace, events} = from_steps(steps)
     relationship(trace, events, from, to, field)

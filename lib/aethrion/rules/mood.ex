@@ -38,6 +38,7 @@ defmodule Aethrion.Rules.Mood do
   Pure mood derivation from numeric state. Pass the world state to honor its
   `Aethrion.Tuning` overrides; without it the defaults are used.
   """
+  @spec derive(CharacterState.t(), State.t() | map() | nil) :: CharacterState.mood()
   def derive(cs, world_or_thresholds \\ nil)
 
   def derive(%CharacterState{} = cs, %State{} = world), do: derive(cs, thresholds(world))
@@ -54,6 +55,7 @@ defmodule Aethrion.Rules.Mood do
   end
 
   @doc "The world's mood thresholds, honoring tuning."
+  @spec thresholds(State.t()) :: %{atom() => integer()}
   def thresholds(%State{} = world) do
     Map.new(params(), fn {key, _default} -> {key, Aethrion.Tuning.get(world, __MODULE__, key)} end)
   end

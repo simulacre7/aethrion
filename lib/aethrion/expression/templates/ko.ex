@@ -214,6 +214,7 @@ defmodule Aethrion.Expression.Templates.Ko do
   `names` maps ids to display names. Custom event types fall back to the
   English description.
   """
+  @spec describe_event(map(), (String.t() -> String.t())) :: String.t()
   def describe_event(event, names) do
     name = fn id -> names.(id) end
     subject = fn id -> subject(name.(id)) end
@@ -267,6 +268,7 @@ defmodule Aethrion.Expression.Templates.Ko do
   `:subject` (이/가), `:topic` (은/는), `:object` (을/를), `:and` (이랑/랑),
   or `:with` (과/와).
   """
+  @spec with_particle(String.t(), :subject | :topic | :object | :and | :with) :: String.t()
   def with_particle(word, kind) do
     {with_batchim, without} =
       case kind do
