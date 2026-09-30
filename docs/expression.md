@@ -17,7 +17,7 @@ Rules decide *that* Yuna messages the user and *why* (`reason: :jealous`). Every
 
 - `text` - a deterministic fallback line from `Aethrion.Expression.Templates`
 - `memory_refs` - ids of the memories the line draws on
-- `context` - an `Aethrion.Expression.Request` snapshot: speaker profile, traits and mood, the relationship toward the listener, the selected memories as plain maps, display names, and the fallback line
+- `context` - an `Aethrion.Expression.Request` snapshot: speaker profile, traits and mood, the relationship toward the listener (with its `bond`), the selected memories as plain maps, display names, the fallback line, and for replies and proactive messages `since_contact` (hours since the listener last talked to the speaker; `Request.reunion?/1` says whether that is a long absence). `Request.harshness_to_others/1` tells an adapter whether the speaker saw or heard the listener be hostile to someone else, as the templates use it.
 
 An adapter can re-render the text from that snapshot alone:
 

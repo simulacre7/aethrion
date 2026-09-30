@@ -46,7 +46,7 @@ Options for all three:
 
 ```elixir
 Aethrion.State.new(
-  characters: [%Aethrion.Character{id: "mina", name: "Mina", traits: [:warm]}],
+  characters: [%Aethrion.Character{id: "mina", name: "Mina", traits: [:sensitive]}],
   relationships: [%Aethrion.Relationship{from: "mina", to: "user", affinity: 40}]
 )
 ```
@@ -218,7 +218,17 @@ New beliefs read like "Mina remembers you being warm 2 times." or "Haru knows ho
 | `important(state, id, limit)` | the most important, ties to the newer |
 | `about(state, id, other_id)` | memories involving another actor |
 | `relevant(state, id, focus: ids, limit: 3)` | ranked by strength + focus bonus + recency |
-| `knows_topic?(state, id, topic)` | whether a character knows about an event, even faded |
+| `knows_topic?(state, id, topic)` | whether a character knows about an event, even faded or folded into an impression |
+
+What characters have come to believe, and how relationships read:
+
+```elixir
+Aethrion.Rules.Consolidation.counts(state, "mina", "user")
+#=> %{{"impression", "warm"} => 3, {"reputation", "hostile"} => 2}
+
+Aethrion.Rules.Bond.derive(Aethrion.State.get_relationship(state, "mina", "user"), state)
+#=> :friendly   # one of Aethrion.Rules.Bond.bonds(), worst to closest
+```
 
 ## Expression and intent
 
@@ -295,6 +305,12 @@ An `Aethrion.Journal` stores a world as its starting state plus every host event
 {Aethrion.World, name: :garden, journal: "tmp/garden.jsonl"}   # append on every dispatch, rebuild on start
 
 {:ok, state, steps} = Aethrion.Journal.replay("tmp/garden.jsonl")
+
+# Without a server: create, append processed events (with their ids), read.
+:ok = Aethrion.Journal.create("tmp/solo.jsonl", state)
+{:ok, step} = Aethrion.step(state, event)
+:ok = Aethrion.Journal.append("tmp/solo.jsonl", step.event)
+{:ok, starting_state, events} = Aethrion.Journal.read("tmp/solo.jsonl")
 {:ok, scenario_data} = Aethrion.Journal.to_scenario("tmp/garden.jsonl")
 ```
 
@@ -340,6 +356,6 @@ The `demo.*` tasks live in `dev/` and run only from a checkout of this repositor
 | `mix demo.branches` | one moment (the crossroads scenario), four branches, compared |
 | `mix demo.interactive` | REPL with `say`, `here`, `why`, `context`, `undo`, `--llm`, `--locale ko` |
 | `mix aethrion.scenario PATH \| --all` | run scenarios and check expectations |
-| `mix aethrion.report PATH \| --all` | render HTML reports; `--out` / `--out-dir`, `--locale ko` for a Korean report |
+| `mix aethrion.report PATH \| --all` | render HTML reports (`Aethrion.Report.html(result, locale: :ko)` from code); `--out` / `--out-dir`, `--locale ko` for a Korean report |
 | `mix aethrion.rules` | print the rule pipeline |
 | `mix aethrion.journal PATH` | replay a journal; `--scenario` / `--report` to export, `--compact [--archive FILE]`, `--max-depth` / `--max-events` |
