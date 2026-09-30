@@ -45,6 +45,11 @@ jobs:
       - name: Check each scenario in isolation
         run: for f in priv/scenarios/*.json; do mix aethrion.scenario "$f" --quiet || exit 1; done
 
+      - name: Scenario schema
+        run: |
+          pip install --quiet jsonschema
+          python3 scripts/check_schema.py
+
       - name: Credo
         run: mix credo
 
