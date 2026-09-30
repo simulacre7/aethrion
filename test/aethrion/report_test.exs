@@ -48,6 +48,20 @@ defmodule Aethrion.ReportTest do
     assert Report.html(result()) =~ "<blockquote>You looked happy with Mina earlier."
   end
 
+  test "bond changes are listed in order per relationship" do
+    html =
+      Report.html(
+        result(Enum.find(Scenario.bundled(), &String.ends_with?(&1, "13_slowly_closer.json")))
+      )
+
+    assert html =~ "<h3 class=\"sub\">Bond changes</h3>"
+
+    assert html =~
+             ~r{Haru → You: neutral → <strong>friendly</strong> <span class="cause">e\d+</span> → <strong>close</strong> <span class="cause">e\d+</span> → <strong>friendly</strong>}
+
+    refute Report.html(result()) =~ "Bond changes"
+  end
+
   test "reports are deterministic" do
     assert Report.html(result()) == Report.html(result())
   end

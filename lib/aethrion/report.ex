@@ -62,7 +62,7 @@ defmodule Aethrion.Report do
       focus_note(result.state, focus),
       cast(focused, view.(scenario.state)),
       feelings(focused.state, snapshots),
-      relationships(view.(scenario.state), focused.state),
+      relationships(view.(scenario.state), focused.state, result.outputs),
       timeline(result),
       branches(focused),
       checks(result),
@@ -481,7 +481,7 @@ defmodule Aethrion.Report do
     Enum.map(placed, fn {name, value, label_y} -> {name, value, label_y - overflow} end)
   end
 
-  defp relationships(initial, final) do
+  defp relationships(initial, final, outputs) do
     ids =
       final.relationships
       |> Map.keys()
@@ -556,9 +556,59 @@ defmodule Aethrion.Report do
       "</svg></div>",
       "<details><summary>Table view</summary><div class=\"table-wrap\"><table><thead><tr><th></th><th scope=\"col\">Affinity</th><th scope=\"col\">Trust</th><th scope=\"col\">Tension</th><th scope=\"col\">Bond</th></tr></thead><tbody>",
       rows,
-      "</tbody></table></div></details></section>\n"
+      "</tbody></table></div></details>",
+      bond_history(final, outputs),
+      "</section>\n"
     ]
   end
+
+  # Every relationship whose bond changed, as one line of steps in order.
+  defp bond_history(state, outputs) do
+    changes = Enum.filter(outputs, &(&1.type == :bond_changed))
+
+    lines =
+      changes
+      |> Enum.group_by(&{&1.from, &1.to})
+      |> Enum.sort_by(fn {pair, list} -> {hd(list).event_id |> event_number(), pair} end)
+      |> Enum.take(12)
+      |> Enum.map(fn {{from, to}, [first | _] = list} ->
+        steps =
+          Enum.map(list, fn change ->
+            [
+              " → <strong>",
+              esc(change.after),
+              "</strong> <span class=\"cause\">",
+              esc(change.event_id),
+              "</span>"
+            ]
+          end)
+
+        [
+          "<li>",
+          esc(display(state, from)),
+          " → ",
+          esc(display(state, to)),
+          ": ",
+          esc(first.before),
+          steps,
+          "</li>"
+        ]
+      end)
+
+    case lines do
+      [] -> ""
+      lines -> ["<h3 class=\"sub\">Bond changes</h3><ul class=\"bond-history\">", lines, "</ul>"]
+    end
+  end
+
+  defp event_number("e" <> n) do
+    case Integer.parse(n) do
+      {number, ""} -> number
+      _ -> 0
+    end
+  end
+
+  defp event_number(_id), do: 0
 
   defp marker(id, color) do
     "<marker id=\"#{id}\" viewBox=\"0 0 10 10\" refX=\"9\" refY=\"5\" markerWidth=\"7\" markerHeight=\"7\" orient=\"auto-start-reverse\"><path d=\"M0,1 L9,5 L0,9 z\" style=\"fill:var(#{color})\"/></marker>"
@@ -1001,6 +1051,10 @@ defmodule Aethrion.Report do
     .why ul{margin:6px 0 0;padding-left:18px;color:var(--text-secondary)}
     .why li{margin:3px 0}
     .bond{margin:6px 0 0;font-size:13px;color:var(--text-secondary)}
+    .sub{margin:20px 0 6px;font-size:15px}
+    .bond-history{margin:0;padding-left:18px;font-size:14px;color:var(--text-secondary)}
+    .bond-history li{margin:3px 0}
+    .bond-history strong{color:var(--text-primary)}
     .bond strong{color:var(--text-primary)}
     .remembers{margin:14px 0 6px;font-size:12px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em}
     .memories{list-style:none;padding:0;margin:0;display:grid;gap:6px;font-size:13px;color:var(--text-secondary)}
