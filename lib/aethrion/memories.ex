@@ -47,10 +47,23 @@ defmodule Aethrion.Memories do
     |> Enum.filter(&Memory.involves?(&1, other_id))
   end
 
-  @doc "Returns true when the character holds any memory, even faded, of `topic`."
+  @doc """
+  Returns true when the character holds any memory, even faded, of `topic`,
+  or an impression that folded in a memory of it (so a story the character
+  has forgotten the details of is still not news to them).
+  """
   def knows_topic?(%State{} = state, character_id, topic) do
-    Enum.any?(state.memories, &(&1.character_id == character_id and &1.topic == topic))
+    Enum.any?(state.memories, &(&1.character_id == character_id and topic in topics(&1)))
   end
+
+  @doc """
+  The topics a memory stands for: its own, plus for an impression every topic
+  folded into it.
+  """
+  def topics(%Memory{kind: :impression, topic: topic, data: %{"topics" => [_ | _] = folded}}),
+    do: [topic | folded]
+
+  def topics(%Memory{topic: topic}), do: [topic]
 
   @doc """
   Selects the memories most relevant to a situation.

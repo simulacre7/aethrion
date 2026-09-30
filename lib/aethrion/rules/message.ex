@@ -19,10 +19,11 @@ defmodule Aethrion.Rules.Message do
   - **Wariness.** If the receiver holds an impression of at least 2 hostile
     messages from the sender, warm effects are halved.
 
-  Without firsthand history, reputation counts for less: a sender the
-  receiver has seen or heard be hostile to others at least twice gets 75% of
-  a warm message's effect, and one known for kindness to others (3+) gets 75%
-  of a cold or hostile one's (see `Aethrion.Rules.Reputation`).
+  Reputation only counts when the receiver has no firsthand impression of the
+  sender at all, and counts for less: a sender the receiver has seen or heard
+  be hostile to others at least twice gets 75% of a warm message's effect,
+  and one known for warmth to others (3+) gets 75% of a cold or hostile
+  one's (see `Aethrion.Rules.Reputation`).
   """
 
   use Aethrion.Rule,
@@ -60,6 +61,7 @@ defmodule Aethrion.Rules.Message do
   alias Aethrion.Rules.Consolidation
 
   @kind_patterns ["warm", "gift", "comfort", "together"]
+  @firsthand_patterns @kind_patterns ++ ["cold", "hostile", "apology"]
 
   # Which fields each tone touches; the amounts are params named <tone>_<field>.
   @effects %{
@@ -108,6 +110,8 @@ defmodule Aethrion.Rules.Message do
     sender = Transition.name(transition, event.from)
     param = &Transition.param(transition, &1)
 
+    firsthand? = Enum.any?(@firsthand_patterns, &(count.(&1) > 0))
+
     cond do
       event.tone in [:cold, :hostile] and kindness.(count) >= param.(:goodwill_count) ->
         {Transition.note(
@@ -123,11 +127,14 @@ defmodule Aethrion.Rules.Message do
            subject: event.to
          ), param.(:wariness_percent)}
 
+      firsthand? ->
+        {transition, 100}
+
       event.tone in [:cold, :hostile] and
-          kindness.(reputation) >= param.(:reputation_goodwill_count) ->
+          reputation.("warm") >= param.(:reputation_goodwill_count) ->
         {Transition.note(
            transition,
-           "#{receiver} has heard enough good about #{sender} to give them some benefit of the doubt",
+           "#{receiver} has seen enough warmth from #{sender} toward others to give them some benefit of the doubt",
            subject: event.to
          ), param.(:reputation_goodwill_percent)}
 

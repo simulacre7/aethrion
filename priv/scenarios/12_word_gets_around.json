@@ -1,7 +1,7 @@
 {
   "$schema": "../scenario.schema.json",
   "name": "Word gets around",
-  "description": "The user snaps at Mina, who is already having a rough week, while Haru is in the room. Haru cares about Mina, remembers what was said, and trusts the user less; Mina, upset, confides in Yuna, who trusts the user a little less too, from hearsay alone. When the user is friendly to Haru the next day, Haru's reply mentions what they saw. If it happens again, the details fade into a reputation that blunts the user's kindness for weeks; if the user makes it right in front of both friends, they warm back up.",
+  "description": "The user snaps at Mina, who is already having a rough week, while Haru is in the room. Haru cares about Mina, remembers what was said, and trusts the user less; Mina, upset, confides in Yuna, who trusts the user a little less too, from hearsay alone. When the user is friendly to Haru the next day, Haru's reply mentions what they saw. If it happens again, the details fade into a reputation that blunts the user's kindness for weeks; if the user makes it right in front of both friends, they begin to warm back up and, once the moment fades, lonely Haru simply welcomes the kindness.",
   "world": {
     "characters": [
       {"id": "mina", "name": "Mina", "profile": "Warm and expressive; having a rough week.", "traits": ["sensitive"], "state": {"stress": 25}},
@@ -50,12 +50,14 @@
       "events": [
         {"type": "apology_offered", "from": "user", "to": "mina", "reason": "That was cruel, and it wasn't true.", "at": "wednesday"},
         {"type": "message_sent", "from": "user", "to": "mina", "text": "Thank you for putting up with me.", "tone": "warm", "observed_by": ["haru", "yuna"], "at": "wednesday"},
-        {"type": "time_tick", "now": "next week", "hours": 120}
+        {"type": "time_tick", "now": "next week", "hours": 120},
+        {"type": "message_sent", "from": "user", "to": "haru", "text": "Coffee this week?", "tone": "warm", "at": "next week"}
       ],
       "expect": [
-        {"relationship": ["haru", "user"], "field": "trust", "equals": 24},
+        {"output": "reply", "character": "haru", "text": "I really needed to hear that today.", "count": 1},
+        {"relationship": ["haru", "user"], "field": "trust", "equals": 26},
         {"relationship": ["yuna", "user"], "field": "trust", "equals": 24},
-        {"memory": {"character": "haru", "content": "haru knows user has been hostile to mina and yuna 2 times."}, "count": 0}
+        {"memory": {"character": "haru", "kind": "impression"}, "count": 0}
       ]
     }
   ]

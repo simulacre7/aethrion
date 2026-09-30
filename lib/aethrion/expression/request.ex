@@ -49,7 +49,8 @@ defmodule Aethrion.Expression.Request do
   @doc """
   What the speaker knows about the listener being hostile to someone else,
   from the request's memories: `{:observed, target}` or `{:heard, target}`
-  for a specific message, `:reputation` for a reputation impression, or `nil`.
+  for a specific message, `:reputation` for a reputation impression (unless
+  the speaker also holds a firsthand impression of the listener), or `nil`.
   A specific memory wins over the impression.
   """
   @spec harshness_to_others(t()) :: {:observed | :heard, String.t()} | :reputation | nil
@@ -66,14 +67,28 @@ defmodule Aethrion.Expression.Request do
           nil
       end)
 
-    specific ||
-      if Enum.any?(
-           request.memories,
-           &match?(
-             %{data: %{"event" => "reputation", "pattern" => "hostile", "from" => ^listener}},
-             &1
-           )
-         ),
-         do: :reputation
+    firsthand? =
+      Enum.any?(
+        request.memories,
+        &match?(
+          %{data: %{"event" => "impression", "from" => ^listener, "to" => ^speaker}},
+          &1
+        )
+      )
+
+    reputation? =
+      Enum.any?(
+        request.memories,
+        &match?(
+          %{data: %{"event" => "reputation", "pattern" => "hostile", "from" => ^listener}},
+          &1
+        )
+      )
+
+    cond do
+      specific -> specific
+      reputation? and not firsthand? -> :reputation
+      true -> nil
+    end
   end
 end

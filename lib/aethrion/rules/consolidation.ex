@@ -21,12 +21,17 @@ defmodule Aethrion.Rules.Consolidation do
   slowly than ordinary memories (see `Aethrion.Rules.MemoryDecay`).
 
   **Reputation.** Secondhand memories (`:observed` and `:heard`) of how an
-  actor treated *other* characters fold the same way into a reputation
-  impression, across everyone the actor treated that way:
+  actor *talked to* other characters (warm, cold, or hostile messages) fold
+  the same way into a reputation impression, across everyone the actor
+  treated that way:
   `"haru knows user has been hostile to mina and yuna 2 times."` Its id is
   `memory:<holder>:reputation:<pattern>:<actor>`, and `reputation_count/4`
   reads it. `Aethrion.Rules.Message` weighs reputation less than firsthand
   impressions.
+
+  Every impression records the `"topics"` it folded in, so one event is
+  counted once even if its details are forgotten and the story is heard again
+  later (see `Aethrion.Memories.knows_topic?/3`).
 
   Consolidation is deterministic and purely structural; no summarization
   model is involved.
@@ -39,6 +44,9 @@ defmodule Aethrion.Rules.Consolidation do
     params: [min_group: 2, base_importance: 40, per_occurrence: 10, max_importance: 90]
 
   alias Aethrion.{Memory, State, Transition}
+
+  # Secondhand memories become reputation only for how someone talks to others.
+  @reputation_patterns ["warm", "cold", "hostile"]
   alias Aethrion.Rules.MemoryDecay
 
   @impl true
@@ -85,14 +93,21 @@ defmodule Aethrion.Rules.Consolidation do
       end)
 
     Enum.reduce(groups, transition, fn {key, memories, existing}, transition ->
-      consolidate(transition, key, memories, existing)
+      # A topic already folded in (details forgotten, story heard again) is
+      # marked above but not counted twice.
+      folded = if existing, do: Map.get(existing.data, "topics", []), else: []
+
+      case Enum.reject(memories, &(is_binary(&1.topic) and &1.topic in folded)) do
+        [] -> transition
+        memories -> consolidate(transition, key, memories, existing)
+      end
     end)
   end
 
   @doc """
   Returns true when `memory` can become part of an impression: a firsthand
   memory of one of the covered interactions, or a secondhand one of how
-  someone treated another character.
+  someone talked to another character.
   """
   def consolidatable?(%Memory{} = memory), do: not is_nil(classify(memory))
 
@@ -124,7 +139,8 @@ defmodule Aethrion.Rules.Consolidation do
       {kind, {_pattern, _actor, ^me}} when kind in [:observed, :heard] ->
         nil
 
-      {kind, {pattern, actor, target}} when kind in [:observed, :heard] ->
+      {kind, {pattern, actor, target}}
+      when kind in [:observed, :heard] and pattern in @reputation_patterns ->
         {"reputation", pattern, actor, target}
 
       _other ->
@@ -160,6 +176,14 @@ defmodule Aethrion.Rules.Consolidation do
     previous = if existing, do: existing.data["count"], else: 0
     count = previous + length(memories)
 
+    topics =
+      memories
+      |> Enum.map(& &1.topic)
+      |> Enum.filter(&is_binary/1)
+      |> Enum.concat(if existing, do: Map.get(existing.data, "topics", []), else: [])
+      |> Enum.uniq()
+      |> Enum.sort()
+
     about =
       memories
       |> Enum.map(&(&1 |> classify() |> elem(3)))
@@ -188,7 +212,8 @@ defmodule Aethrion.Rules.Consolidation do
              "pattern" => pattern,
              "from" => actor,
              "to" => character,
-             "count" => count
+             "count" => count,
+             "topics" => topics
            }}
 
         "reputation" ->
@@ -198,7 +223,8 @@ defmodule Aethrion.Rules.Consolidation do
              "pattern" => pattern,
              "from" => actor,
              "about" => about,
-             "count" => count
+             "count" => count,
+             "topics" => topics
            }}
       end
 

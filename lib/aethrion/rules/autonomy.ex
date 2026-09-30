@@ -20,7 +20,7 @@ defmodule Aethrion.Rules.Autonomy do
       "Struggling or talkative characters confide a notable memory to their most trusted friend; talkative ones retell rumors.",
     params: [notable_importance: 60, retell_importance: 30, trust_threshold: 30]
 
-  alias Aethrion.{Character, CharacterState, Event, Memory, State, Transition}
+  alias Aethrion.{Character, CharacterState, Event, Memories, Memory, State, Transition}
   alias Aethrion.Rules.Mood
 
   @impl true
@@ -30,7 +30,9 @@ defmodule Aethrion.Rules.Autonomy do
     memories = Enum.group_by(transition.state.memories, & &1.character_id)
 
     known =
-      Map.new(memories, fn {id, list} -> {id, MapSet.new(list, & &1.topic)} end)
+      Map.new(memories, fn {id, list} ->
+        {id, MapSet.new(Enum.flat_map(list, &Memories.topics/1))}
+      end)
 
     outgoing = State.relationships_by_from(transition.state)
 

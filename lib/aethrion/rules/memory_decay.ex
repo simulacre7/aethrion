@@ -17,8 +17,9 @@ defmodule Aethrion.Rules.MemoryDecay do
   Once a memory has been faded for `forget_after_hours` (30 simulated days by
   default), it is forgotten: removed from the state, so long-running worlds do
   not grow without bound. Impressions are never forgotten, and a memory that
-  can be part of a pattern (see `Aethrion.Rules.Consolidation`) is only
-  forgotten after it has been consolidated into one, so patterns survive.
+  can be part of a pattern (see `Aethrion.Rules.Consolidation`), including a
+  witnessed or heard warm, cold, or hostile message, is only forgotten after
+  it has been consolidated into one, so patterns survive.
   """
 
   use Aethrion.Rule,

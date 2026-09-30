@@ -214,4 +214,104 @@ defmodule Aethrion.ReputationTest do
       assert warm_reply(state).text == "...Thanks. I've heard how you treat people, though."
     end
   end
+
+  describe "counting each story once" do
+    test "hearing again about a message whose details were forgotten changes nothing" do
+      state =
+        State.new(
+          characters: [character("mina"), character("haru"), character("sora")],
+          relationships: [
+            relationship("haru", "mina", affinity: 40),
+            relationship("sora", "mina", affinity: 40)
+          ]
+        )
+
+      hostile = &message("user", "mina", :hostile, &1)
+
+      # Haru's sightings fold into a reputation and are forgotten; Sora keeps
+      # a single, unconsolidated memory of the first message.
+      {state, _outputs} =
+        run!(state, [
+          hostile.(["haru", "sora"]),
+          hostile.(["haru"]),
+          Event.time_tick("t", hours: 960),
+          Event.time_tick("t", hours: 1)
+        ])
+
+      refute State.memory(state, "memory:haru:observed:e1")
+      assert State.memory(state, "memory:sora:observed:e1")
+      trust = to_user(state, "haru").trust
+
+      {state, _outputs} =
+        run!(state, [
+          Event.gossip_shared("sora", "haru", "memory:sora:observed:e1"),
+          Event.time_tick("t", hours: 240)
+        ])
+
+      assert to_user(state, "haru").trust == trust
+      refute State.memory(state, "memory:haru:heard:e5")
+
+      assert %Memory{data: %{"count" => 2, "topics" => ["message:e1", "message:e2"]}} =
+               State.memory(state, "memory:haru:reputation:hostile:user")
+    end
+  end
+
+  describe "firsthand history wins" do
+    defp impression(scope, pattern, count) do
+      Memory.new(
+        id: "memory:mina:#{scope}:#{pattern}:user",
+        character_id: "mina",
+        content: "#{scope} #{pattern}",
+        importance: 80,
+        created_at: "consolidated",
+        kind: :impression,
+        topic: "#{scope}:mina:#{pattern}:user",
+        related_characters: ["user"],
+        data: %{
+          "event" => if(scope == "impression", do: "impression", else: "reputation"),
+          "pattern" => pattern,
+          "from" => "user",
+          "to" => "mina",
+          "about" => ["yuna"],
+          "count" => count
+        }
+      )
+    end
+
+    defp land(memories, tone) do
+      state = %{world() | memories: memories}
+      {:ok, step} = Aethrion.Runtime.step(state, message("user", "mina", tone))
+      {State.get_relationship(step.state, "mina", "user"), step}
+    end
+
+    test "a warm record with the receiver outweighs a hostile reputation" do
+      {rel, step} =
+        land([impression("impression", "warm", 5), impression("reputation", "hostile", 2)], :warm)
+
+      assert rel.affinity == 4
+      assert [%{text: "That's sweet of you."}] = of_type(step.outputs, :reply)
+    end
+
+    test "a hostile record with the receiver outweighs a warm reputation" do
+      {rel, _step} =
+        land(
+          [impression("impression", "hostile", 4), impression("reputation", "warm", 3)],
+          :hostile
+        )
+
+      assert rel.trust == -6
+    end
+  end
+
+  test "watching gifts to others is not a reputation" do
+    {state, _outputs} =
+      run!(world(relationships: [relationship("mina", "yuna", affinity: 40, trust: 40)]), [
+        Event.gift_received("user", "yuna", "a", observed_by: ["mina"]),
+        Event.gift_received("user", "yuna", "b", observed_by: ["mina"]),
+        Event.time_tick("t", hours: 200)
+      ])
+
+    assert Consolidation.reputation_count(state, "mina", "gift", "user") == 0
+    assert %{consolidated_into: nil} = State.memory(state, "memory:mina:observed:e1")
+  end
 end
