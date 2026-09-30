@@ -5,6 +5,8 @@ defmodule Aethrion.ErrorTest do
   alias Aethrion.Persistence.JsonFile
 
   doctest Aethrion.Error
+  doctest Aethrion
+  doctest Aethrion.Explain
 
   describe "format/1" do
     test "adds every location the details carry" do
