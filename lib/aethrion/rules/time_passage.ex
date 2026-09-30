@@ -60,8 +60,8 @@ defmodule Aethrion.Rules.TimePassage do
 
     transition
     |> Transition.note(
-      "#{hours}h passed: loneliness +#{per_hour} an hour for characters " <>
-        "#{quiet}h or more without company (clock #{to_clock}h)"
+      "#{hours}h passed (clock #{to_clock}h): loneliness +#{per_hour} an hour for characters " <>
+        "without company for #{quiet}h, or none yet"
     )
     |> ease_daily(state.clock, to_clock)
   end

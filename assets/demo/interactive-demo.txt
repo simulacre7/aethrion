@@ -18,7 +18,7 @@ MOOD     Mina neutral -> happy
 MOOD     Yuna neutral -> jealous
 user> tick 2
 EVENT    time passes +2h
-RULE     2h passed: loneliness +2 an hour for characters 16h or more without company (clock 2h)
+RULE     2h passed (clock 2h): loneliness +2 an hour for characters without company for 16h, or none yet
 MOOD     Mina happy -> neutral
 SAYS     Yuna -> user: "You looked happy with Mina earlier. I wondered if you forgot about me."
 CASCADE  Yuna confides in Haru
