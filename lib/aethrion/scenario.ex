@@ -273,12 +273,11 @@ defmodule Aethrion.Scenario do
       outputs
       |> Enum.filter(&(&1.type in [:proactive_message, :character_interaction]))
       |> Enum.frequencies_by(fn output ->
-        {to_string(output.type), Map.get(output, :character_id) || Map.get(output, :from)}
+        {to_string(output.type), output.character_id}
       end)
       |> Enum.sort()
       |> Enum.map(fn {{type, id}, count} ->
-        key = if type == "proactive_message", do: "character", else: "from"
-        %{"output" => type, key => id, "count" => count}
+        %{"output" => type, "character" => id, "count" => count}
       end)
 
     moods ++ counts

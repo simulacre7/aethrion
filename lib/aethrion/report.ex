@@ -722,8 +722,8 @@ defmodule Aethrion.Report do
   defp bubble(output, state) do
     {speaker, listener, tag} =
       case output do
-        %{type: :character_interaction, kind: kind, from: from, to: to} ->
-          {from, to, "scene · #{kind}"}
+        %{type: :character_interaction, kind: kind, character_id: id, to: to} ->
+          {id, to, "scene · #{kind}"}
 
         %{type: :proactive_message, character_id: id, to: to, reason: reason} ->
           {id, to, "reaches out · #{reason}"}

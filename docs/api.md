@@ -88,12 +88,12 @@ Every output carries `:rule` and `:event_id`.
 | --- | --- |
 | `:relationship_changed` | `from`, `to`, `delta` (applied, after clamping) |
 | `:memory_created` | `memory` |
-| `:mood_changed` | `character_id`, `from`, `to` |
+| `:mood_changed` | `character_id`, `before`, `after` |
 | `:proactive_message` | `character_id`, `to`, `reason` (`:jealous`, `:lonely`, `:curious`), `text`, `memory_refs`, `context` |
 | `:reply` | `character_id`, `to`, `tone`, `text`, `memory_refs`, `context` |
-| `:character_interaction` | `kind` (`:gossip`, `:comfort`, `:together`), `from`, `to`, `text`, `memory_refs`, `context` |
+| `:character_interaction` | `kind` (`:gossip`, `:comfort`, `:together`), `character_id` (who started it), `to`, `text`, `memory_refs`, `context` |
 
-`text` is deterministic fallback text. `context` is an `Aethrion.Expression.Request` snapshot an LLM adapter can render from. Applications decide how to render, store, or deliver outputs; the runtime performs no side effects.
+Every expressive output names the speaking character `character_id` and the other party `to`. `text` is deterministic fallback text. `context` is an `Aethrion.Expression.Request` snapshot an LLM adapter can render from. Applications decide how to render, store, or deliver outputs; the runtime performs no side effects.
 
 ## Errors
 

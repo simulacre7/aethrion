@@ -26,7 +26,7 @@ IO.puts("adapter: #{inspect(adapter)}\n")
 
 for output <- Expression.render(step.outputs, adapter: adapter),
     Aethrion.Output.expressive?(output) do
-  speaker = output[:character_id] || output[:from]
+  speaker = output.character_id
   IO.puts("#{speaker} (#{output.expression.status})")
   IO.puts("  fallback: #{output.context.fallback_text}")
   IO.puts("  rendered: #{output.text}\n")

@@ -155,7 +155,7 @@ Adapter: `Aethrion.LLM.Anthropic`, `Aethrion.LLM.OpenAICompatible`(OpenAI, vLLM,
     {"type": "time_tick", "hours": 2}
   ],
   "expect": [
-    {"output": "character_interaction", "kind": "comfort", "from": "haru", "to": "yuna", "count": 1},
+    {"output": "character_interaction", "kind": "comfort", "character": "haru", "to": "yuna", "count": 1},
     {"memory": {"character": "haru", "kind": "heard", "source": "yuna"}, "count": 1}
   ]
 }

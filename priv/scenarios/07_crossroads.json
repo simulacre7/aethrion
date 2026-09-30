@@ -180,8 +180,8 @@
         {
           "output": "character_interaction",
           "kind": "gossip",
-          "from": "yuna",
-          "count": 1
+          "count": 1,
+          "character": "yuna"
         },
         {
           "output": "proactive_message",

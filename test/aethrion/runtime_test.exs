@@ -24,7 +24,7 @@ defmodule Aethrion.RuntimeTest do
 
       assert [%{memory: %{id: "memory:mina:gift:e1"}}] = of_type(outputs, :memory_created)
 
-      assert [%{character_id: "mina", from: :neutral, to: :happy}] =
+      assert [%{character_id: "mina", before: :neutral, after: :happy}] =
                of_type(outputs, :mood_changed)
     end
 

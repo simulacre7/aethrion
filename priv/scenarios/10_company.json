@@ -44,9 +44,9 @@
     {
       "output": "character_interaction",
       "kind": "together",
-      "from": "haru",
       "to": "yuna",
-      "count": 3
+      "count": 3,
+      "character": "haru"
     },
     {
       "output": "proactive_message",

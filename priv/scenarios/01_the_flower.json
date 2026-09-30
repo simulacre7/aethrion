@@ -38,9 +38,9 @@
     {
       "output": "character_interaction",
       "kind": "gossip",
-      "from": "yuna",
       "to": "haru",
-      "count": 1
+      "count": 1,
+      "character": "yuna"
     },
     {
       "output": "proactive_message",
@@ -51,9 +51,9 @@
     {
       "output": "character_interaction",
       "kind": "comfort",
-      "from": "haru",
       "to": "yuna",
-      "count": 1
+      "count": 1,
+      "character": "haru"
     },
     {
       "memory": {

@@ -150,7 +150,7 @@ Scenarios are JSON files with a world, a script of events, and expectations. The
     {"type": "time_tick", "hours": 2}
   ],
   "expect": [
-    {"output": "character_interaction", "kind": "comfort", "from": "haru", "to": "yuna", "count": 1},
+    {"output": "character_interaction", "kind": "comfort", "character": "haru", "to": "yuna", "count": 1},
     {"memory": {"character": "haru", "kind": "heard", "source": "yuna"}, "count": 1}
   ]
 }

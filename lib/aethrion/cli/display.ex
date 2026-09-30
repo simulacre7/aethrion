@@ -173,11 +173,11 @@ defmodule Aethrion.CLI.Display do
         %{type: :memory_created, memory: memory} ->
           memory.id
 
-        %{type: :mood_changed, character_id: id, to: mood} ->
+        %{type: :mood_changed, character_id: id, after: mood} ->
           "#{id} #{mood}"
 
-        %{type: :character_interaction, kind: kind, from: from, to: to} ->
-          "#{kind} #{from}->#{to}"
+        %{type: :character_interaction, kind: kind, character_id: id, to: to} ->
+          "#{kind} #{id}->#{to}"
 
         %{character_id: id, to: to} ->
           "#{id}->#{to}" <> if(output[:reason], do: " reason=#{output.reason}", else: "")
@@ -191,7 +191,7 @@ defmodule Aethrion.CLI.Display do
 
   @doc "Prints an output rendered by an expression adapter."
   def expressed(%{text: text, expression: expression} = output, label \\ "LLM") do
-    speaker = Map.get(output, :character_id) || Map.get(output, :from)
+    speaker = output.character_id
     status = if expression.status == :ok, do: inspect(expression.adapter), else: "fallback"
     print_tagged(label, :light_cyan, "#{speaker}: \"#{text}\"" <> faint(" (#{status})"))
   end

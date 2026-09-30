@@ -26,7 +26,7 @@ end
 IO.puts("\n== what characters said")
 
 for %{text: text} = output <- step.outputs, Aethrion.Output.expressive?(output) do
-  speaker = output[:character_id] || output[:from]
+  speaker = output.character_id
   IO.puts("#{speaker}: #{text}")
 end
 

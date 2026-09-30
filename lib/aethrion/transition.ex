@@ -342,10 +342,13 @@ defmodule Aethrion.Transition do
 
   defp output_detail(%{type: :memory_created, memory: memory}), do: " #{memory.id}"
 
+  defp output_detail(%{type: :mood_changed, character_id: id, before: before, after: value}),
+    do: " #{id} #{before}->#{value}"
+
+  defp output_detail(%{kind: kind, character_id: id, to: to}), do: " #{kind} #{id}->#{to}"
+
   defp output_detail(%{character_id: id, to: to} = output),
     do: " #{id}->#{to}" <> reason_detail(output)
-
-  defp output_detail(%{kind: kind, from: from, to: to}), do: " #{kind} #{from}->#{to}"
   defp output_detail(_output), do: ""
 
   defp reason_detail(%{reason: reason}), do: " reason=#{reason}"

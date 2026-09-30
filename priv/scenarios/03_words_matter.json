@@ -51,8 +51,8 @@
     {
       "output": "mood_changed",
       "character": "mina",
-      "to": "upset",
-      "count": 1
+      "count": 1,
+      "after": "upset"
     },
     {
       "character": "mina",

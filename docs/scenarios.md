@@ -114,7 +114,7 @@ Each expectation selects a value and compares it with `equals`, `at_least`, or `
 | --- | --- |
 | `{"character": id, "field": name}` | a character state field: `mood`, `loneliness`, `jealousy`, `joy`, `stress`, `energy`, `active`, `blocked` |
 | `{"relationship": [from, to], "field": name}` | `affinity`, `trust`, or `tension` |
-| `{"output": type, ...filters}` | the number of outputs of that type matching every filter (`character`, `reason`, `kind`, `from`, `to`, `text`, `tone`) |
+| `{"output": type, ...filters}` | the number of outputs of that type matching every filter (`character` for the speaking or acting character, `reason`, `kind`, `to`, `before`, `after`, `text`, `tone`; `relationship_changed` uses `from` and `to`) |
 | `{"memory": {...filters}}` | the number of memories matching every filter (`character`, `kind`, `source`, `importance`, `topic`, `content`, `faded`) |
 | `{"clock": hours}` | the simulated clock |
 
