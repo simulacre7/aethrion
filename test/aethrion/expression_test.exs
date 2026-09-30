@@ -129,4 +129,52 @@ defmodule Aethrion.ExpressionTest do
     assert system =~ "reputation impression"
     assert context =~ "People: mina = Mina, user = you, yuna = Yuna\nMemories:"
   end
+
+  describe "coming back after a while" do
+    defp talk(state, tone \\ :warm) do
+      {:ok, step} = Runtime.step(state, Event.message_sent("user", "haru", "hi", tone: tone))
+      [reply] = of_type(step.outputs, :reply)
+      {step.state, reply}
+    end
+
+    defp quiet_world do
+      Aethrion.State.new(
+        characters: [character("haru")],
+        relationships: [relationship("haru", "user", affinity: 30, trust: 20)]
+      )
+    end
+
+    test "a character notices a long absence, and remembers when you last talked" do
+      {state, first} = talk(quiet_world())
+      assert first.context.since_contact == nil
+      assert state.cooldowns["contact:haru:user"] == 0
+
+      {:ok, step} = Runtime.step(state, Event.time_tick("t", hours: 20))
+      {state, soon} = talk(step.state)
+      assert soon.context.since_contact == 20
+      refute soon.text =~ "while"
+      refute soon.text =~ "back"
+
+      # Loneliness is kept low so the mood stays neutral.
+      state = put_in(state.characters["haru"].state.loneliness, 0)
+      state = %{state | clock: state.clock + 100}
+      {_state, back} = talk(state)
+
+      assert back.context.since_contact == 100
+      assert back.text == "You're back! It's been a while. Thank you."
+      assert Aethrion.Expression.Templates.Ko.render(back.context) == "오랜만이야! 고마워."
+
+      {_system, context} = Aethrion.Expression.Prompt.render_parts(back.context)
+      assert context =~ "Listener just said (warm) (after 100 hours without talking): hi"
+    end
+
+    test "a lonely character says it missed you" do
+      {state, _reply} = talk(quiet_world())
+      {:ok, step} = Runtime.step(state, Event.time_tick("t", hours: 100))
+      {_state, back} = talk(step.state, :neutral)
+
+      assert back.text == "You're back... I missed you."
+      assert Aethrion.Expression.Templates.Ko.render(back.context) == "왔구나... 보고 싶었어."
+    end
+  end
 end

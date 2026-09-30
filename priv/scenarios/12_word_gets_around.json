@@ -1,7 +1,7 @@
 {
   "$schema": "../scenario.schema.json",
   "name": "Word gets around",
-  "description": "The user snaps at Mina, who is already having a rough week, while Haru is in the room. Haru cares about Mina, remembers what was said, trusts the user less, and says so; Mina, upset, confides in Yuna, who trusts the user a little less too, from hearsay alone. When the user is friendly to Haru the next day, Haru's reply mentions what they saw. If it happens again, the details fade into a reputation that blunts the user's kindness for weeks; if the user apologizes in front of Haru and is kind to Mina in front of both friends, their trust is back where it started (Yuna hears about the apology from Mina) and, once the moment fades, lonely Haru simply welcomes the kindness.",
+  "description": "The user snaps at Mina, who is already having a rough week, while Haru is in the room. Haru cares about Mina, remembers what was said, trusts the user less, and says so; Mina, upset, confides in Yuna, who trusts the user a little less too, from hearsay alone. When the user is friendly to Haru the next day, Haru's reply mentions what they saw. If it happens again, the details fade into a reputation that blunts the user's kindness for weeks; if the user apologizes in front of Haru and is kind to Mina in front of both friends, their trust is back where it started (Yuna hears about the apology from Mina) and when the user finally writes to Haru after five quiet days, a lonely Haru simply says it missed them.",
   "world": {
     "characters": [
       {"id": "mina", "name": "Mina", "profile": "Warm and expressive; having a rough week.", "traits": ["sensitive"], "state": {"stress": 25}},
@@ -55,7 +55,7 @@
         {"type": "message_sent", "from": "user", "to": "haru", "text": "Coffee this week?", "tone": "warm", "at": "next week"}
       ],
       "expect": [
-        {"output": "reply", "character": "haru", "text": "I really needed to hear that today.", "count": 1},
+        {"output": "reply", "character": "haru", "text": "You're back... I missed you.", "count": 1},
         {"relationship": ["haru", "user"], "field": "trust", "equals": 28},
         {"relationship": ["yuna", "user"], "field": "trust", "equals": 25},
         {"memory": {"character": "haru", "kind": "impression"}, "count": 0}

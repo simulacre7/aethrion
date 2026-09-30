@@ -17,6 +17,9 @@ defmodule Aethrion.Expression.Request do
   - `names` - display names for every id referenced by the memories
   - `tone` - the incoming tone for replies
   - `message` - the incoming text for replies
+  - `since_contact` - for replies, simulated hours since the listener last
+    talked to the speaker, or `nil` the first time; `reunion?/1` says whether
+    that is a long absence
   - `fallback_text` - the deterministic template text
   """
 
@@ -30,6 +33,7 @@ defmodule Aethrion.Expression.Request do
           names: %{optional(String.t()) => String.t()},
           tone: atom() | nil,
           message: String.t() | nil,
+          since_contact: non_neg_integer() | nil,
           fallback_text: String.t() | nil
         }
 
@@ -43,8 +47,16 @@ defmodule Aethrion.Expression.Request do
     names: %{},
     tone: nil,
     message: nil,
+    since_contact: nil,
     fallback_text: nil
   ]
+
+  @reunion_hours 72
+
+  @doc "True when the listener is back after #{@reunion_hours} or more simulated hours."
+  @spec reunion?(t()) :: boolean()
+  def reunion?(%__MODULE__{since_contact: hours}),
+    do: is_integer(hours) and hours >= @reunion_hours
 
   @doc """
   What the speaker knows about the listener being hostile to someone else,

@@ -49,7 +49,8 @@ defmodule Aethrion.Expression do
       memories: Enum.map(memories, &memory_view/1),
       names: names(state, [speaker_id, listener_id], memories),
       tone: Keyword.get(opts, :tone),
-      message: Keyword.get(opts, :message)
+      message: Keyword.get(opts, :message),
+      since_contact: Keyword.get(opts, :since_contact)
     }
 
     %{request | fallback_text: Templates.render(request)}

@@ -19,7 +19,7 @@ The social layer release: characters act on each other, every change is explaina
 **Social behavior**
 
 - Observers remember what they see; struggling characters confide in the friend they trust most (`gossip_shared`); talkative characters retell rumors that lose weight with every hop; caring friends offer comfort (`comfort_offered`); lonely characters spend time with their closest friend (`time_spent_together`).
-- `message_sent` with a structured tone (`:warm`, `:neutral`, `:cold`, `:hostile`) and replies.
+- `message_sent` with a structured tone (`:warm`, `:neutral`, `:cold`, `:hostile`) and replies; characters remember when each person last talked to them and notice a long absence.
 - Derived bonds (`:estranged`, `:strained`, `:neutral`, `:friendly`, `:close`) name what a relationship has become; a `:bond_changed` output announces when an event moves one, and bonds color replies when the mood does not.
 - A simulated clock, cooldowns, derived moods (`:happy`, `:lonely`, `:jealous`, `:upset`), `joy`, `stress`, and trait modifiers (`:sensitive`, `:calm`, `:playful`, `:talkative`).
 - Proactive messages address people: jealousy goes to the gift's giver, loneliness to the closest person, curiosity to the person the news is about. Characters do not reach out to someone they feel tense toward, and a character who saw a person be hostile to a friend speaks up to them (`:protective`).

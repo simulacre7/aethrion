@@ -101,15 +101,23 @@ defmodule Aethrion.Expression.Templates.Ko do
 
   def render(%Request{kind: :reply, tone: :warm, speaker: %{mood: mood}} = request) do
     case Request.harshness_to_others(request) do
-      {:observed, target} -> "고마워... 그런데 네가 #{name(request, target)}한테 한 말, 나도 봤어."
-      {:heard, target} -> "고마워... 그런데 네가 #{name(request, target)}한테 한 말, 나도 들었어."
-      :reputation -> "...고마워. 그런데 네가 다른 사람들한테 어떻게 하는지 들었어."
-      nil -> bond_reply(:warm, mood, request) || reply(:warm, mood)
+      {:observed, target} ->
+        "고마워... 그런데 네가 #{name(request, target)}한테 한 말, 나도 봤어."
+
+      {:heard, target} ->
+        "고마워... 그런데 네가 #{name(request, target)}한테 한 말, 나도 들었어."
+
+      :reputation ->
+        "...고마워. 그런데 네가 다른 사람들한테 어떻게 하는지 들었어."
+
+      nil ->
+        reunion_reply(:warm, mood, request) || bond_reply(:warm, mood, request) ||
+          reply(:warm, mood)
     end
   end
 
   def render(%Request{kind: :reply, tone: tone, speaker: %{mood: mood}} = request),
-    do: bond_reply(tone, mood, request) || reply(tone, mood)
+    do: reunion_reply(tone, mood, request) || bond_reply(tone, mood, request) || reply(tone, mood)
 
   def render(%Request{kind: :character_interaction, reason: :gossip} = request) do
     teller = request.speaker.name
@@ -151,6 +159,17 @@ defmodule Aethrion.Expression.Templates.Ko do
   def render(%Request{} = request) do
     "#{with_particle(request.speaker.name, :subject)} 반응한다."
   end
+
+  defp reunion_reply(tone, mood, request) when tone in [:warm, :neutral] do
+    cond do
+      not Request.reunion?(request) -> nil
+      mood == :lonely -> "왔구나... 보고 싶었어."
+      tone == :warm -> "오랜만이야! 고마워."
+      true -> "오랜만이네!"
+    end
+  end
+
+  defp reunion_reply(_tone, _mood, _request), do: nil
 
   defp bond_reply(tone, mood, %Request{relationship: %{bond: bond}})
        when mood in [:neutral, :happy] do

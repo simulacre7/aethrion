@@ -112,15 +112,23 @@ defmodule Aethrion.Expression.Templates do
 
   def render(%Request{kind: :reply, tone: :warm, speaker: %{mood: mood}} = request) do
     case Request.harshness_to_others(request) do
-      {:observed, target} -> "Thanks... but I saw what you said to #{name(request, target)}."
-      {:heard, target} -> "Thanks... but I heard what you said to #{name(request, target)}."
-      :reputation -> "...Thanks. I've heard how you treat people, though."
-      nil -> bond_reply(:warm, mood, request) || reply(:warm, mood)
+      {:observed, target} ->
+        "Thanks... but I saw what you said to #{name(request, target)}."
+
+      {:heard, target} ->
+        "Thanks... but I heard what you said to #{name(request, target)}."
+
+      :reputation ->
+        "...Thanks. I've heard how you treat people, though."
+
+      nil ->
+        reunion_reply(:warm, mood, request) || bond_reply(:warm, mood, request) ||
+          reply(:warm, mood)
     end
   end
 
   def render(%Request{kind: :reply, tone: tone, speaker: %{mood: mood}} = request) do
-    bond_reply(tone, mood, request) || reply(tone, mood)
+    reunion_reply(tone, mood, request) || bond_reply(tone, mood, request) || reply(tone, mood)
   end
 
   def render(%Request{kind: :character_interaction, reason: :gossip} = request) do
@@ -153,6 +161,18 @@ defmodule Aethrion.Expression.Templates do
   def render(%Request{} = request) do
     "#{request.speaker.name} reacts."
   end
+
+  # Back after a long absence.
+  defp reunion_reply(tone, mood, request) when tone in [:warm, :neutral] do
+    cond do
+      not Request.reunion?(request) -> nil
+      mood == :lonely -> "You're back... I missed you."
+      tone == :warm -> "You're back! It's been a while. Thank you."
+      true -> "Hey, it's been a while!"
+    end
+  end
+
+  defp reunion_reply(_tone, _mood, _request), do: nil
 
   # When the mood has nothing to say, the bond does.
   defp bond_reply(tone, mood, %Request{relationship: %{bond: bond}})
