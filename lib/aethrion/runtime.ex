@@ -39,6 +39,8 @@ defmodule Aethrion.Runtime do
   - `:max_events` - maximum events processed per dispatch (default: the larger
     of #{@max_events} and #{@events_per_character} per character, so cascades scale with the world)
   """
+  @spec dispatch(State.t(), Aethrion.Event.t(), keyword()) ::
+          {:ok, State.t(), [map()], [String.t()]} | {:error, Error.t()}
   def dispatch(state, event, opts \\ []) do
     case step(state, event, opts) do
       {:ok, %Step{} = step} -> {:ok, step.state, step.outputs, step.log}
@@ -50,6 +52,7 @@ defmodule Aethrion.Runtime do
   Like `dispatch/3`, but returns an `Aethrion.Step` with the full trace and every
   processed event, including follow-ups.
   """
+  @spec step(State.t(), Aethrion.Event.t(), keyword()) :: {:ok, Step.t()} | {:error, Error.t()}
   def step(state, event, opts \\ []) do
     pipeline = Keyword.get(opts, :pipeline, Pipeline.default())
     event = Aethrion.Event.normalize(event)
@@ -74,6 +77,8 @@ defmodule Aethrion.Runtime do
   `error.details` includes the `:index` of the rejected event and the `:steps`
   completed before it.
   """
+  @spec run(State.t(), [Aethrion.Event.t()], keyword()) ::
+          {:ok, State.t(), [Step.t()]} | {:error, Error.t()}
   def run(state, events, opts \\ []) when is_list(events) do
     events
     |> Enum.with_index()

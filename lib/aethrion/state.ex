@@ -39,6 +39,7 @@ defmodule Aethrion.State do
   Options: `:characters`, `:relationships`, `:memories`, `:clock`, `:seq`,
   `:cooldowns`, `:tuning`.
   """
+  @spec new(keyword()) :: t()
   def new(opts \\ []) do
     %__MODULE__{
       characters: Map.new(Keyword.get(opts, :characters, []), &{&1.id, &1}),
@@ -106,6 +107,7 @@ defmodule Aethrion.State do
     do: is_binary(id) and Map.has_key?(state.characters, id)
 
   @doc "Fetches a character or returns nil."
+  @spec character(t(), String.t()) :: Character.t() | nil
   def character(%__MODULE__{} = state, id), do: Map.get(state.characters, id)
 
   @doc "Characters sorted by id, for deterministic iteration."
@@ -136,6 +138,7 @@ defmodule Aethrion.State do
   The relationship from `from` to `to`, or a neutral one (all zeros) if none
   has been recorded.
   """
+  @spec get_relationship(t(), String.t(), String.t()) :: Relationship.t()
   def get_relationship(%__MODULE__{} = state, from, to) do
     Map.get(state.relationships, {from, to}, %Relationship{from: from, to: to})
   end
@@ -168,6 +171,7 @@ defmodule Aethrion.State do
   end
 
   @doc "Fetches a memory by id or returns nil."
+  @spec memory(t(), String.t()) :: Memory.t() | nil
   def memory(%__MODULE__{} = state, memory_id) do
     Enum.find(state.memories, &(&1.id == memory_id))
   end
@@ -212,6 +216,7 @@ defmodule Aethrion.State do
   @doc """
   Converts state into JSON-friendly data with string keys.
   """
+  @spec to_data(t()) :: map()
   def to_data(%__MODULE__{} = state) do
     %{
       "version" => @data_version,
@@ -237,6 +242,7 @@ defmodule Aethrion.State do
 
   Pass `pipeline:` when the world uses custom rules, so their tuning is kept.
   """
+  @spec parse(term(), keyword()) :: {:ok, t()} | {:error, Aethrion.Error.t()}
   def parse(data, opts \\ []) do
     case validate_data(data) do
       :ok ->
@@ -258,6 +264,7 @@ defmodule Aethrion.State do
   Tuning for rules outside `pipeline:` (default `Aethrion.Pipeline.default/0`)
   is dropped.
   """
+  @spec from_data(map(), keyword()) :: t()
   def from_data(data, opts \\ []) when is_map(data) do
     new(
       characters: Enum.map(Map.get(data, "characters", []), &character_from_data/1),

@@ -76,6 +76,7 @@ defmodule Aethrion.Explain do
   @doc """
   One line per change. `names` maps ids to display names.
   """
+  @spec describe([change()], (String.t() -> String.t())) :: [String.t()]
   def describe(changes, names \\ &Function.identity/1) do
     Enum.map(changes, fn change ->
       chain =

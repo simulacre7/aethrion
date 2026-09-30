@@ -30,6 +30,7 @@ defmodule Aethrion.Expression do
   - `:focus` - extra character ids for memory selection
   - `:tone`, `:message` - incoming tone and text for replies
   """
+  @spec build_request(State.t(), atom(), String.t(), String.t(), keyword()) :: Request.t()
   def build_request(%State{} = state, kind, speaker_id, listener_id, opts) do
     memories =
       Keyword.get_lazy(opts, :memories, fn ->
@@ -63,6 +64,7 @@ defmodule Aethrion.Expression do
   - `:adapter` - an `Aethrion.LLM.Adapter` module
   - `:adapter_opts` - keyword options forwarded to the adapter
   """
+  @spec render([map()], keyword()) :: [map()]
   def render(outputs, opts \\ []) when is_list(outputs) do
     Enum.map(outputs, &render_output(&1, opts))
   end
@@ -70,6 +72,7 @@ defmodule Aethrion.Expression do
   @doc """
   Renders a single output. See `render/2`.
   """
+  @spec render_output(map(), keyword()) :: map()
   def render_output(output, opts \\ []) do
     adapter = Keyword.get(opts, :adapter, FakeAdapter)
     adapter_opts = Keyword.get(opts, :adapter_opts, [])

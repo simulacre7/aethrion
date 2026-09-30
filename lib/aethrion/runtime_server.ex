@@ -71,6 +71,8 @@ defmodule Aethrion.RuntimeServer do
   Dispatches an event and stores the updated state on success.
   Returns the same shape as `Aethrion.Runtime.dispatch/3`.
   """
+  @spec dispatch(server(), Aethrion.Event.t()) ::
+          {:ok, State.t(), [map()], [String.t()]} | {:error, Aethrion.Error.t()}
   def dispatch(server, event) do
     case step(server, event) do
       {:ok, %Step{} = step} -> {:ok, step.state, step.outputs, step.log}
@@ -81,26 +83,32 @@ defmodule Aethrion.RuntimeServer do
   @doc """
   Dispatches an event and returns the full `Aethrion.Step`.
   """
+  @spec step(server(), Aethrion.Event.t()) :: {:ok, Step.t()} | {:error, Aethrion.Error.t()}
   def step(server, event) do
     GenServer.call(server, {:step, event})
   end
 
   @doc "Returns the current runtime state."
+  @spec get_state(server()) :: State.t()
   def get_state(server), do: GenServer.call(server, :get_state)
 
   @doc """
   Replaces the current state, for example after loading a save. History is
   cleared because it no longer describes how the state was reached.
   """
+  @spec put_state(server(), State.t()) :: :ok | {:error, Aethrion.Error.t()}
   def put_state(server, %State{} = state), do: GenServer.call(server, {:put_state, state})
 
   @doc "Host events dispatched so far, oldest first, with their assigned ids."
+  @spec history(server()) :: [Aethrion.Event.t()]
   def history(server), do: GenServer.call(server, :history)
 
   @doc "Subscribes `pid` (default: the caller) to dispatch and expression messages."
+  @spec subscribe(server(), pid()) :: :ok
   def subscribe(server, pid \\ self()), do: GenServer.call(server, {:subscribe, pid})
 
   @doc "Removes a subscription."
+  @spec unsubscribe(server(), pid()) :: :ok
   def unsubscribe(server, pid \\ self()), do: GenServer.call(server, {:unsubscribe, pid})
 
   ## Server

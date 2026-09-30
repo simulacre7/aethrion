@@ -49,6 +49,8 @@ defmodule Aethrion.Intent do
   Returns `{:ok, event, meta}` or `{:error, %Aethrion.Error{}}` when the text is
   empty or the target is unknown.
   """
+  @spec interpret(State.t(), String.t(), keyword()) ::
+          {:ok, Event.t(), map()} | {:error, Error.t()}
   def interpret(%State{} = state, text, opts) do
     from = Keyword.get(opts, :from, "user")
     to = Keyword.fetch!(opts, :to)

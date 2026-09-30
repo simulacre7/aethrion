@@ -27,6 +27,7 @@ defmodule Aethrion.Tuning do
   default pipeline) in `state`: the override if present, otherwise the rule's
   default.
   """
+  @spec get(State.t(), module() | atom(), atom()) :: integer()
   def get(%State{tuning: tuning}, rule, key) when is_atom(rule) do
     rule =
       resolve(rule) || raise ArgumentError, "unknown rule #{inspect(rule)}"
@@ -48,6 +49,7 @@ defmodule Aethrion.Tuning do
   Overrides a parameter. `rule` may be a rule id or module from the default
   pipeline, or any rule module.
   """
+  @spec put(State.t(), module() | atom(), atom(), integer()) :: State.t()
   def put(%State{} = state, rule, key, value) when is_integer(value) do
     module = resolve(rule)
 
@@ -63,6 +65,7 @@ defmodule Aethrion.Tuning do
   All rule parameters, as `[{rule_id, [{key, default, current}]}]`. Options:
   `pipeline:` (default `Aethrion.Pipeline.default/0`).
   """
+  @spec describe(State.t(), keyword()) :: [{atom(), [{atom(), integer(), integer()}]}]
   def describe(%State{} = state, opts \\ []) do
     opts
     |> Keyword.get(:pipeline, Pipeline.default())
@@ -87,6 +90,7 @@ defmodule Aethrion.Tuning do
   rules in `pipeline:` (default `Aethrion.Pipeline.default/0`). Returns
   `{:ok, tuning}` or `{:error, %Aethrion.Error{code: :invalid_tuning}}`.
   """
+  @spec from_data(term(), keyword()) :: {:ok, t()} | {:error, Aethrion.Error.t()}
   def from_data(data, opts \\ [])
 
   def from_data(nil, _opts), do: {:ok, %{}}

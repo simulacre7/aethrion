@@ -121,6 +121,7 @@ defmodule Aethrion.Scenario do
   Loads a scenario from a JSON file. Errors are `%Aethrion.Error{}` with code
   `:not_found`, `:io_error`, or those of `from_data/2`.
   """
+  @spec load(Path.t(), keyword()) :: {:ok, t()} | {:error, Error.t()}
   def load(path, opts \\ []) do
     with {:ok, json} <- read(path),
          {:ok, data} <- decode(json),
@@ -160,6 +161,7 @@ defmodule Aethrion.Scenario do
   code `:invalid_scenario`; problems found by other modules keep their codes
   (`:invalid_state` for the world, `:invalid_tuning`, `:unsupported_event`).
   """
+  @spec from_data(term(), keyword()) :: {:ok, t()} | {:error, Error.t()}
   def from_data(data, opts \\ [])
 
   def from_data(%{} = data, opts) do
@@ -196,6 +198,7 @@ defmodule Aethrion.Scenario do
   rejected; `details` holds its `:index` and, for a branch event, the
   `:branch` name. Options are passed to `Aethrion.Runtime.step/3`.
   """
+  @spec run(t(), keyword()) :: {:ok, Result.t()} | {:error, Error.t()}
   def run(%__MODULE__{} = scenario, opts \\ []) do
     case Runtime.run(scenario.state, scenario.events, opts) do
       {:ok, state, steps} ->
@@ -248,6 +251,7 @@ defmodule Aethrion.Scenario do
   end
 
   @doc "Returns true when every expectation, including every branch's, passed."
+  @spec passed?(Result.t()) :: boolean()
   def passed?(%Result{checks: checks, branches: branches}) do
     Enum.all?(checks ++ Enum.flat_map(branches, & &1.checks), & &1.passed?)
   end

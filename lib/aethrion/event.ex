@@ -43,6 +43,7 @@ defmodule Aethrion.Event do
   @doc "Tones accepted by `message_sent/4`."
   def tones, do: @tones
 
+  @spec gift_received(String.t(), String.t(), String.t(), keyword()) :: t()
   def gift_received(from, to, item, opts \\ []) do
     %{
       type: :gift_received,
@@ -54,10 +55,12 @@ defmodule Aethrion.Event do
     }
   end
 
+  @spec time_tick(String.t(), keyword()) :: t()
   def time_tick(now, opts \\ []) do
     %{type: :time_tick, now: now, hours: Keyword.get(opts, :hours, 1)}
   end
 
+  @spec apology_offered(String.t(), String.t(), String.t(), keyword()) :: t()
   def apology_offered(from, to, reason, opts \\ []) do
     %{
       type: :apology_offered,
@@ -75,6 +78,7 @@ defmodule Aethrion.Event do
   be one of `tones/0`. `text` is kept for memory and expression only; rules never
   parse it. Use `Aethrion.Intent` to propose a tone from free text.
   """
+  @spec message_sent(String.t(), String.t(), String.t(), keyword()) :: t()
   def message_sent(from, to, text, opts \\ []) do
     %{
       type: :message_sent,
@@ -89,6 +93,7 @@ defmodule Aethrion.Event do
   @doc """
   Character `from` shares one of their memories with character `to`.
   """
+  @spec gossip_shared(String.t(), String.t(), String.t(), keyword()) :: t()
   def gossip_shared(from, to, memory_id, opts \\ []) do
     %{
       type: :gossip_shared,
@@ -102,6 +107,7 @@ defmodule Aethrion.Event do
   @doc """
   `from` comforts character `to`.
   """
+  @spec comfort_offered(String.t(), String.t(), keyword()) :: t()
   def comfort_offered(from, to, opts \\ []) do
     %{
       type: :comfort_offered,
@@ -114,6 +120,7 @@ defmodule Aethrion.Event do
   @doc """
   Characters `from` and `to` spend time together.
   """
+  @spec time_spent_together(String.t(), String.t(), keyword()) :: t()
   def time_spent_together(from, to, opts \\ []) do
     %{type: :time_spent_together, from: from, to: to, at: Keyword.get(opts, :at, @unspecified)}
   end
@@ -181,6 +188,7 @@ defmodule Aethrion.Event do
   @doc """
   Converts an event into JSON-friendly data with string keys.
   """
+  @spec to_data(t()) :: map()
   def to_data(%{type: type} = event) do
     event
     |> Enum.map(fn
@@ -200,6 +208,7 @@ defmodule Aethrion.Event do
   atom keys only when that atom already exists (as it does for any field a rule
   reads), and other fields are dropped. The `"id"` field is ignored.
   """
+  @spec from_data(term(), keyword()) :: {:ok, t()} | {:error, Aethrion.Error.t()}
   def from_data(data, opts \\ [])
 
   def from_data(%{"type" => type} = data, opts) when is_binary(type) do

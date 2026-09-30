@@ -32,6 +32,7 @@ defmodule Aethrion.Journal do
   file already exists. The header is written to a temporary file and renamed
   into place, so a failed create never leaves a half-written journal.
   """
+  @spec create(Path.t(), State.t()) :: :ok | {:error, Error.t()}
   def create(path, %State{} = state) do
     header = %{"aethrion_journal" => @version, "state" => State.to_data(state)}
     tmp = path <> ".tmp"
@@ -74,6 +75,7 @@ defmodule Aethrion.Journal do
   end
 
   @doc "Appends one processed host event (with its assigned `:id`)."
+  @spec append(Path.t(), Event.t(), keyword()) :: :ok | {:error, Error.t()}
   def append(path, %{type: _type} = event, opts \\ []) do
     with {:ok, line} <- encode(event, opts) do
       case File.write(path, line <> "\n", [:append, :utf8]) do
@@ -116,6 +118,7 @@ defmodule Aethrion.Journal do
 
   Options: `:pipeline`, used to keep tuning for custom rules.
   """
+  @spec read(Path.t(), keyword()) :: {:ok, State.t(), [Event.t()]} | {:error, Error.t()}
   def read(path, opts \\ []) do
     with {:ok, contents} <- read_file(path) do
       lines =
@@ -163,6 +166,8 @@ defmodule Aethrion.Journal do
 
   Options: `:pipeline`, `:max_depth`, `:max_events` (use the ones the world ran with).
   """
+  @spec replay(Path.t(), keyword()) ::
+          {:ok, State.t(), [Aethrion.Step.t()]} | {:error, Error.t()}
   def replay(path, opts \\ []) do
     with {:ok, state, events} <- read(path, opts) do
       replay_events(state, events, opts)
@@ -173,6 +178,7 @@ defmodule Aethrion.Journal do
   Converts a journal into scenario data (ready for `Jason.encode!/2`), with
   snapshot expectations like `Aethrion.Scenario.record/5`.
   """
+  @spec to_scenario(Path.t(), keyword()) :: {:ok, map()} | {:error, Error.t()}
   def to_scenario(path, opts \\ []) do
     with {:ok, state, events} <- read(path, opts),
          {:ok, final, steps} <- replay_events(state, events, opts) do
