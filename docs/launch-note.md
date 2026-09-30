@@ -1,89 +1,72 @@
 # Aethrion Launch Note
 
-This is a draft for lightweight public sharing. The intended tone is early alpha feedback, not production-ready framework launch.
+Drafts for lightweight public sharing of v0.2.0-alpha. The intended tone is early alpha feedback, not a production-ready framework launch.
 
 ## Short Version
 
-I'm building **Aethrion**, an early alpha Elixir runtime for persistent AI characters.
+Aethrion v0.2 is out: an early alpha Elixir runtime where AI characters remember, relate, and act on each other, not just on the user.
 
 The core design principle: **LLMs can describe what happens, but deterministic rules decide what actually changes.**
 
-Aethrion models memory, emotion, relationships, reconciliation, and proactive behavior as an event-driven social simulation layer. The runtime owns state and rule outcomes; LLMs are treated as expression adapters rather than the authority over what happened.
+In the demo, the host sends two events (a gift one character witnesses, and two hours passing). The rules turn that into a proactive message, a confidence between two characters, a tease, and an act of comfort. Every one of those changes is traced to the rule and event that caused it.
 
 Repo: https://github.com/simulacre7/aethrion
-
-Demo: https://github.com/simulacre7/aethrion/blob/main/assets/demo/interactive-demo.mp4
 
 ## X / Short Social Post
 
-I'm building Aethrion, an early alpha Elixir runtime for persistent AI characters.
+Aethrion v0.2: an Elixir runtime for AI characters that affect each other.
 
-The idea: LLMs can describe what happens, but deterministic rules decide what actually changes.
+Two events in: a gift Yuna sees, two hours pass.
+Out: Yuna messages you and confides in Haru; Haru teases you, then comforts Yuna.
 
-It models memory, emotion, relationships, and proactive behavior as an event-driven social simulation layer.
+No LLM decided any of it. Rules did, and `why yuna` shows exactly which.
 
-The latest branch demo compares what happens when the user ignores a jealous character versus apologizes to her.
-
-Repo: https://github.com/simulacre7/aethrion
-
-Demo: https://github.com/simulacre7/aethrion/blob/main/assets/demo/interactive-demo.mp4
+https://github.com/simulacre7/aethrion
 
 ## LinkedIn / Longer Post
 
-I started building Aethrion, an early alpha Elixir runtime for persistent AI characters.
+I've released v0.2 of Aethrion, an early alpha Elixir runtime for persistent AI characters.
 
-Most AI character systems are centered on a simple loop: user message in, character response out. Aethrion explores a different model: characters with memory, emotion, relationships, and proactive behavior that evolve through deterministic state transitions.
+Most AI character systems are a loop between one user and one character. Aethrion treats characters as a small society: they notice what happens around them, confide in the people they trust, pass news along, comfort each other, and slowly turn many small moments into lasting impressions.
 
-The main design principle is simple:
+The design principle hasn't changed:
 
 > LLMs can describe what happens, but deterministic rules decide what actually changes.
 
-That means the runtime owns relationship changes, memory creation, emotional state, and structured outputs. A character does not gain trust, store a memory, send a proactive message, or die because an LLM improvised it. Those changes come from explicit rules over inspectable state.
+What's new in v0.2:
 
-The current alpha includes:
+- characters act on each other through cascading events: confiding, rumors that fade with each retelling, empathy, comfort
+- every state change is traced to a rule and an event, so "why does Yuna feel this way?" has a precise answer
+- a real LLM boundary: Anthropic and OpenAI-compatible adapters can phrase lines from read-only snapshots and propose what free text means, but cannot change state; failures fall back to deterministic text
+- relationship history matters: a long record of kindness softens one harsh message
+- rule parameters are data, so two worlds can run the same rules with a different temperament
+- JSON scenarios with expectations and what-if branches, rendered as HTML reports
+- a supervised OTP "world" that keeps running while slow or failing model calls are isolated
 
-- scripted and interactive CLI demos
-- branched scenario demo
-- public runtime API
-- structured errors
-- JSON persistence
-- supervised GenServer runtime and scheduler
-- fake LLM adapter
-- tests and CI
-- English/Korean README
-
-It is not production-ready yet, but it is ready for feedback from people interested in Elixir, AI agents, social simulation, and narrative systems.
+It's alpha and the API will move, but it's ready for feedback from people working on narrative systems, games, companions, and agents on the BEAM.
 
 Repo: https://github.com/simulacre7/aethrion
 
-Demo: https://github.com/simulacre7/aethrion/blob/main/assets/demo/interactive-demo.mp4
-
 ## Elixir Forum / Technical Post
 
-I built an early alpha of Aethrion, an Elixir runtime for persistent social agents.
+Aethrion v0.2.0-alpha is a deterministic social simulation runtime for AI characters, written in Elixir.
 
-The project is an experiment in modeling AI characters as deterministic social simulation entities rather than prompt-only chatbots. A character can accumulate memory, relationships, emotional state, reconciliation state, and proactive outputs through events such as gifts, observations, apologies, and time ticks.
-
-The current core loop is:
+The core loop:
 
 ```txt
-event -> deterministic rules -> updated state -> structured outputs
+event -> validate -> rule pipeline -> follow-up events (cascade)
+      -> state + structured outputs + trace
+      -> optional LLM rendering, outside the authoritative path
 ```
 
-LLMs are deliberately kept outside the authoritative state path. The fake LLM adapter in the current alpha exists to prove that the runtime works without a real model.
+Some design choices that may be interesting here:
 
-Aethrion is not trying to make LLM inference faster. In a real deployment, the LLM provider or model server would be an external network service, likely the slowest part of the system. The role of BEAM/OTP is to coordinate long-running agents, state transitions, scheduled behavior, failures, and external LLM calls reliably.
+- **Rules are plain modules** (`use Aethrion.Rule`) organized by an explicit pipeline. They change state only through a `Transition` accumulator, which clamps values and records a trace entry for every change. The same events always produce the same world, so there are property tests for bounds, determinism, persistence round trips, and cascade causality.
+- **Cascades instead of actors.** Characters are plain data, not processes. Social behavior between characters happens through follow-up events that rules enqueue and the runtime processes breadth-first with depth and count limits.
+- **OTP where it earns its place.** `Aethrion.World` supervises a runtime server (state, subscriptions, history, snapshot restore), a scheduler, and a `Task.Supervisor` for LLM rendering. Dispatch never waits on a model; slow renders time out, crashed ones are isolated, and subscribers get deterministic fallback text either way.
+- **A narrow LLM boundary.** Adapters receive read-only snapshots, return text, and can propose intents only from a closed set; the proposed event still goes through validation and rules. Adapters use `:httpc`, so the only runtime dependency is `jason`.
+- **Data-first scenarios.** JSON files with a world, events, expectations, branches, and per-world rule tuning. They run in CI and render as self-contained HTML reports.
 
-Current features:
-
-- `Aethrion.Runtime.dispatch/2`
-- structured runtime errors
-- scripted, interactive, and branched Mix demos
-- supervised GenServer runtime and scheduler
-- JSON persistence
-- ExUnit tests
-- GitHub Actions CI
-
-I'm sharing it as early alpha and would welcome feedback on the runtime shape, public API, external LLM boundary, and where Elixir/BEAM processes should enter the design.
+I'd welcome feedback on the rule and pipeline API, the cascade model versus per-character processes, and the expression boundary.
 
 Repo: https://github.com/simulacre7/aethrion

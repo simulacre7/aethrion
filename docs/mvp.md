@@ -1,5 +1,7 @@
 # Aethrion MVP
 
+> This document records the original v0 MVP scope. For what Aethrion does now, see the [README](../README.md), [rules.md](rules.md), and the [changelog](../CHANGELOG.md).
+
 The v0 goal is to prove that a small social scenario can emerge from deterministic rules over inspectable state.
 
 ## Scope
