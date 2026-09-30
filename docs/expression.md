@@ -27,7 +27,7 @@ An adapter can re-render the text from that snapshot alone:
 outputs = Aethrion.Expression.render(outputs, adapter: Aethrion.LLM.Anthropic)
 ```
 
-`render/2` only touches the text of expressive outputs (`:proactive_message`, `:reply`, `:character_interaction`) and adds `expression: %{status: :ok | :fallback, adapter: ...}`. If the adapter returns an error, an empty line, raises, or exits, the fallback text is kept and the reason is recorded. The simulation already advanced; rendering is optional.
+`render/2` only touches the text of expressive outputs (`:proactive_message`, `:reply`, `:character_interaction`) and adds `expression: %{status: :ok | :fallback, adapter: ...}`. If the adapter returns an error, an empty line, a line of more than 400 characters, raises, or exits, the fallback text is kept and the reason is recorded. A returned line is kept to one line (line breaks become spaces, quotes wrapping the whole line are dropped), and a silent reply (`"..."`, a character who has stopped answering) is never sent to a model (`reason: :silence`). The simulation already advanced; rendering is optional.
 
 The prompt (`Aethrion.Expression.Prompt`) asks the model to keep the meaning of the draft line, reference only the listed memories, stay in character, and never add events, promises, or facts. For replies it also says what the rules weighed ("History: The listener has done this 3 times recently... The speaker gives the listener the benefit of the doubt..."), so a model's wording escalates or softens where the draft does.
 

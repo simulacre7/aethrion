@@ -103,6 +103,10 @@ defmodule Aethrion.Expression.Templates do
         "#{name(request, source)} told me what you said#{said}. " <>
           "That didn't sound like you. Is everything okay?"
 
+      %{source: source, data: %{"event" => "message_sent", "tone" => "warm"} = data} ->
+        to = if data["to"] == source, do: "them", else: name(request, data["to"])
+        "#{name(request, source)} told me how kind you were to #{to}. That was sweet of you."
+
       %{source: source, data: %{"event" => "apology_offered"} = data} ->
         to = if data["to"] == source, do: "", else: " to #{name(request, data["to"])}"
         "#{name(request, source)} told me you apologized#{to}. That was good of you."
@@ -196,6 +200,23 @@ defmodule Aethrion.Expression.Templates do
           if data["to"] == request.speaker.id, do: "", else: " to #{name(request, data["to"])}"
 
         "#{teller} tells #{listener} what #{name(request, data["from"])} said#{to}: \"#{data["text"]}\""
+
+      # Harsh words matched above; what is left of messages is kind.
+      [%{data: %{"event" => event} = data} | _]
+      when event in ["apology_offered", "comfort_offered", "message_sent"] ->
+        from = name(request, data["from"])
+        to = if data["to"] == request.speaker.id, do: teller, else: name(request, data["to"])
+
+        case event do
+          "apology_offered" ->
+            "#{teller} tells #{listener} that #{from} apologized to #{to}."
+
+          "comfort_offered" ->
+            "#{teller} tells #{listener} how #{from} comforted #{to}."
+
+          "message_sent" ->
+            "#{teller} tells #{listener} how kind #{from} #{if from == "you", do: "were", else: "was"} to #{to}."
+        end
 
       _ ->
         "#{teller} confides in #{listener}."

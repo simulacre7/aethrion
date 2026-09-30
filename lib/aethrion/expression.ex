@@ -19,6 +19,9 @@ defmodule Aethrion.Expression do
   alias Aethrion.Expression.{Request, Templates}
   alias Aethrion.LLM.FakeAdapter
 
+  # Longest rendered line kept, in characters; longer ones fall back.
+  @max_line 400
+
   @doc """
   Builds a request snapshot for `speaker_id` addressing `listener_id`.
 
@@ -82,6 +85,10 @@ defmodule Aethrion.Expression do
     adapter_opts = Keyword.get(opts, :adapter_opts, [])
 
     case output do
+      # Silence ("...") is a decision, not a line to phrase.
+      %{context: %Request{fallback_text: "..."}} ->
+        Map.put(output, :expression, %{status: :fallback, adapter: adapter, reason: :silence})
+
       %{context: %Request{} = request} ->
         if Output.expressive?(output) do
           apply_rendering(output, adapter, safe_render(adapter, request, adapter_opts))
@@ -102,17 +109,24 @@ defmodule Aethrion.Expression do
     kind, reason -> {:error, {kind, reason}}
   end
 
+  # Whatever the adapter, a line is one line: wrapping quotes go, line breaks
+  # become spaces, and anything longer than a few sentences falls back.
   defp apply_rendering(output, adapter, {:ok, text}) when is_binary(text) do
-    case String.trim(text) do
-      "" ->
+    line = tidy(text)
+
+    cond do
+      line == "" ->
         Map.put(output, :expression, %{
           status: :fallback,
           adapter: adapter,
           reason: :empty_response
         })
 
-      text ->
-        Map.merge(output, %{text: text, expression: %{status: :ok, adapter: adapter}})
+      String.length(line) > @max_line ->
+        Map.put(output, :expression, %{status: :fallback, adapter: adapter, reason: :too_long})
+
+      true ->
+        Map.merge(output, %{text: line, expression: %{status: :ok, adapter: adapter}})
     end
   end
 
@@ -126,6 +140,20 @@ defmodule Aethrion.Expression do
       adapter: adapter,
       reason: {:invalid_response, other}
     })
+  end
+
+  # Line breaks become spaces, and quotes wrapping the whole line go; quotes
+  # inside it (a quoted remark at the end) stay.
+  defp tidy(text) do
+    line = text |> String.replace(~r/\s*\R+\s*/u, " ") |> String.trim()
+
+    case Regex.run(~r/^["“](.*)["”]$/su, line) do
+      [_all, inner] ->
+        if String.contains?(inner, ["\"", "“", "”"]), do: line, else: String.trim(inner)
+
+      nil ->
+        line
+    end
   end
 
   defp speaker(state, id, nil), do: actor(state, id)

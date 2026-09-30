@@ -21,8 +21,10 @@ defmodule Aethrion.Expression.Prompt do
   - Memory kinds: experienced happened to the speaker; observed the speaker saw; heard someone told the speaker (secondhand, may be partial); impression is a lasting pattern from many faded memories, and a reputation impression is what the speaker knows about how someone treats others.
   - Stay in character: follow the profile, traits, and current mood.
   - Speak directly to the listener when the kind is proactive_message or reply.
-  - For character_interaction, write one sentence of third-person narration.
-  - At most two sentences. No quotation marks, no stage directions, no emoji.
+  - For character_interaction, write short third-person narration.
+  - At most two sentences. Quote someone's words only where the draft line does. No stage directions, no emoji.
+  - Call people exactly as listed under People, and keep the draft line's register (casual or polite) and tone.
+  - A draft of "..." means the speaker says nothing; reply "...".
   - Reply with the line only.
   """
 
@@ -90,6 +92,7 @@ defmodule Aethrion.Expression.Prompt do
       "Listener: #{describe_actor(request.listener)}",
       relationship_line(request.relationship),
       incoming_line(request),
+      contact_line(request),
       history_line(request),
       people_line(request),
       "Memories:",
@@ -178,6 +181,17 @@ defmodule Aethrion.Expression.Prompt do
   defp incoming_line(_request), do: nil
 
   # What the rules weighed, so a model's line agrees with the draft.
+  # How long it has been, for lines that mention it ("It's been a while").
+  defp contact_line(%Request{kind: :proactive_message, since_contact: hours})
+       when is_integer(hours),
+       do: "The listener last talked to the speaker #{hours} hours ago."
+
+  defp contact_line(%Request{kind: :proactive_message, now: now})
+       when is_integer(now) and now > 0,
+       do: "The listener has not talked to the speaker in the #{now} hours this world has run."
+
+  defp contact_line(_request), do: nil
+
   defp history_line(%Request{kind: :reply} = request) do
     repeated =
       case request.repeats do
@@ -217,10 +231,18 @@ defmodule Aethrion.Expression.Prompt do
 
   defp memory_lines(%Request{memories: []}), do: "- (none)"
 
-  defp memory_lines(%Request{memories: memories}) do
+  defp memory_lines(%Request{memories: memories} = request) do
     Enum.map(memories, fn memory ->
       source = if memory.source, do: ", heard from #{memory.source}", else: ""
-      "- #{memory.content} (#{memory.kind}#{source}, importance #{memory.importance})"
+
+      age =
+        case Request.hours_ago(request, memory) do
+          nil -> ""
+          0 -> ", just now"
+          hours -> ", #{hours} hours ago"
+        end
+
+      "- #{memory.content} (#{memory.kind}#{source}, importance #{memory.importance}#{age})"
     end)
   end
 end

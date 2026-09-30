@@ -216,8 +216,8 @@ user> context yuna
   Speaker toward listener: friendly; affinity 38, trust 28, tension 0 (scale -100..100)
   People: mina = Mina, user = you, yuna = Yuna
   Memories:
-  - user apologized to yuna: sorry I forgot about you (experienced, importance 70)
-  - yuna saw user give mina a flower. (observed, importance 60)
+  - user apologized to yuna: sorry I forgot about you (experienced, importance 70, just now)
+  - yuna saw user give mina a flower. (observed, importance 60, just now)
   Draft line: It's been quiet today. Do you have a minute to talk?
 ```
 

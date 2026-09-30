@@ -138,6 +138,10 @@ defmodule Aethrion.Expression.Templates.Ko do
         "#{name(request, source)}한테 들었어. 네가 #{to}한테 그런 말 했다며? " <>
           "너답지 않던데, 무슨 일 있어?"
 
+      %{source: source, data: %{"event" => "message_sent", "tone" => "warm"} = data} ->
+        to = if data["to"] == source, do: "걔", else: name(request, data["to"])
+        "#{name(request, source)}한테 들었어. #{to}한테 다정하게 대해 줬다며? 좋더라."
+
       %{source: source, data: %{"event" => "apology_offered"} = data} ->
         to = if data["to"] == source, do: "걔", else: name(request, data["to"])
         "#{name(request, source)}한테 들었어. #{to}한테 사과했다며? 잘했어."
@@ -210,46 +214,12 @@ defmodule Aethrion.Expression.Templates.Ko do
   def render(%Request{kind: :reply, tone: tone} = request), do: reply_line(tone, request)
 
   def render(%Request{kind: :character_interaction, reason: :gossip} = request) do
-    teller = request.speaker.name
+    teller = with_particle(request.speaker.name, :topic)
     listener = request.listener.name
 
     case request.memories do
-      [%{data: %{"event" => "gift_received", "to" => to} = data} | _]
-      when to == request.speaker.id ->
-        giver =
-          if you?(request, data["from"]),
-            do: "네가",
-            else: with_particle(name(request, data["from"]), :subject)
-
-        "#{with_particle(teller, :topic)} #{listener}에게 #{giver} 준 " <>
-          "#{with_particle(data["item"], :object)} 자랑한다."
-
-      [%{data: %{"event" => "gift_received"} = data} | _] ->
-        giver =
-          if you?(request, data["from"]),
-            do: "네가",
-            else: with_particle(name(request, data["from"]), :subject)
-
-        "#{with_particle(teller, :topic)} #{listener}에게 #{giver} #{name(request, data["to"])}한테 준 " <>
-          "#{data["item"]} 얘기를 전한다."
-
-      [%{data: %{"event" => "message_sent", "tone" => tone} = data} | _]
-      when tone in ["hostile", "cold"] ->
-        said =
-          if you?(request, data["from"]),
-            do: "네가",
-            else: with_particle(name(request, data["from"]), :subject)
-
-        # Said to the teller themselves ("자기한테"), or to someone else.
-        to =
-          if data["to"] == request.speaker.id,
-            do: "자기한테",
-            else: "#{name(request, data["to"])}한테"
-
-        "#{with_particle(teller, :topic)} #{listener}에게 #{said} #{to} 한 말을 전한다. \"#{data["text"]}\""
-
-      _ ->
-        "#{with_particle(teller, :topic)} #{listener}에게 속마음을 털어놓는다."
+      [%{data: data} | _] -> "#{teller} #{listener}에게 #{gossip(request, data)}"
+      _ -> "#{teller} #{listener}에게 속마음을 털어놓는다."
     end
   end
 
@@ -273,6 +243,41 @@ defmodule Aethrion.Expression.Templates.Ko do
   def render(%Request{} = request) do
     "#{with_particle(request.speaker.name, :subject)} 반응한다."
   end
+
+  # What was told, after "X는 Y에게".
+  defp gossip(request, %{"event" => "gift_received", "to" => to} = data) do
+    if to == request.speaker.id,
+      do: "#{actor(request, data["from"])} 준 #{with_particle(data["item"], :object)} 자랑한다.",
+      else: "#{actor(request, data["from"])} #{name(request, to)}한테 준 #{data["item"]} 얘기를 전한다."
+  end
+
+  defp gossip(request, %{"event" => "message_sent", "tone" => tone} = data)
+       when tone in ["hostile", "cold"],
+       do:
+         "#{actor(request, data["from"])} #{target(request, data)}한테 한 말을 전한다. \"#{data["text"]}\""
+
+  defp gossip(request, %{"event" => event} = data)
+       when event in ["apology_offered", "comfort_offered", "message_sent"] do
+    to = target(request, data)
+
+    what =
+      case event do
+        "apology_offered" -> "#{to}한테 사과했다고"
+        "comfort_offered" -> "#{with_particle(to, :object)} 위로해 줬다고"
+        "message_sent" -> "#{to}한테 다정하게 대해 줬다고"
+      end
+
+    "#{actor(request, data["from"])} #{what} 전한다."
+  end
+
+  defp gossip(_request, _data), do: "속마음을 털어놓는다."
+
+  # Who did it, as a subject: "네가" for the reader.
+  defp actor(request, id), do: if(you?(request, id), do: "네가", else: subject(name(request, id)))
+
+  # To whom: the teller themselves ("자기"), or someone else.
+  defp target(request, %{"to" => to}),
+    do: if(to == request.speaker.id, do: "자기", else: name(request, to))
 
   defp reply_line(tone, request) do
     case Choices.reply_choice(tone, request) do

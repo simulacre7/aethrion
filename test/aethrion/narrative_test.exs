@@ -888,5 +888,62 @@ defmodule Aethrion.NarrativeTest do
     end
   end
 
+  describe "the LLM boundary" do
+    defmodule Chatty do
+      @behaviour Aethrion.LLM.Adapter
+      def render(_request, opts), do: {:ok, Keyword.fetch!(opts, :say)}
+      def interpret(_request, _opts), do: {:error, :unsupported}
+    end
+
+    test "silence stays silent, lines stay one line, and rambling falls back" do
+      hostile = &Event.message_sent("user", "mina", "Go away #{&1}", tone: :hostile)
+      {_state, outputs} = run!(Runtime.demo_state(), Enum.map(1..4, hostile))
+      silent = List.last(replies(outputs, "mina"))
+      assert silent.text == "..."
+
+      render = fn output, say ->
+        Aethrion.Expression.render_output(output, adapter: Chatty, adapter_opts: [say: say])
+      end
+
+      assert %{text: "...", expression: %{reason: :silence}} = render.(silent, "I am so upset!")
+
+      [first | _] = replies(outputs, "mina")
+
+      assert %{text: "Hello, there.", expression: %{status: :ok}} =
+               render.(first, ~s("Hello,\nthere."))
+
+      assert %{expression: %{reason: :too_long}} = render.(first, String.duplicate("word ", 200))
+    end
+
+    test "prompts say how long it has been and how old each memory is" do
+      {_state, outputs} = run!(Runtime.demo_state(), [tick(24)])
+      [message | _] = proactive(outputs, "mina")
+      prompt = Aethrion.Expression.Prompt.render_context(message.context)
+
+      assert prompt =~
+               "The listener has not talked to the speaker in the 24 hours this world has run."
+    end
+
+    test "news of kindness travels as kindness" do
+      {state, _outputs} =
+        run!(Runtime.demo_state(), [
+          Event.message_sent("user", "yuna", "You did great.", tone: :warm)
+        ])
+
+      {_state, outputs} =
+        run!(state, [Event.gossip_shared("yuna", "haru", "memory:yuna:message:e1")])
+
+      assert [%{kind: :gossip, text: "Yuna tells Haru how kind you were to Yuna."} = scene] =
+               of_type(outputs, :character_interaction)
+
+      assert Ko.render(scene.context) == "Yuna는 Haru에게 네가 자기한테 다정하게 대해 줬다고 전한다."
+    end
+
+    test "unnamed player ids read as names" do
+      assert State.name(Runtime.demo_state(), "player:alex") == "Alex"
+      assert State.name(Runtime.demo_state(), "sam") == "sam"
+    end
+  end
+
   defp tick(hours), do: Event.time_tick("t", hours: hours)
 end
