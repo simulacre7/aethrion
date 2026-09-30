@@ -27,7 +27,7 @@ defmodule Aethrion.Rules.Reputation do
   use Aethrion.Rule,
     id: :reputation,
     description:
-      "Witnesses remember how someone treated another; those who care about the receiver judge the sender (hearsay at 50%).",
+      "Witnesses remember how someone treated another; those who care about the receiver judge the sender (hearsay at 50%), raising affinity and trust no higher than 60.",
     params: [
       care_threshold: 20,
       hostile_trust: -4,

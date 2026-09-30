@@ -9,7 +9,8 @@ defmodule Aethrion.Expression.Request do
 
   - `kind` - `:proactive_message`, `:reply`, or `:character_interaction`
   - `reason` - why the output exists (`:jealous`, `:lonely`, `:curious`,
-    `:protective`, `:reply`, `:gossip`, `:comfort`, `:together`)
+    `:protective`, `:reply`, `:reassurance` (a reply to a gift from someone
+    the speaker felt left out by), `:gossip`, `:comfort`, `:together`)
   - `speaker` / `listener` - `%{id, name, profile, traits, mood}` (listener
     fields other than id and name may be nil for external actors such as `user`)
   - `relationship` - speaker -> listener `%{affinity, trust, tension, bond}`

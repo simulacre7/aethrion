@@ -527,6 +527,69 @@ defmodule Aethrion.NarrativeTest do
       assert second.context.repeats == 2
     end
 
+    test "only someone who felt left out by the giver is reassured, and only once since" do
+      watched = Event.gift_received("user", "mina", "flower", observed_by: ["haru"])
+
+      # Haru saw it but never felt left out (not close enough to the user).
+      {_state, outputs} =
+        run!(Runtime.demo_state(), [watched, Event.gift_received("user", "haru", "tea")])
+
+      assert [%{text: "Thank you for the tea!"}] = replies(outputs, "haru")
+
+      # Yuna got a scarf, later saw a ring go to Mina, then got a cake.
+      {_state, outputs} =
+        run!(Runtime.demo_state(), [
+          Event.gift_received("user", "yuna", "scarf"),
+          tick(30),
+          Event.gift_received("user", "mina", "ring", observed_by: ["yuna"]),
+          Event.gift_received("user", "yuna", "cake"),
+          Event.gift_received("user", "yuna", "card")
+        ])
+
+      assert [_scarf, %{context: %{reason: :reassurance}} = cake, card] = replies(outputs, "yuna")
+      assert cake.text == "For me? ...I thought you'd forgotten about me."
+      refute card.context.reason == :reassurance
+    end
+
+    test "players' names are kept as given, and saved alike" do
+      state = State.new(people: [alex: "Alex"])
+      assert State.name(state, "alex") == "Alex"
+
+      {:ok, loaded} =
+        state |> State.to_data() |> Jason.encode!() |> Jason.decode!() |> State.parse()
+
+      assert loaded == state
+
+      assert {:error, %{code: :invalid_state}} = State.parse(%{"people" => %{"sam" => ""}})
+    end
+
+    test "outings group by what they were, even without event ids" do
+      scene = fn from, to ->
+        %{
+          type: :character_interaction,
+          kind: :together,
+          character_id: from,
+          to: to,
+          text: "together"
+        }
+      end
+
+      gossip = %{
+        type: :character_interaction,
+        kind: :gossip,
+        character_id: "mina",
+        to: "haru",
+        text: "a secret"
+      }
+
+      texts =
+        [scene.("haru", "yuna"), gossip, scene.("haru", "yuna")]
+        |> Aethrion.Digest.of(Runtime.demo_state())
+        |> Enum.map(& &1.text)
+
+      assert texts == ["Haru and Yuna spent time together 2 times.", "A secret"]
+    end
+
     test "a model prompt says what the rules weighed" do
       hostile = &Event.message_sent("user", "mina", "Go away #{&1}", tone: :hostile)
       {_state, outputs} = run!(Runtime.demo_state(), [hostile.(1), hostile.(2)])

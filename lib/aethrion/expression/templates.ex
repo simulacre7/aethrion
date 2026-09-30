@@ -403,12 +403,13 @@ defmodule Aethrion.Expression.Templates do
 
   @doc false
   # How a gift lands: warily with hurt feelings between them, as reassurance
-  # to someone who saw the giver give to someone else (the first one since),
-  # as company to someone lonely, and as a bit much when they keep coming.
+  # to someone who felt left out by the giver since their last gift (reason
+  # `:reassurance`, decided by `Aethrion.Rules.Reply`), as company to someone
+  # lonely, and as a bit much when they keep coming.
   def gift_choice(%Request{speaker: %{mood: mood}} = request) do
     cond do
       wary_choice(:warm, request) != nil -> :wary
-      (request.repeats || 1) == 1 and saw_gift_to_someone_else?(request) -> :reassured
+      request.reason == :reassurance -> :reassured
       (request.repeats || 1) >= 3 -> :spoiled
       mood == :lonely -> :remembered
       match?(%{bond: :close}, request.relationship) -> :close
@@ -496,11 +497,6 @@ defmodule Aethrion.Expression.Templates do
   def wary_choice(_tone, _request), do: nil
 
   defp find_full(request, fun), do: Enum.find(request.memories, &fun.(&1.data))
-
-  defp saw_gift_to_someone_else?(request) do
-    between = {request.listener.id, request.speaker.id}
-    find_memory(request, &gift_to_someone_else?(&1, between)) != nil
-  end
 
   # Hostile words from the listener in the last day, with no apology since.
   defp recently_hurt?(request) do
@@ -609,13 +605,25 @@ defmodule Aethrion.Expression.Templates do
   end
 
   @doc false
-  # "a flower", "an apple", "cookies": the article an item needs, if any.
+  # "a flower", "an apple", "an hour", "a unicorn", "cookies": the article an
+  # item needs, if any. Items not written in Latin letters are left alone.
   @spec with_article(String.t()) :: String.t()
   def with_article(item) do
+    word = String.downcase(item)
+
     cond do
-      String.ends_with?(item, "s") and not String.ends_with?(item, "ss") -> item
-      String.match?(item, ~r/^[aeiouAEIOU]/) -> "an " <> item
+      not String.match?(item, ~r/^[A-Za-z]/) -> item
+      plural?(word) -> item
+      String.match?(word, ~r/^(hour|honest|honou?r|heir)/) -> "an " <> item
+      String.match?(word, ~r/^(uni|use|usu|eu|one|once)/) -> "a " <> item
+      String.match?(word, ~r/^[aeiou]/) -> "an " <> item
       true -> "a " <> item
     end
+  end
+
+  # "cookies", "flowers", "glasses" but not "glass", "bus", "cactus", "iris".
+  defp plural?(word) do
+    String.ends_with?(word, "s") and
+      not String.match?(word, ~r/(ss|us|is|ys|os)$/)
   end
 end

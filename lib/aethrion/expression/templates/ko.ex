@@ -291,14 +291,22 @@ defmodule Aethrion.Expression.Templates.Ko do
       |> String.to_charlist()
 
     case letters do
-      # -ck (Jack 잭), and -ne or -me with a silent e (Anne 앤, Jerome 제롬).
+      # -ck (Jack 잭), and -ne or -me with a silent e after a vowel or in -nne
+      # (Jane 제인, Jerome 제롬, Anne 앤), except words that say the e.
       [?k, ?c | _] -> true
-      [?e, before | _] when before in ~c"nm" -> true
+      [?e, before, third | _] when before in ~c"nm" -> silent_e?(word, before, third)
       [last | _] when last in ~c"aeiouyrwhsxfvzd" -> false
       [last, before | _] when last in ~c"tkp" -> before in ~c"aeiouy"
       [_last | _] -> true
       [] -> false
     end
+  end
+
+  @spoken_e ~w(anime sesame penne persephone karaoke ukulele adobe)
+
+  defp silent_e?(word, before, third) do
+    (third in ~c"aeiouy" or (before == ?n and third == ?n)) and
+      String.downcase(word) not in @spoken_e
   end
 
   @doc """

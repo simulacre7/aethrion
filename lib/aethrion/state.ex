@@ -41,8 +41,8 @@ defmodule Aethrion.State do
   Builds a runtime state from explicit characters and relationships.
 
   Options: `:characters`, `:relationships`, `:memories`, `:clock`, `:seq`,
-  `:cooldowns`, `:tuning`, `:people` (display names for players, as a map or
-  keyword of id to name).
+  `:cooldowns`, `:tuning`, `:people` (display names for players: a map of id
+  to name; a character's own name always wins).
   """
   @spec new(keyword()) :: t()
   def new(opts \\ []) do
@@ -58,7 +58,7 @@ defmodule Aethrion.State do
       seq: Keyword.get(opts, :seq, 0),
       cooldowns: Map.new(Keyword.get(opts, :cooldowns, %{})),
       tuning: Map.new(Keyword.get(opts, :tuning, %{})),
-      people: Map.new(Keyword.get(opts, :people, %{}))
+      people: Map.new(Keyword.get(opts, :people, %{}), fn {id, name} -> {to_string(id), name} end)
     }
   end
 
@@ -543,7 +543,9 @@ defmodule Aethrion.State do
   end
 
   defp names?(value),
-    do: is_map(value) and Enum.all?(value, fn {id, name} -> is_binary(id) and is_binary(name) end)
+    do:
+      is_map(value) and
+        Enum.all?(value, fn {id, name} -> non_empty_string?(id) and non_empty_string?(name) end)
 
   defp bond_name?(value),
     do: Enum.any?(Aethrion.Rules.Bond.bonds(), &(Atom.to_string(&1) == value))

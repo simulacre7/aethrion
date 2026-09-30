@@ -118,6 +118,9 @@ defmodule Aethrion.TemplatesKoTest do
     assert Aethrion.Expression.Templates.Ko.with_particle("Mike", :topic) == "Mike는"
     assert Aethrion.Expression.Templates.Ko.with_particle("3", :topic) == "3은"
     assert Aethrion.Expression.Templates.Ko.with_particle("2", :topic) == "2는"
+    assert Aethrion.Expression.Templates.Ko.with_particle("Daphne", :topic) == "Daphne는"
+    assert Aethrion.Expression.Templates.Ko.with_particle("anime", :topic) == "anime는"
+    assert Aethrion.Expression.Templates.Ko.with_particle("Jane", :topic) == "Jane은"
   end
 
   test "items take the article they need" do
@@ -125,5 +128,9 @@ defmodule Aethrion.TemplatesKoTest do
     assert Aethrion.Expression.Templates.with_article("apple") == "an apple"
     assert Aethrion.Expression.Templates.with_article("cookies") == "cookies"
     assert Aethrion.Expression.Templates.with_article("glass") == "a glass"
+    assert Aethrion.Expression.Templates.with_article("bus") == "a bus"
+    assert Aethrion.Expression.Templates.with_article("hour") == "an hour"
+    assert Aethrion.Expression.Templates.with_article("unicorn") == "a unicorn"
+    assert Aethrion.Expression.Templates.with_article("귤") == "귤"
   end
 end

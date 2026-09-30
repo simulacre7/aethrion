@@ -63,35 +63,44 @@ defmodule Aethrion.Digest do
         do: Enum.reject(outputs, &about_someone_else?(&1, state, you)),
         else: outputs
 
-    events = outputs |> Enum.flat_map(&event_item(&1, say)) |> group_outings(outputs, say)
+    # Each item keeps the output it came from, so outings group by what they
+    # were, not by event id.
+    events =
+      outputs
+      |> Enum.flat_map(fn output -> Enum.map(event_item(output, say), &{&1, output}) end)
+      |> group_outings(say)
+
     events ++ net_bonds(outputs, say) ++ net_moods(outputs, say)
   end
 
   # Friends who spent time together more than once get one line, where their
   # first outing was: "Haru and Yuna spent time together 4 times."
-  defp group_outings(items, outputs, say) do
-    scenes = Enum.filter(outputs, &match?(%{type: :character_interaction, kind: :together}, &1))
+  defp group_outings(pairs, say) do
+    pair = fn scene -> Enum.sort([scene.character_id, scene.to]) end
 
-    outings =
-      scenes
-      |> Enum.group_by(&Enum.sort([&1.character_id, &1.to]))
-      |> Map.filter(fn {_pair, list} -> length(list) > 1 end)
-
-    by_event = Map.new(scenes, &{Map.get(&1, :event_id), &1})
+    counts =
+      pairs
+      |> Enum.filter(&match?({_item, %{type: :character_interaction, kind: :together}}, &1))
+      |> Enum.frequencies_by(fn {_item, scene} -> pair.(scene) end)
 
     {items, _seen} =
-      Enum.flat_map_reduce(items, MapSet.new(), fn item, seen ->
-        with :scene <- item.kind,
-             %{} = scene <- Map.get(by_event, item.event_id),
-             pair = Enum.sort([scene.character_id, scene.to]),
-             [first | _] = list <- Map.get(outings, pair) do
-          if MapSet.member?(seen, pair),
-            do: {[], seen},
-            else:
-              {[%{item | text: outings_line(first, length(list), say)}], MapSet.put(seen, pair)}
-        else
-          _single -> {[item], seen}
-        end
+      Enum.flat_map_reduce(pairs, MapSet.new(), fn
+        {item, %{type: :character_interaction, kind: :together} = scene}, seen ->
+          key = pair.(scene)
+
+          cond do
+            counts[key] == 1 ->
+              {[item], seen}
+
+            MapSet.member?(seen, key) ->
+              {[], seen}
+
+            true ->
+              {[%{item | text: outings_line(scene, counts[key], say)}], MapSet.put(seen, key)}
+          end
+
+        {item, _output}, seen ->
+          {[item], seen}
       end)
 
     items

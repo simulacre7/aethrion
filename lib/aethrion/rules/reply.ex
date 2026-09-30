@@ -33,7 +33,7 @@ defmodule Aethrion.Rules.Reply do
 
       request =
         Expression.build_request(state, :reply, event.to, event.from,
-          reason: :reply,
+          reason: reason(state, event),
           tone: tone,
           message: message,
           since_contact: since_contact,
@@ -59,6 +59,35 @@ defmodule Aethrion.Rules.Reply do
 
   @doc false
   def contact_key(character, person), do: "contact:#{character}:#{person}"
+
+  # A gift from someone the character felt jealous about (seeing them give to
+  # someone else) since their last gift, within the last three days, is
+  # reassurance.
+  defp reason(state, %{type: :gift_received, from: giver, to: receiver} = event) do
+    this_one = Aethrion.Rules.Gift.topic(event)
+
+    last_gift =
+      state
+      |> Memories.for_character(receiver)
+      |> Enum.filter(
+        &(match?(
+            %Memory{kind: :experienced, data: %{"event" => "gift_received", "from" => ^giver}},
+            &1
+          ) and &1.topic != this_one)
+      )
+      |> Enum.map(& &1.created_tick)
+      |> Enum.max(fn -> nil end)
+
+    case Map.fetch(state.cooldowns, "jealous:#{receiver}:#{giver}") do
+      {:ok, felt} when state.clock - felt <= 72 and (is_nil(last_gift) or felt > last_gift) ->
+        :reassurance
+
+      _other ->
+        :reply
+    end
+  end
+
+  defp reason(_state, _event), do: :reply
 
   defp incoming(state, %{type: :gift_received} = event) do
     gift? =
