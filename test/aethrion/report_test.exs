@@ -59,4 +59,31 @@ defmodule Aethrion.ReportTest do
       assert Report.html(result(path)) =~ "</html>"
     end
   end
+
+  test "large worlds focus per-character sections on the most active characters" do
+    characters = for i <- 1..20, do: %{"id" => "c#{i}", "name" => "C#{i}"}
+
+    {:ok, scenario} =
+      Scenario.from_data(%{
+        "world" => %{"characters" => characters},
+        "events" => [
+          %{
+            "type" => "gift_received",
+            "from" => "user",
+            "to" => "c7",
+            "item" => "x",
+            "observed_by" => ["c3"]
+          },
+          %{"type" => "time_tick", "hours" => 1}
+        ]
+      })
+
+    {:ok, result} = Scenario.run(scenario)
+    html = Report.html(result)
+
+    assert html =~ "This world has 20 characters"
+    assert html =~ "<h3>C7</h3>"
+    assert html =~ "<h3>C3</h3>"
+    assert length(Regex.scan(~r/<article class="card">/, html)) == 12
+  end
 end
