@@ -172,7 +172,7 @@ defmodule Aethrion.Scenario do
          {:ok, state} <- world(Map.get(data, "world", "demo"), pipeline),
          {:ok, tuning} <- tuning(Map.get(data, "tuning"), pipeline),
          {:ok, events} <- events(Map.get(data, "events", []), pipeline, ["events"]),
-         {:ok, expectations} <- expectations(Map.get(data, "expect", []), ["expect"]),
+         {:ok, expectations} <- expectations(Map.get(data, "expect", []), ["expect"], pipeline),
          {:ok, branches} <- branches(Map.get(data, "branches", []), pipeline) do
       {:ok,
        %__MODULE__{
@@ -406,7 +406,8 @@ defmodule Aethrion.Scenario do
            :ok <- string_field(data, "name", path),
            :ok <- string_field(data, "description", path),
            {:ok, events} <- events(Map.get(data, "events", []), pipeline, path ++ ["events"]),
-           {:ok, expectations} <- expectations(Map.get(data, "expect", []), path ++ ["expect"]) do
+           {:ok, expectations} <-
+             expectations(Map.get(data, "expect", []), path ++ ["expect"], pipeline) do
         branch = %{
           name: Map.get(data, "name", "Branch #{index + 1}"),
           description: Map.get(data, "description", ""),
@@ -430,18 +431,100 @@ defmodule Aethrion.Scenario do
   defp object(data, _path) when is_map(data), do: :ok
   defp object(_data, path), do: {:error, invalid(path, "expected an object")}
 
-  defp expectations(list, path) when is_list(list) do
-    case Enum.find_index(list, &(not valid_expectation?(&1))) do
-      nil ->
-        {:ok, list}
+  defp expectations(list, path, pipeline) when is_list(list) do
+    custom? = pipeline != Aethrion.Pipeline.default()
 
-      index ->
-        {:error,
-         invalid(path ++ [index], "unsupported expectation", %{expectation: Enum.at(list, index)})}
+    list
+    |> Enum.with_index()
+    |> Enum.find_value({:ok, list}, fn {expectation, index} ->
+      cond do
+        not valid_expectation?(expectation) ->
+          {:error,
+           invalid(path ++ [index], "unsupported expectation", %{expectation: expectation})}
+
+        problem = filter_problem(expectation, custom?) ->
+          {:error, invalid(path ++ [index], problem, %{expectation: expectation})}
+
+        true ->
+          nil
+      end
+    end)
+  end
+
+  defp expectations(_list, path, _pipeline),
+    do: {:error, invalid(path, "expect must be a list")}
+
+  # Expectations that could never match would pass silently as "count: 0";
+  # catch misspelled output types, keys, and values when the scenario loads.
+  @output_types ~w(relationship_changed memory_created mood_changed bond_changed proactive_message reply character_interaction)
+  @comparisons ~w(count equals at_least at_most)
+  @output_filters ~w(character to from reason kind tone text before after delta rule event_id)
+  @memory_filters ~w(id character kind topic source content data faded importance strength created_at created_tick related_characters consolidated_into)
+  @values %{
+    "tone" => ~w(warm neutral cold hostile gift apology),
+    "reason" => ~w(jealous lonely curious protective reply reassurance gossip comfort together),
+    "kind" => ~w(gossip comfort together experienced observed heard impression)
+  }
+
+  defp filter_problem(%{"output" => type} = expectation, custom?) do
+    known? = type in @output_types
+
+    cond do
+      not known? and not custom? ->
+        "unknown output type #{inspect(type)}; one of #{Enum.join(@output_types, ", ")}"
+
+      not known? ->
+        nil
+
+      key =
+          Enum.find(
+            Map.keys(expectation) -- ["output" | @comparisons],
+            &(&1 not in @output_filters)
+          ) ->
+        "unknown key #{inspect(key)} in an output expectation; one of #{Enum.join(@output_filters, ", ")}"
+
+      true ->
+        value_problem(expectation, type)
     end
   end
 
-  defp expectations(_list, path), do: {:error, invalid(path, "expect must be a list")}
+  defp filter_problem(%{"memory" => filters}, _custom?) do
+    case Enum.find(Map.keys(filters), &(&1 not in @memory_filters)) do
+      nil ->
+        value_problem(filters, "memory")
+
+      key ->
+        "unknown key #{inspect(key)} in a memory expectation; one of #{Enum.join(@memory_filters, ", ")}"
+    end
+  end
+
+  defp filter_problem(_expectation, _custom?), do: nil
+
+  defp value_problem(filters, type) do
+    allowed =
+      Map.merge(@values, %{
+        "before" => before_after(type),
+        "after" => before_after(type)
+      })
+
+    Enum.find_value(filters, fn {key, value} ->
+      case Map.get(allowed, key) do
+        values when is_list(values) and is_binary(value) ->
+          unless value in values,
+            do: "#{inspect(value)} is not a #{key} here; one of #{Enum.join(values, ", ")}"
+
+        _unchecked ->
+          nil
+      end
+    end)
+  end
+
+  defp before_after("bond_changed"), do: Enum.map(Aethrion.Rules.Bond.bonds(), &Atom.to_string/1)
+
+  defp before_after("mood_changed"),
+    do: Enum.map(Aethrion.CharacterState.moods(), &Atom.to_string/1)
+
+  defp before_after(_type), do: nil
 
   defp valid_expectation?(%{"character" => id, "field" => field}) when is_binary(id),
     do: is_binary(field)

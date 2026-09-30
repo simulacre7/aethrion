@@ -51,6 +51,7 @@ The social layer release: characters act on each other, every change is explaina
 
 - JSON scenarios with a world, events, expectations, branches, tuning, and custom events (`Aethrion.Scenario`, `mix aethrion.scenario`), with a JSON Schema. Fourteen bundled scenarios run in the test suite, one with a Korean cast.
 - Self-contained HTML reports (`mix aethrion.report`, `--locale ko` for a Korean report, memories included) with charts, what each character has come to believe, a relationship graph with bond changes, the timeline, and branch comparison.
+- Scenario output and memory expectations are validated when loaded, so a misspelled type, key, or value is an error instead of a silently passing `"count": 0`. Extreme tuning stays sane: no bond is made permanent by a wide hysteresis, `settled_tension` 0 turns its check off, and characters never write more than once an hour.
 - `mix aethrion.scenario --pipeline Module.function` runs scenarios of custom rules. `Intent.interpret/3` takes `:observed_by`. A runtime server refuses to start from a journal whose tuning its pipeline cannot hold, instead of dropping it.
 - `mix aethrion.journal` replays a journal, prints its digest, and exports it as a scenario or report.
 - Interactive CLI: `say`, `message`, `comfort`, `here` (witnesses), `opinion`, `digest`, `why`, `context`, `timeline`, `rules`, `undo`, `save`, `load`, `record`, `report`, `--llm`, and `--locale ko`.

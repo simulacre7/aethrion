@@ -822,5 +822,71 @@ defmodule Aethrion.NarrativeTest do
     assert bond == Bond.derive(recorded, step.state)
   end
 
+  describe "extreme tuning" do
+    test "a wide hysteresis still lets a grudge heal" do
+      state = Aethrion.Tuning.put(Runtime.demo_state(), :bond, :hysteresis, 20)
+      hostile = Event.message_sent("user", "yuna", "Go away.", tone: :hostile)
+
+      amends =
+        Enum.flat_map(1..15, fn day ->
+          [
+            Event.gift_received("user", "yuna", "gift #{day}"),
+            Event.message_sent("user", "yuna", "Thinking of you.", tone: :warm),
+            Event.apology_offered("user", "yuna", "Sorry."),
+            tick(24)
+          ]
+        end)
+
+      {state, _outputs} = run!(state, [hostile, hostile, hostile, hostile] ++ amends)
+
+      refute Bond.derive(State.get_relationship(state, "yuna", "user"), state) in [
+               :strained,
+               :estranged
+             ]
+    end
+
+    test "settled_tension 0 turns the check off instead of freezing bonds" do
+      state = Aethrion.Tuning.put(Runtime.demo_state(), :bond, :settled_tension, 0)
+
+      warm = Event.message_sent("user", "haru", "Thanks!", tone: :warm)
+      {_state, outputs} = run!(state, List.duplicate(warm, 8))
+      assert [_ | _] = of_type(outputs, :bond_changed)
+    end
+
+    test "no tuning makes a character write more than once an hour" do
+      state =
+        Enum.reduce(
+          [
+            cooldown_hours: 0,
+            min_gap_hours: 0,
+            unanswered_hours: 0,
+            alone_hours: 0,
+            loneliness_threshold: 0
+          ],
+          Runtime.demo_state(),
+          fn {key, value}, state -> Aethrion.Tuning.put(state, :proactive, key, value) end
+        )
+
+      events = for i <- 1..6, do: Event.message_sent("user", "haru", "hey #{i}", tone: :neutral)
+      {_state, outputs} = run!(state, [tick(1) | events])
+
+      assert length(proactive(outputs, "mina")) <= 1
+    end
+  end
+
+  test "misspelled expectations are errors, not silent passes" do
+    for expectation <- [
+          %{"output" => "proactive_mesage", "count" => 0},
+          %{"output" => "reply", "speaker" => "mina", "count" => 0},
+          %{"memory" => %{"knd" => "experienced"}, "count" => 0},
+          %{"output" => "bond_changed", "after" => "estrangd", "count" => 0}
+        ] do
+      assert {:error, %{code: :invalid_scenario, message: message}} =
+               Aethrion.Scenario.from_data(%{"name" => "typo", "expect" => [expectation]})
+
+      assert message =~ ~r/unknown|is not a/
+    end
+  end
+
   defp tick(hours), do: Event.time_tick("t", hours: hours)
 end

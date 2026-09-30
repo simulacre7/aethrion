@@ -115,7 +115,7 @@ The HTML report adds a comparison table (values that differ between branches fir
 
 ### Expectations
 
-Each expectation selects a value and compares it with `equals`, `at_least`, or `at_most`.
+Each expectation selects a value and compares it with `equals`, `at_least`, or `at_most`. Output and memory expectations are checked when the scenario loads: an unknown output type, filter key, or value (a bond, mood, tone, reason, or kind that does not exist) is an error, so a misspelled `"count": 0` cannot pass silently. With a custom pipeline, output types the built-in rules do not emit are allowed.
 
 | selector | value |
 | --- | --- |

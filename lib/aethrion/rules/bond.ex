@@ -159,23 +159,28 @@ defmodule Aethrion.Rules.Bond do
     end
   end
 
+  # However wide the margin, a good bond needs some liking and trust left, and
+  # a bad one some of its cause: tension above zero, or trust or affinity
+  # below it. Otherwise a large hysteresis would make a bond permanent.
   defp holds?(:close, r, t),
-    do: r.affinity >= t.close_affinity - t.hysteresis and r.trust >= t.close_trust - t.hysteresis
+    do:
+      r.affinity >= max(t.close_affinity - t.hysteresis, 1) and
+        r.trust >= max(t.close_trust - t.hysteresis, 1)
 
   defp holds?(:friendly, r, t),
     do:
-      r.affinity >= t.friendly_affinity - t.hysteresis and
-        r.trust >= t.friendly_trust - t.hysteresis
+      r.affinity >= max(t.friendly_affinity - t.hysteresis, 1) and
+        r.trust >= max(t.friendly_trust - t.hysteresis, 1)
 
   defp holds?(:strained, r, t),
     do:
-      r.tension >= t.strained_tension - t.hysteresis or
-        r.trust <= t.strained_trust + t.hysteresis
+      r.tension >= max(t.strained_tension - t.hysteresis, 1) or
+        r.trust <= min(t.strained_trust + t.hysteresis, -1)
 
   defp holds?(:estranged, r, t),
     do:
-      r.tension >= t.estranged_tension - t.hysteresis or
-        r.affinity <= t.estranged_affinity + t.hysteresis
+      r.tension >= max(t.estranged_tension - t.hysteresis, 1) or
+        r.affinity <= min(t.estranged_affinity + t.hysteresis, -1)
 
   defp rank(bond), do: Enum.find_index(@bonds, &(&1 == bond))
 
@@ -183,7 +188,7 @@ defmodule Aethrion.Rules.Bond do
     cond do
       r.tension >= t.estranged_tension or r.affinity <= t.estranged_affinity -> :estranged
       r.tension >= t.strained_tension or r.trust <= t.strained_trust -> :strained
-      r.tension >= t.settled_tension -> :neutral
+      t.settled_tension > 0 and r.tension >= t.settled_tension -> :neutral
       r.affinity >= t.close_affinity and r.trust >= t.close_trust -> :close
       r.affinity >= t.friendly_affinity and r.trust >= t.friendly_trust -> :friendly
       true -> :neutral

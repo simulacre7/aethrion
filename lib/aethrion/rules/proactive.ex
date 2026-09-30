@@ -53,7 +53,13 @@ defmodule Aethrion.Rules.Proactive do
   @impl true
   def apply(%Transition{} = transition) do
     state = transition.state
-    params = Map.new(params(), fn {key, _default} -> {key, Transition.param(transition, key)} end)
+
+    params =
+      params()
+      |> Map.new(fn {key, _default} -> {key, Transition.param(transition, key)} end)
+      # At most one message an hour, whatever the tuning: a flood of them in
+      # one simulated hour is never what a world wants.
+      |> Map.update!(:min_gap_hours, &max(&1, 1))
 
     # Checked on every event: curiosity can become possible after any change
     # (affinity rising, tension easing, a character being unblocked).
@@ -264,16 +270,17 @@ defmodule Aethrion.Rules.Proactive do
   # When a lonely message last went to this person.
   defp lonely_key(id, person), do: "proactive:#{id}:lonely:#{person}"
 
-  # The last lonely message to this person got no reply.
+  # The last lonely message to this person, sent in an earlier hour, got no
+  # reply.
   defp unanswered?(state, id, person) do
     case Map.fetch(state.cooldowns, lonely_key(id, person)) do
-      {:ok, sent} ->
+      {:ok, sent} when sent < state.clock ->
         case Map.fetch(state.cooldowns, Aethrion.Rules.Reply.contact_key(id, person)) do
           {:ok, contact} -> contact < sent
           :error -> true
         end
 
-      :error ->
+      _this_hour_or_never ->
         false
     end
   end
