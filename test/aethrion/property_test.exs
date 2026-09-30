@@ -198,4 +198,52 @@ defmodule Aethrion.PropertyTest do
       assert result.state == final
     end
   end
+
+  defp json_gen do
+    key =
+      member_of([
+        "characters",
+        "relationships",
+        "memories",
+        "id",
+        "name",
+        "state",
+        "from",
+        "to",
+        "type",
+        "events",
+        "expect",
+        "world",
+        "tuning",
+        "hours",
+        "importance"
+      ])
+
+    tree(
+      one_of([
+        constant(nil),
+        boolean(),
+        integer(-200..200),
+        string(:alphanumeric, max_length: 6)
+      ]),
+      fn leaf ->
+        one_of([list_of(leaf, max_length: 3), map_of(key, leaf, max_length: 4)])
+      end
+    )
+  end
+
+  property "untrusted JSON never raises in the parsers" do
+    check all(data <- json_gen(), max_runs: 300) do
+      for parse <- [
+            &Aethrion.State.parse/1,
+            &Aethrion.Scenario.from_data/1,
+            &Aethrion.Event.from_data/1,
+            &Aethrion.Tuning.from_data/1,
+            &Aethrion.Scenario.from_data(%{"world" => &1}),
+            &Aethrion.Scenario.from_data(%{"events" => [&1], "expect" => [&1]})
+          ] do
+        assert match?({:ok, _}, parse.(data)) or match?({:error, %Aethrion.Error{}}, parse.(data))
+      end
+    end
+  end
 end
