@@ -141,7 +141,7 @@ path = Path.join(System.tmp_dir!(), "cafe-morning.html")
 File.write!(path, Aethrion.Report.html(result))
 ```
 
-`Aethrion.Report.html(result, locale: :ko)`를 쓰면 제목, 이벤트 설명, 대사까지 모두 한국어로 된 리포트가 만들어집니다.
+`Aethrion.Report.html(result, locale: :ko)`를 쓰면 섹션 제목, 이벤트 설명, 대사가 한국어로 나오는 리포트가 만들어집니다(시나리오 이름·설명·프로필은 작성한 그대로).
 
 ## 6. 목소리 입히기
 

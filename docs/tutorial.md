@@ -141,6 +141,8 @@ path = Path.join(System.tmp_dir!(), "cafe-morning.html")
 File.write!(path, Aethrion.Report.html(result))
 ```
 
+`Aethrion.Report.html(result, locale: :ko)` writes the same report in Korean: section headings, event descriptions, memories, and every line (scenario names, descriptions, and profiles stay as written).
+
 ## 6. Give it a voice
 
 Every line a character says already has deterministic text. To have a model phrase it instead, render the outputs through an adapter. Rendering only changes text; the world is the same either way.
@@ -152,6 +154,13 @@ step.outputs
 |> Aethrion.Expression.render(adapter: Aethrion.LLM.Anthropic)   # needs ANTHROPIC_API_KEY
 |> Enum.filter(&Aethrion.Output.expressive?/1)
 |> Enum.each(&IO.puts(&1.text))
+```
+
+For Korean lines without a model, the built-in Korean templates do the same job:
+
+```elixir
+step.outputs
+|> Aethrion.Expression.render(adapter: Aethrion.LLM.FakeAdapter, adapter_opts: [locale: :ko])
 ```
 
 Without a key the adapter fails quietly and every line keeps its deterministic text; `output.expression.status` says which you got (`:ok` or `:fallback`). See [expression.md](expression.md) for adapters, configuration, and how intent interpretation works.

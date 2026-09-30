@@ -1,6 +1,6 @@
 # mix run examples/companion_week.exs
 #
-# A companion app over two weeks with the demo cast. The user talks to Mina
+# A companion app over ten days with the demo cast. The user talks to Mina
 # most mornings, gives her something small, says one thing they regret and
 # apologizes, then goes quiet for five days. What each character says along
 # the way is printed as it happens; on the user's return, the app shows a

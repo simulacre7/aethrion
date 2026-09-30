@@ -53,7 +53,7 @@ Aethrion.Digest.of(outputs_since_last_visit, Aethrion.World.get_state(world), lo
 |> Enum.map(& &1.text)
 ```
 
-`examples/companion_week.exs` plays two weeks of this with the demo cast (a week of mornings, a harsh word and an apology, five days away) and prints the digest on return, in English and Korean.
+`examples/companion_week.exs` plays ten days of this with the demo cast (five days of mornings with a harsh word and an apology, then five days away) and prints the digest on return, in English and Korean.
 
 The simulation never waits for the model: `dispatch` returns as soon as the rules have run, and each line arrives when it is rendered (or its fallback, if the model is slow or fails).
 

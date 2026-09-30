@@ -18,8 +18,8 @@ defmodule Aethrion.Rules.Proactive do
   | reason     | condition                                                  | cooldown |
   | ---------- | ---------------------------------------------------------- | -------- |
   | `:jealous` | jealousy >= 15 and jealousy + loneliness >= 45             | 24h      |
-  | `:lonely`  | loneliness >= 60, jealousy < 15, affinity >= 25 toward the person, no company for 6h, and not heading out with a friend this hour | 24h; 72h after a lonely message that got no reply, a week after a week of silence |
   | `:protective` | saw a person be hostile to a character they care about (affinity >= 30), and has not seen or heard them apologize since | once per incident, and 24h per person and friend |
+  | `:lonely`  | loneliness >= 60, jealousy < 15, affinity >= 25 toward the person, no company for 6h, and not heading out with a friend this hour | 24h; 72h after a lonely message that got no reply, a week after a week of silence |
   | `:curious` | heard secondhand news about a person and is `:playful` or has affinity >= 30 toward them; not about harsh words from someone they saw be hostile themselves | once per topic |
 
   Reasons are tried in the order of the table. Writing again after a lonely

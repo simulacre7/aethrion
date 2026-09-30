@@ -3,6 +3,10 @@
   "name": "Two regulars",
   "description": "Two people, Alex and Sam, visit the same three characters. Alex brings Mina a ring while Yuna watches. Yuna's jealousy is about Alex, so that is who Yuna writes to; Haru hears the story and asks Alex about it; when Alex apologizes, Yuna admits she just wanted to feel remembered too. Two quiet days later, Mina remembers the ring when reaching out to Alex, Yuna's lonely message goes to Sam, the person Yuna feels closest to, and Haru, who only knows Alex, writes to Alex again.",
   "world": {
+    "people": {
+      "alex": "Alex",
+      "sam": "Sam"
+    },
     "characters": [
       {
         "id": "mina",

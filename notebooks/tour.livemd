@@ -67,7 +67,7 @@ Every change is traced. Why does Ben trust the user less?
 
 ## Time passes, news travels
 
-Ana, upset, confides in Cho, who trusts Ana's word. A few more events, then a week.
+Ana, hurt, later confides in Cho, the friend she trusts most. A few more events, then five days.
 
 ```elixir
 {:ok, world, steps} =
