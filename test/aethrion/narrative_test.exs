@@ -47,6 +47,14 @@ defmodule Aethrion.NarrativeTest do
       assert State.get_relationship(state, "mina", "user").affinity == 40 - 2 * 2
     end
 
+    test "a week of silence never shortens a longer tuned wait" do
+      state = Aethrion.Tuning.put(Runtime.demo_state(), :proactive, :unanswered_hours, 240)
+      {_state, outputs} = run!(state, List.duplicate(tick(24), 30))
+
+      # Day 1, then every ten days: a week of silence does not bring it forward.
+      assert length(proactive(outputs, "mina")) == 3
+    end
+
     test "a reply resets the wait to a day" do
       {state, _outputs} = run!(Runtime.demo_state(), [tick(24)])
 
@@ -336,6 +344,17 @@ defmodule Aethrion.NarrativeTest do
         ])
 
       refute List.last(replies(outputs, "haru")).text =~ "hurt"
+    end
+
+    test "an insult right after an apology still hurts, whatever the hour" do
+      {_state, outputs} =
+        run!(Runtime.demo_state(), [
+          Event.apology_offered("user", "haru", "Sorry about before."),
+          Event.message_sent("user", "haru", "Useless.", tone: :hostile),
+          Event.message_sent("user", "haru", "Hey!", tone: :warm)
+        ])
+
+      assert List.last(replies(outputs, "haru")).text =~ "hurt"
     end
 
     test "friends do not spend every afternoon the same way" do
@@ -671,6 +690,40 @@ defmodule Aethrion.NarrativeTest do
 
       refute Enum.any?(mine, &(&1 =~ "reached out to Alex"))
       assert Enum.any?(texts, &(&1 =~ "reached out to Alex"))
+    end
+
+    test "another player's digest names the user instead of calling them you" do
+      state =
+        State.new(
+          people: %{"user" => "Jo", "player:sam" => "Sam"},
+          characters: [
+            %Aethrion.Character{id: "mara", name: "Mara"},
+            %Aethrion.Character{id: "tomas", name: "Tomas", traits: [:talkative]},
+            %Aethrion.Character{id: "elin", name: "Elin"}
+          ],
+          relationships: [
+            %Aethrion.Relationship{from: "tomas", to: "mara", affinity: 40, trust: 40},
+            %Aethrion.Relationship{from: "tomas", to: "elin", affinity: 30, trust: 40},
+            %Aethrion.Relationship{from: "tomas", to: "user", affinity: 30, trust: 20}
+          ]
+        )
+
+      {state, outputs} =
+        run!(state, [
+          Event.message_sent("user", "mara", "Get lost.", tone: :hostile, observed_by: ["tomas"]),
+          tick(6)
+        ])
+
+      told = fn opts ->
+        outputs
+        |> Aethrion.Digest.of(state, opts)
+        |> Enum.map(& &1.text)
+        |> Enum.find(&(&1 =~ "Get lost."))
+      end
+
+      assert told.(you: "user") =~ "what you said to Mara"
+      assert told.(you: "player:sam") =~ "what Jo said to Mara"
+      assert told.(you: "player:sam", locale: :ko) =~ "Jo가 Mara한테"
     end
 
     test "witnesses who speak up about the same thing use different words" do

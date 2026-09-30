@@ -19,7 +19,7 @@ defmodule Aethrion.Rules.Proactive do
   | ---------- | ---------------------------------------------------------- | -------- |
   | `:jealous` | jealousy >= 15 and jealousy + loneliness >= 45             | 24h      |
   | `:protective` | saw a person be hostile to a character they care about (affinity >= 30), and has not seen or heard them apologize since | once per incident, and 24h per person and friend |
-  | `:lonely`  | loneliness >= 60, jealousy < 15, affinity >= 25 toward the person, no company and nothing from that person for 6h, no brush-off from them for a day, and not heading out with a friend this hour | 24h; 72h after a lonely message that got no reply, a week after a week of silence |
+  | `:lonely`  | loneliness >= 60, jealousy < 15, affinity >= 25 toward the person, no company and nothing from that person for 6h, no brush-off from them for a day (`rebuff_hours`), and not heading out with a friend this hour | 24h; 72h after a lonely message that got no reply (`unanswered_hours`), a week after a week of silence (`silent_hours`) |
   | `:curious` | heard secondhand news about a person and is `:playful` or has affinity >= 30 toward them; not about harsh words from someone they saw be hostile themselves | once per topic |
 
   Reasons are tried in the order of the table. Writing again after a lonely
@@ -29,7 +29,7 @@ defmodule Aethrion.Rules.Proactive do
   use Aethrion.Rule,
     id: :proactive,
     description:
-      "Jealous (pressure>=45), protective (saw hostility to a friend), lonely (>=60, affinity>=25), or curious (heard news about someone) characters message that person; one message an hour at most, each reason at most once a day, lonely messages every 3 days when unanswered and weekly after a week of silence.",
+      "Jealous (pressure>=45), protective (saw hostility to a friend), lonely (>=60, affinity>=25), or curious (heard news about someone) characters message that person; one message an hour at most; jealous and lonely at most daily, protective once per incident, curious once per topic; lonely messages every 3 days when unanswered and weekly after a week of silence.",
     params: [
       jealousy_floor: 15,
       pressure_threshold: 45,
@@ -37,6 +37,8 @@ defmodule Aethrion.Rules.Proactive do
       lonely_affinity: 25,
       cooldown_hours: 24,
       unanswered_hours: 72,
+      silent_hours: 168,
+      rebuff_hours: 24,
       alone_hours: 6,
       ignored_affinity: -2,
       curious_affinity: 30,
@@ -171,7 +173,7 @@ defmodule Aethrion.Rules.Proactive do
          not Companionship.heading_out?(state, id) and
          State.cooldown_ready?(state, TimePassage.company_key(id), params.alone_hours) and
          State.cooldown_ready?(state, Reply.contact_key(id, closest), params.alone_hours) and
-         State.cooldown_ready?(state, Reply.rebuff_key(id, closest), params.cooldown_hours) and
+         State.cooldown_ready?(state, Reply.rebuff_key(id, closest), params.rebuff_hours) and
          State.get_relationship(state, id, closest).affinity >= params.lonely_affinity and
          State.cooldown_ready?(state, key, lonely_cooldown(state, id, closest, params)) do
       {:lonely, [key, lonely_key(id, closest)], closest,
@@ -242,9 +244,15 @@ defmodule Aethrion.Rules.Proactive do
   # week once there has been a week of silence.
   defp lonely_cooldown(state, id, person, params) do
     cond do
-      not unanswered?(state, id, person) -> params.cooldown_hours
-      silence(state, id, person) >= 168 -> 168
-      true -> params.unanswered_hours
+      not unanswered?(state, id, person) ->
+        params.cooldown_hours
+
+      # A longer silence only ever slows them down, whatever the tuning.
+      silence(state, id, person) >= params.silent_hours ->
+        Enum.max([params.silent_hours, params.unanswered_hours, params.cooldown_hours])
+
+      true ->
+        max(params.unanswered_hours, params.cooldown_hours)
     end
   end
 

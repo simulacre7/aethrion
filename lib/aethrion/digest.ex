@@ -56,6 +56,7 @@ defmodule Aethrion.Digest do
     say = %{
       locale: locale,
       you: you,
+      state: state,
       name: &name(state, &1, you, locale),
       # Impressions deepen after they form; tell what they hold now.
       impressions: for(%{kind: :impression} = m <- state.memories, into: %{}, do: {m.id, m.data})
@@ -261,18 +262,22 @@ defmodule Aethrion.Digest do
   # Lines are told again for the digest's reader: "you" is whoever `:you`
   # names, whoever the line was first written for.
   defp line(%{context: %Aethrion.Expression.Request{} = request}, %{locale: :ko} = say),
-    do: Ko.render(for_reader(request, say.you, "너"), tense: :past)
+    do: Ko.render(for_reader(request, say, "너"), tense: :past)
 
   # A line a model already phrased is kept as it is.
   defp line(%{expression: %{status: :ok}} = output, %{locale: :en}), do: output.text
 
-  defp line(%{context: %Aethrion.Expression.Request{} = request}, %{you: you})
+  defp line(%{context: %Aethrion.Expression.Request{} = request}, %{you: you} = say)
        when you != "user",
-       do: Aethrion.Expression.Templates.render(for_reader(request, you, "you"))
+       do: Aethrion.Expression.Templates.render(for_reader(request, say, "you"))
 
   defp line(output, _say), do: output.text
 
-  defp for_reader(request, you, word), do: %{request | names: Map.put(request.names, you, word)}
+  # The reader is "you"; everyone else, the first reader included, by name.
+  defp for_reader(request, %{you: you, state: state}, word) do
+    names = Map.new(request.names, fn {id, _name} -> {id, State.name(state, id)} end)
+    %{request | names: Map.put(names, you, word)}
+  end
 
   defp net_bonds(outputs, say) do
     outputs

@@ -530,6 +530,13 @@ defmodule Aethrion.Expression.Templates.Ko do
   # for another player maps them to "너").
   defp you?(request, id), do: name(request, id) == "너"
 
-  defp name(_request, "user"), do: "너"
-  defp name(request, id), do: Map.get(request.names, id, id)
+  # The reader is "you" in whichever language the request was named in.
+  defp name(request, id) do
+    case Map.get(request.names, id) do
+      "you" -> "너"
+      nil when id == "user" -> "너"
+      nil -> id
+      name -> name
+    end
+  end
 end

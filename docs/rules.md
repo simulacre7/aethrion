@@ -181,7 +181,7 @@ Characters reach out to people (actors who are not characters, such as `user`) w
 | --- | --- | --- |
 | `jealous` | jealousy >= 15 and jealousy + loneliness >= 45 | 24 simulated hours |
 | `protective` | saw a person be hostile to a character they care about (affinity >= 30), and has not seen or heard them apologize since | once per incident, and 24 simulated hours per person and friend |
-| `lonely` | loneliness >= 60, jealousy < 15, affinity >= 25 toward the person, no company and nothing from that person for 6 hours, no cold or hostile words from them for a day, and not heading out with a friend this hour | 24 simulated hours; 72 after a lonely message that got no reply; a week after a week of silence |
+| `lonely` | loneliness >= 60, jealousy < 15, affinity >= 25 toward the person, no company and nothing from that person for 6 hours, no cold or hostile words from them for a day (`rebuff_hours`), and not heading out with a friend this hour | 24 simulated hours; 72 after a lonely message that got no reply (`unanswered_hours`); a week after a week of silence (`silent_hours`) |
 | `curious` | holds secondhand news involving a person (not a character), and is `:playful` or has affinity >= 30 toward them; not about harsh words from someone they saw be hostile themselves | once per topic |
 
 Characters do not reach out to someone they feel tense toward (tension >= 5, parameter `avoid_tension`: one hostile message keeps them away for about three days); they confide in friends instead; speaking up for a friend is the exception. Writing again after a lonely message got no reply costs 2 affinity toward that person. Lonely messages quote each kind word once, and recall fond memories (kind words, a gift from the last three days, a record of kindness) only when nothing harsh stands between them, and mention how long it has been; after a week of silence only the silence is left: "I guess you've been busy. I'll be here whenever you want to talk."
@@ -190,7 +190,7 @@ Each message carries fallback text from deterministic templates, the ids of the 
 
 ## Tuning
 
-Every rule parameter printed by `mix aethrion.rules` (all the per-rule numbers on this page, including the message tone effects) has a default that a world can override. The faded threshold (20) is fixed, and the cascade limits are dispatch options (`max_depth`, `max_events`) rather than tuning. A world can override any of them without code, so two worlds can run the same rules with a different temperament:
+Every rule parameter printed by `mix aethrion.rules` has a default that a world can override: the thresholds, amounts, and cooldowns on this page, including the message tone effects. A few bookkeeping windows are fixed: the faded threshold (20), jealousy felt once a day per giver and only about a gift given that day, the 72 and 96 hours a reply looks back over (for reassurance and for repeated words), and the windows (a day, three days, a week) that choose a line's wording. The cascade limits are dispatch options (`max_depth`, `max_events`) rather than tuning. A world can override any parameter without code, so two worlds can run the same rules with a different temperament:
 
 ```elixir
 state =

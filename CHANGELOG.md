@@ -14,7 +14,7 @@ The social layer release: characters act on each other, every change is explaina
 - `Aethrion.Transition` and `Aethrion.Trace`: rules change state only through tracked helpers, so every change records the rule, the event, and the before/after values. `Aethrion.Runtime.step/3` returns an `Aethrion.Step` with the full trace, and every output carries `:rule` and `:event_id`.
 - `Aethrion.Digest`: what changed socially over a stretch of outputs, as short English or Korean lines for people ("while you were away").
 - `Aethrion.Explain`: every change to one value, with the rule and the chain of events behind it (`why yuna jealousy` in the interactive demo).
-- `Aethrion.Tuning`: every rule number is a declared parameter that a world, saved state, or scenario can override without code.
+- `Aethrion.Tuning`: rule thresholds, amounts, and cooldowns are declared parameters that a world, saved state, or scenario can override without code (a few bookkeeping windows stay fixed; see `docs/rules.md`).
 - Cascades: rules enqueue follow-up events that pass through validation and the same pipeline, linked by `:cause`, with depth and count limits (the count limit scales with the number of characters).
 
 **Social behavior**

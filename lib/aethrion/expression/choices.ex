@@ -335,7 +335,9 @@ defmodule Aethrion.Expression.Choices do
 
   defp find_memory(request, fun), do: Enum.find(request.memories, &fun.(&1.data))
 
-  # Hostile words from the listener in the last day, with no apology since.
+  # Hostile words from the listener within a day, not apologized for since.
+  # Which came last is told by event order, so an apology in the same hour
+  # as the insult still counts.
   defp recently_hurt?(request) do
     listener = request.listener.id
 
@@ -345,15 +347,25 @@ defmodule Aethrion.Expression.Choices do
         &(match?(%{kind: :experienced, data: %{"event" => ^event, "from" => ^listener}}, &1) and
             (event != "message_sent" or &1.data["tone"] == "hostile"))
       )
-      |> Enum.map(&Request.hours_ago(request, &1))
-      |> Enum.reject(&is_nil/1)
-      |> Enum.min(fn -> nil end)
+      |> Enum.max_by(&(Aethrion.Memories.event_number(&1) || 0), fn -> nil end)
     end
 
     case {latest.("message_sent"), latest.("apology_offered")} do
-      {nil, _apology} -> false
-      {hurt, nil} -> hurt < 24
-      {hurt, apology} -> hurt < 24 and apology > hurt
+      {nil, _apology} ->
+        false
+
+      {hurt, apology} ->
+        within_a_day?(request, hurt) and
+          (apology == nil or
+             (Aethrion.Memories.event_number(apology) || 0) <
+               (Aethrion.Memories.event_number(hurt) || 0))
+    end
+  end
+
+  defp within_a_day?(request, memory) do
+    case Request.hours_ago(request, memory) do
+      nil -> false
+      hours -> hours < 24
     end
   end
 
