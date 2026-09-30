@@ -72,4 +72,21 @@ defmodule Aethrion.ReadmeTest do
              "the recorded transcript shows a line the demo no longer prints: #{line}"
     end
   end
+
+  test "the Livebook tour runs, apart from installing and rendering" do
+    [_install | cells] =
+      ~r/```elixir\n(.*?)```/s
+      |> Regex.scan(File.read!("notebooks/tour.livemd"), capture: :all_but_first)
+      |> List.flatten()
+
+    code =
+      cells
+      |> Enum.join("\n")
+      |> String.replace("|> Kino.HTML.new()", "|> byte_size()")
+
+    capture_io(fn ->
+      {html_size, _binding} = Code.eval_string(code)
+      assert html_size > 10_000
+    end)
+  end
 end

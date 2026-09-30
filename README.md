@@ -338,6 +338,7 @@ Recommended local versions:
 ## Documentation
 
 - [docs/tutorial.md](docs/tutorial.md) - build a world of your own in a few minutes
+- [notebooks/tour.livemd](notebooks/tour.livemd) - the same ideas as a Livebook notebook
 - [docs/concept.md](docs/concept.md) - the idea and the shared social layer
 - [docs/rules.md](docs/rules.md) - every built-in rule, its numbers, and how to write your own
 - [docs/expression.md](docs/expression.md) - the LLM boundary and adapters

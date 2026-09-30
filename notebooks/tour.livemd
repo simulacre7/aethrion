@@ -1,0 +1,115 @@
+# A tour of Aethrion
+
+```elixir
+Mix.install([
+  # From a checkout of this repository; use {:aethrion, github: "simulacre7/aethrion"} elsewhere.
+  {:aethrion, path: Path.join(__DIR__, "..")},
+  {:kino, "~> 0.14"}
+])
+```
+
+## A world
+
+A world is plain data: characters and directed relationships. `demo_state/0` gives Mina, Yuna, and Haru; here we build our own small office.
+
+```elixir
+alias Aethrion.{Character, Event, Explain, Relationship, State}
+
+world =
+  State.new(
+    characters: [
+      %Character{id: "ana", name: "Ana", profile: "New on the team."},
+      %Character{id: "ben", name: "Ben", profile: "Ana's desk neighbour.", traits: [:calm]},
+      %Character{id: "cho", name: "Cho", profile: "Ben's oldest friend.", traits: [:talkative]}
+    ],
+    relationships: [
+      %Relationship{from: "ana", to: "user", affinity: 30, trust: 20},
+      %Relationship{from: "ben", to: "user", affinity: 30, trust: 25},
+      %Relationship{from: "ben", to: "ana", affinity: 35, trust: 30},
+      %Relationship{from: "cho", to: "user", affinity: 30, trust: 25},
+      %Relationship{from: "cho", to: "ana", affinity: 25, trust: 20},
+      %Relationship{from: "ana", to: "cho", affinity: 30, trust: 45}
+    ]
+  )
+```
+
+## Something happens
+
+The user snaps at Ana while Ben is at the next desk. Everything that follows comes from rules.
+
+```elixir
+{:ok, step} =
+  Aethrion.step(
+    world,
+    Event.message_sent("user", "ana", "This is wrong again.", tone: :hostile, observed_by: ["ben"])
+  )
+
+Enum.each(step.log, &IO.puts/1)
+```
+
+Each character line is an output with deterministic text (a model can rephrase it later):
+
+```elixir
+for %{text: text} = output <- step.outputs, Aethrion.Output.expressive?(output) do
+  "#{output.character_id} -> #{output.to}: #{text}"
+end
+```
+
+## Why?
+
+Every change is traced. Why does Ben trust the user less?
+
+```elixir
+[step]
+|> Explain.relationship("ben", "user", :trust)
+|> Explain.describe()
+```
+
+## Time passes, news travels
+
+Ana, upset, confides in Cho, who trusts Ana's word. A few more events, then a week.
+
+```elixir
+{:ok, world, steps} =
+  Aethrion.run(step.state, [
+    Event.message_sent("user", "ana", "Nobody asked for your opinion.", tone: :hostile, observed_by: ["ben"]),
+    Event.time_tick("that evening", hours: 3),
+    Event.message_sent("user", "ben", "Coffee?", tone: :warm),
+    Event.time_tick("next week", hours: 120)
+  ])
+
+for step <- steps, %{type: :bond_changed} = change <- step.outputs do
+  "#{change.from} toward #{change.to}: #{change.before} -> #{change.after}"
+end
+```
+
+What Ben has come to believe about the user, once the details faded:
+
+```elixir
+for memory <- world.memories, memory.character_id == "ben", memory.kind == :impression do
+  memory.content
+end
+```
+
+## See it as a page
+
+A scenario is the same world and events as JSON-friendly data; a report renders it.
+
+```elixir
+scenario_data = %{
+  "name" => "Tour",
+  "world" => world |> State.to_data(),
+  "events" => [Event.message_sent("user", "ben", "Sorry about the other day.", tone: :warm) |> Event.to_data()]
+}
+
+{:ok, scenario} = Aethrion.Scenario.from_data(scenario_data)
+{:ok, result} = Aethrion.Scenario.run(scenario)
+
+result |> Aethrion.Report.html() |> IO.iodata_to_binary() |> Kino.HTML.new()
+```
+
+## Next
+
+- The [tutorial](../docs/tutorial.md) adds a rule of your own.
+- The [cookbook](../docs/cookbook.md) shows companion-app and game patterns.
+- `mix demo.interactive` lets you play with the demo cast from a terminal.

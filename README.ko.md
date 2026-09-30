@@ -334,6 +334,7 @@ flowchart TD
 ## 문서
 
 - [docs/tutorial.ko.md](docs/tutorial.ko.md) - 몇 분 만에 나만의 세계 만들기
+- [notebooks/tour.livemd](notebooks/tour.livemd) - Livebook 노트북으로 둘러보기 (영문)
 - [docs/concept.md](docs/concept.md) - 아이디어와 공유 소셜 레이어
 - [docs/rules.md](docs/rules.md) - 모든 기본 규칙과 수치, 직접 규칙 작성하기
 - [docs/expression.md](docs/expression.md) - LLM 경계와 adapter
