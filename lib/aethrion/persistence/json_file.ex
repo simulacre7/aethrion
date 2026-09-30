@@ -4,6 +4,8 @@ defmodule Aethrion.Persistence.JsonFile do
 
   Loading validates the file with `Aethrion.State.parse/2`, so a malformed or
   hand-edited file is reported instead of crashing, and never creates atoms.
+  Saving writes a temporary file and renames it into place, so a crash while
+  saving leaves the previous snapshot intact.
   """
 
   @behaviour Aethrion.Persistence
@@ -15,7 +17,22 @@ defmodule Aethrion.Persistence.JsonFile do
     with {:ok, path} <- fetch_path(opts),
          :ok <- io(File.mkdir_p(Path.dirname(path)), path),
          {:ok, json} <- encode(state) do
-      io(File.write(path, json), path)
+      write_aside(path, json)
+    end
+  end
+
+  # Written next to the target and renamed over it, so a crash or a
+  # concurrent save never leaves a half-written snapshot behind.
+  defp write_aside(path, json) do
+    tmp = "#{path}.#{System.unique_integer([:positive])}.tmp"
+
+    case io(File.write(tmp, json), path) do
+      :ok ->
+        io(File.rename(tmp, path), path)
+
+      error ->
+        File.rm(tmp)
+        error
     end
   end
 

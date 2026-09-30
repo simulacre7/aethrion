@@ -83,6 +83,16 @@ for step <- steps, %{type: :bond_changed} = change <- step.outputs do
 end
 ```
 
+The same week as a host would show it to the user coming back, in English and Korean:
+
+```elixir
+outputs = Enum.flat_map(steps, & &1.outputs)
+
+for locale <- [:en, :ko], item <- Aethrion.Digest.of(outputs, world, locale: locale) do
+  item.text
+end
+```
+
 What Ben has come to believe about the user, once the details faded:
 
 ```elixir

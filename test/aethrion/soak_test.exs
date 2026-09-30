@@ -35,8 +35,15 @@ defmodule Aethrion.SoakTest do
     end
   end
 
-  @tag :tmp_dir
-  test "crashes and compaction never change where the world ends up", %{tmp_dir: dir} do
+  # A directory of its own per run, so concurrent test runs never share files.
+  setup do
+    dir = Path.join(System.tmp_dir!(), "aethrion-soak-#{System.unique_integer([:positive])}")
+    File.mkdir_p!(dir)
+    on_exit(fn -> File.rm_rf(dir) end)
+    %{dir: dir}
+  end
+
+  test "crashes and compaction never change where the world ends up", %{dir: dir} do
     name = :"soak_#{System.unique_integer([:positive])}"
     path = Path.join(dir, "world.jsonl")
     events = events(300, 7)
@@ -74,8 +81,7 @@ defmodule Aethrion.SoakTest do
     assert length(remaining) < 23
   end
 
-  @tag :tmp_dir
-  test "a snapshotting world survives the same crashes", %{tmp_dir: dir} do
+  test "a snapshotting world survives the same crashes", %{dir: dir} do
     name = :"soak_snap_#{System.unique_integer([:positive])}"
     events = events(200, 11)
 
