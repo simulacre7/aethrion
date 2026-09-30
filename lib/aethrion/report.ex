@@ -166,6 +166,12 @@ defmodule Aethrion.Report do
       |> Enum.map(fn character ->
         before = State.character(initial, character.id)
 
+        why =
+          result.steps
+          |> Aethrion.Explain.character(character.id, :mood)
+          |> Aethrion.Explain.describe(&narrative_name(result.state, &1))
+          |> Enum.map(&["<li>", esc(&1), "</li>"])
+
         meters =
           Enum.map(@metrics, fn {field, label, color} ->
             value = Map.fetch!(character.state, field)
@@ -216,6 +222,14 @@ defmodule Aethrion.Report do
               "<p class=\"remembers\">Remembers most</p><ul class=\"memories\">",
               remembered,
               "</ul>"
+            ]
+          ),
+          if(why == [],
+            do: "",
+            else: [
+              "<details class=\"why\"><summary>Why this mood</summary><ul>",
+              why,
+              "</ul></details>"
             ]
           ),
           "</article>"
@@ -790,6 +804,10 @@ defmodule Aethrion.Report do
   defp short_label(%{type: type, id: id}),
     do: "#{id} #{type |> to_string() |> String.split("_") |> hd()}"
 
+  # Names inside sentences ("the user gives Mina a flower").
+  defp narrative_name(_state, "user"), do: "the user"
+  defp narrative_name(state, id), do: State.name(state, id)
+
   defp display(_state, "user"), do: "You"
   defp display(state, id), do: State.name(state, id)
 
@@ -880,6 +898,9 @@ defmodule Aethrion.Report do
     .meter-track{height:8px;background:var(--chip);border-radius:4px;overflow:hidden}
     .meter-fill{display:block;height:100%;border-radius:4px}
     .meter-value{text-align:right}
+    .why{margin-top:12px;font-size:13px}
+    .why ul{margin:6px 0 0;padding-left:18px;color:var(--text-secondary)}
+    .why li{margin:3px 0}
     .remembers{margin:14px 0 6px;font-size:12px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em}
     .memories{list-style:none;padding:0;margin:0;display:grid;gap:6px;font-size:13px;color:var(--text-secondary)}
     .memory-kind{display:inline-block;min-width:74px;font-size:11px;color:var(--text-muted)}

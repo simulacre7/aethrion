@@ -21,6 +21,7 @@ defmodule Aethrion.ReportTest do
 
     assert html =~ "You looked happy with Mina earlier."
     assert html =~ "caused by e3"
+    assert html =~ "mood neutral -&gt; jealous by mood in e1: the user gives Mina a flower"
     assert html =~ "10/10"
     refute html =~ ~r/<(script|link)[^>]+src=/
   end
