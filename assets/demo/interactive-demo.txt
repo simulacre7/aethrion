@@ -43,25 +43,11 @@ STATE    Haru loneliness -8
 STATE    Haru joy +8
 MEMORY   Haru remembers: "user said to haru (warm): "thank you for looking after Yuna""
 SAYS     Haru -> user: "That's sweet of you."
-user> why yuna
+user> why yuna jealousy
 
-Why  every traced change concerning yuna
-  e1 observation: Yuna noticed the gift to Mina
-  e1 observation: yuna.jealousy 0 -> 15
-  e1 observation: yuna->mina.tension 0 -> 8
-  e1 observation: yuna remembers "yuna saw user give mina a flower."
-  e1 mood: yuna.mood neutral -> jealous
-  e2 time_passage: yuna.loneliness 26 -> 34
-  e2 autonomy: enqueued gossip_shared
-  e3 gossip: memory:yuna:observed:e1.shared_with [] -> ["haru"]
-  e3 gossip: yuna.loneliness 34 -> 30
-  e3 gossip: yuna->haru.trust 40 -> 42
-  e4 comfort: yuna.loneliness 30 -> 18
-  e4 comfort: yuna.jealousy 15 -> 10
-  e4 comfort: yuna->haru.trust 42 -> 47
-  e4 comfort: yuna->haru.affinity 25 -> 28
-  e4 comfort: yuna remembers "haru comforted yuna."
-  e4 mood: yuna.mood jealous -> neutral
+Why  yuna.jealousy
+  jealousy 0 -> 15 by observation in e1: user gives Mina a flower (seen by Yuna)
+  jealousy 15 -> 10 by comfort in e4: Haru comforts Yuna <- Yuna confides in Haru <- time passes +2h
 
 user> quit
 bye

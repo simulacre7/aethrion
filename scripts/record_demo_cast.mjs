@@ -17,7 +17,7 @@ const commands = [
   "gift user mina flower observed_by yuna",
   "tick 2",
   "say haru thank you for looking after Yuna",
-  "why yuna",
+  "why yuna jealousy",
   "quit",
 ];
 
