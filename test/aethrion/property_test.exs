@@ -31,8 +31,14 @@ defmodule Aethrion.PropertyTest do
       gen all(from <- member_of(@actors), to <- member_of(@characters)) do
         Event.comfort_offered(from, to)
       end,
+      gen all(from <- member_of(@characters), to <- member_of(@characters)) do
+        Event.time_spent_together(from, to)
+      end,
       gen all(hours <- integer(1..30)) do
         Event.time_tick("prop", hours: hours)
+      end,
+      gen all(hours <- integer(100..900)) do
+        Event.time_tick("prop:long", hours: hours)
       end
     ])
   end
@@ -136,6 +142,60 @@ defmodule Aethrion.PropertyTest do
       rendered = Expression.render(outputs)
 
       assert Enum.map(rendered, &Map.delete(&1, :expression)) == outputs
+    end
+  end
+
+  property "a journal always replays to the live world" do
+    check all(events <- list_of(event_gen(), max_length: 25)) do
+      path =
+        Path.join(System.tmp_dir!(), "aethrion-prop-#{System.unique_integer([:positive])}.jsonl")
+
+      try do
+        :ok = Aethrion.Journal.create(path, Runtime.demo_state())
+
+        live =
+          Enum.reduce(events, Runtime.demo_state(), fn event, state ->
+            case Runtime.step(state, event) do
+              {:ok, step} ->
+                :ok = Aethrion.Journal.append(path, step.event)
+                step.state
+
+              {:error, _error} ->
+                state
+            end
+          end)
+
+        assert {:ok, ^live, _steps} = Aethrion.Journal.replay(path)
+      after
+        File.rm(path)
+      end
+    end
+  end
+
+  property "a recorded session replays as a passing scenario" do
+    check all(events <- list_of(event_gen(), max_length: 20)) do
+      {final, steps} =
+        Enum.reduce(events, {Runtime.demo_state(), []}, fn event, {state, steps} ->
+          case Runtime.step(state, event) do
+            {:ok, step} -> {step.state, steps ++ [step]}
+            {:error, _error} -> {state, steps}
+          end
+        end)
+
+      data =
+        "demo"
+        |> Aethrion.Scenario.record(
+          Enum.map(steps, & &1.event),
+          final,
+          Enum.flat_map(steps, & &1.outputs)
+        )
+        |> Jason.encode!()
+        |> Jason.decode!()
+
+      assert {:ok, scenario} = Aethrion.Scenario.from_data(data)
+      assert {:ok, result} = Aethrion.Scenario.run(scenario)
+      assert Aethrion.Scenario.passed?(result)
+      assert result.state == final
     end
   end
 end
