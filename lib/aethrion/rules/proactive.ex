@@ -1,8 +1,9 @@
 defmodule Aethrion.Rules.Proactive do
   @moduledoc """
   Characters reach out to people (actors who are not characters, such as
-  `"user"`) on their own when social pressure crosses a threshold. At most one
-  proactive message per character per event.
+  `"user"`) on their own when social pressure crosses a threshold. A character
+  sends at most one proactive message per simulated hour (`min_gap_hours`), so a
+  cascade never produces a burst of messages from one character.
 
   Who they reach out to: jealousy goes to whoever gave the gift they saw,
   loneliness to the person they feel closest to, and curiosity to the person
@@ -22,14 +23,15 @@ defmodule Aethrion.Rules.Proactive do
   use Aethrion.Rule,
     id: :proactive,
     description:
-      "Jealous (pressure>=45), lonely (>=60), or curious (heard news about the user) characters message the user.",
+      "Jealous (pressure>=45), lonely (>=60), or curious (heard news about someone) characters message that person, at most once an hour.",
     params: [
       jealousy_floor: 15,
       pressure_threshold: 45,
       loneliness_threshold: 60,
       cooldown_hours: 24,
       curious_affinity: 30,
-      avoid_tension: 10
+      avoid_tension: 10,
+      min_gap_hours: 1
     ]
 
   alias Aethrion.{Character, Expression, Memories, Memory, Output, State, Transition}
@@ -51,6 +53,7 @@ defmodule Aethrion.Rules.Proactive do
     state
     |> State.sorted_characters()
     |> Enum.filter(&(Character.can_act?(&1) and could_reach_out?(&1, params)))
+    |> Enum.filter(&State.cooldown_ready?(state, gap_key(&1.id), params.min_gap_hours))
     |> Enum.reduce(transition, fn character, transition ->
       people = people(transition.state, character.id, outgoing, params)
 
@@ -89,6 +92,9 @@ defmodule Aethrion.Rules.Proactive do
     |> Enum.sort_by(&{-&1.affinity, &1.to})
     |> Enum.map(& &1.to)
   end
+
+  # Any proactive message from this character, to space messages out.
+  defp gap_key(id), do: "proactive:#{id}"
 
   # Cheap numeric pre-check so people are only computed for characters who
   # might actually reach out.
@@ -183,6 +189,7 @@ defmodule Aethrion.Rules.Proactive do
 
     transition
     |> Transition.put_cooldown(key)
+    |> Transition.put_cooldown(gap_key(character.id))
     |> Transition.emit(output)
     |> Transition.log("[Output] #{character.name} -> #{recipient}: \"#{output.text}\"")
   end

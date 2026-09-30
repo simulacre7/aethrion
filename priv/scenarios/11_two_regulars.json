@@ -1,0 +1,148 @@
+{
+  "$schema": "../scenario.schema.json",
+  "name": "Two regulars",
+  "description": "Two people, Alex and Sam, visit the same three characters. Alex brings Mina a ring while Yuna watches. Yuna's jealousy is about Alex, so that is who Yuna writes to; Haru hears the story and asks Alex about it. A day later, Mina remembers the ring when reaching out to Alex, while Yuna's lonely message goes to Sam, the person Yuna feels closest to. Each character sends at most one message an hour, so Haru's second message waits.",
+  "world": {
+    "characters": [
+      {
+        "id": "mina",
+        "name": "Mina",
+        "profile": "Warm and expressive.",
+        "traits": [
+          "warm"
+        ]
+      },
+      {
+        "id": "yuna",
+        "name": "Yuna",
+        "profile": "Sensitive and observant.",
+        "traits": [
+          "sensitive"
+        ],
+        "state": {
+          "loneliness": 20
+        }
+      },
+      {
+        "id": "haru",
+        "name": "Haru",
+        "profile": "Calm and playful.",
+        "traits": [
+          "calm",
+          "playful"
+        ]
+      }
+    ],
+    "relationships": [
+      {
+        "from": "yuna",
+        "to": "alex",
+        "affinity": 40,
+        "trust": 20
+      },
+      {
+        "from": "yuna",
+        "to": "sam",
+        "affinity": 55,
+        "trust": 35
+      },
+      {
+        "from": "yuna",
+        "to": "haru",
+        "affinity": 25,
+        "trust": 40
+      },
+      {
+        "from": "haru",
+        "to": "yuna",
+        "affinity": 30,
+        "trust": 35
+      },
+      {
+        "from": "haru",
+        "to": "alex",
+        "affinity": 15
+      },
+      {
+        "from": "mina",
+        "to": "alex",
+        "affinity": 30
+      },
+      {
+        "from": "mina",
+        "to": "sam",
+        "affinity": 20
+      }
+    ]
+  },
+  "events": [
+    {
+      "type": "gift_received",
+      "from": "alex",
+      "to": "mina",
+      "item": "ring",
+      "observed_by": [
+        "yuna"
+      ],
+      "at": "monday"
+    },
+    {
+      "type": "time_tick",
+      "now": "monday evening",
+      "hours": 3
+    },
+    {
+      "type": "apology_offered",
+      "from": "alex",
+      "to": "yuna",
+      "reason": "I should have brought something for you too.",
+      "at": "tuesday"
+    },
+    {
+      "type": "time_tick",
+      "now": "wednesday",
+      "hours": 30
+    }
+  ],
+  "expect": [
+    {
+      "output": "proactive_message",
+      "character": "yuna",
+      "reason": "jealous",
+      "to": "alex",
+      "count": 1
+    },
+    {
+      "output": "proactive_message",
+      "character": "haru",
+      "reason": "curious",
+      "to": "alex",
+      "count": 1
+    },
+    {
+      "output": "proactive_message",
+      "character": "yuna",
+      "reason": "lonely",
+      "to": "sam",
+      "count": 1
+    },
+    {
+      "output": "proactive_message",
+      "character": "mina",
+      "reason": "lonely",
+      "to": "alex",
+      "text": "I still have the ring you gave me. Do you have a minute to talk?",
+      "count": 1
+    },
+    {
+      "output": "proactive_message",
+      "character": "haru",
+      "count": 2
+    },
+    {
+      "output": "proactive_message",
+      "to": "user",
+      "count": 0
+    }
+  ]
+}
