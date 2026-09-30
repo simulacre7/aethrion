@@ -103,8 +103,7 @@ defmodule Aethrion.Rules.Consolidation do
     Enum.reduce(groups, transition, fn {key, memories, existing}, transition ->
       # A topic already folded in (details forgotten, story heard again) is
       # marked above but not counted twice.
-      folded =
-        if existing, do: MapSet.new(Map.get(existing.data, "topics", [])), else: MapSet.new()
+      folded = MapSet.new(if existing, do: Map.get(existing.data, "topics", []), else: [])
 
       case Enum.reject(memories, &(is_binary(&1.topic) and MapSet.member?(folded, &1.topic))) do
         [] -> transition
