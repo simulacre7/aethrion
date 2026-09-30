@@ -131,6 +131,19 @@ defmodule Aethrion.Report do
 
         traits = Enum.map(character.traits, &["<li>", esc(&1), "</li>"])
 
+        remembered =
+          result.state
+          |> Aethrion.Memories.important(character.id, 3)
+          |> Enum.map(fn memory ->
+            [
+              "<li><span class=\"memory-kind\">",
+              esc(memory.kind),
+              "</span>",
+              esc(memory.content),
+              "</li>"
+            ]
+          end)
+
         [
           "<article class=\"card\"><div class=\"card-head\"><h3>",
           esc(character.name),
@@ -141,6 +154,14 @@ defmodule Aethrion.Report do
           "</p>",
           if(traits == [], do: "", else: ["<ul class=\"traits\">", traits, "</ul>"]),
           meters,
+          if(remembered == [],
+            do: "",
+            else: [
+              "<p class=\"remembers\">Remembers most</p><ul class=\"memories\">",
+              remembered,
+              "</ul>"
+            ]
+          ),
           "</article>"
         ]
       end)
@@ -802,6 +823,9 @@ defmodule Aethrion.Report do
     .meter-track{height:8px;background:var(--chip);border-radius:4px;overflow:hidden}
     .meter-fill{display:block;height:100%;border-radius:4px}
     .meter-value{text-align:right}
+    .remembers{margin:14px 0 6px;font-size:12px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em}
+    .memories{list-style:none;padding:0;margin:0;display:grid;gap:6px;font-size:13px;color:var(--text-secondary)}
+    .memory-kind{display:inline-block;min-width:74px;font-size:11px;color:var(--text-muted)}
     .delta{color:var(--text-muted);font-size:12px}
     .legend{display:flex;flex-wrap:wrap;gap:16px;list-style:none;padding:0;margin:0 0 12px;font-size:13px;color:var(--text-secondary)}
     .legend .key{display:inline-block;width:14px;height:2px;border-radius:1px;vertical-align:middle;margin-right:6px}
