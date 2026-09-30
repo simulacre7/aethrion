@@ -34,7 +34,9 @@ defmodule Aethrion.MixTasksTest do
 
   test "the scripted and branch demos run" do
     assert capture_io(fn -> Mix.Tasks.Demo.Drama.run([]) end) |> plain() =~ "Haru comforts Yuna"
-    assert capture_io(fn -> Mix.Tasks.Demo.Branches.run([]) end) |> plain() =~ "Branch B"
+
+    assert capture_io(fn -> Mix.Tasks.Demo.Branches.run([]) end) |> plain() =~
+             "Where Yuna ends up"
   end
 
   test "scenario task checks bundled scenarios" do

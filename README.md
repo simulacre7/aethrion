@@ -73,7 +73,7 @@ MOOD     Yuna jealous -> neutral
 
 Yuna reaches out because jealousy plus loneliness crossed a threshold. She confides in Haru because she is struggling and trusts him most. Haru hears about the flower secondhand and, being playful, teases the user. Haru comforts Yuna because he cares about her. Each of those is a rule you can read, test, and trace.
 
-Apologize to Yuna before the two hours pass and none of it happens: see `mix demo.branches`.
+Apologize to Yuna before the two hours pass and none of it happens. `mix demo.branches` plays the same moment four ways (say nothing, apologize, kind words, snap) and compares where Yuna ends up.
 
 ## Why This Exists
 

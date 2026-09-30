@@ -1,89 +1,93 @@
 defmodule Mix.Tasks.Demo.Branches do
-  @moduledoc "Runs a branched Aethrion scenario demo."
-  @shortdoc "Runs a branched Aethrion scenario demo"
+  @moduledoc """
+  Runs the branched demo: one moment, four possible next moves.
+
+      mix demo.branches
+
+  Yuna has just watched the user give Mina a flower. The demo plays the
+  bundled `07_crossroads.json` scenario (say nothing, apologize, kind words,
+  or snap), shows what each character says in each branch, and compares
+  where Yuna ends up.
+  """
+  @shortdoc "Runs the branched Aethrion scenario demo"
 
   use Mix.Task
 
   alias Aethrion.CLI.Display
-  alias Aethrion.{Event, Runtime, State}
+  alias Aethrion.{Scenario, State}
+
+  @scenario "07_crossroads.json"
 
   @impl Mix.Task
   def run(_args) do
+    Mix.Task.run("app.start")
     Display.banner()
-    Display.message("Branch demo: the same setup diverges after the user's next choice.")
 
-    Display.message("\nShared setup")
+    path = Enum.find(Scenario.bundled(), &(Path.basename(&1) == @scenario))
+    {:ok, scenario} = Scenario.load(path)
+    {:ok, result} = Scenario.run(scenario)
 
-    {base_state, _setup_outputs} =
-      Runtime.demo_state()
-      |> dispatch_and_print(
-        Event.gift_received("user", "mina", "flower",
-          observed_by: ["yuna"],
-          at: "branch:setup"
-        )
-      )
+    Display.heading(scenario.name, scenario.description)
+    Display.message("Shared setup")
+    print_steps(result.steps, scenario.state)
 
-    ignored_branch =
-      run_branch(
-        "Branch A: user ignores Yuna",
-        base_state,
-        [Event.time_tick("branch:ignored:t1", hours: 2)]
-      )
+    Enum.each(result.branches, fn branch ->
+      Display.heading("Branch: #{branch.name}", branch.description)
 
-    apology_branch =
-      run_branch(
-        "Branch B: user apologizes to Yuna",
-        base_state,
-        [
-          Event.apology_offered("user", "yuna", "I should have checked in with you too.",
-            at: "branch:apology:t1"
-          ),
-          Event.time_tick("branch:apology:t2", hours: 2)
-        ]
-      )
+      branch.steps
+      |> Enum.flat_map(& &1.log)
+      |> Enum.filter(&String.match?(&1, ~r/^\[(Output|Scene|Event|Mood)\]/))
+      |> Enum.each(&Display.log/1)
+    end)
 
-    print_summary(ignored_branch, apology_branch)
-
+    print_comparison(result)
     :ok
   end
 
-  defp run_branch(title, state, events) do
-    Display.message("\n#{title}")
-
-    Enum.reduce(events, {state, []}, fn event, {state, all_outputs} ->
-      {state, outputs} = dispatch_and_print(state, event)
-      {state, all_outputs ++ outputs}
+  defp print_steps(steps, initial) do
+    Enum.reduce(steps, initial, fn step, before ->
+      Display.event(step.event, before)
+      Enum.each(step.log, &Display.log/1)
+      step.state
     end)
   end
 
-  defp dispatch_and_print(state, event) do
-    {:ok, step} = Runtime.step(state, event)
+  defp print_comparison(result) do
+    Display.heading("Where Yuna ends up")
 
-    Display.event(step.event, state)
-    Enum.each(step.log, &Display.log/1)
+    Display.message(
+      "  " <>
+        Enum.map_join(
+          ["branch", "jealousy", "lonely", "trust->you", "tension->you", "lines to you"],
+          "",
+          &String.pad_trailing(&1, 14)
+        )
+    )
 
-    {step.state, step.outputs}
-  end
+    Enum.each(result.branches, fn branch ->
+      yuna = State.character(branch.state, "yuna").state
+      to_user = State.get_relationship(branch.state, "yuna", "user")
 
-  defp print_summary({ignored_state, ignored_outputs}, {apology_state, apology_outputs}) do
-    ignored_yuna = ignored_state.characters["yuna"].state
-    apology_yuna = apology_state.characters["yuna"].state
-
-    Display.message("\nBranch result")
-
-    for {label, state, outputs, yuna} <- [
-          {"Ignored", ignored_state, ignored_outputs, ignored_yuna},
-          {"Apology", apology_state, apology_outputs, apology_yuna}
-        ] do
-      messages = Enum.count(outputs, &(&1.type == :proactive_message))
-      scenes = Enum.count(outputs, &(&1.type == :character_interaction))
+      lines =
+        Enum.count(branch.outputs, fn output ->
+          output.type in [:proactive_message, :reply] and output[:character_id] == "yuna"
+        end)
 
       Display.message(
-        "#{label}: Yuna jealousy=#{yuna.jealousy} loneliness=#{yuna.loneliness} " <>
-          "trust->user=#{State.get_relationship(state, "yuna", "user").trust} " <>
-          "trust->haru=#{State.get_relationship(state, "yuna", "haru").trust} " <>
-          "proactive_messages=#{messages} scenes=#{scenes}"
+        "  " <>
+          Enum.map_join(
+            [
+              branch.name,
+              yuna.jealousy,
+              yuna.loneliness,
+              to_user.trust,
+              to_user.tension,
+              lines
+            ],
+            "",
+            &String.pad_trailing(to_string(&1), 14)
+          )
       )
-    end
+    end)
   end
 end
