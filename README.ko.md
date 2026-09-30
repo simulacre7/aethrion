@@ -87,7 +87,7 @@ Yuna가 먼저 연락하는 이유는 질투와 외로움의 합이 임계값을
 EVENT    user -> Mina (hostile): You always ruin everything. (seen by Haru)
 SAYS     Mina -> user: "Please stop."
 RULE     Haru saw user be hostile to Mina and trusts user less
-SAYS     Haru -> user: "What you said to Mina earlier was unkind. Is everything okay?"
+SAYS     Haru -> user: "What you said to Mina was unkind. Is everything okay?"
 
 EVENT    time passes +2h
 CASCADE  Mina confides in Yuna

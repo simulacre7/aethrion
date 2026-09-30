@@ -41,6 +41,12 @@ defmodule Aethrion.LLM.FakeAdapter do
     "자랑스러",
     "행복"
   ]
+  # Disappointment is cold even next to a warm word ("대단히 실망했어").
+  @letdown ["disappointed", "let me down", "실망", "서운"]
+  # A warm word right after a negation is cold ("not happy", "하나도 안 고마워"),
+  # except in idioms that stay warm.
+  @negations ["not ", "n't ", "never ", "no longer "] ++ ["안 ", "못 ", "하나도", "전혀"]
+  @warm_idioms ["can't thank", "cannot thank", "couldn't be happier", "never been happier"]
   @cold ["whatever", "busy", "later", "don't care", "not now"] ++
           ["됐어", "나중에", "바빠", "몰라", "상관없", "알아서 해"]
 
@@ -60,6 +66,9 @@ defmodule Aethrion.LLM.FakeAdapter do
       cond do
         mentions?(text, @apology) -> %{intent: :apology}
         mentions?(text, @hostile) -> %{intent: :message, tone: :hostile}
+        mentions?(text, @letdown) -> %{intent: :message, tone: :cold}
+        mentions?(text, @warm_idioms) -> %{intent: :message, tone: :warm}
+        negated_warmth?(text) -> %{intent: :message, tone: :cold}
         mentions?(text, @warm) -> %{intent: :message, tone: :warm}
         mentions?(text, @cold) -> %{intent: :message, tone: :cold}
         true -> %{intent: :message, tone: :neutral}
@@ -79,6 +88,18 @@ defmodule Aethrion.LLM.FakeAdapter do
       speaker: %{id: character_id, name: character_id, traits: [], mood: :neutral},
       listener: %{id: "user", name: "you"}
     })
+  end
+
+  # A negation within the few characters before a warm word.
+  defp negated_warmth?(text) do
+    Enum.any?(@warm, fn word ->
+      ~r/(?<![a-z])#{Regex.escape(word)}/u
+      |> Regex.scan(text, return: :index)
+      |> Enum.any?(fn [{start, _length}] ->
+        before = binary_part(text, max(start - 12, 0), min(start, 12))
+        Enum.any?(@negations, &String.contains?(before, &1))
+      end)
+    end)
   end
 
   # Matches at word starts so "thanks" matches "thank" but "whatever" does not match "hate".

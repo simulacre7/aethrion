@@ -1,6 +1,7 @@
 defmodule Aethrion.Rules.Observation do
   @moduledoc """
-  Characters who see a gift remember it. Observers who care about the giver
+  Characters who see a gift remember it (inactive or blocked characters see
+  nothing). Observers who care about the giver
   (affinity >= 30) also become jealous and tense toward the receiver.
 
   Trait modifiers: `:sensitive` +5 jealousy, `:calm` -5 jealousy.
@@ -28,6 +29,7 @@ defmodule Aethrion.Rules.Observation do
     |> Map.get(:observed_by, [])
     |> Enum.uniq()
     |> Enum.reject(&(&1 in [event.from, event.to]))
+    |> Enum.filter(&(transition.state |> State.character(&1) |> Character.can_act?()))
     |> Enum.reduce(transition, &observe(&2, &1))
   end
 

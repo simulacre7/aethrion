@@ -13,7 +13,8 @@ defmodule Aethrion.Rules.Reputation do
     `:gossip_shared` judges the sender the same way, at `heard_percent` of the
     effect.
 
-  Nobody judges a message they sent or received themselves; the receiver's own
+  Inactive or blocked characters are not witnesses. Nobody judges a message
+  they sent or received themselves; the receiver's own
   reaction is `Aethrion.Rules.Message`. Over time, faded observed and heard
   memories fold into reputation impressions (see
   `Aethrion.Rules.Consolidation`), which change how the sender's own messages
@@ -38,7 +39,7 @@ defmodule Aethrion.Rules.Reputation do
       warm_importance: 40
     ]
 
-  alias Aethrion.{Memory, State, Transition}
+  alias Aethrion.{Character, Memory, State, Transition}
   alias Aethrion.Rules.{Gossip, Message}
 
   # Which relationship fields each tone touches; amounts are params named
@@ -58,6 +59,7 @@ defmodule Aethrion.Rules.Reputation do
     |> Map.get(:observed_by, [])
     |> Enum.uniq()
     |> Enum.reject(&(&1 in [event.from, event.to]))
+    |> Enum.filter(&(transition.state |> State.character(&1) |> Character.can_act?()))
     |> Enum.reduce(transition, fn witness, transition ->
       transition
       |> Transition.remember(witness_memory(transition, event, witness))

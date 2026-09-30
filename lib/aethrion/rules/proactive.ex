@@ -18,7 +18,7 @@ defmodule Aethrion.Rules.Proactive do
   | ---------- | ---------------------------------------------------------- | -------- |
   | `:jealous` | jealousy >= 15 and jealousy + loneliness >= 45             | 24h      |
   | `:lonely`  | loneliness >= 60 and jealousy < 15                         | 24h      |
-  | `:protective` | saw a person be hostile to a character they care about (affinity >= 30) | once per topic |
+  | `:protective` | saw a person be hostile to a character they care about (affinity >= 30) | 24h per person and friend |
   | `:curious` | heard secondhand news about a person and is `:playful` or has affinity >= 30 toward them | once per topic |
 
   Reasons are tried in the order of the table.
@@ -155,11 +155,13 @@ defmodule Aethrion.Rules.Proactive do
     params.witnessed
     |> Map.get(id, [])
     |> Enum.find_value(fn %Memory{data: %{"from" => person, "to" => friend}} = memory ->
-      key = "proactive:#{id}:protective:#{memory.topic}"
+      # One protest per person and friend a day, however many hostile
+      # messages were witnessed.
+      key = "proactive:#{id}:protective:#{person}:#{friend}"
 
       if person in people and friend != id and
            State.get_relationship(state, id, friend).affinity >= params.protective_affinity and
-           State.cooldown_ready?(state, key, :once) do
+           State.cooldown_ready?(state, key, params.cooldown_hours) do
         {:protective, key, person, memories: [memory]}
       end
     end)
@@ -188,7 +190,8 @@ defmodule Aethrion.Rules.Proactive do
   # character, newest first: what they heard, and hostile messages from a
   # person that they witnessed. One pass over the memories.
   defp secondhand_about_people(state) do
-    add = fn acc, memory -> Map.update(acc, memory.character_id, [memory], &(&1 ++ [memory])) end
+    # Built newest last, then reversed once.
+    add = fn acc, memory -> Map.update(acc, memory.character_id, [memory], &[memory | &1]) end
 
     for %Memory{kind: kind} = memory <- state.memories,
         kind in [:heard, :observed],
@@ -207,6 +210,10 @@ defmodule Aethrion.Rules.Proactive do
             {heard, witnessed}
         end
     end
+    |> then(fn {heard, witnessed} ->
+      reverse = &Map.new(&1, fn {id, list} -> {id, Enum.reverse(list)} end)
+      {reverse.(heard), reverse.(witnessed)}
+    end)
   end
 
   defp hostile_from_person?(state, %Memory{data: data}) do

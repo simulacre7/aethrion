@@ -47,6 +47,16 @@ defmodule Aethrion.ReputationTest do
       assert %{trust: 0, tension: 0} = to_user(state, "bo")
     end
 
+    test "inactive or blocked characters witness nothing" do
+      for change <- [&%{&1 | active?: false}, &%{&1 | blocked?: true}] do
+        state = update_in(world().characters["haru"].state, change)
+        {state, _outputs} = dispatch!(state, message("user", "mina", :hostile, ["haru"]))
+
+        refute State.memory(state, "memory:haru:observed:e1")
+        assert %{trust: 0, tension: 0} = to_user(state, "haru")
+      end
+    end
+
     test "neutral messages are not remembered by witnesses" do
       {state, _outputs} = dispatch!(world(), message("user", "mina", :neutral, ["haru"]))
 
@@ -334,11 +344,11 @@ defmodule Aethrion.ReputationTest do
       state = put_in(world().characters["haru"].traits, [:calm])
       {_state, outputs} = dispatch!(state, message("user", "mina", :hostile, ["haru"]))
 
-      assert [%{text: "What you said to Mina earlier was unkind. Is everything okay?"} = output] =
+      assert [%{text: "What you said to Mina was unkind. Is everything okay?"} = output] =
                protective(outputs)
 
       assert Aethrion.Expression.Templates.Ko.render(output.context) ==
-               "아까 Mina한테 한 말은 좀 모질었어. 무슨 일 있어?"
+               "Mina한테 한 말은 좀 모질었어. 무슨 일 있어?"
     end
 
     test "nobody speaks up for someone they do not care about, or to a character" do

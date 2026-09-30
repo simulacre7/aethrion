@@ -87,7 +87,7 @@ How you treat one character reaches the others. The user snaps at Mina while Har
 EVENT    user -> Mina (hostile): You always ruin everything. (seen by Haru)
 SAYS     Mina -> user: "Please stop."
 RULE     Haru saw user be hostile to Mina and trusts user less
-SAYS     Haru -> user: "What you said to Mina earlier was unkind. Is everything okay?"
+SAYS     Haru -> user: "What you said to Mina was unkind. Is everything okay?"
 
 EVENT    time passes +2h
 CASCADE  Mina confides in Yuna
