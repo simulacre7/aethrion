@@ -9,6 +9,7 @@ RELATION Mina affinity toward user +10
 STATE    Mina joy +20
 STATE    Mina loneliness -10
 MEMORY   Mina remembers: "user gave mina a flower."
+SAYS     Mina -> user: "Thank you for the flower!"
 RULE     Yuna noticed the gift to Mina
 STATE    Yuna jealousy +15
 RELATION Yuna tension toward Mina +8

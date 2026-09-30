@@ -32,8 +32,8 @@ defmodule Aethrion.Report do
 
   - `:locale` - `:ko` writes the report in Korean: headings, notes, event
     descriptions, and every character line (from
-    `Aethrion.Expression.Templates.Ko`). Scenario names, descriptions, and
-    memory contents stay as written. Defaults to `:en`.
+    `Aethrion.Expression.Templates.Ko`), and memories from their data.
+    Scenario names and descriptions stay as written. Defaults to `:en`.
   """
   @spec html(Scenario.Result.t(), keyword()) :: iodata()
   def html(%Scenario.Result{} = result, opts \\ []) do
@@ -253,6 +253,8 @@ defmodule Aethrion.Report do
 
         traits = Enum.map(character.traits, &["<li>", esc(t.({:trait, &1})), "</li>"])
 
+        memory_names = &memory_name(result.state, &1)
+
         {beliefs, memories} =
           result.state
           |> Aethrion.Memories.important(character.id, length(result.state.memories))
@@ -266,7 +268,7 @@ defmodule Aethrion.Report do
               "<li><span class=\"memory-kind\">",
               t.(if(memory.data["event"] == "reputation", do: "reputation", else: "firsthand")),
               "</span>",
-              esc(memory.content),
+              esc(t.({:memory, memory, memory_names})),
               "</li>"
             ]
           end)
@@ -279,7 +281,7 @@ defmodule Aethrion.Report do
               "<li><span class=\"memory-kind\">",
               esc(t.({:kind, memory.kind})),
               "</span>",
-              esc(memory.content),
+              esc(t.({:memory, memory, memory_names})),
               "</li>"
             ]
           end)
@@ -1100,6 +1102,7 @@ defmodule Aethrion.Report do
   defp english({:values, a, t, x}), do: "affinity #{a}, trust #{t}, tension #{x}"
   defp english({:caused_by, id}), do: "caused by #{id}"
   defp english({:event, event, names}), do: Event.describe(event, names)
+  defp english({:memory, memory, _names}), do: memory.content
   defp english({:short_label, event}), do: short_label(event)
   defp english({:why, change, names}), do: [change] |> Aethrion.Explain.describe(names) |> hd()
   defp english({:rule_log, count}), do: "Rule log (#{count} lines)"
@@ -1184,9 +1187,19 @@ defmodule Aethrion.Report do
       neutral: "평범한 말",
       cold: "차가운 말",
       hostile: "모진 말",
-      apology: "사과"
+      apology: "사과",
+      gift: "선물"
     },
-    trait: %{sensitive: "예민함", calm: "차분함", playful: "장난스러움", talkative: "수다스러움"},
+    trait: %{
+      sensitive: "예민함",
+      calm: "차분함",
+      playful: "장난스러움",
+      talkative: "수다스러움",
+      warm: "다정함",
+      romantic: "낭만적",
+      observant: "눈썰미",
+      curious: "호기심"
+    },
     rule: %{mood: "기분"},
     event: %{
       gift_received: "선물",
@@ -1211,6 +1224,9 @@ defmodule Aethrion.Report do
   defp korean({:feelings, name}), do: "#{name}: 시간에 따른 감정"
   defp korean({:values, a, t, x}), do: "호감 #{a}, 신뢰 #{t}, 긴장 #{x}"
   defp korean({:caused_by, id}), do: "원인: #{id}"
+
+  defp korean({:memory, memory, names}),
+    do: Aethrion.Expression.Templates.Ko.describe_memory(memory, names)
 
   defp korean({:event, event, names}),
     do: Aethrion.Expression.Templates.Ko.describe_event(event, names)
@@ -1237,8 +1253,16 @@ defmodule Aethrion.Report do
   defp korean({_kind, value}), do: to_string(value)
   defp korean(text) when is_binary(text), do: Map.get(@korean, text, text)
 
-  defp korean_value(kind, value),
-    do: @korean_values |> Map.fetch!(kind) |> Map.get(value, to_string(value))
+  # Traits read from untrusted data may stay strings, so match by name too.
+  defp korean_value(kind, value) do
+    values = Map.fetch!(@korean_values, kind)
+
+    Map.get_lazy(values, value, fn ->
+      Enum.find_value(values, to_string(value), fn {key, text} ->
+        if Atom.to_string(key) == to_string(value), do: text
+      end)
+    end)
+  end
 
   ## Helpers
 
@@ -1248,6 +1272,10 @@ defmodule Aethrion.Report do
     do: "#{id} #{type |> to_string() |> String.split("_") |> hd()}"
 
   # Names inside sentences ("the user gives Mina a flower").
+  # Memory lines in Korean speak to the user, as the character lines do.
+  defp memory_name(_state, "user"), do: "너"
+  defp memory_name(state, id), do: State.name(state, id)
+
   defp narrative_name(_state, "user", t), do: t.("the user")
   defp narrative_name(state, id, _t), do: State.name(state, id)
 

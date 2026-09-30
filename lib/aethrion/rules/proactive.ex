@@ -12,16 +12,18 @@ defmodule Aethrion.Rules.Proactive do
   `"user"`.
 
   Characters do not reach out to someone they currently feel tense toward
-  (tension >= 5); they turn to friends instead.
+  (tension >= 5); they turn to friends instead. Speaking up for a friend is
+  the exception: tension is the point.
 
   | reason     | condition                                                  | cooldown |
   | ---------- | ---------------------------------------------------------- | -------- |
   | `:jealous` | jealousy >= 15 and jealousy + loneliness >= 45             | 24h      |
-  | `:lonely`  | loneliness >= 60, jealousy < 15, affinity >= 25 toward the person, no company for 6h, and not heading out with a friend this hour | 24h, or 72h after a lonely message that got no reply |
+  | `:lonely`  | loneliness >= 60, jealousy < 15, affinity >= 25 toward the person, no company for 6h, and not heading out with a friend this hour | 24h; 72h after a lonely message that got no reply, a week after a week of silence |
   | `:protective` | saw a person be hostile to a character they care about (affinity >= 30), and has not seen or heard them apologize since | once per incident, and 24h per person and friend |
   | `:curious` | heard secondhand news about a person and is `:playful` or has affinity >= 30 toward them; not about harsh words from someone they saw be hostile themselves | once per topic |
 
-  Reasons are tried in the order of the table.
+  Reasons are tried in the order of the table. Writing again after a lonely
+  message got no reply costs a little affinity (`ignored_affinity`).
   """
 
   use Aethrion.Rule,
@@ -36,6 +38,7 @@ defmodule Aethrion.Rules.Proactive do
       cooldown_hours: 24,
       unanswered_hours: 72,
       alone_hours: 6,
+      ignored_affinity: -2,
       curious_affinity: 30,
       protective_affinity: 30,
       avoid_tension: 5,
@@ -124,14 +127,16 @@ defmodule Aethrion.Rules.Proactive do
       Map.has_key?(params.witnessed, id)
   end
 
-  defp first_trigger(_state, _character, [], _params), do: nil
-
   defp first_trigger(state, character, people, params) do
     Enum.find_value(
       [:jealous, :protective, :lonely, :curious],
       &trigger(&1, state, character, people, params)
     )
   end
+
+  # Speaking up is the one reason to write to someone tense.
+  defp trigger(reason, _state, _character, [], _params) when reason in [:jealous, :lonely],
+    do: nil
 
   # Reach out to whoever gave the gift that caused the jealousy, when reachable.
   defp trigger(:jealous, state, %Character{id: id, state: cs}, [closest | _] = people, params) do
@@ -165,21 +170,23 @@ defmodule Aethrion.Rules.Proactive do
          State.cooldown_ready?(state, TimePassage.company_key(id), params.alone_hours) and
          State.get_relationship(state, id, closest).affinity >= params.lonely_affinity and
          State.cooldown_ready?(state, key, lonely_cooldown(state, id, key, closest, params)) do
-      {:lonely, key, closest, []}
+      {:lonely, key, closest, ignored: unanswered?(state, id, key, closest)}
     end
   end
 
   # Speak up to the person who was hostile to someone this character cares about.
-  defp trigger(:protective, state, %Character{id: id}, people, params) do
+  defp trigger(:protective, state, %Character{id: id}, _reachable, params) do
     witnessed = Map.get(params.witnessed, id, [])
+    people = if witnessed == [], do: [], else: people(state, id, nil, %{avoid_tension: 101})
 
-    # Apologies this character knows of, to set against what they saw.
+    # Apologies this character knows of, to set against what they saw, faded
+    # or not: an apology is often less memorable than the harsh words.
     apologies =
       if witnessed == [],
         do: [],
         else:
           state
-          |> Memories.for_character(id)
+          |> Memories.for_character(id, include_faded: true)
           |> Enum.filter(&match?(%Memory{data: %{"event" => "apology_offered"}}, &1))
 
     witnessed
@@ -219,20 +226,51 @@ defmodule Aethrion.Rules.Proactive do
     end)
   end
 
+  # A day between lonely messages; three after one went unanswered, and a
+  # week once there has been a week of silence.
   defp lonely_cooldown(state, id, key, person, params) do
+    cond do
+      not unanswered?(state, id, key, person) -> params.cooldown_hours
+      silence(state, id, person) >= 168 -> 168
+      true -> params.unanswered_hours
+    end
+  end
+
+  # The last lonely message got no reply.
+  defp unanswered?(state, id, key, person) do
     case Map.fetch(state.cooldowns, key) do
       {:ok, sent} ->
-        replied? =
-          case Map.fetch(state.cooldowns, Aethrion.Rules.Reply.contact_key(id, person)) do
-            {:ok, contact} -> contact >= sent
-            :error -> false
-          end
-
-        if replied?, do: params.cooldown_hours, else: params.unanswered_hours
+        case Map.fetch(state.cooldowns, Aethrion.Rules.Reply.contact_key(id, person)) do
+          {:ok, contact} -> contact < sent
+          :error -> true
+        end
 
       :error ->
-        params.cooldown_hours
+        false
     end
+  end
+
+  # Hours since the person last talked to the character, or since the world
+  # began if they never have.
+  defp silence(state, id, person) do
+    case Map.fetch(state.cooldowns, Aethrion.Rules.Reply.contact_key(id, person)) do
+      {:ok, at} -> state.clock - at
+      :error -> state.clock
+    end
+  end
+
+  # Writing again after being ignored stings a little.
+  defp feel_ignored(transition, character, person) do
+    transition
+    |> Transition.note("#{character.name} writes to #{person} again after no reply",
+      subject: character.id
+    )
+    |> Transition.adjust_relationship(
+      character.id,
+      person,
+      :affinity,
+      Transition.param(transition, :ignored_affinity)
+    )
   end
 
   # Characters about to spend time together this tick (enqueued by
@@ -354,6 +392,8 @@ defmodule Aethrion.Rules.Proactive do
   end
 
   defp send_message(transition, character, reason, key, recipient, opts) do
+    {ignored?, opts} = Keyword.pop(opts, :ignored, false)
+    transition = if ignored?, do: feel_ignored(transition, character, recipient), else: transition
     state = transition.state
 
     since_contact =

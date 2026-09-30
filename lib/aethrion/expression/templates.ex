@@ -43,6 +43,9 @@ defmodule Aethrion.Expression.Templates do
       :a_while ->
         "It's been a while since we talked. Do you have a minute?"
 
+      :busy ->
+        "I guess you've been busy. I'll be here whenever you want to talk."
+
       :today ->
         "It's been quiet today. Do you have a minute to talk?"
     end
@@ -69,12 +72,20 @@ defmodule Aethrion.Expression.Templates do
   def render(%Request{kind: :proactive_message, reason: :curious} = request) do
     case Enum.find(request.memories, &(&1.kind == :heard)) do
       %{source: source, data: %{"event" => "gift_received"} = data} ->
-        gift = "you gave #{name(request, data["to"])} a #{data["item"]}"
+        # A gift to the teller themselves, or to someone else.
+        {told, mentioned} =
+          if data["to"] == source,
+            do:
+              {"told me about getting a #{data["item"]} from you",
+               "mentioned getting a #{data["item"]} from you"},
+            else:
+              {"told me you gave #{name(request, data["to"])} a #{data["item"]}",
+               "mentioned you gave #{name(request, data["to"])} a #{data["item"]}"}
 
         if :playful in request.speaker.traits do
-          "#{name(request, source)} told me #{gift}. Smooth."
+          "#{name(request, source)} #{told}. Smooth."
         else
-          "#{name(request, source)} mentioned #{gift}. Is there something I should know?"
+          "#{name(request, source)} #{mentioned}. Is there something I should know?"
         end
 
       %{source: source, data: %{"event" => "message_sent", "tone" => tone} = data}
@@ -96,6 +107,17 @@ defmodule Aethrion.Expression.Templates do
     "#{request.speaker.name} has something to say about #{request.reason}."
   end
 
+  def render(%Request{kind: :reply, tone: :gift, message: item} = request) do
+    case gift_choice(request) do
+      :wary -> "...Thanks. I don't know what to say."
+      :reassured -> "For me? ...I thought you'd forgotten about me."
+      :spoiled -> "Another one? You're spoiling me."
+      :remembered -> "You thought of me? That means a lot."
+      :close -> "You didn't have to! I love it."
+      :thanks -> "Thank you for the #{item}!"
+    end
+  end
+
   def render(%Request{kind: :reply, tone: :apology} = request) do
     case apology_choice(request) do
       :keeps_apologizing -> "You keep saying sorry. I just need it to stop happening."
@@ -112,12 +134,14 @@ defmodule Aethrion.Expression.Templates do
   # been as much hostility.
   def render(%Request{kind: :reply, tone: tone, speaker: %{mood: mood}} = request)
       when tone in [:cold, :hostile] do
-    if benefit_of_doubt?(request) do
-      if tone == :hostile,
-        do: "That's not like you. Is something wrong?",
-        else: "Oh... okay. Is everything alright?"
-    else
-      reply(tone, mood)
+    case harsh_choice(tone, request) do
+      :silent -> "..."
+      :done -> "I'm not doing this with you anymore."
+      :again -> "Again? What is going on with you?"
+      :short -> "You've been short with me lately."
+      :benefit when tone == :hostile -> "That's not like you. Is something wrong?"
+      :benefit -> "Oh... okay. Is everything alright?"
+      :hurt -> reply(tone, mood)
     end
   end
 
@@ -134,13 +158,13 @@ defmodule Aethrion.Expression.Templates do
 
       nil ->
         wary_reply(:warm, request) || reunion_reply(:warm, mood, request) ||
-          bond_reply(:warm, mood, request) || reply(:warm, mood)
+          bond_reply(:warm, mood, request) || pick(request, reply(:warm, mood))
     end
   end
 
   def render(%Request{kind: :reply, tone: tone, speaker: %{mood: mood}} = request) do
     wary_reply(tone, request) || reunion_reply(tone, mood, request) ||
-      bond_reply(tone, mood, request) || reply(tone, mood)
+      bond_reply(tone, mood, request) || pick(request, reply(tone, mood))
   end
 
   def render(%Request{kind: :character_interaction, reason: :gossip} = request) do
@@ -148,6 +172,10 @@ defmodule Aethrion.Expression.Templates do
     listener = request.listener.name
 
     case request.memories do
+      [%{data: %{"event" => "gift_received", "to" => to} = data} | _]
+      when to == request.speaker.id ->
+        "#{teller} tells #{listener} about getting a #{data["item"]} from #{name(request, data["from"])}."
+
       [%{data: %{"event" => "gift_received"} = data} | _] ->
         "#{teller} tells #{listener} about the #{data["item"]} " <>
           "#{name(request, data["from"])} gave #{name(request, data["to"])}."
@@ -166,7 +194,14 @@ defmodule Aethrion.Expression.Templates do
   end
 
   def render(%Request{kind: :character_interaction, reason: :together} = request) do
-    "#{request.speaker.name} and #{request.listener.name} spend a quiet afternoon together."
+    {a, b} = {request.speaker.name, request.listener.name}
+
+    case together_choice(request) do
+      0 -> "#{a} and #{b} spend a quiet afternoon together."
+      1 -> "#{a} and #{b} go for a long walk and talk about nothing in particular."
+      2 -> "#{a} and #{b} share dinner and stay up talking."
+      3 -> "#{a} and #{b} sit together for a while, not needing to say much."
+    end
   end
 
   def render(%Request{kind: :character_interaction, reason: :comfort} = request) do
@@ -204,26 +239,55 @@ defmodule Aethrion.Expression.Templates do
   end
 
   # When the mood has nothing to say, the bond does.
-  defp bond_reply(tone, mood, %Request{relationship: %{bond: bond}})
+  defp bond_reply(tone, mood, %Request{relationship: %{bond: bond}} = request)
        when mood in [:neutral, :happy] do
-    bond_line(tone, bond)
+    pick(request, bond_line(tone, bond))
   end
 
   defp bond_reply(_tone, _mood, _request), do: nil
 
-  defp bond_line(:warm, :close), do: "You always know how to make my day."
+  defp bond_line(:warm, :close),
+    do: [
+      "You always know how to make my day.",
+      "You're the best, you know that?",
+      "Hearing from you is my favorite part of the day."
+    ]
+
   defp bond_line(:warm, :strained), do: "...Thanks, I guess."
   defp bond_line(:warm, :estranged), do: "Why are you being nice to me now?"
-  defp bond_line(:neutral, :close), do: "Hey, you! What's up?"
+
+  defp bond_line(:neutral, :close),
+    do: [
+      "Hey, you! What's up?",
+      "There you are! What's new?",
+      "Hi! I was just thinking about you."
+    ]
+
   defp bond_line(:neutral, :strained), do: "...What do you want?"
   defp bond_line(:neutral, :estranged), do: "I don't really want to talk."
   defp bond_line(_tone, _bond), do: nil
 
-  defp reply(:warm, :happy), do: "That made my day. Thank you."
+  defp reply(:warm, :happy),
+    do: [
+      "That made my day. Thank you.",
+      "Aw, thank you! I'm smiling.",
+      "You're making a good day even better."
+    ]
+
   defp reply(:warm, :jealous), do: "...Thanks. I guess I needed to hear that."
-  defp reply(:warm, :lonely), do: "I really needed to hear that today."
+
+  defp reply(:warm, :lonely),
+    do: [
+      "I really needed to hear that today.",
+      "Thank you. I was feeling a bit alone.",
+      "It helps to hear from you."
+    ]
+
   defp reply(:warm, :upset), do: "I'm still a little shaken, but thank you."
-  defp reply(:warm, _mood), do: "That's sweet of you."
+
+  defp reply(:warm, _mood),
+    do: ["That's sweet of you.", "Thank you, really.", "You're kind. Thanks."]
+
   defp reply(:neutral, :happy), do: "Hey! What's up?"
   defp reply(:neutral, :jealous), do: "Oh. Hi."
   defp reply(:neutral, :lonely), do: "Hey... it's good to hear from you."
@@ -259,22 +323,32 @@ defmodule Aethrion.Expression.Templates do
   end
 
   @doc false
-  # Fond memories only come up when nothing harsh stands between them.
+  # After a week of silence, only the silence is left to talk about. Before
+  # that, fond memories come up when nothing harsh stands between them, and
+  # otherwise how long it has been.
   def lonely_choice(request) do
     between = {request.listener.id, request.speaker.id}
-    fond? = not hurt?(request)
+    silence = silence(request)
+    fond? = silence < 168 and not hurt?(request)
     warm = if fond?, do: find_memory(request, &warm_message?(&1, between))
     gift = if fond?, do: recent_gift(request, between)
 
     cond do
+      silence >= 168 -> :busy
       warm -> {:quote, warm["text"]}
       gift -> {:gift, gift["item"]}
       fond? and kindness(request) > 0 -> :kind
-      Request.reunion?(request) -> :reunion
-      is_integer(request.since_contact) and request.since_contact >= 24 -> :a_while
+      silence >= 72 -> :reunion
+      silence >= 24 -> :a_while
       true -> :today
     end
   end
+
+  # Hours since the listener last talked to the speaker, or since the world
+  # began if they never have.
+  defp silence(%Request{since_contact: hours}) when is_integer(hours), do: hours
+  defp silence(%Request{now: now}) when is_integer(now), do: now
+  defp silence(_request), do: 0
 
   @doc false
   # How an apology lands: worn thin after several, a relief to someone who
@@ -317,9 +391,57 @@ defmodule Aethrion.Expression.Templates do
   end
 
   @doc false
+  # How a gift lands: warily with hurt feelings between them, as reassurance
+  # to someone jealous or lonely, and as a bit much when they keep coming.
+  def gift_choice(%Request{speaker: %{mood: mood}} = request) do
+    cond do
+      wary_choice(:warm, request) != nil -> :wary
+      mood == :jealous -> :reassured
+      (request.repeats || 1) >= 3 -> :spoiled
+      mood == :lonely -> :remembered
+      match?(%{bond: :close}, request.relationship) -> :close
+      true -> :thanks
+    end
+  end
+
+  @doc false
+  # Which of four ways two friends spend time, turning day by day.
+  def together_choice(%Request{now: now}) when is_integer(now), do: rem(div(now, 24), 4)
+  def together_choice(_request), do: 0
+
+  @doc false
   # A record of kindness earns the benefit of the doubt, unless there has
   # been as much hostility.
   def benefit_of_doubt?(request), do: kindness(request) > hostility(request)
+
+  @doc false
+  # How harsh words land. The first gets hurt or, with a record of kindness,
+  # the benefit of the doubt; repeated ones escalate (someone upset just asks
+  # for it to stop), and an estranged character stops answering.
+  def harsh_choice(tone, request) do
+    repeats = request.repeats || 1
+
+    cond do
+      repeats >= 2 and match?(%{bond: :estranged}, request.relationship) -> :silent
+      repeats >= 2 -> escalation(tone, repeats, request.speaker.mood)
+      benefit_of_doubt?(request) -> :benefit
+      true -> :hurt
+    end
+  end
+
+  defp escalation(:hostile, repeats, _mood) when repeats >= 3, do: :done
+  defp escalation(:hostile, _repeats, :upset), do: :hurt
+  defp escalation(:hostile, _repeats, _mood), do: :again
+  defp escalation(:cold, _repeats, _mood), do: :short
+
+  @doc false
+  # One of several ways to say the same thing, turning with how often the
+  # listener has recently said it, so the same line does not repeat.
+  def pick(_request, nil), do: nil
+  def pick(_request, line) when is_binary(line), do: line
+
+  def pick(request, lines) when is_list(lines),
+    do: Enum.at(lines, rem((request.repeats || 1) - 1, length(lines)))
 
   @doc false
   # Hurt feelings speak before the mood: a strained or estranged bond, or
@@ -329,12 +451,34 @@ defmodule Aethrion.Expression.Templates do
       do: {:bond, bond}
 
   def wary_choice(tone, request) when tone in [:warm, :neutral] do
-    if tension(request) >= @guarded_tension, do: :guarded
+    if tension(request) >= @guarded_tension or recently_hurt?(request), do: :guarded
   end
 
   def wary_choice(_tone, _request), do: nil
 
   defp find_full(request, fun), do: Enum.find(request.memories, &fun.(&1.data))
+
+  # Hostile words from the listener in the last day, with no apology since.
+  defp recently_hurt?(request) do
+    listener = request.listener.id
+
+    latest = fn event ->
+      request.memories
+      |> Enum.filter(
+        &(match?(%{kind: :experienced, data: %{"event" => ^event, "from" => ^listener}}, &1) and
+            (event != "message_sent" or &1.data["tone"] == "hostile"))
+      )
+      |> Enum.map(&Request.hours_ago(request, &1))
+      |> Enum.reject(&is_nil/1)
+      |> Enum.min(fn -> nil end)
+    end
+
+    case {latest.("message_sent"), latest.("apology_offered")} do
+      {nil, _apology} -> false
+      {hurt, nil} -> hurt < 24
+      {hurt, apology} -> hurt < 24 and apology > hurt
+    end
+  end
 
   defp tension(%Request{relationship: %{tension: tension}}) when is_integer(tension), do: tension
   defp tension(_request), do: 0

@@ -25,12 +25,26 @@ defmodule Aethrion.NarrativeTest do
       assert State.get_relationship(state, "mina", "user") |> Bond.derive(state) == :close
     end
 
-    test "an unanswered lonely message is followed by three days of silence" do
-      {_state, outputs} = run!(Runtime.demo_state(), List.duplicate(tick(24), 7))
+    test "unanswered lonely messages space out and change their tune" do
+      state = Runtime.demo_state()
+      {state, outputs} = run!(state, List.duplicate(tick(24), 14))
 
-      sent = for %{type: :proactive_message, character_id: "mina"} = o <- outputs, do: o.event_id
-      # Days 1 and 4 and 7: 72 hours apart once unanswered.
-      assert length(sent) == 3
+      sent =
+        for %{type: :proactive_message, character_id: "mina"} = o <- outputs,
+            do: {o.event_id, o.text}
+
+      # Day 1, then three days after no reply, then a week after a week of silence.
+      assert [
+               {_, "It's been a while" <> _},
+               {_, "We haven't talked in a few days." <> _},
+               {_, busy}
+             ] =
+               sent
+
+      assert busy == "I guess you've been busy. I'll be here whenever you want to talk."
+
+      # Each message after one that went unanswered costs a little affinity.
+      assert State.get_relationship(state, "mina", "user").affinity == 40 - 2 * 2
     end
 
     test "a reply resets the wait to a day" do
@@ -274,6 +288,133 @@ defmodule Aethrion.NarrativeTest do
         assert Ko.render(message.context) =~ "네가 Mina한테 그런 말 했다며?"
       end
     end
+  end
+
+  describe "variety" do
+    test "the same kindness gets different words, and repeated insults escalate" do
+      warm = &Event.message_sent("user", "mina", "Thanks #{&1}", tone: :warm)
+      hostile = &Event.message_sent("user", "mina", "Go away #{&1}", tone: :hostile)
+
+      {_state, outputs} = run!(Runtime.demo_state(), [warm.(1), warm.(2), warm.(3)])
+      texts = for o <- replies(outputs, "mina"), do: o.text
+      assert length(Enum.uniq(texts)) == 3
+
+      {_state, outputs} =
+        run!(Runtime.demo_state(), [hostile.(1), tick(12), hostile.(2), tick(12), hostile.(3)])
+
+      assert [_first, "Again? What is going on with you?", "I'm not doing this with you anymore."] =
+               for(o <- replies(outputs, "mina"), do: o.text)
+    end
+
+    test "kind words the day after an insult are met warily, until an apology" do
+      {state, _outputs} =
+        run!(Runtime.demo_state(), [
+          Event.message_sent("user", "haru", "Useless.", tone: :hostile),
+          tick(12)
+        ])
+
+      {_state, outputs} = run!(state, [Event.message_sent("user", "haru", "Hey!", tone: :warm)])
+      assert [%{text: "Thanks... I'm still a little hurt, though."}] = replies(outputs, "haru")
+
+      {_state, outputs} =
+        run!(state, [
+          Event.apology_offered("user", "haru", "Sorry."),
+          Event.message_sent("user", "haru", "Hey!", tone: :warm)
+        ])
+
+      refute List.last(replies(outputs, "haru")).text =~ "hurt"
+    end
+
+    test "friends do not spend every afternoon the same way" do
+      {_state, outputs} = run!(Runtime.demo_state(), List.duplicate(tick(24), 5))
+
+      scenes =
+        for %{kind: :together, text: text} <- of_type(outputs, :character_interaction), do: text
+
+      assert length(Enum.uniq(scenes)) >= 3
+    end
+  end
+
+  describe "gifts" do
+    test "a gift gets a reply that fits, and reassures someone jealous" do
+      state = State.update_character_state(Runtime.demo_state(), "yuna", &%{&1 | jealousy: 30})
+
+      {state, outputs} =
+        run!(state, [Event.gift_received("user", "yuna", "ribbon")])
+
+      assert [%{tone: :gift, text: "For me? ...I thought you'd forgotten about me."} = reply] =
+               replies(outputs, "yuna")
+
+      assert Ko.render(reply.context) == "나한테 주는 거야? ...나 잊은 줄 알았어."
+      assert character_state(state, "yuna").jealousy == 20
+
+      {_state, outputs} =
+        run!(Runtime.demo_state(), [Event.gift_received("user", "haru", "tea")])
+
+      assert [%{text: "Thank you for the tea!"}] = replies(outputs, "haru")
+    end
+
+    test "gossip about a gift to the teller is told as their own good news" do
+      state = put_in(Runtime.demo_state().characters["yuna"].traits, [:talkative])
+
+      {_state, outputs} =
+        run!(state, [Event.gift_received("user", "yuna", "ribbon"), tick(2)])
+
+      assert [scene] =
+               for(
+                 %{kind: :gossip, character_id: "yuna"} = scene <-
+                   of_type(outputs, :character_interaction),
+                 do: scene
+               )
+
+      assert scene.text == "Yuna tells Haru about getting a ribbon from you."
+      assert Ko.render(scene.context) == "Yuna는 Haru에게 네가 준 ribbon을 자랑한다."
+    end
+  end
+
+  describe "speaking up" do
+    test "a friend who saw the apology does not protest later, however it fades" do
+      state = State.update_relationship(Runtime.demo_state(), "yuna", "user", &%{&1 | tension: 0})
+
+      {_state, outputs} =
+        run!(state, [
+          Event.message_sent("user", "haru", "You're useless.",
+            tone: :hostile,
+            observed_by: ["yuna"]
+          ),
+          Event.apology_offered("user", "haru", "Sorry, that was cruel.", observed_by: ["yuna"]),
+          tick(24),
+          tick(72)
+        ])
+
+      assert [] = for(%{reason: :protective} = o <- proactive(outputs, "yuna"), do: o)
+    end
+
+    test "tension does not stop a friend from speaking up" do
+      state =
+        Runtime.demo_state()
+        |> State.update_relationship("haru", "user", &%{&1 | tension: 30})
+
+      {_state, outputs} =
+        run!(state, [
+          Event.message_sent("user", "yuna", "Needy.", tone: :hostile, observed_by: ["haru"])
+        ])
+
+      assert [%{reason: :protective}] = proactive(outputs, "haru")
+    end
+  end
+
+  test "Korean reports tell memories in Korean" do
+    {:ok, scenario} =
+      Aethrion.Scenario.load(
+        Enum.find(Aethrion.Scenario.bundled(), &String.ends_with?(&1, "01_the_flower.json"))
+      )
+
+    {:ok, result} = Aethrion.Scenario.run(scenario)
+    html = result |> Aethrion.Report.html(locale: :ko) |> IO.iodata_to_binary()
+
+    assert html =~ ~s(<span class="memory-kind">직접</span>네가 Mina에게 flower를 줬다.)
+    refute html =~ ~s(</span>user gave mina a flower.)
   end
 
   defp tick(hours), do: Event.time_tick("t", hours: hours)

@@ -33,8 +33,8 @@ defmodule Aethrion.PipelineTest do
   test "custom rules can be appended to an event type" do
     pipeline = Pipeline.append(Pipeline.default(), :gift_received, Rivalry)
 
-    assert Pipeline.rules_for(pipeline, :gift_received) |> Enum.take(3) ==
-             [Aethrion.Rules.Gift, Aethrion.Rules.Observation, Rivalry]
+    assert Pipeline.rules_for(pipeline, :gift_received) |> Enum.take(4) ==
+             [Aethrion.Rules.Gift, Aethrion.Rules.Reply, Aethrion.Rules.Observation, Rivalry]
 
     {state, outputs} = dispatch!(Runtime.demo_state(), flower_for_mina(), pipeline: pipeline)
 
@@ -69,10 +69,10 @@ defmodule Aethrion.PipelineTest do
   test "describe lists rules with ids and descriptions" do
     description = Pipeline.describe(Pipeline.default())
 
-    assert {:gift_received, [{:gift, _}, {:observation, _}]} =
+    assert {:gift_received, [{:gift, _}, {:reply, _}, {:observation, _}]} =
              List.keyfind(description, :gift_received, 0)
 
-    assert {:reactive, [{:mood, _}, {:bond, _}, {:proactive, _}]} = List.last(description)
+    assert {:reactive, [{:mood, _}, {:proactive, _}, {:bond, _}]} = List.last(description)
   end
 
   test "transition helpers reject unknown fields" do

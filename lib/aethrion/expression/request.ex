@@ -20,6 +20,9 @@ defmodule Aethrion.Expression.Request do
   - `since_contact` - for replies and proactive messages, simulated hours
     since the listener last talked to the speaker, or `nil` if they never
     have; `reunion?/1` says whether that is a long absence
+  - `repeats` - for replies, how many messages in this tone from the listener
+    the speaker still remembers, this one included (at least 1), so a reply
+    can vary or escalate
   - `now` - the simulated clock (hours) when the output was produced;
     `hours_ago/2` says how long ago a memory was formed
   - `fallback_text` - the deterministic template text
@@ -36,6 +39,7 @@ defmodule Aethrion.Expression.Request do
           tone: atom() | nil,
           message: String.t() | nil,
           since_contact: non_neg_integer() | nil,
+          repeats: pos_integer() | nil,
           now: non_neg_integer() | nil,
           fallback_text: String.t() | nil
         }
@@ -51,6 +55,7 @@ defmodule Aethrion.Expression.Request do
     tone: nil,
     message: nil,
     since_contact: nil,
+    repeats: nil,
     now: nil,
     fallback_text: nil
   ]

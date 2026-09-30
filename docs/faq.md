@@ -40,7 +40,7 @@ Write a scenario with expectations for the behavior you want, and it becomes a t
 
 ## Does it work in other languages?
 
-Rules are language-neutral. Fallback lines exist in English and Korean (`locale: :ko`); a model adapter can write in any language. Memory contents use ids (`"user gave mina a flower."`) so they stay stable; adapters get structured `data` alongside.
+Rules are language-neutral. Fallback lines exist in English and Korean (`locale: :ko`); a model adapter can write in any language. Memory contents use ids (`"user gave mina a flower."`) so they stay stable; adapters get structured `data` alongside, and Korean reports tell memories from that data ("네가 Mina에게 flower를 줬다.").
 
 ## Is it production-ready?
 

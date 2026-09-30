@@ -51,6 +51,7 @@ defmodule Aethrion.Expression do
       tone: Keyword.get(opts, :tone),
       message: Keyword.get(opts, :message),
       since_contact: Keyword.get(opts, :since_contact),
+      repeats: Keyword.get(opts, :repeats),
       now: state.clock
     }
 

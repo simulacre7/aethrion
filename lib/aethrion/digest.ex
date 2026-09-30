@@ -92,6 +92,16 @@ defmodule Aethrion.Digest do
 
   defp event_item(_output, _say), do: []
 
+  @doc false
+  # A belief as a line, for other renderers (reports): `name` maps ids to
+  # display names.
+  def belief_text(data, holder, locale, name) do
+    case belief(data, holder, %{locale: locale, name: name}) do
+      nil -> nil
+      text -> capitalize(text)
+    end
+  end
+
   # What a new impression means, from its data rather than its internal text.
   defp belief(
          %{"event" => "impression", "pattern" => pattern, "from" => actor, "count" => count},

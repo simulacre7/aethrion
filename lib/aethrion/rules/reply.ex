@@ -1,9 +1,9 @@
 defmodule Aethrion.Rules.Reply do
   @moduledoc """
   Characters reply when someone outside the cast (such as the user) talks to
-  them or apologizes to them (a reply with tone `:apology`, which sees every
-  apology from that person the character still remembers and the latest harsh
-  words that prompted it). The reply is an expressive output; the only state it keeps is when
+  them, gives them something (a reply with tone `:gift`), or apologizes to
+  them (tone `:apology`, which sees every apology from that person the
+  character still remembers and the latest harsh words that prompted it). The reply is an expressive output; the only state it keeps is when
   this person last talked to this character (the `"contact:<character>:<person>"`
   cooldown key), so the reply can notice a long absence
   (`Aethrion.Expression.Request` `:since_contact`).
@@ -12,7 +12,7 @@ defmodule Aethrion.Rules.Reply do
   use Aethrion.Rule,
     id: :reply,
     description:
-      "The receiver replies to external actors' messages and apologies, phrased from their current mood and memories."
+      "The receiver replies to external actors' messages, gifts, and apologies, phrased from their current mood and memories."
 
   alias Aethrion.{Character, Expression, Memories, Memory, Output, State, Transition}
 
@@ -29,7 +29,7 @@ defmodule Aethrion.Rules.Reply do
           :error -> nil
         end
 
-      {tone, message, memories} = incoming(state, event)
+      {tone, message, memories, repeats} = incoming(state, event)
 
       request =
         Expression.build_request(state, :reply, event.to, event.from,
@@ -37,6 +37,7 @@ defmodule Aethrion.Rules.Reply do
           tone: tone,
           message: message,
           since_contact: since_contact,
+          repeats: repeats,
           memories: memories
         )
 
@@ -58,37 +59,66 @@ defmodule Aethrion.Rules.Reply do
   @doc false
   def contact_key(character, person), do: "contact:#{character}:#{person}"
 
-  defp incoming(state, %{type: :apology_offered} = event),
-    do: {:apology, event.reason, apology_memories(state, event.to, event.from)}
+  defp incoming(state, %{type: :gift_received} = event) do
+    gift? =
+      &match?(
+        %Memory{kind: :experienced, data: %{"event" => "gift_received", "from" => from}}
+        when from == event.from,
+        &1
+      )
 
-  # Harsh words also bring up every harsh message the character still
-  # remembers from the sender and what they make of the sender, so the reply
-  # weighs the whole record, not the three most relevant memories.
-  defp incoming(state, %{tone: tone} = event) when tone in [:cold, :hostile] do
+    {:gift, event.item, with_record(state, event), repeats(state, event, gift?)}
+  end
+
+  defp incoming(state, %{type: :apology_offered} = event),
+    do: {:apology, event.reason, apology_memories(state, event.to, event.from), 1}
+
+  defp incoming(state, event) do
+    tone = Atom.to_string(event.tone)
+
+    same_tone? =
+      &match?(
+        %Memory{
+          kind: :experienced,
+          data: %{"event" => "message_sent", "from" => from, "tone" => ^tone}
+        }
+        when from == event.from,
+        &1
+      )
+
+    {event.tone, event.text, with_record(state, event), repeats(state, event, same_tone?)}
+  end
+
+  # Every reply also weighs the whole record: every harsh message the
+  # character still remembers from the sender, the sender's apologies, and
+  # what the character makes of the sender, not only the three most relevant
+  # memories.
+  defp with_record(state, event) do
     record =
       state
       |> Memories.for_character(event.to)
       |> Enum.filter(fn memory ->
-        match?(
-          %Memory{
-            kind: :experienced,
-            data: %{"event" => "message_sent", "tone" => "hostile", "from" => from}
-          }
-          when from == event.from,
-          memory
-        ) or
-          match?(
-            %Memory{kind: :impression, data: %{"event" => "impression", "from" => from}}
-            when from == event.from,
-            memory
-          )
+        case memory do
+          %Memory{kind: :experienced, data: %{"from" => from} = data} when from == event.from ->
+            match?(%{"event" => "message_sent", "tone" => "hostile"}, data) or
+              data["event"] == "apology_offered"
+
+          %Memory{kind: :impression, data: %{"event" => "impression", "from" => from}} ->
+            from == event.from
+
+          _other ->
+            false
+        end
       end)
 
-    {tone, event.text, Enum.uniq_by(memories(state, event.to, event.from) ++ record, & &1.id)}
+    Enum.uniq_by(memories(state, event.to, event.from) ++ record, & &1.id)
   end
 
-  defp incoming(state, event),
-    do: {event.tone, event.text, memories(state, event.to, event.from)}
+  # How many such things from the sender the character still remembers, this
+  # one included, so replies can vary and escalate.
+  defp repeats(state, event, same?) do
+    state |> Memories.for_character(event.to) |> Enum.count(same?) |> max(1)
+  end
 
   # Every apology from the sender the character remembers, newest first, the
   # latest harsh words from the sender to them, and the latest gift they saw

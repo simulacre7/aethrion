@@ -200,7 +200,7 @@ defmodule Aethrion.RuntimeTest do
     test "lonely characters reach out when nobody has been in touch" do
       {_state, outputs} = dispatch!(Runtime.demo_state(), Event.time_tick("t1", hours: 24))
 
-      assert [%{reason: :lonely, text: "It's been quiet today." <> _}] =
+      assert [%{reason: :lonely, text: "It's been a while since we talked." <> _}] =
                proactive(outputs, "mina")
 
       # Haru and Yuna have each other: an afternoon together instead of a message.

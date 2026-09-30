@@ -7,10 +7,32 @@ defmodule Aethrion.Rules.Together do
   use Aethrion.Rule,
     id: :together,
     description:
-      "Both: loneliness -20, joy +6, affinity toward each other +2; both remember the time together.",
-    params: [loneliness_delta: -20, joy_delta: 6, affinity_delta: 2, importance: 40]
+      "Both: loneliness -20, joy +6, affinity toward each other +2 (up to 60); both remember the time together.",
+    params: [
+      loneliness_delta: -20,
+      joy_delta: 6,
+      affinity_delta: 2,
+      affinity_cap: 60,
+      importance: 40
+    ]
 
   alias Aethrion.{Expression, Memory, Output, Transition}
+
+  # Time together deepens a friendship up to a point; past `affinity_cap`,
+  # afternoons are comfortable rather than ever closer.
+  defp grow_fonder(transition, me, other) do
+    if Aethrion.State.get_relationship(transition.state, me, other).affinity <
+         Transition.param(transition, :affinity_cap),
+       do:
+         Transition.adjust_relationship(
+           transition,
+           me,
+           other,
+           :affinity,
+           Transition.param(transition, :affinity_delta)
+         ),
+       else: transition
+  end
 
   @impl true
   def apply(%Transition{event: event, state: state} = transition) do
@@ -35,12 +57,7 @@ defmodule Aethrion.Rules.Together do
         Transition.param(transition, :loneliness_delta)
       )
       |> Transition.adjust_character(me, :joy, Transition.param(transition, :joy_delta))
-      |> Transition.adjust_relationship(
-        me,
-        other,
-        :affinity,
-        Transition.param(transition, :affinity_delta)
-      )
+      |> grow_fonder(me, other)
       |> Transition.remember(
         Memory.new(
           id: "memory:#{me}:together:#{event.id}",

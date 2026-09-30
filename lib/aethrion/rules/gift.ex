@@ -1,14 +1,20 @@
 defmodule Aethrion.Rules.Gift do
   @moduledoc """
-  The receiver of a gift grows fonder of the giver, feels happier and less
-  lonely, and remembers the gift.
+  The receiver of a gift grows fonder of the giver, feels happier, less
+  lonely, and less jealous (someone thought of them), and remembers the gift.
   """
 
   use Aethrion.Rule,
     id: :gift,
     description:
-      "Receiver: affinity toward giver +10, joy +20, loneliness -10, remembers the gift.",
-    params: [affinity_delta: 10, joy_delta: 20, loneliness_delta: -10, importance: 60]
+      "Receiver: affinity toward giver +10, joy +20, loneliness -10, jealousy -10, remembers the gift.",
+    params: [
+      affinity_delta: 10,
+      joy_delta: 20,
+      loneliness_delta: -10,
+      jealousy_delta: -10,
+      importance: 60
+    ]
 
   alias Aethrion.{Memory, Transition}
 
@@ -39,6 +45,11 @@ defmodule Aethrion.Rules.Gift do
       event.to,
       :loneliness,
       Transition.param(transition, :loneliness_delta)
+    )
+    |> Transition.adjust_character(
+      event.to,
+      :jealousy,
+      Transition.param(transition, :jealousy_delta)
     )
     |> Transition.remember(memory)
   end

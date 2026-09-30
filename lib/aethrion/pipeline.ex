@@ -36,7 +36,7 @@ defmodule Aethrion.Pipeline do
   def default do
     %__MODULE__{
       event_rules: %{
-        gift_received: [Rules.Gift, Rules.Observation],
+        gift_received: [Rules.Gift, Rules.Reply, Rules.Observation],
         message_sent: [Rules.Message, Rules.Reply, Rules.Reputation],
         apology_offered: [Rules.Apology, Rules.Reply, Rules.Reputation],
         time_tick: [
@@ -50,7 +50,7 @@ defmodule Aethrion.Pipeline do
         comfort_offered: [Rules.Comfort],
         time_spent_together: [Rules.Together]
       },
-      reactive_rules: [Rules.Mood, Rules.Bond, Rules.Proactive]
+      reactive_rules: [Rules.Mood, Rules.Proactive, Rules.Bond]
     }
   end
 

@@ -12,7 +12,7 @@ defmodule Aethrion do
       iex> state.characters["yuna"].state.mood
       :jealous
       iex> outputs |> Enum.map(& &1.type) |> Enum.frequencies()
-      %{memory_created: 2, mood_changed: 2, relationship_changed: 2}
+      %{memory_created: 2, mood_changed: 2, relationship_changed: 2, reply: 1}
 
   Start with `Aethrion.Runtime` for the core loop, `Aethrion.Pipeline` for how
   rules are organized, `Aethrion.Expression` for the LLM boundary, and

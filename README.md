@@ -57,6 +57,7 @@ The host sends two events: the user gives Mina a flower while Yuna watches, and 
 EVENT    user gives Mina a flower (seen by Yuna)
 RELATION Mina affinity toward user +10
 MEMORY   Mina remembers: "user gave mina a flower."
+SAYS     Mina -> user: "Thank you for the flower!"
 RULE     Yuna noticed the gift to Mina
 STATE    Yuna jealousy +15
 MEMORY   Yuna remembers: "yuna saw user give mina a flower."
