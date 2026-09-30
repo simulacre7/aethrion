@@ -710,5 +710,88 @@ defmodule Aethrion.NarrativeTest do
     end
   end
 
+  describe "all together" do
+    test "coming back after days away and then talking daily lifts loneliness" do
+      morning = Event.message_sent("user", "mina", "morning!", tone: :warm)
+      events = [tick(72)] ++ Enum.flat_map(1..6, fn _day -> [morning, tick(24)] end)
+
+      {state, outputs} = run!(Runtime.demo_state(), events)
+
+      assert character_state(state, "mina").mood != :lonely
+      quotes = for %{text: "I keep thinking" <> _} <- proactive(outputs, "mina"), do: 1
+      assert length(quotes) <= 1
+    end
+
+    test "no lonely message right after being brushed off" do
+      # Mina wrote and got no reply; a day later the user brushes her off.
+      {state, _outputs} = run!(Runtime.demo_state(), [tick(48), tick(26)])
+
+      {:ok, step} =
+        Runtime.step(state, Event.message_sent("user", "mina", "stop bothering me", tone: :cold))
+
+      assert [] = proactive(step.outputs, "mina")
+
+      {_state, outputs} = run!(step.state, [tick(3)])
+      assert [] = proactive(outputs, "mina")
+    end
+
+    test "a week of cold words is noticed, and an apology after it is not waved off" do
+      cold = Event.message_sent("user", "yuna", "k.", tone: :cold)
+      week = Enum.flat_map(1..5, fn _day -> [cold, tick(24)] end)
+
+      {state, outputs} = run!(Runtime.demo_state(), week)
+
+      assert "You've been short with me lately." in for(o <- replies(outputs, "yuna"), do: o.text)
+
+      {_state, outputs} =
+        run!(state, [Event.apology_offered("user", "yuna", "Sorry, I've been cold.")])
+
+      refute List.last(replies(outputs, "yuna")).text ==
+               "You don't have to apologize. We're okay."
+    end
+
+    test "hearing about an apology is good news, not a question" do
+      state =
+        State.update_relationship(Runtime.demo_state(), "yuna", "user", &%{&1 | affinity: 40})
+
+      {state, _outputs} =
+        run!(state, [
+          Event.message_sent("user", "haru", "Useless.", tone: :hostile),
+          Event.apology_offered("user", "haru", "Sorry, that was cruel.")
+        ])
+
+      {_state, outputs} =
+        run!(state, [Event.gossip_shared("haru", "yuna", "memory:haru:apology:e2")])
+
+      assert [%{reason: :curious, text: "Haru told me you apologized. That was good of you."}] =
+               proactive(outputs, "yuna")
+    end
+
+    test "a player reads their own digest as \"you\"" do
+      state =
+        State.new(
+          people: %{"alex" => "Alex"},
+          characters: [
+            %Aethrion.Character{id: "mina", name: "Mina"},
+            %Aethrion.Character{id: "yuna", name: "Yuna", traits: [:talkative]},
+            %Aethrion.Character{id: "haru", name: "Haru"}
+          ],
+          relationships: [
+            %Aethrion.Relationship{from: "yuna", to: "haru", affinity: 30, trust: 40},
+            %Aethrion.Relationship{from: "yuna", to: "alex", affinity: 40, trust: 20}
+          ]
+        )
+
+      {state, outputs} =
+        run!(state, [Event.gift_received("alex", "mina", "ring", observed_by: ["yuna"]), tick(2)])
+
+      texts = Enum.map(Aethrion.Digest.of(outputs, state, you: "alex"), & &1.text)
+      assert "Yuna tells Haru about the ring you gave Mina." in texts
+
+      ko = Enum.map(Aethrion.Digest.of(outputs, state, you: "alex", locale: :ko), & &1.text)
+      assert Enum.any?(ko, &(&1 =~ "네가 Mina한테 준 ring 얘기를 전했다."))
+    end
+  end
+
   defp tick(hours), do: Event.time_tick("t", hours: hours)
 end

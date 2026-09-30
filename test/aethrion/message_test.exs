@@ -130,7 +130,9 @@ defmodule Aethrion.MessageTest do
         Runtime.step(state, Event.message_sent("user", "mina", "sorry, you ok?", tone: :warm))
 
       assert State.get_relationship(step.state, "mina", "user").affinity == 2
-      assert character_state(step.state, "mina").loneliness == 43
+      # After a quiet stretch a kind word eases half the loneliness (50 -> 25),
+      # and wariness halves that too.
+      assert character_state(step.state, "mina").loneliness == 50 - 12
       assert Enum.any?(step.log, &(&1 =~ "wary of kindness"))
     end
 

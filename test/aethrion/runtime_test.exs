@@ -214,7 +214,7 @@ defmodule Aethrion.RuntimeTest do
     test "lonely messages recall the user's last kind words" do
       events = [
         Event.message_sent("user", "mina", "You did great today.", tone: :warm),
-        Event.time_tick("t1", hours: 34)
+        Event.time_tick("t1", hours: 38)
       ]
 
       # Already a little lonely, so she misses the kind words before they fade.

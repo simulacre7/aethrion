@@ -8,8 +8,8 @@ defmodule Aethrion.Rules.Bond do
   | --- | --- |
   | `:estranged` | tension >= 50 or affinity <= -30 |
   | `:strained` | tension >= 20 or trust <= -10 |
-  | `:close` | affinity >= 50 and trust >= 30 |
-  | `:friendly` | affinity >= 25 and trust >= 15 |
+  | `:close` | affinity >= 50, trust >= 30, and tension < 10 |
+  | `:friendly` | affinity >= 25, trust >= 15, and tension < 10 |
   | `:neutral` | otherwise |
 
   Bonds settle rather than flicker. Once a relationship has a bond, it keeps
@@ -31,7 +31,7 @@ defmodule Aethrion.Rules.Bond do
   use Aethrion.Rule,
     id: :bond,
     description:
-      "Announces bond changes: estranged (tension>=50 or affinity<=-30) > strained (tension>=20 or trust<=-10) > close (affinity>=50, trust>=30) > friendly (affinity>=25, trust>=15) > neutral; a bond holds until 5 points past its threshold.",
+      "Announces bond changes: estranged (tension>=50 or affinity<=-30) > strained (tension>=20 or trust<=-10) > close (affinity>=50, trust>=30, tension<10) > friendly (affinity>=25, trust>=15, tension<10) > neutral; a bond holds until 5 points past its threshold.",
     params: [
       estranged_tension: 50,
       estranged_affinity: -30,
@@ -41,7 +41,8 @@ defmodule Aethrion.Rules.Bond do
       close_trust: 30,
       friendly_affinity: 25,
       friendly_trust: 15,
-      hysteresis: 5
+      hysteresis: 5,
+      settled_tension: 10
     ]
 
   alias Aethrion.{Output, Relationship, State, Transition}
@@ -74,7 +75,9 @@ defmodule Aethrion.Rules.Bond do
     |> Enum.reduce(transition, fn {{from, to}, fields}, transition ->
       now = State.get_relationship(state, from, to)
       before = derive(struct(now, fields), thresholds)
-      after_bond = derive(now, thresholds)
+      # A relationship touched for the first time has no recorded bond yet;
+      # the bond it had before this event is the one to hold on to.
+      after_bond = derive(%{now | bond: now.bond || before}, thresholds)
 
       transition = record(transition, now, after_bond)
 
@@ -156,6 +159,7 @@ defmodule Aethrion.Rules.Bond do
     cond do
       r.tension >= t.estranged_tension or r.affinity <= t.estranged_affinity -> :estranged
       r.tension >= t.strained_tension or r.trust <= t.strained_trust -> :strained
+      r.tension >= t.settled_tension -> :neutral
       r.affinity >= t.close_affinity and r.trust >= t.close_trust -> :close
       r.affinity >= t.friendly_affinity and r.trust >= t.friendly_trust -> :friendly
       true -> :neutral

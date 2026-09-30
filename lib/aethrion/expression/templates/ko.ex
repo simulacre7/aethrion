@@ -137,6 +137,10 @@ defmodule Aethrion.Expression.Templates.Ko do
         "#{name(request, source)}한테 들었어. 네가 #{to}한테 그런 말 했다며? " <>
           "너답지 않던데, 무슨 일 있어?"
 
+      %{source: source, data: %{"event" => "apology_offered"} = data} ->
+        to = if data["to"] == source, do: "걔", else: name(request, data["to"])
+        "#{name(request, source)}한테 들었어. #{to}한테 사과했다며? 잘했어."
+
       %{source: source} ->
         "#{name(request, source)}한테 네 얘기 좀 들었어. 네 입장도 듣고 싶은데?"
 
@@ -216,7 +220,7 @@ defmodule Aethrion.Expression.Templates.Ko do
       [%{data: %{"event" => "gift_received", "to" => to} = data} | _]
       when to == request.speaker.id ->
         giver =
-          if data["from"] == "user",
+          if you?(request, data["from"]),
             do: "네가",
             else: with_particle(name(request, data["from"]), :subject)
 
@@ -225,7 +229,7 @@ defmodule Aethrion.Expression.Templates.Ko do
 
       [%{data: %{"event" => "gift_received"} = data} | _] ->
         giver =
-          if data["from"] == "user",
+          if you?(request, data["from"]),
             do: "네가",
             else: with_particle(name(request, data["from"]), :subject)
 
@@ -235,7 +239,7 @@ defmodule Aethrion.Expression.Templates.Ko do
       [%{data: %{"event" => "message_sent", "tone" => tone} = data} | _]
       when tone in ["hostile", "cold"] ->
         said =
-          if data["from"] == "user",
+          if you?(request, data["from"]),
             do: "네가",
             else: with_particle(name(request, data["from"]), :subject)
 
@@ -524,6 +528,10 @@ defmodule Aethrion.Expression.Templates.Ko do
       false -> false
     end
   end
+
+  # The person addressed as 너: the user, or whoever the names say (a digest
+  # for another player maps them to "너").
+  defp you?(request, id), do: name(request, id) == "너"
 
   defp name(_request, "user"), do: "너"
   defp name(request, id), do: Map.get(request.names, id, id)

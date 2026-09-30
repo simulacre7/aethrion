@@ -45,10 +45,11 @@ defmodule Aethrion.LLM.FakeAdapter do
              "ruin",
              "useless",
              "pathetic",
-             "worthless"
+             "worthless",
+             "stop it"
            ] ++
              ["꺼져", "닥쳐", "짜증", "바보", "멍청", "한심", "질렸", "재수 없", "재수없", "지긋지긋"] ++
-             ["연락하지 마", "상종", "역겨"]
+             ["연락하지 마", "상종", "역겨", "저리 가"]
   # "그만해", but not "걱정 그만해" or "그만해도 돼".
   @stop ~r/(?<!걱정 )그만해(?!도)/u
   # Harsh only when aimed at the listener: "너 싫어", not "비 와서 싫어".
@@ -68,6 +69,9 @@ defmodule Aethrion.LLM.FakeAdapter do
     "great",
     "amazing",
     "sweet",
+    "missed you",
+    "favorite",
+    "favourite",
     "고마",
     "고맙",
     "ㄱㅅ",
@@ -102,7 +106,18 @@ defmodule Aethrion.LLM.FakeAdapter do
   # Korean also negates after the word: "보고 싶지 않아", "좋아하는 척하지 마".
   @negated_after ~r/(?:고맙|고마|좋|보고\s*싶|사랑|반가)\S*\s*(?:지(?:는|도)?\s*않|지\s*마|척)/u
   @warm_idioms ["can't thank", "cannot thank", "couldn't be happier", "never been happier"]
-  @cold ["whatever", "busy", "later", "don't care", "not now"] ++
+  # Brush-offs as phrases: "busy" or "later" alone are ordinary ("see you
+  # later!", "are you busy tonight?").
+  @cold [
+          "whatever",
+          "don't care",
+          "not now",
+          "maybe later",
+          "talk later",
+          "i'm busy",
+          "i am busy",
+          "too busy"
+        ] ++
           ["됐어", "나중에 얘기", "나중에 해", "바빠", "상관없", "알아서 해"]
   # "몰라" on its own, not "잘 몰라서 그러는데".
   @dont_know ~r/몰라(?!서)|나중에[\s.!?~]*$/u

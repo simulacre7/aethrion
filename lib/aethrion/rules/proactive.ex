@@ -46,7 +46,7 @@ defmodule Aethrion.Rules.Proactive do
     ]
 
   alias Aethrion.{Character, Expression, Memories, Memory, Output, State, Transition}
-  alias Aethrion.Rules.{Companionship, TimePassage}
+  alias Aethrion.Rules.{Companionship, Reply, TimePassage}
 
   @default_recipient "user"
 
@@ -164,9 +164,11 @@ defmodule Aethrion.Rules.Proactive do
     if cs.loneliness >= params.loneliness_threshold and cs.jealousy < params.jealousy_floor and
          not Companionship.heading_out?(state, id) and
          State.cooldown_ready?(state, TimePassage.company_key(id), params.alone_hours) and
+         State.cooldown_ready?(state, Reply.contact_key(id, closest), params.alone_hours) and
          State.get_relationship(state, id, closest).affinity >= params.lonely_affinity and
          State.cooldown_ready?(state, key, lonely_cooldown(state, id, closest, params)) do
-      {:lonely, [key, lonely_key(id, closest)], closest, ignored: unanswered?(state, id, closest)}
+      {:lonely, [key, lonely_key(id, closest)], closest,
+       ignored: unanswered?(state, id, closest), memories: unquoted(state, id, closest)}
     end
   end
 
@@ -215,7 +217,8 @@ defmodule Aethrion.Rules.Proactive do
     |> Enum.find_value(fn memory ->
       key = "proactive:#{id}:curious:#{memory.topic}"
 
-      with person when not is_nil(person) <- Enum.find(people, &Memory.involves?(memory, &1)),
+      with false <- memory.data["to"] == id or memory.data["from"] == id,
+           person when not is_nil(person) <- Enum.find(people, &Memory.involves?(memory, &1)),
            false <- saw_it_firsthand?(memory, Map.get(params.witnessed, id, [])),
            true <-
              Character.trait?(character, :playful) or
@@ -237,6 +240,25 @@ defmodule Aethrion.Rules.Proactive do
       true -> params.unanswered_hours
     end
   end
+
+  # The memories a lonely message can draw on, minus kind words it already
+  # quoted: a lonely message quotes each thing said once.
+  defp unquoted(state, id, person) do
+    quoted_at = Map.get(state.cooldowns, quoted_key(id), -1)
+
+    state
+    |> Memories.relevant(id, focus: [person], limit: 4)
+    |> Enum.reject(fn memory ->
+      match?(
+        %Memory{kind: :experienced, data: %{"event" => "message_sent", "tone" => "warm"}},
+        memory
+      ) and
+        memory.created_tick <= quoted_at
+    end)
+    |> Enum.take(3)
+  end
+
+  defp quoted_key(id), do: "proactive:#{id}:quoted"
 
   # When a lonely message last went to this person.
   defp lonely_key(id, person), do: "proactive:#{id}:lonely:#{person}"
@@ -413,9 +435,15 @@ defmodule Aethrion.Rules.Proactive do
         context: request
       )
 
+    quoted =
+      if reason == :lonely and
+           match?({:quote, _text}, Aethrion.Expression.Templates.lonely_choice(request)),
+         do: [quoted_key(character.id)],
+         else: []
+
     transition
     |> then(fn transition ->
-      key |> List.wrap() |> Enum.reduce(transition, &Transition.put_cooldown(&2, &1))
+      (List.wrap(key) ++ quoted) |> Enum.reduce(transition, &Transition.put_cooldown(&2, &1))
     end)
     |> Transition.put_cooldown(gap_key(character.id))
     |> Transition.emit(output)

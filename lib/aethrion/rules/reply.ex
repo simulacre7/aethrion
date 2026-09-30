@@ -18,6 +18,13 @@ defmodule Aethrion.Rules.Reply do
 
   @impl true
   def apply(%Transition{event: event, state: state} = transition) do
+    # Harsh words are answered from the hurt they cause; anything that eases
+    # (kind words, gifts, apologies) from the mood they found.
+    mood =
+      if Map.get(event, :tone) in [:cold, :hostile],
+        do: nil,
+        else: mood_before(transition, event.to)
+
     receiver = State.character(state, event.to)
 
     if Character.can_act?(receiver) and not State.character?(state, event.from) do
@@ -39,6 +46,7 @@ defmodule Aethrion.Rules.Reply do
           since_contact: since_contact,
           repeats: repeats,
           goodwill: Aethrion.Rules.Message.goodwill?(state, event),
+          speaker_mood: mood,
           memories: memories
         )
 
@@ -60,9 +68,30 @@ defmodule Aethrion.Rules.Reply do
   @doc false
   def contact_key(character, person), do: "contact:#{character}:#{person}"
 
+  # A reply comes from how the character felt when the words arrived: the
+  # mood of their numbers before this event changed them. The trace is newest
+  # first, so the last entry per field holds the value before the event.
+  defp mood_before(%Transition{} = transition, id) do
+    case State.character(transition.state, id) do
+      nil ->
+        nil
+
+      character ->
+        transition.trace
+        |> Enum.filter(
+          &(&1.kind == :character and &1.target == id and
+              &1.field in Aethrion.CharacterState.numeric_fields())
+        )
+        |> Enum.reduce(character.state, fn entry, acc ->
+          Map.put(acc, entry.field, entry.before)
+        end)
+        |> Aethrion.Rules.Mood.derive(transition.state)
+    end
+  end
+
   # A gift from someone the character felt jealous about (seeing them give to
-  # someone else) since their last gift, within the last three days, is
-  # reassurance.
+  # someone else) since their last gift or apology, within the last three
+  # days, is reassurance.
   defp reason(state, %{type: :gift_received, from: giver, to: receiver} = event) do
     this_one = Aethrion.Rules.Gift.topic(event)
 
@@ -71,7 +100,8 @@ defmodule Aethrion.Rules.Reply do
       |> Memories.for_character(receiver)
       |> Enum.filter(
         &(match?(
-            %Memory{kind: :experienced, data: %{"event" => "gift_received", "from" => ^giver}},
+            %Memory{kind: :experienced, data: %{"event" => event, "from" => ^giver}}
+            when event in ["gift_received", "apology_offered"],
             &1
           ) and &1.topic != this_one)
       )
@@ -159,8 +189,13 @@ defmodule Aethrion.Rules.Reply do
 
   # How many such things from the sender the character still remembers, this
   # one included, so replies can vary and escalate.
+  # Counted over the last four days, faded details included: a cold word is
+  # forgotten in a day, but not that there have been several.
   defp repeats(state, event, same?) do
-    state |> Memories.for_character(event.to) |> Enum.count(same?) |> max(1)
+    state
+    |> Memories.for_character(event.to, include_faded: true)
+    |> Enum.count(&(same?.(&1) and state.clock - &1.created_tick <= 96))
+    |> max(1)
   end
 
   # Every apology from the sender the character remembers, newest first, the
@@ -199,7 +234,17 @@ defmodule Aethrion.Rules.Reply do
         )
       end)
 
-    apologies ++ List.wrap(harsh) ++ List.wrap(gift)
+    # What the character makes of the sender's harsh words, once faded.
+    impressions =
+      Enum.filter(mine, fn memory ->
+        match?(
+          %Memory{kind: :impression, data: %{"from" => ^sender, "pattern" => pattern}}
+          when pattern in ["cold", "hostile"],
+          memory
+        )
+      end)
+
+    apologies ++ List.wrap(harsh) ++ List.wrap(gift) ++ impressions
   end
 
   # The usual relevant memories, plus any apology the sender made to someone

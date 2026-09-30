@@ -5,7 +5,7 @@ defmodule Aethrion.Rules.Message do
 
   | tone     | receiver effects                                                         |
   | -------- | ------------------------------------------------------------------------ |
-  | warm     | affinity +4, trust +2, loneliness -15, joy +8, remembers it              |
+  | warm     | affinity +4, trust +2, loneliness -15 (half of it after a quiet stretch, if more), joy +8, tension -2 (not below 0), remembers it |
   | neutral  | loneliness -6                                                            |
   | cold     | affinity -3, tension +4, joy -5, remembers it                            |
   | hostile  | affinity -8, trust -6, tension +10, stress +20, joy -10, remembers it    |
@@ -37,6 +37,7 @@ defmodule Aethrion.Rules.Message do
       warm_trust: 2,
       warm_loneliness: -15,
       warm_joy: 8,
+      warm_tension: -2,
       neutral_loneliness: -6,
       cold_affinity: -3,
       cold_tension: 4,
@@ -59,7 +60,7 @@ defmodule Aethrion.Rules.Message do
       reputation_wariness_percent: 75
     ]
 
-  alias Aethrion.{Memories, Memory, Transition}
+  alias Aethrion.{Memories, Memory, State, Transition}
   alias Aethrion.Rules.Consolidation
 
   @kind_patterns ["warm", "gift", "comfort", "together"]
@@ -89,8 +90,15 @@ defmodule Aethrion.Rules.Message do
 
     transition =
       Enum.reduce(effects[:character], transition, fn field, transition ->
-        Transition.adjust_character(transition, event.to, field, amount.(field))
+        Transition.adjust_character(
+          transition,
+          event.to,
+          field,
+          character_amount(transition, field, amount, percent)
+        )
       end)
+
+    transition = soothe(transition)
 
     case event.tone do
       :neutral ->
@@ -101,6 +109,40 @@ defmodule Aethrion.Rules.Message do
         Transition.remember(transition, memory(event, importance))
     end
   end
+
+  # A kind word after a quiet stretch (no company for the time passage's
+  # quiet hours) eases half of whatever loneliness has built up, at least the
+  # usual amount: coming back matters more than the tenth message in a day.
+  defp character_amount(
+         %Transition{event: %{tone: :warm} = event, state: state} = transition,
+         :loneliness,
+         amount,
+         percent
+       ) do
+    quiet = Aethrion.Tuning.get(state, Aethrion.Rules.TimePassage, :quiet_hours)
+    key = Aethrion.Rules.TimePassage.company_key(event.to)
+
+    if State.cooldown_ready?(state, key, quiet) do
+      current = Transition.character_state(transition, event.to).loneliness
+      min(amount.(:loneliness), -div(current * percent, 200))
+    else
+      amount.(:loneliness)
+    end
+  end
+
+  defp character_amount(_transition, field, amount, _percent), do: amount.(field)
+
+  # Kind words ease leftover tension a little, never below zero.
+  defp soothe(%Transition{event: %{tone: :warm} = event} = transition) do
+    Aethrion.Rules.Apology.ease_tension(
+      transition,
+      event.to,
+      event.from,
+      Transition.param(transition, :warm_tension)
+    )
+  end
+
+  defp soothe(transition), do: transition
 
   # Returns the percentage of the tone's normal effect that applies, noting why
   # when history changes it.

@@ -55,6 +55,7 @@ defmodule Aethrion.Digest do
 
     say = %{
       locale: locale,
+      you: you,
       name: &name(state, &1, you, locale)
     }
 
@@ -258,10 +259,18 @@ defmodule Aethrion.Digest do
 
   # Rendered text for expressive outputs, in the digest's language.
   # A digest tells what already happened: scenes in the past tense.
-  defp line(%{context: %Aethrion.Expression.Request{} = request}, %{locale: :ko}),
-    do: Ko.render(request, tense: :past)
+  # Lines are told again for the digest's reader: "you" is whoever `:you`
+  # names, whoever the line was first written for.
+  defp line(%{context: %Aethrion.Expression.Request{} = request}, %{locale: :ko} = say),
+    do: Ko.render(for_reader(request, say.you, "너"), tense: :past)
+
+  defp line(%{context: %Aethrion.Expression.Request{} = request}, %{you: you})
+       when you != "user",
+       do: Aethrion.Expression.Templates.render(for_reader(request, you, "you"))
 
   defp line(output, _say), do: output.text
+
+  defp for_reader(request, you, word), do: %{request | names: Map.put(request.names, you, word)}
 
   defp net_bonds(outputs, say) do
     outputs

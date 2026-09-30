@@ -43,7 +43,7 @@ defmodule Aethrion.Expression do
     request = %Request{
       kind: kind,
       reason: Keyword.fetch!(opts, :reason),
-      speaker: actor(state, speaker_id),
+      speaker: speaker(state, speaker_id, Keyword.get(opts, :speaker_mood)),
       listener: actor(state, listener_id),
       relationship: relationship(state, speaker_id, listener_id),
       memories: Enum.map(memories, &memory_view/1),
@@ -127,6 +127,9 @@ defmodule Aethrion.Expression do
       reason: {:invalid_response, other}
     })
   end
+
+  defp speaker(state, id, nil), do: actor(state, id)
+  defp speaker(state, id, mood), do: %{actor(state, id) | mood: mood}
 
   defp actor(state, id) do
     case State.character(state, id) do

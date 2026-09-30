@@ -105,6 +105,10 @@ defmodule Aethrion.Expression.Templates do
         "#{name(request, source)} told me what you said#{said}. " <>
           "That didn't sound like you. Is everything okay?"
 
+      %{source: source, data: %{"event" => "apology_offered"} = data} ->
+        to = if data["to"] == source, do: "", else: " to #{name(request, data["to"])}"
+        "#{name(request, source)} told me you apologized#{to}. That was good of you."
+
       %{source: source} ->
         "#{name(request, source)} told me something about you. Want to tell me your side?"
 
@@ -377,11 +381,16 @@ defmodule Aethrion.Expression.Templates do
     harsh? =
       Enum.any?(
         request.memories,
-        &match?(
-          %{data: %{"event" => "message_sent", "from" => ^listener, "tone" => t}}
-          when t in ["cold", "hostile"],
-          &1
-        )
+        &(match?(
+            %{data: %{"event" => "message_sent", "from" => ^listener, "tone" => t}}
+            when t in ["cold", "hostile"],
+            &1
+          ) or
+            match?(
+              %{data: %{"event" => "impression", "from" => ^listener, "pattern" => p}}
+              when p in ["cold", "hostile"],
+              &1
+            ))
       )
 
     left_out? =
@@ -478,7 +487,7 @@ defmodule Aethrion.Expression.Templates do
   end
 
   # Plain messages are not remembered, so for them the hour turns the line.
-  defp turn(%Request{tone: :neutral, now: now}) when is_integer(now), do: now
+  defp turn(%Request{tone: :neutral, now: now}) when is_integer(now), do: now + div(now, 24)
   defp turn(request), do: (request.repeats || 1) - 1 + folded(request)
 
   defp folded(%Request{tone: tone} = request) when tone in [:warm, :cold, :hostile, :gift],
