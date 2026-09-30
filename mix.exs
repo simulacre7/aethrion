@@ -16,6 +16,7 @@ defmodule Aethrion.MixProject do
       homepage_url: @source_url,
       start_permanent: Mix.env() == :prod,
       elixirc_paths: elixirc_paths(Mix.env()),
+      dialyzer: [plt_add_apps: [:mix, :ex_unit, :inets, :ssl, :public_key]],
       deps: deps()
     ]
   end
@@ -35,7 +36,8 @@ defmodule Aethrion.MixProject do
     [
       {:jason, "~> 1.4"},
       {:stream_data, "~> 1.1", only: :test},
-      {:ex_doc, "~> 0.34", only: :dev, runtime: false}
+      {:ex_doc, "~> 0.34", only: :dev, runtime: false},
+      {:dialyxir, "~> 1.4", only: :dev, runtime: false}
     ]
   end
 

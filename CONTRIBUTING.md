@@ -47,4 +47,5 @@ Rules run on every event, so avoid per-memory work that rescans all memories (qu
 - Run `mix format --check-formatted`.
 - Run `mix compile --warnings-as-errors` and `mix test`.
 - Run `mix aethrion.scenario --all --quiet`.
+- Optionally run `mix dialyzer` (CI runs it).
 - Include a short description of the scenario or behavior being changed.

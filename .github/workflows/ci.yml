@@ -40,6 +40,9 @@ jobs:
       - name: Check bundled scenarios
         run: mix aethrion.scenario --all --quiet
 
+      - name: Dialyzer
+        run: MIX_ENV=dev mix dialyzer
+
       - name: Run examples
         run: |
           mix run examples/embed_runtime.exs
