@@ -54,6 +54,7 @@ defmodule Aethrion.CLI.CommandParser do
   end
 
   defp do_parse(["context", character]), do: {:ok, {:context, character}}
+  defp do_parse(["opinion", character, other]), do: {:ok, {:opinion, character, other}}
   defp do_parse(["here"]), do: {:ok, {:here, :show}}
   defp do_parse(["here", "none"]), do: {:ok, {:here, []}}
   defp do_parse(["here" | characters]), do: {:ok, {:here, observers(Enum.join(characters, ","))}}

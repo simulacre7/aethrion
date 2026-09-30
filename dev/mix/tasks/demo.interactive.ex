@@ -168,6 +168,14 @@ defmodule Mix.Tasks.Demo.Interactive do
     loop(session)
   end
 
+  defp handle({:ok, {:opinion, character, other}}, session) do
+    if State.character?(session.state, character),
+      do: Display.opinion(session.state, character, other),
+      else: Display.message("ERROR unknown character #{inspect(character)}")
+
+    loop(session)
+  end
+
   defp handle({:ok, :timeline}, session) do
     Display.timeline(Enum.reverse(session.events))
     loop(session)

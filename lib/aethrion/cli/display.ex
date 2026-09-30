@@ -2,7 +2,7 @@ defmodule Aethrion.CLI.Display do
   @moduledoc false
   # ANSI presentation helpers for the demo and scenario CLIs.
 
-  alias Aethrion.{Event, Memory, State, Trace}
+  alias Aethrion.{Event, Memories, Memory, State, Trace}
   alias Aethrion.Expression.Prompt
 
   @log_tags %{
@@ -56,6 +56,7 @@ defmodule Aethrion.CLI.Display do
       "  why <from>-><to> <field>                    the same for a relationship, e.g. why yuna->haru trust",
       "                                              (field: affinity | trust | tension | bond)",
       "  context <character>                         what an LLM would see for a proactive line",
+      "  opinion <character> <other>                 how one sees another: bond, beliefs, memories",
       "  timeline                                    events dispatched this session",
       "  rules                                       the rule pipeline",
       "",
@@ -239,6 +240,48 @@ defmodule Aethrion.CLI.Display do
     print_section("Expression context", "the read-only snapshot an adapter receives")
     request |> Prompt.render_context() |> String.split("\n") |> Enum.each(&print(["  ", &1]))
     print("")
+  end
+
+  def opinion(%State{} = state, from, to) do
+    relationship = State.get_relationship(state, from, to)
+    bond = Aethrion.Rules.Bond.derive(relationship, state)
+
+    {beliefs, memories} =
+      state |> Memories.about(from, to) |> Enum.split_with(&(&1.kind == :impression))
+
+    print_section("Opinion", "how #{State.name(state, from)} sees #{State.name(state, to)}")
+
+    print([
+      "  ",
+      pad("bond", 11),
+      :bright,
+      pad(to_string(bond), 11),
+      :reset,
+      :faint,
+      "affinity #{relationship.affinity}, trust #{relationship.trust}, tension #{relationship.tension}"
+    ])
+
+    opinion_lines("believes", beliefs, fn memory ->
+      scope = if memory.data["event"] == "reputation", do: "reputation", else: "firsthand"
+      [memory.content, :faint, "  (#{scope})"]
+    end)
+
+    opinion_lines("remembers", Enum.take(memories, 5), fn memory ->
+      source = if memory.source, do: " from #{State.name(state, memory.source)}", else: ""
+      [memory.content, :faint, "  (#{memory.kind}#{source})"]
+    end)
+
+    print("")
+  end
+
+  defp opinion_lines(label, [], _line), do: print(["  ", pad(label, 11), :faint, "nothing"])
+
+  defp opinion_lines(label, memories, line) do
+    memories
+    |> Enum.with_index()
+    |> Enum.each(fn {memory, index} ->
+      print(["  ", pad(if(index == 0, do: label, else: ""), 11) | line.(memory)])
+    end)
   end
 
   def timeline([]), do: print([:faint, "  no events yet"])

@@ -89,6 +89,19 @@ defmodule Aethrion.MixTasksTest do
     assert output =~ "user gives Mina a pin\n"
   end
 
+  test "opinion shows how one character sees another" do
+    input =
+      "here haru\nmessage user yuna hostile go away\nmessage user yuna hostile I said go\ntick 120\nopinion haru user\nquit\n"
+
+    output =
+      capture_io(input, fn -> Mix.Tasks.Demo.Interactive.run(["--no-status"]) end) |> plain()
+
+    assert output =~ "Opinion  how Haru sees user"
+
+    assert output =~
+             ~r/believes\s+haru knows user has been hostile to yuna 2 times\.\s+\(reputation\)/
+  end
+
   @tag :tmp_dir
   test "journal task compacts and archives", %{tmp_dir: dir} do
     path = Path.join(dir, "world.jsonl")

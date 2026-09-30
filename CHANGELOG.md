@@ -49,7 +49,7 @@ The social layer release: characters act on each other, every change is explaina
 - JSON scenarios with a world, events, expectations, branches, tuning, and custom events (`Aethrion.Scenario`, `mix aethrion.scenario`), with a JSON Schema. Thirteen bundled scenarios run in the test suite.
 - Self-contained HTML reports (`mix aethrion.report`, `--locale ko` for Korean lines) with charts, a relationship graph, the timeline, and branch comparison.
 - `mix aethrion.journal` replays a journal and exports it as a scenario or report.
-- Interactive CLI: `say`, `message`, `comfort`, `here` (witnesses), `why`, `context`, `timeline`, `rules`, `undo`, `save`, `load`, `record`, `report`, `--llm`, and `--locale ko`.
+- Interactive CLI: `say`, `message`, `comfort`, `here` (witnesses), `opinion`, `why`, `context`, `timeline`, `rules`, `undo`, `save`, `load`, `record`, `report`, `--llm`, and `--locale ko`.
 - A tutorial (English and Korean), rules reference, expression guide, scenario format, and API reference; a benchmark in `bench/`.
 - Property-based tests for bounds, determinism, persistence and journal round trips, session recording, cascade causality, and the expression boundary. CI runs Dialyzer and the examples.
 
