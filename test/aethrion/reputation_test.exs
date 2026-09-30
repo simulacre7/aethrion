@@ -140,6 +140,23 @@ defmodule Aethrion.ReputationTest do
       refute reply.text =~ "what you said to Mina"
     end
 
+    test "a reply finds the amends even when other memories crowd it out" do
+      {state, _outputs} =
+        run!(world(), [
+          message("user", "mina", :hostile, ["haru"]),
+          Event.apology_offered("user", "mina", "sorry", observed_by: ["haru"]),
+          # Newer, stronger memories about the user push the apology out of
+          # the three most relevant.
+          message("user", "haru", :warm),
+          Event.gift_received("user", "haru", "tea"),
+          Event.gift_received("user", "haru", "cake")
+        ])
+
+      {_state, outputs} = dispatch!(state, message("user", "haru", :warm))
+      [reply] = of_type(outputs, :reply)
+      refute reply.text =~ "what you said to Mina"
+    end
+
     test "a witnessed apology takes the edge off a pointed reply" do
       {state, _outputs} =
         run!(world(), [

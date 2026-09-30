@@ -1,0 +1,39 @@
+{
+  "$schema": "../scenario.schema.json",
+  "name": "하숙집 (Boarding house)",
+  "description": "A Korean cast, to read in Korean with --locale ko. The user snaps at 지훈 over dinner while 서연 and 하나 are at the table. 서연, who looks out for 지훈, speaks up; 하나 remembers. The next evening the user apologizes in front of everyone, and a few days of small kindnesses to 하나 bring them close.",
+  "world": {
+    "characters": [
+      {"id": "jihoon", "name": "지훈", "profile": "조용하고 성실한 대학원생.", "traits": ["sensitive"]},
+      {"id": "seoyeon", "name": "서연", "profile": "하숙집의 맏언니 같은 존재.", "traits": ["calm"]},
+      {"id": "hana", "name": "하나", "profile": "수다스럽고 정 많은 막내.", "traits": ["talkative"]}
+    ],
+    "relationships": [
+      {"from": "jihoon", "to": "user", "affinity": 30, "trust": 20},
+      {"from": "seoyeon", "to": "user", "affinity": 30, "trust": 25},
+      {"from": "seoyeon", "to": "jihoon", "affinity": 45, "trust": 40},
+      {"from": "hana", "to": "user", "affinity": 35, "trust": 22},
+      {"from": "hana", "to": "jihoon", "affinity": 25, "trust": 20},
+      {"from": "hana", "to": "seoyeon", "affinity": 40, "trust": 45}
+    ]
+  },
+  "events": [
+    {"type": "message_sent", "from": "user", "to": "jihoon", "text": "너 때문에 밥맛 다 떨어졌어.", "tone": "hostile", "observed_by": ["seoyeon", "hana"], "at": "월요일 저녁"},
+    {"type": "time_tick", "now": "화요일 저녁", "hours": 24},
+    {"type": "apology_offered", "from": "user", "to": "jihoon", "reason": "어제는 내가 너무했어. 미안해.", "observed_by": ["seoyeon", "hana"], "at": "화요일 저녁"},
+    {"type": "message_sent", "from": "user", "to": "hana", "text": "하나야, 반찬 고마워!", "tone": "warm", "at": "수요일"},
+    {"type": "time_tick", "now": "목요일", "hours": 24},
+    {"type": "gift_received", "from": "user", "to": "hana", "item": "귤", "at": "목요일"},
+    {"type": "message_sent", "from": "user", "to": "hana", "text": "덕분에 요즘 하숙집이 즐거워.", "tone": "warm", "at": "목요일"},
+    {"type": "comfort_offered", "from": "user", "to": "hana", "at": "목요일 밤"},
+    {"type": "message_sent", "from": "user", "to": "hana", "text": "하나야, 오늘도 고마웠어.", "tone": "warm", "at": "금요일"}
+  ],
+  "expect": [
+    {"output": "proactive_message", "character": "seoyeon", "reason": "protective", "to": "user", "count": 1},
+    {"memory": {"character": "hana", "kind": "observed", "topic": "message:e1"}, "count": 1},
+    {"memory": {"character": "seoyeon", "kind": "observed"}, "count": 2},
+    {"output": "reply", "character": "hana", "text": "Thanks... but I saw what you said to 지훈.", "count": 0},
+    {"output": "bond_changed", "from": "hana", "to": "user", "after": "close", "count": 1},
+    {"relationship": ["hana", "user"], "field": "bond", "equals": "close"}
+  ]
+}

@@ -12,7 +12,7 @@ defmodule Aethrion.Rules.Reply do
     description:
       "The receiver replies to external actors, phrased from their current mood and memories."
 
-  alias Aethrion.{Character, Expression, Output, State, Transition}
+  alias Aethrion.{Character, Expression, Memories, Memory, Output, State, Transition}
 
   @impl true
   def apply(%Transition{event: event, state: state} = transition) do
@@ -32,7 +32,8 @@ defmodule Aethrion.Rules.Reply do
           reason: :reply,
           tone: event.tone,
           message: event.text,
-          since_contact: since_contact
+          since_contact: since_contact,
+          memories: memories(state, event.to, event.from)
         )
 
       output =
@@ -52,4 +53,28 @@ defmodule Aethrion.Rules.Reply do
 
   @doc false
   def contact_key(character, person), do: "contact:#{character}:#{person}"
+
+  # The usual relevant memories, plus any apology the sender made to someone
+  # whose mistreatment is among them: a reply should not bring up harsh words
+  # the character also saw the sender make amends for.
+  defp memories(state, character, sender) do
+    selected = Memories.relevant(state, character, focus: [sender], limit: 3)
+
+    wronged =
+      for %Memory{
+            data: %{"event" => "message_sent", "tone" => "hostile", "from" => ^sender, "to" => to}
+          } <-
+            selected,
+          do: to
+
+    amends =
+      state
+      |> Memories.for_character(character)
+      |> Enum.filter(fn memory ->
+        match?(%Memory{data: %{"event" => "apology_offered", "from" => ^sender}}, memory) and
+          memory.data["to"] in wronged
+      end)
+
+    Enum.uniq_by(selected ++ amends, & &1.id)
+  end
 end

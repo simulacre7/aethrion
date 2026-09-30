@@ -47,7 +47,7 @@ The social layer release: characters act on each other, every change is explaina
 
 **Scenarios and tooling**
 
-- JSON scenarios with a world, events, expectations, branches, tuning, and custom events (`Aethrion.Scenario`, `mix aethrion.scenario`), with a JSON Schema. Thirteen bundled scenarios run in the test suite.
+- JSON scenarios with a world, events, expectations, branches, tuning, and custom events (`Aethrion.Scenario`, `mix aethrion.scenario`), with a JSON Schema. Fourteen bundled scenarios run in the test suite, one with a Korean cast.
 - Self-contained HTML reports (`mix aethrion.report`, `--locale ko` for a Korean report) with charts, what each character has come to believe, a relationship graph with bond changes, the timeline, and branch comparison.
 - `mix aethrion.journal` replays a journal and exports it as a scenario or report.
 - Interactive CLI: `say`, `message`, `comfort`, `here` (witnesses), `opinion`, `digest`, `why`, `context`, `timeline`, `rules`, `undo`, `save`, `load`, `record`, `report`, `--llm`, and `--locale ko`.
