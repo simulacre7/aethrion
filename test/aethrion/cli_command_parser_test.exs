@@ -74,6 +74,10 @@ defmodule Aethrion.CLI.CommandParserTest do
     assert {:error, "unknown command" <> _} = CommandParser.parse("dance")
   end
 
+  test "parses digest" do
+    assert {:ok, :digest} = CommandParser.parse("digest")
+  end
+
   test "parses opinion" do
     assert {:ok, {:opinion, "haru", "user"}} = CommandParser.parse("opinion haru user")
   end

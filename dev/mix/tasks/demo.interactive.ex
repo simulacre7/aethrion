@@ -51,6 +51,7 @@ defmodule Mix.Tasks.Demo.Interactive do
       adapter: adapter(opts[:llm]),
       locale: locale(opts[:locale]),
       present: [],
+      digested: 0,
       hinted?: false,
       effects?: Keyword.get(opts, :effects, false),
       status?: Keyword.get(opts, :status, true)
@@ -169,6 +170,16 @@ defmodule Mix.Tasks.Demo.Interactive do
     loop(session)
   end
 
+  defp handle({:ok, :digest}, session) do
+    since = Enum.drop(session.outputs, session.digested)
+
+    since
+    |> Aethrion.Digest.of(session.state, locale: session.locale || :en)
+    |> Display.digest()
+
+    loop(%{session | digested: length(session.outputs)})
+  end
+
   defp handle({:ok, :timeline}, session) do
     Display.timeline(Enum.reverse(session.events))
     loop(session)
@@ -258,7 +269,8 @@ defmodule Mix.Tasks.Demo.Interactive do
             trace: [],
             events: [],
             host_events: [],
-            outputs: []
+            outputs: [],
+            digested: 0
         })
 
       {:error, error} ->
@@ -415,7 +427,8 @@ defmodule Mix.Tasks.Demo.Interactive do
   end
 
   defp remember(session) do
-    snapshot = Map.take(session, [:state, :origin, :trace, :events, :host_events, :outputs])
+    snapshot =
+      Map.take(session, [:state, :origin, :trace, :events, :host_events, :outputs, :digested])
     %{session | undo: Enum.take([snapshot | session.undo], 50)}
   end
 end

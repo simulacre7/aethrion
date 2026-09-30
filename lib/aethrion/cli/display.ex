@@ -58,6 +58,7 @@ defmodule Aethrion.CLI.Display do
       "  context <character>                         what an LLM would see for a proactive line",
       "  opinion <character> <other>                 how one sees another: bond, beliefs, memories",
       "  timeline                                    events dispatched this session",
+      "  digest                                      what changed socially since the last digest",
       "  rules                                       the rule pipeline",
       "",
       [:bright, "Session"],
@@ -282,6 +283,17 @@ defmodule Aethrion.CLI.Display do
     |> Enum.each(fn {memory, index} ->
       print(["  ", pad(if(index == 0, do: label, else: ""), 11) | line.(memory)])
     end)
+  end
+
+  def digest(items) do
+    print_section("Digest", "what changed since the last digest")
+
+    case items do
+      [] -> print([:faint, "  nothing worth mentioning"])
+      items -> Enum.each(items, &print(["  ", &1.text]))
+    end
+
+    print("")
   end
 
   def timeline([]), do: print([:faint, "  no events yet"])

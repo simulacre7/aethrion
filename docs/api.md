@@ -194,6 +194,17 @@ steps
 
 `Aethrion.Explain.relationship/4` does the same for `affinity`, `trust`, `tension`, or the derived `bond`; both also accept a trace and event list instead of steps. In the interactive demo: `why yuna jealousy`, `why yuna->haru trust`.
 
+## Digest
+
+`Aethrion.Digest.of(outputs, state, opts)` turns a stretch of outputs into short lines for people: scenes between characters, messages characters sent, and new beliefs in order, then net bond and mood changes (a bond that went down and back up again is left out). `locale: :ko` gives Korean lines; `you:` names the person addressed as "you" (default `"user"`). Each item is `%{kind, event_id, text}`. In the interactive demo, `digest` shows what changed since the last one.
+
+```elixir
+Aethrion.Digest.of(outputs_since_last_visit, state)
+#=> [%{kind: :scene, event_id: "e7", text: "Haru and Yuna spend a quiet afternoon together."},
+#    %{kind: :bond, event_id: "e5", text: "Yuna cooled toward you (now neutral)."},
+#    %{kind: :mood, event_id: "e6", text: "Haru, Mina, and Yuna are lonely."}]
+```
+
 ## Memory queries
 
 `Aethrion.Memories` answers questions deterministically, without embeddings:

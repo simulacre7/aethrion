@@ -1,0 +1,85 @@
+defmodule Aethrion.DigestTest do
+  use ExUnit.Case, async: true
+
+  import Aethrion.TestHelpers
+
+  alias Aethrion.{Digest, Event, Runtime, State}
+
+  defp digest(events, opts \\ []) do
+    {:ok, state, steps} = Runtime.run(Runtime.demo_state(), events)
+    Digest.of(Enum.flat_map(steps, & &1.outputs), state, opts)
+  end
+
+  test "bonds are net changes: only where they ended up counts" do
+    hostile = &Event.message_sent("user", "mina", &1, tone: :hostile)
+    apology = Event.apology_offered("user", "mina", "sorry")
+
+    assert [%{kind: :bond, text: "Mina cooled toward you (now strained)."}] =
+             [hostile.("a"), hostile.("b")] |> digest() |> Enum.filter(&(&1.kind == :bond))
+
+    # friendly -> neutral -> strained -> neutral is one net change.
+    assert [%{text: "Mina cooled toward you (now neutral)."}] =
+             [hostile.("a"), hostile.("b"), apology, apology]
+             |> digest()
+             |> Enum.filter(&(&1.kind == :bond))
+
+    change =
+      &%{type: :bond_changed, from: "mina", to: "user", before: &1, after: &2, event_id: "e1"}
+
+    back = [change.(:friendly, :strained), change.(:strained, :friendly)]
+    assert Digest.of(back, Runtime.demo_state()) == []
+  end
+
+  test "moods are grouped, and only ones worth telling" do
+    items = digest([Event.time_tick("t", hours: 30)])
+
+    assert [%{kind: :mood, text: "Haru, Mina, and Yuna are lonely."}] =
+             Enum.filter(items, &(&1.kind == :mood))
+
+    assert [%{text: "Haru, Mina, Yuna는 외로워졌다."}] =
+             [Event.time_tick("t", hours: 30)]
+             |> digest(locale: :ko)
+             |> Enum.filter(&(&1.kind == :mood))
+  end
+
+  test "scenes and messages come in order, in either language" do
+    events = [flower_for_mina(), Event.time_tick("t", hours: 2)]
+
+    assert [%{kind: :message, event_id: "e2"}, %{kind: :scene, event_id: "e3"} | _] =
+             digest(events)
+
+    assert [%{text: "Yuna가 먼저 연락했다: \"아까 Mina랑 있을 때 즐거워 보이더라. 혹시 나는 잊은 거 아니지?\""} | _] =
+             digest(events, locale: :ko)
+  end
+
+  test "new beliefs are mentioned" do
+    warm = &Event.message_sent("user", "mina", &1, tone: :warm)
+    items = digest([warm.("a"), warm.("b"), Event.time_tick("t", hours: 100)])
+
+    assert Enum.any?(
+             items,
+             &(&1 == %{
+                 kind: :belief,
+                 event_id: "e3",
+                 text: "Mina has come to believe: user has been warm to mina 2 times."
+               })
+           )
+  end
+
+  test "another person can be the one addressed as you" do
+    state =
+      State.new(
+        characters: [character("mina")],
+        relationships: [relationship("mina", "alex", affinity: 30, trust: 20)]
+      )
+
+    {:ok, step} = Runtime.step(state, Event.message_sent("alex", "mina", "a", tone: :hostile))
+
+    {:ok, step2} =
+      Runtime.step(step.state, Event.message_sent("alex", "mina", "b", tone: :hostile))
+
+    assert [%{text: "Mina cooled toward you (now strained)."}] =
+             Digest.of(step.outputs ++ step2.outputs, step2.state, you: "alex")
+             |> Enum.filter(&(&1.kind == :bond))
+  end
+end

@@ -8,6 +8,7 @@ defmodule Aethrion.ErrorTest do
   doctest Aethrion
   doctest Aethrion.Explain
   doctest Aethrion.Intent
+  doctest Aethrion.Digest
 
   describe "format/1" do
     test "adds every location the details carry" do

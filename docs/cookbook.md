@@ -46,6 +46,13 @@ def handle_info({:aethrion, _server, {:dispatched, step}}, socket) do
 end
 ```
 
+When the user comes back, show what happened while they were away. Keep the outputs from the subscription (or from `Aethrion.Journal.replay/2`) since their last visit:
+
+```elixir
+Aethrion.Digest.of(outputs_since_last_visit, Aethrion.World.state(world), locale: :ko)
+|> Enum.map(& &1.text)
+```
+
 The simulation never waits for the model: `dispatch` returns as soon as the rules have run, and each line arrives when it is rendered (or its fallback, if the model is slow or fails).
 
 ## Game NPCs: witnesses and bonds

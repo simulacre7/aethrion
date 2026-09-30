@@ -12,6 +12,7 @@ The social layer release: characters act on each other, every change is explaina
 
 - `Aethrion.Rule` behaviour (`use Aethrion.Rule, id:, description:, params:`) and an explicit `Aethrion.Pipeline` of event rules plus reactive rules that run after every event. Hosts can append, prepend, and remove rules and register custom event types. `mix aethrion.rules` prints the pipeline and every parameter.
 - `Aethrion.Transition` and `Aethrion.Trace`: rules change state only through tracked helpers, so every change records the rule, the event, and the before/after values. `Aethrion.Runtime.step/3` returns an `Aethrion.Step` with the full trace, and every output carries `:rule` and `:event_id`.
+- `Aethrion.Digest`: what changed socially over a stretch of outputs, as short English or Korean lines for people ("while you were away").
 - `Aethrion.Explain`: every change to one value, with the rule and the chain of events behind it (`why yuna jealousy` in the interactive demo).
 - `Aethrion.Tuning`: every rule number is a declared parameter that a world, saved state, or scenario can override without code.
 - Cascades: rules enqueue follow-up events that pass through validation and the same pipeline, linked by `:cause`, with depth and count limits (the count limit scales with the number of characters).
@@ -49,7 +50,7 @@ The social layer release: characters act on each other, every change is explaina
 - JSON scenarios with a world, events, expectations, branches, tuning, and custom events (`Aethrion.Scenario`, `mix aethrion.scenario`), with a JSON Schema. Thirteen bundled scenarios run in the test suite.
 - Self-contained HTML reports (`mix aethrion.report`, `--locale ko` for Korean lines) with charts, what each character has come to believe, a relationship graph with bond changes, the timeline, and branch comparison.
 - `mix aethrion.journal` replays a journal and exports it as a scenario or report.
-- Interactive CLI: `say`, `message`, `comfort`, `here` (witnesses), `opinion`, `why`, `context`, `timeline`, `rules`, `undo`, `save`, `load`, `record`, `report`, `--llm`, and `--locale ko`.
+- Interactive CLI: `say`, `message`, `comfort`, `here` (witnesses), `opinion`, `digest`, `why`, `context`, `timeline`, `rules`, `undo`, `save`, `load`, `record`, `report`, `--llm`, and `--locale ko`.
 - A tutorial (English and Korean), a cookbook for hosts, rules reference, expression guide, scenario format, and API reference; a benchmark in `bench/`.
 - Property-based tests for bounds, determinism, persistence and journal round trips, session recording, cascade causality, bond announcements, and the expression boundary; soak tests that crash journaled and snapshotting worlds; README excerpts checked against real output. `mix check` runs the local suite; CI adds Dialyzer, Credo, each scenario in a fresh VM, and the examples.
 

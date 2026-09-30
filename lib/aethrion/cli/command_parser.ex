@@ -59,6 +59,7 @@ defmodule Aethrion.CLI.CommandParser do
   defp do_parse(["here", "none"]), do: {:ok, {:here, []}}
   defp do_parse(["here" | characters]), do: {:ok, {:here, observers(Enum.join(characters, ","))}}
   defp do_parse(["timeline"]), do: {:ok, :timeline}
+  defp do_parse(["digest"]), do: {:ok, :digest}
   defp do_parse(["rules"]), do: {:ok, :rules}
   defp do_parse(["undo"]), do: {:ok, :undo}
   defp do_parse(["save", path]), do: {:ok, {:save, path}}
