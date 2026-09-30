@@ -38,9 +38,16 @@ defmodule Aethrion.Pipeline do
         gift_received: [Rules.Gift, Rules.Observation],
         message_sent: [Rules.Message, Rules.Reply],
         apology_offered: [Rules.Apology],
-        time_tick: [Rules.TimePassage, Rules.MemoryDecay, Rules.Consolidation, Rules.Autonomy],
+        time_tick: [
+          Rules.TimePassage,
+          Rules.MemoryDecay,
+          Rules.Consolidation,
+          Rules.Autonomy,
+          Rules.Companionship
+        ],
         gossip_shared: [Rules.Gossip, Rules.Empathy],
-        comfort_offered: [Rules.Comfort]
+        comfort_offered: [Rules.Comfort],
+        time_spent_together: [Rules.Together]
       },
       reactive_rules: [Rules.Mood, Rules.Proactive]
     }

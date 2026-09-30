@@ -61,7 +61,7 @@ Outputs report the delta that was actually applied after clamping.
 
 History changes how a message lands, through impressions built by consolidation:
 
-- **Goodwill** - if the receiver holds impressions of at least 3 kind acts from the sender (warm messages, gifts, comfort), cold and hostile effects are halved (`goodwill_count`, `goodwill_percent`). Their reply reflects it: "That's not like you. Is something wrong?"
+- **Goodwill** - if the receiver holds impressions of at least 3 kind acts from the sender (warm messages, gifts, comfort, time together), cold and hostile effects are halved (`goodwill_count`, `goodwill_percent`). Their reply reflects it: "That's not like you. Is something wrong?"
 - **Wariness** - if the receiver holds an impression of at least 2 hostile messages from the sender, warm effects are halved (`wariness_count`, `wariness_percent`).
 
 **reply** - when someone outside the cast (such as the user) talks to an active, unblocked character, the character emits a `:reply` output phrased from their current mood and memories. Replies do not change state.
@@ -70,7 +70,7 @@ History changes how a message lands, through impressions built by consolidation:
 
 The receiver: jealousy -15, loneliness -6, stress -10, trust toward the apologizer +8, remembers the apology (importance 70).
 
-### `time_tick` -> `time_passage`, `memory_decay`, `consolidation`, `autonomy`
+### `time_tick` -> `time_passage`, `memory_decay`, `consolidation`, `autonomy`, `companionship`
 
 **time_passage** - advances `state.clock` by `hours`. For each active character, per hour: loneliness +4, joy -2, stress -2. Jealousy does not fade with time alone; it takes an apology or comfort.
 
@@ -90,7 +90,7 @@ A memory loses `(100 - importance) / 4` strength per simulated day, independent 
 | 90 | 4 weeks |
 | 100 | never |
 
-**consolidation** - individual memories fade, patterns should not. When a character holds at least 2 faded, unconsolidated firsthand memories of the same kind of interaction with the same actor (gifts, warm/cold/hostile messages, apologies, comfort), they fold into an `:impression` memory such as `"user has been warm to mina 3 times."`. Importance is `40 + 10 * count`, capped at 90. An impression dates from when its latest memory faded (so the result does not depend on how time was split into ticks) and decays four times more slowly than ordinary memories (`memory_decay.impression_slowdown`), so patterns outlast the details. Later faded memories of the same pattern deepen the impression in place; the originals are kept and marked `consolidated_into`. Impressions are private: they are never gossiped. A faded impression no longer counts toward goodwill or wariness.
+**consolidation** - individual memories fade, patterns should not. When a character holds at least 2 faded, unconsolidated firsthand memories of the same kind of interaction with the same actor (gifts, warm/cold/hostile messages, apologies, comfort, time together), they fold into an `:impression` memory such as `"user has been warm to mina 3 times."`. Importance is `40 + 10 * count`, capped at 90. An impression dates from when its latest memory faded (so the result does not depend on how time was split into ticks) and decays four times more slowly than ordinary memories (`memory_decay.impression_slowdown`), so patterns outlast the details. Later faded memories of the same pattern deepen the impression in place; the originals are kept and marked `consolidated_into`. Impressions are private: they are never gossiped. A faded impression no longer counts toward goodwill or wariness.
 
 **autonomy** - characters act on their own. A character who is struggling (mood `jealous`, `lonely`, or `upset`) or `:talkative` confides a notable memory to their most trusted friend (trust >= 30) who has not heard about it yet:
 
@@ -98,6 +98,12 @@ A memory loses `(100 - importance) / 4` strength per simulated day, independent 
 - talkative characters also retell `:heard` memories with importance >= 30
 
 At most one confidence per character per tick. It is enqueued as a `gossip_shared` follow-up event.
+
+**companionship** - a character whose mood is `lonely` invites the friend they like most (affinity >= 30) who can act, at most once per 12 simulated hours per pair; each character joins at most one outing per tick. Enqueued as `time_spent_together`.
+
+### `time_spent_together` -> `together`
+
+Both characters: loneliness -15, joy +6, affinity toward each other +2, and both remember it (importance 40). Emits a `:character_interaction` scene of kind `:together`. Repeated outings consolidate into impressions and count as kindness for goodwill.
 
 ### `gossip_shared` -> `gossip`, `empathy`
 

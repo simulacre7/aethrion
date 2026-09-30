@@ -76,6 +76,16 @@ defmodule Aethrion.Validator do
     end
   end
 
+  defp validate_event(state, %{type: :time_spent_together} = event) do
+    with :ok <- require_character(state, event, :from),
+         :ok <- require_character(state, event, :to),
+         :ok <- require_distinct(event),
+         :ok <- require_available(state, event.from, :from),
+         :ok <- require_available(state, event.to, :to) do
+      :ok
+    end
+  end
+
   defp validate_event(state, %{type: :gossip_shared} = event) do
     with :ok <- require_character(state, event, :from),
          :ok <- require_character(state, event, :to),

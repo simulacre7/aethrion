@@ -143,6 +143,15 @@
         },
         {
           "properties": {
+            "type": {"const": "time_spent_together"},
+            "from": {"$ref": "#/definitions/id"},
+            "to": {"$ref": "#/definitions/id"},
+            "at": {"type": "string"}
+          },
+          "required": ["type", "from", "to"]
+        },
+        {
+          "properties": {
             "type": {"const": "comfort_offered"},
             "from": {"$ref": "#/definitions/id"},
             "to": {"$ref": "#/definitions/id"},

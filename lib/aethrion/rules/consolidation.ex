@@ -93,6 +93,9 @@ defmodule Aethrion.Rules.Consolidation do
       %{"event" => "comfort_offered", "from" => actor, "to" => ^me} ->
         {"comfort", actor}
 
+      %{"event" => "time_spent_together", "from" => actor, "to" => ^me} ->
+        {"together", actor}
+
       _ ->
         nil
     end
@@ -197,6 +200,9 @@ defmodule Aethrion.Rules.Consolidation do
 
   defp content("apology", actor, character, count),
     do: "#{actor} has apologized to #{character} #{count} times."
+
+  defp content("together", actor, character, count),
+    do: "#{character} has spent time with #{actor} #{count} times."
 
   defp content("comfort", actor, character, count),
     do: "#{actor} has comforted #{character} #{count} times."

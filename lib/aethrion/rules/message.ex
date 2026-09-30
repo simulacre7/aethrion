@@ -96,7 +96,7 @@ defmodule Aethrion.Rules.Message do
 
     cond do
       event.tone in [:cold, :hostile] and
-          count.("warm") + count.("gift") + count.("comfort") >=
+          count.("warm") + count.("gift") + count.("comfort") + count.("together") >=
             Transition.param(transition, :goodwill_count) ->
         {Transition.note(
            transition,

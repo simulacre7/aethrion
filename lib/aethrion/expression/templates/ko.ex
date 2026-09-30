@@ -106,6 +106,10 @@ defmodule Aethrion.Expression.Templates.Ko do
     end
   end
 
+  def render(%Request{kind: :character_interaction, reason: :together} = request) do
+    "#{with_particle(request.speaker.name, :with)} #{with_particle(request.listener.name, :topic)} 함께 조용한 오후를 보낸다."
+  end
+
   def render(%Request{kind: :character_interaction, reason: :comfort} = request) do
     "#{with_particle(request.speaker.name, :topic)} 한동안 #{request.listener.name} 곁에 있어 준다. " <>
       "#{with_particle(request.listener.name, :subject)} 조금 가벼워진 얼굴이다."
@@ -133,7 +137,8 @@ defmodule Aethrion.Expression.Templates.Ko do
 
   @doc """
   Appends the Korean particle that fits `word`'s final sound. `kind` is
-  `:subject` (이/가), `:topic` (은/는), `:object` (을/를), or `:and` (이랑/랑).
+  `:subject` (이/가), `:topic` (은/는), `:object` (을/를), `:and` (이랑/랑),
+  or `:with` (과/와).
   """
   def with_particle(word, kind) do
     {with_batchim, without} =
@@ -142,6 +147,7 @@ defmodule Aethrion.Expression.Templates.Ko do
         :topic -> {"은", "는"}
         :object -> {"을", "를"}
         :and -> {"이랑", "랑"}
+        :with -> {"과", "와"}
       end
 
     word <> if(batchim?(word), do: with_batchim, else: without)
@@ -185,7 +191,8 @@ defmodule Aethrion.Expression.Templates.Ko do
 
   defp kind_impression?(%{"event" => "impression"} = data, {from, to}),
     do:
-      data["from"] == from and data["to"] == to and data["pattern"] in ["warm", "gift", "comfort"]
+      data["from"] == from and data["to"] == to and
+        data["pattern"] in ["warm", "gift", "comfort", "together"]
 
   defp kind_impression?(_data, _between), do: false
 

@@ -82,6 +82,7 @@ An optional `tuning` object overrides rule parameters for this world. Unknown ru
 | `time_tick` | `hours`, `now` |
 | `gossip_shared` | `from`, `to`, `memory_id`, `at` |
 | `comfort_offered` | `from`, `to`, `at` |
+| `time_spent_together` | `from`, `to`, `at` |
 
 Events are validated when they run. A rejected event stops the scenario and reports its index.
 

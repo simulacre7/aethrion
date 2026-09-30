@@ -32,7 +32,7 @@ defmodule Aethrion.Expression.Templates do
       data = find_memory(request, &gift?(&1, between)) ->
         "I still have the #{data["item"]} you gave me. Do you have a minute to talk?"
 
-      find_memory(request, &impression?(&1, between, ["warm", "gift", "comfort"])) ->
+      find_memory(request, &impression?(&1, between, ["warm", "gift", "comfort", "together"])) ->
         "You've always been kind to me. I miss talking with you. Do you have a minute?"
 
       true ->
@@ -75,7 +75,12 @@ defmodule Aethrion.Expression.Templates do
     kind_history? =
       find_memory(
         request,
-        &impression?(&1, {request.listener.id, request.speaker.id}, ["warm", "gift", "comfort"])
+        &impression?(&1, {request.listener.id, request.speaker.id}, [
+          "warm",
+          "gift",
+          "comfort",
+          "together"
+        ])
       )
 
     if kind_history? do
@@ -107,6 +112,10 @@ defmodule Aethrion.Expression.Templates do
       _ ->
         "#{teller} confides in #{listener}."
     end
+  end
+
+  def render(%Request{kind: :character_interaction, reason: :together} = request) do
+    "#{request.speaker.name} and #{request.listener.name} spend a quiet afternoon together."
   end
 
   def render(%Request{kind: :character_interaction, reason: :comfort} = request) do

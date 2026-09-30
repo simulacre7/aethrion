@@ -16,6 +16,7 @@ defmodule Aethrion.Event do
   | `:time_tick`       | host / `Scheduler`      | simulated time passes                     |
   | `:gossip_shared`   | rules (or host)         | a character tells another about a memory  |
   | `:comfort_offered` | rules (or host)         | someone comforts a character              |
+  | `:time_spent_together` | rules (or host)     | two characters spend time together        |
   """
 
   @tones [:warm, :neutral, :cold, :hostile]
@@ -25,7 +26,8 @@ defmodule Aethrion.Event do
     :apology_offered,
     :time_tick,
     :gossip_shared,
-    :comfort_offered
+    :comfort_offered,
+    :time_spent_together
   ]
 
   @type t :: %{required(:type) => atom(), optional(atom()) => term()}
@@ -105,6 +107,13 @@ defmodule Aethrion.Event do
   end
 
   @doc """
+  Characters `from` and `to` spend time together.
+  """
+  def time_spent_together(from, to, opts \\ []) do
+    %{type: :time_spent_together, from: from, to: to, at: Keyword.get(opts, :at, "demo:t0")}
+  end
+
+  @doc """
   Fills optional fields that hosts may omit when building event maps by hand:
   `:at` (and `:now` for ticks) default to `"unspecified"`, `:observed_by` to
   `[]`, and `:tone` to `:neutral`. Unknown types pass through unchanged.
@@ -150,6 +159,10 @@ defmodule Aethrion.Event do
 
   def describe(%{type: :comfort_offered} = event, names) do
     "#{names.(event.from)} comforts #{names.(event.to)}"
+  end
+
+  def describe(%{type: :time_spent_together} = event, names) do
+    "#{names.(event.from)} spends time with #{names.(event.to)}"
   end
 
   def describe(%{type: type}, _names), do: to_string(type)
@@ -217,6 +230,10 @@ defmodule Aethrion.Event do
 
   defp build(:comfort_offered, data) do
     comfort_offered(data["from"], data["to"], at: Map.get(data, "at", "scenario"))
+  end
+
+  defp build(:time_spent_together, data) do
+    time_spent_together(data["from"], data["to"], at: Map.get(data, "at", "scenario"))
   end
 
   # Unknown tones stay strings so validation can reject them with a clear error.

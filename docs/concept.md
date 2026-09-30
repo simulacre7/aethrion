@@ -41,6 +41,7 @@ The "shared" in *shared social layer* is concrete. Characters do not only react 
 - **Confiding.** A character who is struggling confides in the friend they trust most. The friend gains a secondhand memory, with its source.
 - **Rumor.** Talkative characters retell what they heard. Each retelling carries less weight, so news travels a few hops along lines of trust and then stops.
 - **Empathy.** A friend who cares about someone struggling offers comfort, which changes how both feel.
+- **Companionship.** A lonely character spends time with the friend they like most, and both feel less alone.
 
 None of this is scripted by the host. Rules enqueue follow-up events (`gossip_shared`, `comfort_offered`), and those events pass through the same validation and rules as anything the host sends. Two host events in the demo cascade into four:
 

@@ -56,13 +56,19 @@ defmodule Aethrion.MemoriesTest do
       dispatch!(Runtime.demo_state(), Event.message_sent("user", "haru", "hi", tone: :cold))
 
     {:ok, step} = Runtime.step(state, Event.time_tick("t", hours: 60))
-    [memory] = Enum.filter(step.state.memories, &(&1.character_id == "haru"))
+
+    [memory] =
+      Enum.filter(
+        step.state.memories,
+        &(&1.character_id == "haru" and &1.kind == :experienced and
+            &1.data["event"] == "message_sent")
+      )
 
     assert Memory.faded?(memory)
     assert Enum.any?(step.log, &(&1 =~ "Haru's memory faded"))
 
     {:ok, later} = Runtime.step(step.state, Event.time_tick("t", hours: 60))
-    refute Enum.any?(later.log, &(&1 =~ "memory faded"))
+    refute Enum.any?(later.log, &(&1 =~ "memory faded: \"user said to haru"))
   end
 
   test "queries exclude faded memories unless asked" do

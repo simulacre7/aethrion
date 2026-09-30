@@ -253,7 +253,9 @@ defmodule Aethrion.RegressionTest do
       {one_tick, _outputs} = dispatch!(base, Event.time_tick("t", hours: 152))
       {hourly, _outputs} = run!(base, for(_ <- 1..152, do: Event.time_tick("t", hours: 1)))
 
-      impression = fn state -> Enum.find(state.memories, &(&1.kind == :impression)) end
+      impression = fn state ->
+        State.memory(state, "memory:mina:impression:warm:user")
+      end
 
       assert impression.(one_tick).created_tick == impression.(hourly).created_tick
       assert impression.(one_tick).strength == impression.(hourly).strength

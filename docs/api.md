@@ -76,6 +76,7 @@ Memory fields: `importance`, `strength` (decays with age), `kind` (`:experienced
 | `Event.time_tick(now, hours: n)` | simulated time passes |
 | `Event.gossip_shared(from, to, memory_id, at: label)` | a character tells another about one of their memories (usually produced by rules) |
 | `Event.comfort_offered(from, to, at: label)` | someone comforts a character (usually produced by rules) |
+| `Event.time_spent_together(from, to, at: label)` | two characters spend time together (usually produced by rules) |
 
 `Event.to_data/1` and `Event.from_data/1` convert events to and from JSON-friendly maps. `from_data/1` only accepts built-in types, so untrusted input cannot create atoms.
 
@@ -90,7 +91,7 @@ Every output carries `:rule` and `:event_id`.
 | `:mood_changed` | `character_id`, `from`, `to` |
 | `:proactive_message` | `character_id`, `to`, `reason` (`:jealous`, `:lonely`, `:curious`), `text`, `memory_refs`, `context` |
 | `:reply` | `character_id`, `to`, `tone`, `text`, `memory_refs`, `context` |
-| `:character_interaction` | `kind` (`:gossip`, `:comfort`), `from`, `to`, `text`, `memory_refs`, `context` |
+| `:character_interaction` | `kind` (`:gossip`, `:comfort`, `:together`), `from`, `to`, `text`, `memory_refs`, `context` |
 
 `text` is deterministic fallback text. `context` is an `Aethrion.Expression.Request` snapshot an LLM adapter can render from. Applications decide how to render, store, or deliver outputs; the runtime performs no side effects.
 
@@ -109,7 +110,7 @@ Every output carries `:rule` and `:event_id`.
 | `:invalid_state` | the state is not an `Aethrion.State` |
 | `:invalid_event` | a field is missing or has the wrong type or value |
 | `:unknown_character` | an id does not name a character in the world |
-| `:unavailable_character` | an inactive or blocked character was asked to comfort or gossip |
+| `:unavailable_character` | an inactive or blocked character was asked to comfort, gossip, or spend time together |
 | `:unsupported_event` | no rules are registered for the event type |
 | `:rule_failed` | (RuntimeServer only) a rule raised; the event was rejected and state kept |
 
