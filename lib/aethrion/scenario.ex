@@ -268,8 +268,9 @@ defmodule Aethrion.Scenario do
   Builds scenario data (ready for `Jason.encode!/2`) from a recorded session.
 
   `world` is `"demo"` or the `Aethrion.State` the session started from.
-  Expectations snapshot the outcome: every character's final mood and the
-  number of proactive messages and scenes per character. Replaying the file
+  Expectations snapshot the outcome: every character's final mood, the bond
+  of every relationship toward a person and of every relationship whose bond
+  changed, and the number of proactive messages and scenes per character. Replaying the file
   with `mix aethrion.scenario` turns a play session into a regression test.
   """
   def record(world, host_events, %State{} = final, outputs, opts \\ []) do
@@ -312,7 +313,23 @@ defmodule Aethrion.Scenario do
         %{"output" => type, "character" => id, "count" => count}
       end)
 
-    moods ++ counts
+    changed =
+      for %{type: :bond_changed, from: from, to: to} <- outputs,
+          into: MapSet.new(),
+          do: {from, to}
+
+    bonds =
+      for {{from, to} = pair, relationship} <- Enum.sort(final.relationships),
+          State.character?(final, from),
+          not State.character?(final, to) or MapSet.member?(changed, pair) do
+        %{
+          "relationship" => [from, to],
+          "field" => "bond",
+          "equals" => to_string(Aethrion.Rules.Bond.derive(relationship, final))
+        }
+      end
+
+    moods ++ bonds ++ counts
   end
 
   @doc "Paths of the scenarios bundled with Aethrion."

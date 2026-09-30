@@ -101,6 +101,12 @@ defmodule Aethrion.ScenarioTest do
     assert %{"character" => "yuna", "field" => "mood"} =
              Enum.find(data["expect"], &(&1["character"] == "yuna"))
 
+    # Bonds toward people are snapshotted; bonds between characters only if they moved.
+    assert %{"field" => "bond", "equals" => "friendly"} =
+             Enum.find(data["expect"], &(&1["relationship"] == ["mina", "user"]))
+
+    refute Enum.find(data["expect"], &(&1["relationship"] == ["haru", "yuna"]))
+
     assert {:ok, scenario} = Scenario.from_data(data)
     assert {:ok, result} = Scenario.run(scenario)
     assert Scenario.passed?(result)
