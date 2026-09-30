@@ -42,6 +42,8 @@ The "shared" in *shared social layer* is concrete. Characters do not only react 
 - **Rumor.** Talkative characters retell what they heard. Each retelling carries less weight, so news travels a few hops along lines of trust and then stops.
 - **Empathy.** A friend who cares about someone struggling offers comfort, which changes how both feel.
 - **Companionship.** A lonely character spends time with the friend they like most, and both feel less alone.
+- **Reputation.** How you treat one character reaches the others. A friend who saw it trusts you less on the spot, one who heard about it a little less, and once the details fade, what remains is a reputation that colors how your kindness lands.
+- **Bonds.** Relationships have names that change as the numbers do (friendly, close, strained, estranged), and the change itself is an event a host can show.
 
 None of this is scripted by the host. Rules enqueue follow-up events (`gossip_shared`, `comfort_offered`), and those events pass through the same validation and rules as anything the host sends. Two host events in the demo cascade into four:
 
@@ -84,17 +86,17 @@ The long-term runtime model maps naturally to Elixir and BEAM:
 - supervision can recover long-lived runtime components
 - message passing fits event-driven simulation
 
-The v0 implementation starts as a small Elixir library with a deterministic, process-free simulation core. It intentionally avoids Phoenix, distributed Erlang, persistent databases, and real LLM providers until the simulation loop is proven.
+The implementation is a small Elixir library with a deterministic, process-free simulation core. It intentionally avoids Phoenix, distributed Erlang, and databases; real LLM providers sit behind the expression boundary, where they can phrase but not decide.
 
 The alpha also includes an OTP layer:
 
-- `Aethrion.RuntimeServer` keeps runtime state inside a GenServer, with subscriptions, history, and snapshot persistence
+- `Aethrion.RuntimeServer` keeps runtime state inside a GenServer, with subscriptions, history, snapshot persistence, and journals
 - `Aethrion.Scheduler` emits scheduled `time_tick` events
 - expression rendering runs in supervised tasks with timeouts, so a slow or crashing model never blocks or breaks the world
 - `Aethrion.World` supervises all of it as one unit
 - all of it delegates state transitions back to the deterministic core
 
-This keeps the BEAM value concrete without making every character a process too early. Characters remain plain data; processes model runtime concerns.
+This keeps the BEAM value concrete without making every character a process too early. Characters remain plain data; processes model runtime concerns. The tradeoffs are spelled out in [architecture.md](architecture.md#process-boundaries-and-their-tradeoffs).
 
 ## Related Influence
 
