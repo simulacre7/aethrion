@@ -86,7 +86,7 @@ Every output carries `:rule` and `:event_id`.
 
 | type | fields |
 | --- | --- |
-| `:relationship_changed` | `from`, `to`, `delta` (applied, after clamping) |
+| `:relationship_changed` | `from`, `to`, `delta`: a map of the applied amounts after clamping, e.g. `%{tension: 8}` |
 | `:memory_created` | `memory` |
 | `:mood_changed` | `character_id`, `before`, `after` |
 | `:bond_changed` | `from`, `to`, `before`, `after` (`:estranged`, `:strained`, `:neutral`, `:friendly`, `:close`) |
@@ -108,7 +108,7 @@ Every public function that can fail returns `{:error, %Aethrion.Error{}}`:
 }
 ```
 
-`code` says what went wrong; `details` says where. Location keys are shared across the library: `:index` (0-based event position), `:branch` (scenario branch), `:line` (1-based journal line), `:path` (position in a JSON document), and `:field`. `Aethrion.Runtime.run/3` also puts the `:steps` completed before the failure in `details`.
+`code` says what went wrong; `details` says where. Location keys are shared across the library: `:index` (0-based event position), `:branch` (scenario branch), `:line` (1-based journal line), `:path` (position in a JSON document), `:file` (the file, for file errors), and `:field`. `Aethrion.Runtime.run/3` also puts the `:steps` completed before the failure in `details`. `Aethrion.Error.format/1` renders the message with its location, as the mix tasks print it.
 
 | code | meaning |
 | --- | --- |
@@ -122,6 +122,7 @@ Every public function that can fail returns `{:error, %Aethrion.Error{}}`:
 | `:invalid_scenario` | a scenario file is malformed |
 | `:invalid_journal` | a journal file is malformed |
 | `:journal_mismatch` | replaying a journal assigned a different event id than recorded |
+| `:journal_changed` | a journal changed on disk while `Journal.compact/2` was compacting it |
 | `:journal_failed` | (RuntimeServer) the journal could not be written; the event was rejected and state kept |
 | `:journal_enabled` | (RuntimeServer) `put_state/2` was called while journaling |
 | `:invalid_snapshot` | a saved snapshot exists but cannot be loaded |
@@ -191,7 +192,7 @@ steps
 #    "jealousy 15 -> 10 by comfort in e4: haru comforts yuna <- yuna confides in haru <- time passes +2h"]
 ```
 
-`Aethrion.Explain.relationship/4` does the same for `affinity`, `trust`, or `tension`; both also accept a trace and event list instead of steps. In the interactive demo: `why yuna jealousy`, `why yuna->haru trust`.
+`Aethrion.Explain.relationship/4` does the same for `affinity`, `trust`, `tension`, or the derived `bond`; both also accept a trace and event list instead of steps. In the interactive demo: `why yuna jealousy`, `why yuna->haru trust`.
 
 ## Memory queries
 
@@ -245,11 +246,12 @@ A world supervises a `Task.Supervisor` for rendering, an `Aethrion.RuntimeServer
 
 | function | meaning |
 | --- | --- |
-| `start_link(opts)` | `:initial_state`, `:name`, `:pipeline`, `:max_depth`, `:max_events`, `:history_limit`, `:persistence` or `:journal`, `:expression` |
+| `start_link(opts)` | `:initial_state`, `:name`, `:pipeline`, `:max_depth`, `:max_events`, `:history_limit`, `:persistence` or `:journal` (with `:journal_compact_every`), `:expression` |
 | `dispatch(server, event)` | same result as `Runtime.dispatch/3` |
 | `step(server, event)` | `{:ok, %Aethrion.Step{}}` |
 | `get_state(server)`, `put_state(server, state)` | read or replace the state |
 | `history(server)` | host events dispatched, oldest first |
+| `compact_journal(server)` | restart the journal from the current state |
 | `subscribe(server, pid)`, `unsubscribe(server, pid)` | receive messages below |
 
 Subscriber messages:
@@ -320,9 +322,9 @@ The `demo.*` tasks live in `dev/` and run only from a checkout of this repositor
 | task | purpose |
 | --- | --- |
 | `mix demo.drama` | two host events and everything they cascade into |
-| `mix demo.branches` | the same setup, ignored vs. apologized |
-| `mix demo.interactive` | REPL with `say`, `why`, `context`, `undo`, `--llm` |
+| `mix demo.branches` | one moment (the crossroads scenario), four branches, compared |
+| `mix demo.interactive` | REPL with `say`, `here`, `why`, `context`, `undo`, `--llm`, `--locale ko` |
 | `mix aethrion.scenario PATH \| --all` | run scenarios and check expectations |
-| `mix aethrion.report PATH \| --all` | render HTML reports |
+| `mix aethrion.report PATH \| --all` | render HTML reports; `--out` / `--out-dir`, `--locale ko` |
 | `mix aethrion.rules` | print the rule pipeline |
-| `mix aethrion.journal PATH` | replay a journal; `--scenario` / `--report` to export |
+| `mix aethrion.journal PATH` | replay a journal; `--scenario` / `--report` to export, `--compact [--archive FILE]`, `--max-depth` / `--max-events` |

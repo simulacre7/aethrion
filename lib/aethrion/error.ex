@@ -9,6 +9,7 @@ defmodule Aethrion.Error do
   - `:branch` - scenario branch name
   - `:line` - journal line (1-based, like editors)
   - `:path` - position inside a JSON document, as a list of keys and indexes
+  - `:file` - the file involved, for file errors
   - `:field` - event or option field
 
   | code | meaning |
@@ -62,7 +63,8 @@ defmodule Aethrion.Error do
 
   @doc """
   Describes the location in an error's details (`:branch`, `:index`, `:line`,
-  `:path`), or returns `nil` when there is none.
+  `:path`), or returns `nil` when there is none. File names are left out:
+  messages about files already name them.
   """
   @spec location(map()) :: String.t() | nil
   def location(details) when is_map(details) do
@@ -76,6 +78,8 @@ defmodule Aethrion.Error do
       case Map.get(details, key) do
         nil -> []
         [] -> []
+        # Only a JSON position is a path; anything else is not a location.
+        value when key == :path and not is_list(value) -> []
         value -> [describe.(value)]
       end
     end)

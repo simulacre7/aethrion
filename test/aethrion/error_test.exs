@@ -22,6 +22,22 @@ defmodule Aethrion.ErrorTest do
     end
   end
 
+  test "file errors name the file under :file and format without crashing" do
+    assert {:error, %Error{code: :not_found, details: %{file: "/nope.jsonl"}} = error} =
+             Journal.read("/nope.jsonl")
+
+    assert Error.format(error) == "no journal at /nope.jsonl"
+    assert Error.format(Error.new(:io_error, "odd", %{path: "/a/string"})) == "odd"
+  end
+
+  test "tasks report missing files instead of crashing" do
+    for task <- [Mix.Tasks.Aethrion.Journal, Mix.Tasks.Aethrion.Report] do
+      assert_raise Mix.Error, ~r/no (journal|scenario) at \/nope/, fn ->
+        ExUnit.CaptureIO.capture_io(fn -> task.run(["/nope.json"]) end)
+      end
+    end
+  end
+
   test "a scenario name of null falls back to the default" do
     assert {:ok, scenario} =
              Scenario.from_data(%{"name" => nil, "description" => nil, "events" => []})

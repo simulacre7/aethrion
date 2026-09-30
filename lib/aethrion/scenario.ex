@@ -136,7 +136,7 @@ defmodule Aethrion.Scenario do
         {:ok, json}
 
       {:error, :enoent} ->
-        {:error, Error.new(:not_found, "no scenario at #{path}", %{path: path})}
+        {:error, Error.new(:not_found, "no scenario at #{path}", %{file: path})}
 
       {:error, reason} ->
         {:error,

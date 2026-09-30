@@ -60,7 +60,9 @@ event.type
 Because rendering only changes text, language is an expression concern. The fake adapter ships Korean templates, with particles chosen from each name's final sound:
 
 ```elixir
-Aethrion.Expression.render(outputs, adapter: Aethrion.LLM.FakeAdapter, adapter_opts: [locale: :ko])
+# yuna_output: Yuna's jealous proactive message from the example above
+[rendered] = Aethrion.Expression.render([yuna_output], adapter: Aethrion.LLM.FakeAdapter, adapter_opts: [locale: :ko])
+rendered.text
 #=> "아까 Mina랑 있을 때 즐거워 보이더라. 혹시 나는 잊은 거 아니지?"
 ```
 

@@ -45,7 +45,7 @@ defmodule Aethrion.Persistence.JsonFile do
         {:ok, json}
 
       {:error, :enoent} ->
-        {:error, Error.new(:not_found, "no saved state at #{path}", %{path: path})}
+        {:error, Error.new(:not_found, "no saved state at #{path}", %{file: path})}
 
       error ->
         io(error, path)

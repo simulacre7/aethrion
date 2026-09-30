@@ -82,7 +82,7 @@ An optional `tuning` object overrides rule parameters for this world. Unknown ru
 | type | fields |
 | --- | --- |
 | `gift_received` | `from`, `to`, `item`, `observed_by`, `at` |
-| `message_sent` | `from`, `to`, `text`, `tone` (`warm`, `neutral`, `cold`, `hostile`), `at` |
+| `message_sent` | `from`, `to`, `text`, `tone` (`warm`, `neutral`, `cold`, `hostile`), `observed_by`, `at` |
 | `apology_offered` | `from`, `to`, `reason`, `at` |
 | `time_tick` | `hours`, `now` |
 | `gossip_shared` | `from`, `to`, `memory_id`, `at` |

@@ -141,7 +141,7 @@ outputs = Aethrion.Expression.render(outputs, adapter: Aethrion.LLM.Anthropic)
 
 ```txt
 SAYS     Yuna -> user: "You looked happy with Mina earlier. I wondered if you forgot about me."
-KO       yuna: "아까 Mina랑 있을 때 즐거워 보이더라. 혹시 나는 잊은 거 아니지?"
+KO       Yuna: "아까 Mina랑 있을 때 즐거워 보이더라. 혹시 나는 잊은 거 아니지?" (Aethrion.LLM.FakeAdapter)
 ```
 
 Adapter: `Aethrion.LLM.Anthropic`, `Aethrion.LLM.OpenAICompatible`(OpenAI, vLLM, Ollama, llama.cpp), 그리고 결정론적인 `Aethrion.LLM.FakeAdapter`. 두 네트워크 adapter 모두 Erlang 내장 `:httpc`를 사용합니다. 자세한 내용은 [docs/expression.md](docs/expression.md)를 참고하세요.

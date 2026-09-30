@@ -92,7 +92,7 @@ The receiver: jealousy -15, loneliness -6, stress -10, trust toward the apologiz
 strength = importance - div(age_hours * (100 - importance), 96)
 ```
 
-A memory loses `(100 - importance) / 4` strength per simulated day, independent of how time was split into ticks. Memories below strength 20 are *faded*: kept for inspection, excluded from context selection. After 30 simulated days faded (`forget_after_hours`), a memory is forgotten and removed, so long-running worlds do not grow without bound; impressions keep the patterns.
+A memory loses `(100 - importance) / 4` strength per simulated day, independent of how time was split into ticks. Memories below strength 20 are *faded*: kept for inspection, excluded from context selection. After 30 simulated days faded (`forget_after_hours`), a memory is forgotten and removed, so long-running worlds do not grow without bound; impressions keep the patterns. Impressions themselves are never forgotten, and a memory that could become part of a pattern is forgotten only once it has been consolidated into one.
 
 | importance | fades after |
 | --- | --- |
@@ -173,7 +173,7 @@ Characters reach out to people (actors who are not characters, such as `user`) w
 | --- | --- | --- |
 | `jealous` | jealousy >= 15 and jealousy + loneliness >= 45 | 24 simulated hours |
 | `lonely` | loneliness >= 60 and jealousy < 15 | 24 simulated hours |
-| `curious` | holds secondhand news involving the user, and is `:playful` or has affinity >= 30 toward the user | once per topic |
+| `curious` | holds secondhand news involving a person (not a character), and is `:playful` or has affinity >= 30 toward the user | once per topic |
 
 Characters do not reach out to someone they feel tense toward (tension >= 10, parameter `avoid_tension`); they confide in friends instead.
 

@@ -91,7 +91,7 @@ defmodule Aethrion.Journal do
   defp file_version(path) do
     case File.stat(path, time: :posix) do
       {:ok, stat} -> {:ok, {stat.size, stat.mtime, stat.inode}}
-      {:error, :enoent} -> {:error, Error.new(:not_found, "no journal at #{path}", %{path: path})}
+      {:error, :enoent} -> {:error, Error.new(:not_found, "no journal at #{path}", %{file: path})}
       {:error, reason} -> {:error, io_error(path, reason)}
     end
   end
@@ -108,7 +108,7 @@ defmodule Aethrion.Journal do
          Error.new(
            :journal_changed,
            "#{path} changed while it was being compacted; is a server still appending to it?",
-           %{path: path}
+           %{file: path}
          )}
     end
   end
@@ -123,7 +123,7 @@ defmodule Aethrion.Journal do
          :invalid_options,
          "the journal's tuning does not fit the pipeline (#{error.message}); " <>
            "compact with the pipeline the world runs with",
-         %{path: path, reason: error}
+         %{file: path, reason: error}
        )}
     else
       {:error, %Error{} = error} -> {:error, error}
@@ -192,7 +192,7 @@ defmodule Aethrion.Journal do
   defp tmp_path(path), do: "#{path}.#{System.unique_integer([:positive])}.tmp"
 
   defp already_exists(path),
-    do: Error.new(:already_exists, "a file already exists at #{path}", %{path: path})
+    do: Error.new(:already_exists, "a file already exists at #{path}", %{file: path})
 
   @doc """
   Encodes a processed host event as a journal line, or returns
@@ -239,7 +239,7 @@ defmodule Aethrion.Journal do
 
   defp io_error(path, reason) do
     Error.new(:io_error, "could not write #{path}: #{inspect(reason)}", %{
-      path: path,
+      file: path,
       reason: reason
     })
   end
@@ -295,7 +295,7 @@ defmodule Aethrion.Journal do
         {:ok, contents}
 
       {:error, :enoent} ->
-        {:error, Error.new(:not_found, "no journal at #{path}", %{path: path})}
+        {:error, Error.new(:not_found, "no journal at #{path}", %{file: path})}
 
       {:error, reason} ->
         {:error,

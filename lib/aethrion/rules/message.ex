@@ -14,7 +14,7 @@ defmodule Aethrion.Rules.Message do
   `Aethrion.Rules.Consolidation` from faded memories:
 
   - **Goodwill.** If the receiver holds impressions of at least 3 kind acts
-    (warm messages, gifts, comfort) from the sender, cold and hostile effects
+    (warm messages, gifts, comfort, time together) from the sender, cold and hostile effects
     are halved: the receiver gives the sender the benefit of the doubt.
   - **Wariness.** If the receiver holds an impression of at least 2 hostile
     messages from the sender, warm effects are halved.

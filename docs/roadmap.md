@@ -16,13 +16,14 @@ Implemented in v0.2:
 
 - rule behaviour, explicit pipeline, and traced transitions (every change explained by rule and event)
 - cascading follow-up events with depth and count limits
-- character-to-character behavior: observation, confiding, rumor, empathy, comfort
+- character-to-character behavior: observation, confiding, rumor, empathy, comfort, companionship
 - tone-aware messages and replies; simulated clock, cooldowns, derived moods, joy and stress
 - memory kinds, topics, sources, age-based decay, deterministic retrieval, consolidation into impressions that change how later messages land
 - reputation: witnesses and hearsay judge how someone treats others, and secondhand memories fold into reputation impressions
-- expression snapshots, LLM adapter behaviour, Anthropic and OpenAI-compatible adapters
+- derived relationship bonds with announced changes
+- expression snapshots, LLM adapter behaviour, Anthropic and OpenAI-compatible adapters, English and Korean templates
 - intent interpretation limited to a closed set of proposals
-- supervised worlds with subscriptions, history, snapshot recovery, and async rendering
+- supervised worlds with subscriptions, history, snapshot recovery, journals with compaction, and async rendering
 - data-first scenario files with expectations, HTML reports, and a richer interactive CLI
 - rule parameters as data (`Aethrion.Tuning`), per world, persisted, and settable from scenarios
 - property-based invariant tests
