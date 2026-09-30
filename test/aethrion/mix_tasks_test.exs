@@ -76,6 +76,16 @@ defmodule Aethrion.MixTasksTest do
     assert File.read!(out) =~ "<h2>Timeline</h2>"
   end
 
+  test "with --locale ko, events are also described in Korean" do
+    output =
+      capture_io("gift user mina flower observed_by yuna\nquit\n", fn ->
+        Mix.Tasks.Demo.Interactive.run(["--no-status", "--locale", "ko"])
+      end)
+      |> plain()
+
+    assert output =~ "KO       네가 Mina에게 flower를 준다 (Yuna 목격)"
+  end
+
   test "characters who are here witness what is said" do
     input =
       "here haru\nmessage user yuna hostile leave me alone\nhere none\ngift user mina pin\nquit\n"

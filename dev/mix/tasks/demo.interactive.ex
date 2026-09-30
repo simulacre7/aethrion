@@ -388,7 +388,7 @@ defmodule Mix.Tasks.Demo.Interactive do
 
     case Runtime.step(session.state, event) do
       {:ok, step} ->
-        Display.event(step.event, session.state)
+        Display.event(step.event, session.state, session.locale)
         Enum.each(step.log, &Display.log/1)
         if session.effects?, do: Enum.each(step.outputs, &Display.output/1)
 

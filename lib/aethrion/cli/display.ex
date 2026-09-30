@@ -156,9 +156,22 @@ defmodule Aethrion.CLI.Display do
     print("")
   end
 
-  def event(event, state \\ nil) do
+  def event(event, state \\ nil, locale \\ nil) do
     names = if state, do: &State.name(state, &1), else: &Function.identity/1
     print_tagged("EVENT", :blue, Event.describe(event, names))
+
+    if locale == :ko do
+      ko_names = fn
+        "user" -> "너"
+        id -> names.(id)
+      end
+
+      print_tagged(
+        "KO",
+        :light_cyan,
+        Aethrion.Expression.Templates.Ko.describe_event(event, ko_names)
+      )
+    end
   end
 
   def log(line) do
