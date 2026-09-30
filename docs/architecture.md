@@ -93,12 +93,36 @@ Rules attach deterministic fallback text and an `Expression.Request` snapshot to
 
 The server calls `Runtime.step/3`, writes the journal (if any) before committing the new state, saves snapshots (if any), broadcasts to subscribers, and starts rendering tasks with timeouts. A crashing rule rejects the event; a crashing or slow adapter produces fallback text; a crashing server restarts from its snapshot or journal.
 
+## Process boundaries and their tradeoffs
+
+Aethrion uses one process per *world*, not per character. The alternatives were considered and deferred for these reasons.
+
+**What one event needs.** A single gift changes the receiver, every observer, and their relationships; a hostile message changes the receiver and every witness's view of the sender; a tick can enqueue a dozen follow-ups across the cast, processed breadth-first. Every rule reads the state that earlier rules in the same step produced, and the step's trace and outputs describe one consistent transition.
+
+**What per-character processes would cost.**
+
+| concern | one world process (today) | a process per character |
+| --- | --- | --- |
+| consistency | a step is one function over one value | a gift touches several mailboxes; needs a coordinator or a commit protocol to avoid half-applied events |
+| ordering | follow-ups run breadth-first in a fixed order | message interleaving between characters varies run to run |
+| determinism | same input, same state, trace, and outputs | would have to record the interleaving to replay a journal |
+| trace | built as the step runs | assembled from several processes after the fact |
+| snapshots | the state is the snapshot | a consistent cut across processes |
+| failure | a raising rule rejects the event, state untouched | partial updates to roll back |
+
+**What they would buy.** Parallel rule execution, isolation of one character's work, and a natural shape for distribution. At the current scale none of these is needed: a step takes under a millisecond for ordinary events and tens of milliseconds for a busy tick in a 200-character world (see `bench/dispatch.exs`), failures are already isolated per event, and timers live in the scheduler.
+
+**Where processes are used instead.** Around the core, where concurrency is real: the runtime server serializes events for a world and owns subscribers and storage; the scheduler owns time; rendering runs in supervised tasks so a slow or failing model never blocks the simulation. Independent worlds (for example one per user or per room) are independent `Aethrion.World` trees and scale out naturally.
+
+**When to revisit.** If one world's step time becomes the bottleneck (thousands of active characters in one shared world), the next step would be partitioning a world into loosely coupled regions with explicit, logged messages between them, keeping each region deterministic. Characters that must be shared across many worlds (one persona talking to many users) are better modeled as shared read-only profiles plus per-world state than as a single process.
+
 ## Adding things
 
 | to add | touch |
 | --- | --- |
 | a rule | a module with `use Aethrion.Rule`; register it in `Pipeline.default/0` (or a host pipeline); document it in `docs/rules.md`; add a scenario |
 | an event type | a constructor, `describe/2`, and `from_data` builder in `Event`; validation in `Validator`; the scenario schema; docs |
+| an impression pattern | `interaction/1` in `Rules.Consolidation` and its content line; history effects in the rule that reads it |
 | an output type | a constructor in `Output`; `Display` and `Report` rendering; docs |
 | a template line | `Expression.Templates` and `Expression.Templates.Ko` |
 | an LLM provider | a module implementing `Aethrion.LLM.Adapter`, using `Expression.Prompt` and `LLM.HTTP` |

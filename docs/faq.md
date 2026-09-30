@@ -10,7 +10,7 @@ Voice. Rules produce the facts and a deterministic draft line; a model rewrites 
 
 ## Why not one process per character?
 
-Characters are data that rules read and write together: a single gift changes the receiver, every observer, and their relationships at once, and a cascade can touch several characters in one step. Splitting that across processes would turn one deterministic function into a distributed protocol with ordering problems, for no benefit at this scale. Processes are used where they help: the long-running world, the scheduler, and isolating slow or failing model calls. See the Phase 4 notes in the [roadmap](roadmap.md).
+Characters are data that rules read and write together: a single gift changes the receiver, every observer, and their relationships at once, and a cascade can touch several characters in one step. Splitting that across processes would turn one deterministic function into a distributed protocol with ordering problems, for no benefit at this scale. Processes are used where they help: the long-running world, the scheduler, and isolating slow or failing model calls. See [process boundaries](architecture.md#process-boundaries-and-their-tradeoffs).
 
 ## Is it really deterministic?
 

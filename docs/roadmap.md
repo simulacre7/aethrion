@@ -107,7 +107,7 @@ TODO:
 - [ ] Explore character or relationship processes only if a concrete runtime boundary requires them.
 - [x] Add crash/restart tests for supervised runtime components.
 - [x] Keep deterministic rule functions testable without processes.
-- [ ] Document tradeoffs around process message passing before adding finer-grained actor processes.
+- [x] Document tradeoffs around process message passing before adding finer-grained actor processes (see [architecture.md](architecture.md#process-boundaries-and-their-tradeoffs)).
 - [x] Run expression rendering in supervised tasks with timeouts, isolated from the runtime.
 - [x] Restore runtime state from snapshots after a supervised restart.
 - [x] Add subscriptions and bounded event history to the runtime server.
