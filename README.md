@@ -137,6 +137,8 @@ host event
 - **Cascades** let characters act on each other: observation, confiding, rumor, empathy, comfort, companionship.
 - **Reputation** carries how you treat one character to the others: whoever sees or hears about it judges you, and faded details become a lasting reputation.
 - **Bonds** name what each relationship has become (strained, friendly, close, ...) and announce when an event changes one.
+- **Time** behaves like time with people: characters grow lonely after a quiet stretch, reach out, and stop writing when nobody answers; jealousy fades; apologies wear thin when repeated; replies vary instead of repeating. Week-long played sessions check that the lines stay plausible.
+- **Several people** can share a world: players have display names, each gets their own "while you were away" digest, and characters address the person their feelings are about.
 - **Traces** record every change: which rule, which event, before and after. `why yuna jealousy` in the interactive demo answers "why is Yuna this jealous?" with each change and the chain of events behind it.
 - **Memory** has kinds (experienced, observed, heard), sources, topics that link everyone's memory of the same event, age-based decay, and consolidation of faded experiences into lasting impressions. Retrieval is deterministic; no vector search.
 - **Tuning** makes every rule's numbers data: a world, saved state, or scenario can override them without code.
