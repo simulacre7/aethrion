@@ -467,21 +467,22 @@ defmodule Aethrion.Report do
         ]
       end)
 
+    anchor = fn index ->
+      cond do
+        count <= 1 -> "middle"
+        index == 0 -> "start"
+        index == count - 1 -> "end"
+        true -> "middle"
+      end
+    end
+
     ticks =
       labels
       |> Enum.with_index()
-      |> Enum.filter(fn {_label, index} -> index == 0 or index == count - 1 or count <= 5 end)
+      |> fitting_labels(x, anchor, count)
       |> Enum.map(fn {label, index} ->
-        anchor =
-          cond do
-            count <= 1 -> "middle"
-            index == 0 -> "start"
-            index == count - 1 -> "end"
-            true -> "middle"
-          end
-
         [
-          "<text class=\"axis\" x=\"#{fmt(x.(index))}\" y=\"#{@height - 8}\" text-anchor=\"#{anchor}\">",
+          "<text class=\"axis\" x=\"#{fmt(x.(index))}\" y=\"#{@height - 8}\" text-anchor=\"#{anchor.(index)}\">",
           esc(label),
           "</text>"
         ]
@@ -1331,6 +1332,39 @@ defmodule Aethrion.Report do
   end
 
   defp article(item), do: to_string(item)
+
+  # The first and last labels always, and those in between only where they
+  # fit without touching a neighbor.
+  defp fitting_labels(indexed, x, anchor, count) do
+    span = fn {label, index} ->
+      width = label_width(label)
+      left = x.(index)
+
+      case anchor.(index) do
+        "start" -> {left, left + width}
+        "end" -> {left - width, left}
+        _middle -> {left - width / 2, left + width / 2}
+      end
+    end
+
+    {ends, middle} = Enum.split_with(indexed, fn {_label, i} -> i == 0 or i == count - 1 end)
+
+    middle
+    |> Enum.reduce(ends, fn tick, kept ->
+      if Enum.all?(kept, &apart?(span.(tick), span.(&1))), do: [tick | kept], else: kept
+    end)
+    |> Enum.sort_by(fn {_label, index} -> index end)
+  end
+
+  defp apart?({from, to}, {a, b}), do: to + 6 <= a or from >= b + 6
+
+  # Rough widths at the axis font size: Latin narrow, Hangul full width.
+  defp label_width(label) do
+    label
+    |> String.graphemes()
+    |> Enum.map(fn char -> if String.match?(char, ~r/^[\x00-\x7F]$/), do: 6.2, else: 11.0 end)
+    |> Enum.sum()
+  end
 
   defp capitalize_first(<<first::utf8, rest::binary>>), do: String.upcase(<<first::utf8>>) <> rest
   defp capitalize_first(text), do: text
