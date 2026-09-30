@@ -35,8 +35,8 @@ defmodule Aethrion.Rules.TimePassage do
 
     transition
     |> Transition.note(
-      "time_tick increased loneliness +#{loneliness} for active characters " <>
-        "(clock #{transition.state.clock}h)"
+      "#{hours}h passed: loneliness +#{Transition.param(transition, :loneliness_per_hour)} an hour " <>
+        "for active characters, up to 100 (clock #{transition.state.clock}h)"
     )
     |> ease_tension(state.clock, transition.state.clock)
   end

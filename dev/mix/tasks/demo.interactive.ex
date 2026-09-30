@@ -51,6 +51,7 @@ defmodule Mix.Tasks.Demo.Interactive do
       adapter: adapter(opts[:llm]),
       locale: locale(opts[:locale]),
       present: [],
+      hinted?: false,
       effects?: Keyword.get(opts, :effects, false),
       status?: Keyword.get(opts, :status, true)
     }
@@ -123,33 +124,25 @@ defmodule Mix.Tasks.Demo.Interactive do
     loop(session)
   end
 
-  defp handle({:ok, {:memories, character}}, session) do
-    Display.memories(session.state, character)
+  defp handle({:ok, {:memories, character}}, session) when is_binary(character) do
+    with_character(session, character, fn -> Display.memories(session.state, character) end)
+  end
+
+  defp handle({:ok, {:memories, nil}}, session) do
+    Display.memories(session.state, nil)
     loop(session)
   end
 
   defp handle({:ok, {:why, character}}, session) do
-    Display.explain(session.trace, character)
-    loop(session)
+    with_character(session, character, fn -> Display.explain(session.trace, character) end)
   end
 
-  defp handle({:ok, {:why, target, field}}, session) do
-    events = Enum.reverse(session.events)
-    names = &State.name(session.state, &1)
+  defp handle({:ok, {:why, {from, _to}, _field} = command}, session) do
+    with_character(session, from, fn -> why(command, session) end)
+  end
 
-    {label, changes} =
-      case target do
-        {from, to} ->
-          {"#{from}->#{to}.#{field}",
-           Aethrion.Explain.relationship(session.trace, events, from, to, field)}
-
-        character ->
-          {"#{character}.#{field}",
-           Aethrion.Explain.character(session.trace, events, character, field)}
-      end
-
-    Display.explain_value(label, changes, names)
-    loop(session)
+  defp handle({:ok, {:why, character, _field} = command}, session) do
+    with_character(session, character, fn -> why(command, session) end)
   end
 
   defp handle({:ok, {:context, character}}, session) do
@@ -193,7 +186,7 @@ defmodule Mix.Tasks.Demo.Interactive do
 
   defp handle({:ok, :undo}, %{undo: [previous | rest]} = session) do
     Display.message("undone")
-    Display.status(previous.state)
+    if session.status?, do: Display.status(previous.state)
 
     session |> Map.merge(previous) |> Map.put(:undo, rest) |> loop()
   end
@@ -213,7 +206,8 @@ defmodule Mix.Tasks.Demo.Interactive do
     with :ok <- File.mkdir_p(Path.dirname(path)),
          :ok <- File.write(path, Jason.encode!(data, pretty: true)) do
       Display.message(
-        "recorded #{length(session.host_events)} events and #{length(data["expect"])} expectations to #{path}. " <>
+        "recorded #{count(length(session.host_events), "event")} and " <>
+          "#{count(length(data["expect"]), "expectation")} to #{path}. " <>
           "Replay with: mix aethrion.scenario #{path}"
       )
     else
@@ -245,9 +239,17 @@ defmodule Mix.Tasks.Demo.Interactive do
 
   defp handle({:ok, {:load, path}}, session) do
     case JsonFile.load(path: path) do
+      {:ok, %State{characters: characters}} when map_size(characters) == 0 ->
+        Display.message(
+          "ERROR #{path} has no characters. If it is a recorded scenario, replay it with: " <>
+            "mix aethrion.scenario #{path}"
+        )
+
+        loop(session)
+
       {:ok, state} ->
         Display.message("loaded #{path}")
-        Display.status(state)
+        if session.status?, do: Display.status(state)
 
         loop(%{
           remember(session)
@@ -266,7 +268,11 @@ defmodule Mix.Tasks.Demo.Interactive do
   end
 
   defp handle({:ok, {:say, to, text}}, session) do
-    case Intent.interpret(session.state, text, to: to, adapter: session.adapter || FakeAdapter) do
+    case Intent.interpret(session.state, text,
+           to: to,
+           at: "interactive:say",
+           adapter: session.adapter || FakeAdapter
+         ) do
       {:ok, event, meta} ->
         source = if meta.status == :ok, do: inspect(meta.adapter), else: "fallback"
 
@@ -275,7 +281,14 @@ defmodule Mix.Tasks.Demo.Interactive do
             if(event[:tone], do: " (#{event.tone})", else: "") <> " via #{source}"
         )
 
-        dispatch(session, event)
+        # The fake adapter only guesses from keywords; say so once.
+        if is_nil(session.adapter) and not session.hinted? do
+          Display.message(
+            "  (a keyword guess; for an exact tone use: message user #{to} <warm|neutral|cold|hostile> <text>)"
+          )
+        end
+
+        dispatch(%{session | hinted?: true}, event)
 
       {:error, error} ->
         Display.error(error)
@@ -307,6 +320,35 @@ defmodule Mix.Tasks.Demo.Interactive do
     Display.message("ERROR #{message}")
     loop(session)
   end
+
+  defp why({:why, target, field}, session) do
+    events = Enum.reverse(session.events)
+    names = &State.name(session.state, &1)
+
+    {label, changes} =
+      case target do
+        {from, to} ->
+          {"#{from}->#{to}.#{field}",
+           Aethrion.Explain.relationship(session.trace, events, from, to, field)}
+
+        character ->
+          {"#{character}.#{field}",
+           Aethrion.Explain.character(session.trace, events, character, field)}
+      end
+
+    Display.explain_value(label, changes, names)
+  end
+
+  defp with_character(session, id, show) do
+    if State.character?(session.state, id),
+      do: show.(),
+      else: Display.message("ERROR unknown character #{inspect(id)}")
+
+    loop(session)
+  end
+
+  defp count(1, noun), do: "1 #{noun}"
+  defp count(n, noun), do: "#{n} #{noun}s"
 
   defp present_line(_state, []), do: "nobody else is here"
 

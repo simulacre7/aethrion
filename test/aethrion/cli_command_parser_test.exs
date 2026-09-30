@@ -67,6 +67,13 @@ defmodule Aethrion.CLI.CommandParserTest do
              CommandParser.parse("apologize user mina that was cruel observed_by haru")
   end
 
+  test "known commands with the wrong arguments show their usage" do
+    assert {:error, "usage: say <character> <text>"} = CommandParser.parse("say yuna")
+    assert {:error, "usage: opinion <character> <other>"} = CommandParser.parse("opinion yuna")
+    assert {:error, "usage: gift" <> _} = CommandParser.parse("gift user mina")
+    assert {:error, "unknown command" <> _} = CommandParser.parse("dance")
+  end
+
   test "parses opinion" do
     assert {:ok, {:opinion, "haru", "user"}} = CommandParser.parse("opinion haru user")
   end

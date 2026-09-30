@@ -99,7 +99,7 @@ EVENT    user -> Haru (warm): Want to grab lunch tomorrow?
 SAYS     Haru -> user: "Thanks... but I saw what you said to Mina."
 ```
 
-Haru saw it and cares about Mina, so Haru trusts the user less and says so. Yuna only heard about it, so Yuna's trust drops by half as much. Do it again and, once the details fade, what is left is a reputation ("haru knows user has been hostile to mina and yuna 2 times.") that blunts the user's kindness for weeks. Relationships also have names that change along the way (friendly, strained, close, ...), announced as events; `why <from>-><to> bond` shows when and why one changed.
+Haru saw it and cares about Mina, so Haru trusts the user less and says so. Yuna only heard about it, so Yuna's trust drops by half as much. Do it again and, once the details fade, what is left is a reputation ("haru knows user has been hostile to mina and yuna 2 times.") that blunts the user's kindness for weeks. In `mix demo.interactive`, try `here haru` and then `message user yuna hostile leave me alone` (Haru cares about Yuna), followed by `opinion haru user`. Relationships also have names that change along the way (friendly, strained, close, ...), announced as events; `why <from>-><to> bond` shows when and why one changed.
 
 ## Why This Exists
 

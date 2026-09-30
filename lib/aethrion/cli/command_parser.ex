@@ -120,6 +120,28 @@ defmodule Aethrion.CLI.CommandParser do
     {:ok, Event.comfort_offered(from, to, at: "interactive:comfort")}
   end
 
+  # A known command with the wrong arguments gets its usage line.
+  @usage %{
+    "say" => "say <character> <text>",
+    "message" => "message <from> <to> <tone> <text> [observed_by a,b]",
+    "gift" => "gift <from> <to> <item> [observed_by a,b]",
+    "apologize" => "apologize <from> <to> <reason> [observed_by a,b]",
+    "comfort" => "comfort <from> <to>",
+    "tick" => "tick <hours>",
+    "memories" => "memories [character]",
+    "why" => "why <character> [field] | why <from>-><to> <field>",
+    "context" => "context <character>",
+    "opinion" => "opinion <character> <other>",
+    "save" => "save <path>",
+    "load" => "load <path>",
+    "record" => "record <path>",
+    "report" => "report <path>"
+  }
+
+  defp do_parse([command | _args]) when is_map_key(@usage, command) do
+    {:error, "usage: #{Map.fetch!(@usage, command)}"}
+  end
+
   defp do_parse(_tokens) do
     {:error, "unknown command. Type help for available commands."}
   end

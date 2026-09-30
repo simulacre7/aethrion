@@ -137,7 +137,8 @@ with apology    Ivy jealousy=0 trust->user=28 confided_in_tae=false
   })
 
 {:ok, result} = Aethrion.Scenario.run(scenario)
-File.write!("cafe-morning.html", Aethrion.Report.html(result))
+path = Path.join(System.tmp_dir!(), "cafe-morning.html")
+File.write!(path, Aethrion.Report.html(result))
 ```
 
 ## 6. 목소리 입히기
@@ -160,7 +161,7 @@ step.outputs
 |> Aethrion.Expression.render(adapter: Aethrion.LLM.FakeAdapter, adapter_opts: [locale: :ko])
 ```
 
-adapter, 설정, 의도 해석 방식은 [expression.md](expression.md)를 참고하세요.
+키가 없으면 adapter는 조용히 실패하고 모든 대사는 결정론적 텍스트를 그대로 씁니다. 어느 쪽이었는지는 `output.expression.status`(`:ok` 또는 `:fallback`)로 알 수 있습니다. adapter, 설정, 의도 해석 방식은 [expression.md](expression.md)를 참고하세요.
 
 ## 다음으로
 

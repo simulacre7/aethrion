@@ -37,8 +37,17 @@ defmodule Mix.Tasks.Aethrion.Scenario do
     end
 
     results = Enum.map(paths, &run_one(&1, opts))
+    failed = Enum.count(results, &(!&1))
 
-    unless Enum.all?(results), do: exit({:shutdown, 1})
+    if length(results) > 1 and !opts[:json] do
+      Display.message(
+        if failed == 0,
+          do: "\n#{length(results)} scenarios, every expectation met",
+          else: "\n#{length(results)} scenarios, #{failed} with unmet expectations or errors"
+      )
+    end
+
+    unless failed == 0, do: exit({:shutdown, 1})
   end
 
   defp run_one(path, opts) do

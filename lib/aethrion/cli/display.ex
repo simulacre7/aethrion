@@ -70,7 +70,7 @@ defmodule Aethrion.CLI.Display do
   end
 
   def prompt do
-    IO.ANSI.format([:bright, :green, "user", :reset, :faint, "> "], true)
+    IO.ANSI.format([:bright, :green, "user", :reset, :faint, "> "], color?())
     |> IO.chardata_to_string()
   end
 
@@ -299,7 +299,7 @@ defmodule Aethrion.CLI.Display do
   def rules(description) do
     Enum.each(description, fn {type, rules} ->
       print([:bright, if(type == :reactive, do: "after every event", else: to_string(type))])
-      Enum.each(rules, fn {id, text} -> print(["  ", pad(to_string(id), 14), :faint, text]) end)
+      Enum.each(rules, fn {id, text} -> print(["  ", pad(to_string(id), 16), :faint, text]) end)
     end)
 
     print("")
@@ -336,6 +336,12 @@ defmodule Aethrion.CLI.Display do
 
   def message(message), do: print(message)
 
+  @doc """
+  Whether to color output: only on a terminal, and never with `NO_COLOR` set
+  (https://no-color.org).
+  """
+  def color?, do: IO.ANSI.enabled?() and System.get_env("NO_COLOR") in [nil, ""]
+
   defp print_section(title, note \\ nil) do
     print(["\n", :bright, title, :reset, :faint, if(note, do: "  #{note}", else: "")])
   end
@@ -348,11 +354,11 @@ defmodule Aethrion.CLI.Display do
 
   defp print(chardata) do
     chardata
-    |> IO.ANSI.format(true)
+    |> IO.ANSI.format(color?())
     |> IO.puts()
   end
 
-  defp faint(text), do: IO.ANSI.format([:faint, text], true) |> IO.chardata_to_string()
+  defp faint(text), do: IO.ANSI.format([:faint, text], color?()) |> IO.chardata_to_string()
 
   defp mood_color(:happy), do: :green
   defp mood_color(:jealous), do: :red
@@ -365,7 +371,7 @@ defmodule Aethrion.CLI.Display do
     |> Enum.reject(&is_nil/1)
     |> case do
       [] -> ""
-      flags -> IO.ANSI.format([:faint | flags], true) |> IO.chardata_to_string()
+      flags -> IO.ANSI.format([:faint | flags], color?()) |> IO.chardata_to_string()
     end
   end
 

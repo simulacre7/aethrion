@@ -80,7 +80,7 @@ defmodule Aethrion.Persistence.JsonFile do
 
   defp io({:error, reason}, path) do
     {:error,
-     Error.new(:io_error, "file operation on #{path} failed: #{inspect(reason)}", %{
+     Error.new(:io_error, "could not use #{path}: #{:file.format_error(reason)}", %{
        reason: reason
      })}
   end

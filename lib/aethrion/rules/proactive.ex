@@ -27,7 +27,7 @@ defmodule Aethrion.Rules.Proactive do
   use Aethrion.Rule,
     id: :proactive,
     description:
-      "Jealous (pressure>=45), protective (saw hostility to a friend), lonely (>=60), or curious (heard news about someone) characters message that person, at most once an hour.",
+      "Jealous (pressure>=45), protective (saw hostility to a friend), lonely (>=60), or curious (heard news about someone) characters message that person; one message an hour at most, each reason at most once a day.",
     params: [
       jealousy_floor: 15,
       pressure_threshold: 45,

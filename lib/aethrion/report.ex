@@ -311,7 +311,7 @@ defmodule Aethrion.Report do
           "<figure class=\"chart\"><figcaption>",
           esc(character.name),
           "</figcaption>",
-          line_chart(labels, series),
+          line_chart(labels, series, "#{character.name}: feelings over time"),
           "</figure>"
         ]
       end)
@@ -362,7 +362,7 @@ defmodule Aethrion.Report do
   @pad_top 12
   @pad_bottom 26
 
-  defp line_chart(labels, series) do
+  defp line_chart(labels, series, label) do
     count = length(labels)
     plot_w = @width - @pad_left - @pad_right
     plot_h = @height - @pad_top - @pad_bottom
@@ -451,7 +451,9 @@ defmodule Aethrion.Report do
       })
 
     [
-      "<svg viewBox=\"0 0 #{@width} #{@height}\" role=\"img\" aria-label=\"Feelings over time\" data-chart=\"",
+      "<svg viewBox=\"0 0 #{@width} #{@height}\" role=\"img\" aria-label=\"",
+      esc(label),
+      "\" data-chart=\"",
       esc(data),
       "\">",
       grid,

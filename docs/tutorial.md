@@ -137,7 +137,8 @@ Scenarios are JSON, so any world can become one. Custom event types such as `:ti
   })
 
 {:ok, result} = Aethrion.Scenario.run(scenario)
-File.write!("cafe-morning.html", Aethrion.Report.html(result))
+path = Path.join(System.tmp_dir!(), "cafe-morning.html")
+File.write!(path, Aethrion.Report.html(result))
 ```
 
 ## 6. Give it a voice
@@ -153,7 +154,7 @@ step.outputs
 |> Enum.each(&IO.puts(&1.text))
 ```
 
-See [expression.md](expression.md) for adapters, configuration, and how intent interpretation works.
+Without a key the adapter fails quietly and every line keeps its deterministic text; `output.expression.status` says which you got (`:ok` or `:fallback`). See [expression.md](expression.md) for adapters, configuration, and how intent interpretation works.
 
 ## Where next
 

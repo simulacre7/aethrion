@@ -23,7 +23,10 @@ defmodule Mix.Tasks.Aethrion.Rules do
           do: "after every event (reactive)",
           else: to_string(type)
 
-      Mix.shell().info(IO.ANSI.format([:bright, heading], true) |> IO.chardata_to_string())
+      Mix.shell().info(
+        IO.ANSI.format([:bright, heading], Aethrion.CLI.Display.color?())
+        |> IO.chardata_to_string()
+      )
 
       rules
       |> Enum.with_index(1)
@@ -39,7 +42,7 @@ defmodule Mix.Tasks.Aethrion.Rules do
               Enum.map_join(values, ", ", fn {key, default, _current} -> "#{key}=#{default}" end)
 
             Mix.shell().info(
-              IO.ANSI.format([:faint, "     params: ", line], true)
+              IO.ANSI.format([:faint, "     params: ", line], Aethrion.CLI.Display.color?())
               |> IO.chardata_to_string()
             )
         end

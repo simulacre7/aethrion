@@ -16,12 +16,26 @@ defmodule Aethrion.LLM.FakeAdapter do
   # since endings attach to them without a space.
   @apology ["sorry", "apologize", "apologise", "forgive me", "my bad"] ++
              ["미안", "죄송", "잘못했", "용서해"]
-  @hostile ["hate", "stupid", "shut up", "annoying", "go away", "leave me alone", "idiot"] ++
+  @hostile [
+             "hate",
+             "stupid",
+             "shut up",
+             "annoying",
+             "go away",
+             "leave me alone",
+             "idiot",
+             "ruin",
+             "useless",
+             "pathetic",
+             "worthless"
+           ] ++
              ["꺼져", "닥쳐", "짜증", "싫어", "바보", "멍청", "최악", "너 때문에"]
   @warm [
     "thank",
     "love",
     "miss you",
+    "miss talking",
+    "miss our",
     "glad",
     "happy",
     "beautiful",
@@ -43,7 +57,7 @@ defmodule Aethrion.LLM.FakeAdapter do
   ]
   # Disappointment is cold even next to a warm word ("대단히 실망했어").
   @letdown ["disappointed", "let me down", "실망", "서운"]
-  # A warm word right after a negation is cold ("not happy", "하나도 안 고마워"),
+  # A warm word or an apology right after a negation is cold ("not happy", "하나도 안 고마워"),
   # except in idioms that stay warm.
   @negations ["not ", "n't ", "never ", "no longer "] ++ ["안 ", "못 ", "하나도", "전혀"]
   @warm_idioms ["can't thank", "cannot thank", "couldn't be happier", "never been happier"]
@@ -64,11 +78,12 @@ defmodule Aethrion.LLM.FakeAdapter do
 
     proposal =
       cond do
+        negated?(text, @apology) -> %{intent: :message, tone: :cold}
         mentions?(text, @apology) -> %{intent: :apology}
         mentions?(text, @hostile) -> %{intent: :message, tone: :hostile}
         mentions?(text, @letdown) -> %{intent: :message, tone: :cold}
         mentions?(text, @warm_idioms) -> %{intent: :message, tone: :warm}
-        negated_warmth?(text) -> %{intent: :message, tone: :cold}
+        negated?(text, @warm) -> %{intent: :message, tone: :cold}
         mentions?(text, @warm) -> %{intent: :message, tone: :warm}
         mentions?(text, @cold) -> %{intent: :message, tone: :cold}
         true -> %{intent: :message, tone: :neutral}
@@ -91,8 +106,8 @@ defmodule Aethrion.LLM.FakeAdapter do
   end
 
   # A negation within the few characters before a warm word.
-  defp negated_warmth?(text) do
-    Enum.any?(@warm, fn word ->
+  defp negated?(text, words) do
+    Enum.any?(words, fn word ->
       ~r/(?<![a-z])#{Regex.escape(word)}/u
       |> Regex.scan(text, return: :index)
       |> Enum.any?(fn [{start, _length}] ->

@@ -118,6 +118,9 @@ defmodule Aethrion.IntentTest do
     assert %{tone: :cold} = interpret.("I'm not happy about this")
     assert %{tone: :warm} = interpret.("I'm so happy for you")
     assert %{tone: :warm} = interpret.("I can't thank you enough")
+    assert %{tone: :hostile} = interpret.("you always ruin everything")
+    assert %{tone: :cold} = interpret.("I am not sorry at all")
+    assert %{tone: :warm} = interpret.("I miss talking with you")
     assert %{tone: :warm} = interpret.("It's not a big deal, but thank you")
   end
 end
