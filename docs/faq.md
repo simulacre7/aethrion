@@ -18,7 +18,7 @@ For the same starting state, events, pipeline, and cascade limits: yes, and the 
 
 ## How big can a world be?
 
-`bench/dispatch.exs` builds a world of N characters in a ring of trust and runs gifts, messages, and ticks. On a laptop, 200 characters over 96 simulated hours (about 2,700 processed events and 5,000 memories) run in about 3 seconds, about 1 ms per event; a simulated month (10,000 processed events, 13,000 memories) takes about 35 seconds. A tick that triggers dozens of cascaded outings takes tens of milliseconds. Memories are forgotten after 30 faded days by default, so long-running worlds stay bounded. Cascades per event scale with the number of characters (`max_events`).
+`bench/dispatch.exs` builds a world of N characters in a ring of trust and runs gifts, messages, and ticks. On a laptop, 200 characters over 96 simulated hours (about 1,300 processed events and 1,700 memories) run in about 1 second, under 1 ms per event; a simulated month (10,000 processed events, 12,600 memories) takes about 30 seconds, because rules scan the memory list and it grows with the world. A tick that triggers dozens of cascaded outings takes tens of milliseconds. Memories are forgotten after 30 faded days by default, so long-running worlds stay bounded. Cascades per event scale with the number of characters (`max_events`).
 
 ## Can I use it with Phoenix, a game engine, or a chat app?
 

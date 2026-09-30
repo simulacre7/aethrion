@@ -293,14 +293,11 @@ defmodule Aethrion.Rules.Proactive do
           )
       )
 
-    prefixes =
-      for id <- Map.keys(state.characters),
-          kind <- ["curious", "protested"],
-          do: "proactive:#{id}:#{kind}:"
+    kinds = :binary.compile_pattern([":curious:", ":protested:"])
 
     cooldowns =
       Map.filter(state.cooldowns, fn {key, _at} ->
-        not String.starts_with?(key, prefixes) or MapSet.member?(live, key)
+        not once_key?(state, kinds, key) or MapSet.member?(live, key)
       end)
 
     if map_size(cooldowns) == map_size(state.cooldowns),
@@ -309,6 +306,17 @@ defmodule Aethrion.Rules.Proactive do
   end
 
   defp prune_once_keys(transition, _heard, _witnessed), do: transition
+
+  # "proactive:<character>:curious:<topic>" or ":protested:", for a character
+  # in the world. One split per key rather than a prefix per character.
+  defp once_key?(state, kinds, "proactive:" <> rest) do
+    case :binary.split(rest, kinds) do
+      [id, _topic] -> Map.has_key?(state.characters, id)
+      [_no_match] -> false
+    end
+  end
+
+  defp once_key?(_state, _kinds, _key), do: false
 
   # Unfaded secondhand memories involving someone who is not a character, by
   # character, newest first: what they heard, and hostile messages from a
