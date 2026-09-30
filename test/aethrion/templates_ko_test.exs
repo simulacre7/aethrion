@@ -78,4 +78,16 @@ defmodule Aethrion.TemplatesKoTest do
     kinds = requests |> Enum.map(&{&1.kind, &1.reason}) |> Enum.uniq()
     assert length(kinds) >= 7
   end
+
+  test "gossip about a message says who said it" do
+    {state, _outputs} =
+      run!(Runtime.demo_state(), [Event.message_sent("user", "yuna", "go away", tone: :hostile)])
+
+    {:ok, step} =
+      Runtime.step(state, Event.gossip_shared("yuna", "haru", "memory:yuna:message:e1"))
+
+    [scene] = of_type(step.outputs, :character_interaction)
+
+    assert Ko.render(scene.context) == ~s(Yuna는 Haru에게 네가 한 말을 전한다. "go away")
+  end
 end

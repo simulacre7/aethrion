@@ -108,7 +108,12 @@ defmodule Aethrion.Expression.Templates.Ko do
 
       [%{data: %{"event" => "message_sent", "tone" => tone} = data} | _]
       when tone in ["hostile", "cold"] ->
-        "#{with_particle(teller, :topic)} #{listener}에게 들은 말을 전한다. \"#{data["text"]}\""
+        said =
+          if data["from"] == "user",
+            do: "네가",
+            else: with_particle(name(request, data["from"]), :subject)
+
+        "#{with_particle(teller, :topic)} #{listener}에게 #{said} 한 말을 전한다. \"#{data["text"]}\""
 
       _ ->
         "#{with_particle(teller, :topic)} #{listener}에게 속마음을 털어놓는다."
