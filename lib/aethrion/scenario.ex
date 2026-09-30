@@ -142,9 +142,9 @@ defmodule Aethrion.Scenario do
          :ok <- string_field(data, "description"),
          {:ok, state} <- world(Map.get(data, "world", "demo"), pipeline),
          {:ok, tuning} <- Aethrion.Tuning.from_data(Map.get(data, "tuning"), pipeline),
-         {:ok, events} <- events(Map.get(data, "events", [])),
+         {:ok, events} <- events(Map.get(data, "events", []), pipeline),
          {:ok, expectations} <- expectations(Map.get(data, "expect", [])),
-         {:ok, branches} <- branches(Map.get(data, "branches", [])) do
+         {:ok, branches} <- branches(Map.get(data, "branches", []), pipeline) do
       {:ok,
        %__MODULE__{
          name: Map.get(data, "name", "Untitled scenario"),
@@ -306,11 +306,11 @@ defmodule Aethrion.Scenario do
 
   defp world(other, _pipeline), do: {:error, {:invalid_world, other}}
 
-  defp events(list) when is_list(list) do
+  defp events(list, pipeline) when is_list(list) do
     list
     |> Enum.with_index()
     |> Enum.reduce_while({:ok, []}, fn {data, index}, {:ok, events} ->
-      case Event.from_data(data) do
+      case Event.from_data(data, pipeline: pipeline) do
         {:ok, event} -> {:cont, {:ok, [event | events]}}
         {:error, reason} -> {:halt, {:error, {:invalid_event, index, reason}}}
       end
@@ -321,7 +321,7 @@ defmodule Aethrion.Scenario do
     end
   end
 
-  defp events(_list), do: {:error, :events_must_be_a_list}
+  defp events(_list, _pipeline), do: {:error, :events_must_be_a_list}
 
   defp string_field(data, key) do
     case Map.get(data, key) do
@@ -331,14 +331,14 @@ defmodule Aethrion.Scenario do
     end
   end
 
-  defp branches(list) when is_list(list) do
+  defp branches(list, pipeline) when is_list(list) do
     list
     |> Enum.with_index()
     |> Enum.reduce_while({:ok, []}, fn {data, index}, {:ok, acc} ->
       with %{} <- data,
            :ok <- string_field(data, "name"),
            :ok <- string_field(data, "description"),
-           {:ok, events} <- events(Map.get(data, "events", [])),
+           {:ok, events} <- events(Map.get(data, "events", []), pipeline),
            {:ok, expectations} <- expectations(Map.get(data, "expect", [])) do
         branch = %{
           name: Map.get(data, "name", "Branch #{index + 1}"),
@@ -359,7 +359,7 @@ defmodule Aethrion.Scenario do
     end
   end
 
-  defp branches(_list), do: {:error, :branches_must_be_a_list}
+  defp branches(_list, _pipeline), do: {:error, :branches_must_be_a_list}
 
   defp expectations(list) when is_list(list) do
     case Enum.find(list, &(not valid_expectation?(&1))) do

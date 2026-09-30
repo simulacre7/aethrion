@@ -188,17 +188,50 @@ defmodule Aethrion.Event do
   end
 
   @doc """
-  Builds an event from JSON-style data. Only built-in event types and fields are
-  accepted, so untrusted input cannot create atoms.
+  Builds an event from JSON-style data. Untrusted input cannot create atoms.
+
+  Built-in types are built with their constructors. With `pipeline:`, custom
+  event types registered in that pipeline are accepted too: their fields become
+  atom keys only when that atom already exists (as it does for any field a rule
+  reads), and other fields are dropped. The `"id"` field is ignored.
   """
-  def from_data(%{"type" => type} = data) when is_binary(type) do
+  def from_data(data, opts \\ [])
+
+  def from_data(%{"type" => type} = data, opts) when is_binary(type) do
     case Enum.find(@types, &(Atom.to_string(&1) == type)) do
-      nil -> {:error, {:unsupported_event, type}}
+      nil -> custom_from_data(type, data, Keyword.get(opts, :pipeline))
       type -> {:ok, build(type, data)}
     end
   end
 
-  def from_data(data), do: {:error, {:invalid_event, data}}
+  def from_data(data, _opts), do: {:error, {:invalid_event, data}}
+
+  defp custom_from_data(type, _data, nil), do: {:error, {:unsupported_event, type}}
+
+  defp custom_from_data(type, data, pipeline) do
+    case Enum.find(Aethrion.Pipeline.event_types(pipeline), &(Atom.to_string(&1) == type)) do
+      nil ->
+        {:error, {:unsupported_event, type}}
+
+      type ->
+        fields =
+          for {key, value} <- data,
+              key not in ["type", "id", "cause"],
+              atom = existing_atom(key),
+              into: %{},
+              do: {atom, value}
+
+        {:ok, Map.put(fields, :type, type)}
+    end
+  end
+
+  defp existing_atom(key) when is_binary(key) do
+    String.to_existing_atom(key)
+  rescue
+    ArgumentError -> nil
+  end
+
+  defp existing_atom(_key), do: nil
 
   defp build(:gift_received, data) do
     gift_received(data["from"], data["to"], data["item"],

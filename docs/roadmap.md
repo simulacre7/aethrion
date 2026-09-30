@@ -34,7 +34,6 @@ Not implemented yet:
 Known limitations in v0.2:
 
 - Proactive messages are addressed to a single human actor, `"user"`. Worlds with several people need a recipient model (for example, reaching out to whichever person a character feels closest to).
-- Only built-in event types can be stored in scenarios and journals; custom event types work at runtime but cannot be replayed from JSON yet.
 - Templates exist in English and Korean; other languages need a model adapter or new templates.
 
 ## Phase 1: v0.1 Library Foundation

@@ -121,7 +121,7 @@ For comparisons you want to keep, write a scenario with `branches` instead ([sce
 
 ## 5. See it as a page
 
-Scenarios are JSON, so any world can become one. Custom event types are not part of the JSON format, so this version of the morning uses built-in events only:
+Scenarios are JSON, so any world can become one. Custom event types such as `:tip_left` work in scenarios too when you pass the same pipeline (`Scenario.from_data(data, pipeline: pipeline)`); this version of the morning keeps to built-in events:
 
 ```elixir
 {:ok, scenario} =

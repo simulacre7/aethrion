@@ -19,8 +19,8 @@ defmodule Aethrion.Journal do
   ```
 
   `Aethrion.RuntimeServer` (and `Aethrion.World`) keep a journal with the
-  `:journal` option and rebuild from it on start. Only built-in event types
-  can be replayed.
+  `:journal` option and rebuild from it on start. Custom event types can be
+  replayed when the same pipeline is passed (`pipeline:`).
   """
 
   alias Aethrion.{Event, Runtime, Scenario, State}
@@ -75,7 +75,7 @@ defmodule Aethrion.Journal do
 
         [{header, 1} | events] ->
           with {:ok, state} <- parse_header(header, opts),
-               {:ok, events} <- parse_events(events) do
+               {:ok, events} <- parse_events(events, Keyword.get(opts, :pipeline)) do
             {:ok, state, events}
           end
 
@@ -156,11 +156,11 @@ defmodule Aethrion.Journal do
     end
   end
 
-  defp parse_events(lines) do
+  defp parse_events(lines, pipeline) do
     lines
     |> Enum.reduce_while({:ok, []}, fn {line, number}, {:ok, events} ->
       with {:ok, data} <- Jason.decode(line),
-           {:ok, event} <- Event.from_data(data) do
+           {:ok, event} <- Event.from_data(data, pipeline: pipeline) do
         event =
           case Map.get(data, "id") do
             id when is_binary(id) -> Map.put(event, :id, id)

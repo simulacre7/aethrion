@@ -87,6 +87,8 @@ An optional `tuning` object overrides rule parameters for this world. Unknown ru
 
 Events are validated when they run. A rejected event stops the scenario and reports its index.
 
+Custom event types registered in a pipeline can be used too: load and run the scenario with the same pipeline (`Scenario.load(path, pipeline: p)` and `Scenario.run(scenario, pipeline: p)`). Their fields become atom keys only when the atom already exists, so untrusted files cannot create atoms; keep custom field values JSON-native (strings, numbers, booleans, lists, maps) so they replay exactly.
+
 ### Branches
 
 After the shared `events`, a scenario may define alternative futures. Each branch starts from the state after the shared events; its expectations are checked against its own final state and the outputs produced after the split.

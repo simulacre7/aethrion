@@ -108,8 +108,8 @@ for {label, world, steps} <- [
   )
 end
 
-# 5. The same morning as a scenario report. Custom event types are not part of
-#    the JSON format, so this uses only built-in events.
+# 5. The same morning as a scenario report. Custom events such as :tip_left
+#    also work in scenarios when you pass `pipeline:`; this keeps to built-ins.
 {:ok, scenario} =
   Aethrion.Scenario.from_data(%{
     "name" => "Cafe morning",
