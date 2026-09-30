@@ -115,12 +115,12 @@ defmodule Aethrion.Expression.Templates do
       {:observed, target} -> "Thanks... but I saw what you said to #{name(request, target)}."
       {:heard, target} -> "Thanks... but I heard what you said to #{name(request, target)}."
       :reputation -> "...Thanks. I've heard how you treat people, though."
-      nil -> reply(:warm, mood)
+      nil -> bond_reply(:warm, mood, request) || reply(:warm, mood)
     end
   end
 
-  def render(%Request{kind: :reply, tone: tone, speaker: %{mood: mood}}) do
-    reply(tone, mood)
+  def render(%Request{kind: :reply, tone: tone, speaker: %{mood: mood}} = request) do
+    bond_reply(tone, mood, request) || reply(tone, mood)
   end
 
   def render(%Request{kind: :character_interaction, reason: :gossip} = request) do
@@ -153,6 +153,22 @@ defmodule Aethrion.Expression.Templates do
   def render(%Request{} = request) do
     "#{request.speaker.name} reacts."
   end
+
+  # When the mood has nothing to say, the bond does.
+  defp bond_reply(tone, mood, %Request{relationship: %{bond: bond}})
+       when mood in [:neutral, :happy] do
+    case {tone, bond} do
+      {:warm, :close} -> "You always know how to make my day."
+      {:warm, :strained} -> "...Thanks, I guess."
+      {:warm, :estranged} -> "Why are you being nice to me now?"
+      {:neutral, :close} -> "Hey, you! What's up?"
+      {:neutral, :strained} -> "...What do you want?"
+      {:neutral, :estranged} -> "I don't really want to talk."
+      _other -> nil
+    end
+  end
+
+  defp bond_reply(_tone, _mood, _request), do: nil
 
   defp reply(:warm, :happy), do: "That made my day. Thank you."
   defp reply(:warm, :jealous), do: "...Thanks. I guess I needed to hear that."

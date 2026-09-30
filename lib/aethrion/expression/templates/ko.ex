@@ -104,11 +104,12 @@ defmodule Aethrion.Expression.Templates.Ko do
       {:observed, target} -> "고마워... 그런데 네가 #{name(request, target)}한테 한 말, 나도 봤어."
       {:heard, target} -> "고마워... 그런데 네가 #{name(request, target)}한테 한 말, 나도 들었어."
       :reputation -> "...고마워. 그런데 네가 다른 사람들한테 어떻게 하는지 들었어."
-      nil -> reply(:warm, mood)
+      nil -> bond_reply(:warm, mood, request) || reply(:warm, mood)
     end
   end
 
-  def render(%Request{kind: :reply, tone: tone, speaker: %{mood: mood}}), do: reply(tone, mood)
+  def render(%Request{kind: :reply, tone: tone, speaker: %{mood: mood}} = request),
+    do: bond_reply(tone, mood, request) || reply(tone, mood)
 
   def render(%Request{kind: :character_interaction, reason: :gossip} = request) do
     teller = request.speaker.name
@@ -150,6 +151,21 @@ defmodule Aethrion.Expression.Templates.Ko do
   def render(%Request{} = request) do
     "#{with_particle(request.speaker.name, :subject)} 반응한다."
   end
+
+  defp bond_reply(tone, mood, %Request{relationship: %{bond: bond}})
+       when mood in [:neutral, :happy] do
+    case {tone, bond} do
+      {:warm, :close} -> "역시 너밖에 없다. 고마워."
+      {:warm, :strained} -> "...그래, 고마워."
+      {:warm, :estranged} -> "이제 와서 왜 잘해 주는 건데?"
+      {:neutral, :close} -> "왔어? 무슨 일이야?"
+      {:neutral, :strained} -> "...무슨 일인데?"
+      {:neutral, :estranged} -> "별로 얘기하고 싶지 않아."
+      _other -> nil
+    end
+  end
+
+  defp bond_reply(_tone, _mood, _request), do: nil
 
   defp reply(:warm, :happy), do: "덕분에 기분 좋아졌어. 고마워."
   defp reply(:warm, :jealous), do: "...고마워. 그 말이 듣고 싶었나 봐."

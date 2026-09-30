@@ -112,4 +112,42 @@ defmodule Aethrion.BondTest do
     {:ok, result} = Aethrion.Scenario.run(scenario)
     assert Aethrion.Scenario.passed?(result)
   end
+
+  describe "replies" do
+    defp reply_for(values, tone) do
+      state =
+        State.new(
+          characters: [character("haru")],
+          relationships: [relationship("haru", "user", values)]
+        )
+
+      {:ok, step} = Runtime.step(state, Event.message_sent("user", "haru", "hi", tone: tone))
+      [reply] = of_type(step.outputs, :reply)
+      {reply.text, Aethrion.Expression.Templates.Ko.render(reply.context)}
+    end
+
+    test "when the mood has nothing to say, the bond does" do
+      assert reply_for([affinity: 60, trust: 40], :warm) ==
+               {"You always know how to make my day.", "역시 너밖에 없다. 고마워."}
+
+      assert reply_for([affinity: 30, trust: 20, tension: 25], :warm) ==
+               {"...Thanks, I guess.", "...그래, 고마워."}
+
+      assert reply_for([tension: 60], :neutral) ==
+               {"I don't really want to talk.", "별로 얘기하고 싶지 않아."}
+
+      assert reply_for([affinity: 30, trust: 20], :warm) == {"That's sweet of you.", "다정하네."}
+    end
+
+    test "a mood still speaks first" do
+      state =
+        State.new(
+          characters: [character("haru", state: [loneliness: 80])],
+          relationships: [relationship("haru", "user", affinity: 60, trust: 40)]
+        )
+
+      {:ok, step} = Runtime.step(state, Event.message_sent("user", "haru", "hi", tone: :warm))
+      assert [%{text: "I really needed to hear that today."}] = of_type(step.outputs, :reply)
+    end
+  end
 end

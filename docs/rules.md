@@ -65,7 +65,7 @@ History changes how a message lands, through impressions built by consolidation:
 - **Wariness** - if the receiver holds an impression of at least 2 hostile messages from the sender, warm effects are halved (`wariness_count`, `wariness_percent`).
 - **Reputation** - only when the receiver holds no firsthand impression of the sender at all, what they have seen or heard counts, and for less: a reputation for hostility to others (2+) leaves 75% of a warm message's effect, and a reputation for warmth to others (3+) leaves 75% of a cold or hostile one's (`reputation_*` params). Any firsthand history takes precedence.
 
-**reply** - when someone outside the cast (such as the user) talks to an active, unblocked character, the character emits a `:reply` output phrased from their current mood and memories. Replies do not change state. A warm message from someone the character saw or heard be hostile to another character gets a pointed answer: "Thanks... but I saw what you said to Mina."
+**reply** - when someone outside the cast (such as the user) talks to an active, unblocked character, the character emits a `:reply` output phrased from their current mood and memories. Replies do not change state. A warm message from someone the character saw or heard be hostile to another character gets a pointed answer: "Thanks... but I saw what you said to Mina." When the character's mood is neutral or happy, the bond colors warm and neutral replies: a close friend says "You always know how to make my day.", a strained one "...Thanks, I guess."
 
 **reputation** - characters judge people by how they treat others. For each witness in the message's (or apology's, see below) `observed_by` (never the sender or receiver, and never an inactive or blocked character):
 
