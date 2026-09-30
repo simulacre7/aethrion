@@ -280,11 +280,15 @@ defmodule Aethrion.Journal do
   `{:error, %Aethrion.Error{}}` with code `:not_found`, `:io_error`, or
   `:invalid_journal` (with the 1-based `:line` in `details`).
 
-  Options: `:pipeline`, used to keep tuning for custom rules.
+  Options: `:pipeline`, used to keep tuning for custom rules, and `:repair`:
+  a last line cut short by a crash (no newline, not valid JSON) is always
+  dropped with a warning, since that event was never committed; with
+  `repair: true` it is also removed from the file.
   """
   @spec read(Path.t(), keyword()) :: {:ok, State.t(), [Event.t()]} | {:error, Error.t()}
   def read(path, opts \\ []) do
-    with {:ok, contents} <- read_file(path) do
+    with {:ok, contents} <- read_file(path),
+         {:ok, contents} <- drop_torn_line(path, contents, Keyword.get(opts, :repair, false)) do
       lines =
         contents
         |> String.split("\n")
@@ -304,6 +308,51 @@ defmodule Aethrion.Journal do
         [{_line, number} | _rest] ->
           {:error, invalid_journal(number, :missing_header)}
       end
+    end
+  end
+
+  # An append cut short by a crash leaves a last line without its newline
+  # that is not valid JSON. That event was never committed (the server writes
+  # the journal before it commits), so it is dropped; with `repair: true` it
+  # is also cut from the file, so later appends start on a fresh line.
+  defp drop_torn_line(path, contents, repair?) do
+    with false <- contents == "" or String.ends_with?(contents, "\n"),
+         [kept, torn] <- split_last_line(contents),
+         {:error, _reason} <- Jason.decode(torn) do
+      Logger.warning(
+        "dropping an incomplete last line of #{path}: #{inspect(String.slice(torn, 0, 60))}"
+      )
+
+      if repair?,
+        do: with(:ok <- write_whole(path, kept), do: {:ok, kept}),
+        else: {:ok, kept}
+    else
+      _complete -> {:ok, contents}
+    end
+  end
+
+  defp split_last_line(contents) do
+    case :binary.matches(contents, "\n") do
+      [] ->
+        [contents]
+
+      matches ->
+        {position, 1} = List.last(matches)
+        cut = position + 1
+        [binary_part(contents, 0, cut), binary_part(contents, cut, byte_size(contents) - cut)]
+    end
+  end
+
+  defp write_whole(path, contents) do
+    tmp = tmp_path(path)
+
+    case with(:ok <- write_synced(tmp, contents), do: File.rename(tmp, path)) do
+      :ok ->
+        :ok
+
+      {:error, reason} ->
+        File.rm(tmp)
+        {:error, io_error(path, reason)}
     end
   end
 

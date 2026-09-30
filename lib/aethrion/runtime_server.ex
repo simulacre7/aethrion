@@ -312,7 +312,7 @@ defmodule Aethrion.RuntimeServer do
         journal_world(
           path,
           fallback,
-          [pipeline: pipeline] ++ Keyword.take(opts, [:max_depth, :max_events])
+          [pipeline: pipeline, repair: true] ++ Keyword.take(opts, [:max_depth, :max_events])
         )
     end
   end

@@ -50,6 +50,29 @@ defmodule Aethrion.JournalTest do
              ~s(written by Aethrion "0.1.0")
   end
 
+  test "a last line cut short by a crash is dropped, and repaired by a server", %{path: path} do
+    final = journal_events(path, Runtime.demo_state(), [flower_for_mina()])
+    File.write!(path, ~s({"id": "e9", "type": "time_t), [:append])
+    torn = File.read!(path)
+
+    log =
+      ExUnit.CaptureLog.capture_log(fn ->
+        assert {:ok, ^final, [_step]} = Journal.replay(path)
+      end)
+
+    assert log =~ "dropping an incomplete last line"
+    assert File.read!(path) == torn
+
+    ExUnit.CaptureLog.capture_log(fn ->
+      server = start_supervised!({RuntimeServer, journal: path})
+      assert RuntimeServer.get_state(server) == final
+      {:ok, _step} = RuntimeServer.step(server, Event.time_tick("t", hours: 1))
+    end)
+
+    # Without the repair the next append would have joined the torn line.
+    assert {:ok, _state, [_gift, _tick]} = Journal.replay(path)
+  end
+
   test "journals cannot be created twice", %{path: path} do
     :ok = Journal.create(path, Runtime.demo_state())
     assert {:error, %{code: :already_exists}} = Journal.create(path, Runtime.demo_state())
