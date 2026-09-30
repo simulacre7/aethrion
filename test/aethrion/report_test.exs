@@ -26,6 +26,18 @@ defmodule Aethrion.ReportTest do
     refute html =~ ~r/<(script|link)[^>]+src=/
   end
 
+  test "cards list what a character has come to believe, apart from single memories" do
+    html =
+      Report.html(
+        result(Enum.find(Scenario.bundled(), &String.ends_with?(&1, "08_old_friends.json")))
+      )
+
+    assert html =~
+             ~s(Has come to believe</p><ul class="memories"><li><span class="memory-kind">firsthand</span>user has been warm to mina 3 times.)
+
+    refute html =~ ~r/Remembers most<\/p><ul class="memories">(?:(?!<\/ul>).)*impression/s
+  end
+
   test "reports are deterministic" do
     assert Report.html(result()) == Report.html(result())
   end

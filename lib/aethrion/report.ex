@@ -193,9 +193,27 @@ defmodule Aethrion.Report do
 
         traits = Enum.map(character.traits, &["<li>", esc(&1), "</li>"])
 
-        remembered =
+        {beliefs, memories} =
           result.state
-          |> Aethrion.Memories.important(character.id, 3)
+          |> Aethrion.Memories.important(character.id, length(result.state.memories))
+          |> Enum.split_with(&(&1.kind == :impression))
+
+        believes =
+          beliefs
+          |> Enum.take(3)
+          |> Enum.map(fn memory ->
+            [
+              "<li><span class=\"memory-kind\">",
+              if(memory.data["event"] == "reputation", do: "reputation", else: "firsthand"),
+              "</span>",
+              esc(memory.content),
+              "</li>"
+            ]
+          end)
+
+        remembered =
+          memories
+          |> Enum.take(3)
           |> Enum.map(fn memory ->
             [
               "<li><span class=\"memory-kind\">",
@@ -221,6 +239,14 @@ defmodule Aethrion.Report do
             else: [
               "<p class=\"remembers\">Remembers most</p><ul class=\"memories\">",
               remembered,
+              "</ul>"
+            ]
+          ),
+          if(believes == [],
+            do: "",
+            else: [
+              "<p class=\"remembers\">Has come to believe</p><ul class=\"memories\">",
+              believes,
               "</ul>"
             ]
           ),
