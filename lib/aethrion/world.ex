@@ -118,7 +118,7 @@ defmodule Aethrion.World do
 
   @doc "See `Aethrion.RuntimeServer.dispatch/2`."
   @spec dispatch(atom(), Aethrion.Event.t()) ::
-          {:ok, State.t(), [map()], [String.t()]} | {:error, Aethrion.Error.t()}
+          {:ok, Aethrion.State.t(), [map()], [String.t()]} | {:error, Aethrion.Error.t()}
   def dispatch(name, event), do: RuntimeServer.dispatch(runtime(name), event)
 
   @doc "See `Aethrion.RuntimeServer.step/2`."
