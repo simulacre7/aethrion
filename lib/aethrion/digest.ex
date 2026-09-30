@@ -133,7 +133,7 @@ defmodule Aethrion.Digest do
   end
 
   defp event_item(%{type: :proactive_message} = output, %{locale: :ko} = say) do
-    from = subject(say.name.(output.character_id), say)
+    from = Ko.subject(say.name.(output.character_id))
 
     [
       item(
@@ -168,6 +168,7 @@ defmodule Aethrion.Digest do
   @doc false
   # A belief as a line, for other renderers (reports): `name` maps ids to
   # display names.
+  @spec belief_text(map(), String.t(), :en | :ko, (String.t() -> String.t())) :: String.t() | nil
   def belief_text(data, holder, locale, name) do
     case belief(data, holder, %{locale: locale, name: name}) do
       nil -> nil
@@ -185,7 +186,7 @@ defmodule Aethrion.Digest do
 
     case {say.locale, pattern} do
       {:ko, pattern} ->
-        "#{Ko.with_particle(holder, :topic)} #{ko_remembers(pattern, actor, Ko.times(count), say)}"
+        "#{Ko.with_particle(holder, :topic)} #{ko_remembers(pattern, actor, Ko.times(count))}"
 
       {_en, "gift"} ->
         "#{holder} remembers #{count} gifts from #{actor}."
@@ -219,8 +220,8 @@ defmodule Aethrion.Digest do
 
     case say.locale do
       :ko ->
-        "#{Ko.with_particle(holder, :topic)} #{subject(say.name.(actor), say)} #{Enum.join(others, ", ")}에게 " <>
-          "#{Ko.times(count)} #{ko_adverb(tone)} 말한 걸 안다."
+        "#{Ko.with_particle(holder, :topic)} #{Ko.subject(say.name.(actor))} #{Enum.join(others, ", ")}에게 " <>
+          "#{Ko.times(count)} #{Ko.adverb(tone)} 말한 걸 안다."
 
       _en ->
         actor = say.name.(actor)
@@ -233,29 +234,22 @@ defmodule Aethrion.Digest do
   defp belief(_data, _holder, _say), do: nil
 
   # "은비는 네가 세 번 사과한 걸 기억한다."
-  defp ko_remembers("gift", actor, times, _say),
+  defp ko_remembers("gift", actor, times),
     do: "#{actor}에게 선물을 #{times} 받은 걸 기억한다."
 
-  defp ko_remembers("apology", actor, times, say),
-    do: "#{subject(actor, say)} #{times} 사과한 걸 기억한다."
+  defp ko_remembers("apology", actor, times),
+    do: "#{Ko.subject(actor)} #{times} 사과한 걸 기억한다."
 
-  defp ko_remembers("comfort", actor, times, _say),
+  defp ko_remembers("comfort", actor, times),
     do: "#{actor}에게 #{times} 위로받은 걸 기억한다."
 
-  defp ko_remembers("together", actor, times, _say),
+  defp ko_remembers("together", actor, times),
     do: "#{Ko.with_particle(actor, :with)} 함께 보낸 #{times}의 시간을 기억한다."
 
-  defp ko_remembers(tone, actor, times, say),
-    do: "#{subject(actor, say)} #{times} #{ko_adverb(tone)} 말한 걸 기억한다."
-
-  defp ko_adverb("warm"), do: "다정하게"
-  defp ko_adverb("cold"), do: "차갑게"
-  defp ko_adverb("hostile"), do: "모질게"
-  defp ko_adverb(other), do: other
+  defp ko_remembers(tone, actor, times),
+    do: "#{Ko.subject(actor)} #{times} #{Ko.adverb(tone)} 말한 걸 기억한다."
 
   # "네가", not "너가".
-  defp subject("너", _say), do: "네가"
-  defp subject(name, _say), do: Ko.with_particle(name, :subject)
 
   # Rendered text for expressive outputs, in the digest's language.
   # A digest tells what already happened: scenes in the past tense.
@@ -323,7 +317,7 @@ defmodule Aethrion.Digest do
             true -> "마음을 열었다"
           end
 
-        "#{Ko.with_particle(from, :topic)} #{to}에게 #{verb} (이제 #{ko_bond(after_bond)})."
+        "#{Ko.with_particle(from, :topic)} #{to}에게 #{verb} (이제 #{Ko.bond_label(after_bond)})."
 
       _en ->
         verb = if warmer?, do: "warmed to", else: "cooled toward"
@@ -359,13 +353,6 @@ defmodule Aethrion.Digest do
   defp and_list(names), do: Enum.join(Enum.drop(names, -1), ", ") <> ", and " <> List.last(names)
 
   defp rank(bond), do: Enum.find_index(Aethrion.Rules.Bond.bonds(), &(&1 == bond)) || 2
-
-  defp ko_bond(:estranged), do: "틀어진 사이"
-  defp ko_bond(:strained), do: "서먹한 사이"
-  defp ko_bond(:neutral), do: "보통 사이"
-  defp ko_bond(:friendly), do: "친한 사이"
-  defp ko_bond(:close), do: "가까운 사이"
-  defp ko_bond(other), do: to_string(other)
 
   defp name(_state, you, you, :ko), do: "너"
   defp name(_state, you, you, _en), do: "you"

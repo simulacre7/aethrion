@@ -72,6 +72,11 @@ defmodule Aethrion.Tuning do
     %{state | tuning: tuning}
   end
 
+  @doc "Every parameter of `rule` (a module), as the world tunes it: `%{key => value}`."
+  @spec all(State.t(), module()) :: %{atom() => integer()}
+  def all(%State{} = state, rule) when is_atom(rule),
+    do: Map.new(rule.params(), fn {key, _default} -> {key, get(state, rule, key)} end)
+
   @doc """
   All rule parameters, as `[{rule_id, [{key, default, current}]}]`. Options:
   `pipeline:` (default `Aethrion.Pipeline.default/0`).

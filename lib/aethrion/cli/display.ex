@@ -283,9 +283,9 @@ defmodule Aethrion.CLI.Display do
     ])
 
     last_talked =
-      case Map.fetch(state.cooldowns, Aethrion.Rules.Reply.contact_key(from, to)) do
-        {:ok, at} -> "#{state.clock - at} hours ago"
-        :error -> "no record"
+      case State.hours_since(state, Aethrion.Rules.Reply.contact_key(from, to)) do
+        nil -> "no record"
+        hours -> "#{hours} hours ago"
       end
 
     print(["  ", pad("last spoke", 11), :faint, last_talked])

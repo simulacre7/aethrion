@@ -13,6 +13,7 @@ defmodule Aethrion.Expression.Templates do
   @guarded_tension 10
 
   @doc "Renders the fallback text for a request."
+  @spec render(Request.t()) :: String.t()
   def render(%Request{kind: :proactive_message, reason: :jealous} = request) do
     case jealous_choice(request) do
       {:gift, to, :earlier} ->
@@ -314,7 +315,7 @@ defmodule Aethrion.Expression.Templates do
   defp reply(:hostile, _mood), do: "Why would you say that?"
   defp reply(_tone, _mood), do: "..."
 
-  defp find_memory(request, fun) do
+  defp find_data(request, fun) do
     request.memories |> Enum.map(& &1.data) |> Enum.find(fun)
   end
 
@@ -322,10 +323,11 @@ defmodule Aethrion.Expression.Templates do
 
   @doc false
   # Whom the listener's gift went to, and when, or `:quiet`.
+  @spec jealous_choice(Request.t()) :: {:gift, String.t(), :earlier | :other_day} | :quiet
   def jealous_choice(request) do
     between = {request.listener.id, request.speaker.id}
 
-    case find_full(request, &gift_to_someone_else?(&1, between)) do
+    case find_memory(request, &gift_to_someone_else?(&1, between)) do
       %{data: %{"to" => to}} = memory ->
         case Request.hours_ago(request, memory) do
           hours when is_integer(hours) and hours > 12 -> {:gift, to, :other_day}
@@ -341,11 +343,19 @@ defmodule Aethrion.Expression.Templates do
   # After a week of silence, only the silence is left to talk about. Before
   # that, fond memories come up when nothing harsh stands between them, and
   # otherwise how long it has been.
+  @spec lonely_choice(Request.t()) ::
+          {:quote, String.t()}
+          | {:gift, String.t()}
+          | :kind
+          | :reunion
+          | :a_while
+          | :busy
+          | :today
   def lonely_choice(request) do
     between = {request.listener.id, request.speaker.id}
     silence = silence(request)
     fond? = silence < 168 and not hurt?(request)
-    warm = if fond?, do: find_memory(request, &warm_message?(&1, between))
+    warm = if fond?, do: find_data(request, &warm_message?(&1, between))
     gift = if fond?, do: recent_gift(request, between)
 
     cond do
@@ -369,6 +379,14 @@ defmodule Aethrion.Expression.Templates do
   # How an apology lands: worn thin after several, a relief to someone who
   # felt left out, unneeded when nothing was wrong, and slower to heal fresh
   # tension.
+  @spec apology_choice(Request.t()) ::
+          :keeps_apologizing
+          | :left_out
+          | :nothing_to_forgive
+          | :once_more
+          | :needs_time
+          | :shaken
+          | :accepted
   def apology_choice(%Request{speaker: %{mood: mood}} = request) do
     listener = request.listener.id
 
@@ -415,6 +433,7 @@ defmodule Aethrion.Expression.Templates do
   # to someone who felt left out by the giver since their last gift (reason
   # `:reassurance`, decided by `Aethrion.Rules.Reply`), as company to someone
   # lonely, and as a bit much when they keep coming.
+  @spec gift_choice(Request.t()) :: :wary | :reassured | :spoiled | :remembered | :close | :thanks
   def gift_choice(%Request{speaker: %{mood: mood}} = request) do
     cond do
       wary_choice(:warm, request) != nil -> :wary
@@ -429,6 +448,7 @@ defmodule Aethrion.Expression.Templates do
   @doc false
   # Which of four ways two friends spend time, turning day by day, and not
   # the same for every pair on the same day.
+  @spec together_choice(Request.t()) :: 0..3
   def together_choice(%Request{now: now} = request) when is_integer(now) do
     pair = :erlang.phash2(Enum.sort([request.speaker.id, request.listener.id]), 4)
     rem(div(now, 24) + pair, 4)
@@ -441,6 +461,7 @@ defmodule Aethrion.Expression.Templates do
   # them by default) earns the benefit of the doubt, unless there has been as
   # much hostility.
   # The rules' own verdict when the request carries it.
+  @spec benefit_of_doubt?(Request.t()) :: boolean()
   def benefit_of_doubt?(%Request{goodwill: goodwill}) when is_boolean(goodwill), do: goodwill
 
   def benefit_of_doubt?(request),
@@ -451,6 +472,8 @@ defmodule Aethrion.Expression.Templates do
   # the benefit of the doubt; repeated ones escalate (someone upset just asks
   # for it to stop), and after a fourth, or when estranged, the character
   # stops answering.
+  @spec harsh_choice(:cold | :hostile, Request.t()) ::
+          :silent | :done | :again | :short | :benefit | :hurt
   def harsh_choice(tone, request) do
     repeats = request.repeats || 1
 
@@ -476,12 +499,11 @@ defmodule Aethrion.Expression.Templates do
 
   @doc false
   # One of several ways to say the same thing, turning with how often the
-  # listener has recently said it, so the same line does not repeat.
+  # listener has said it, so the same line does not repeat.
+  @spec pick(Request.t(), String.t() | [String.t()] | nil) :: String.t() | nil
   def pick(_request, nil), do: nil
   def pick(_request, line) when is_binary(line), do: line
 
-  # Counts what faded into an impression too, so the turn keeps going over
-  # weeks, not only within the few days details are remembered.
   def pick(request, lines) when is_list(lines) do
     Enum.at(lines, rem(turn(request), length(lines)))
   end
@@ -490,6 +512,8 @@ defmodule Aethrion.Expression.Templates do
   defp turn(%Request{tone: :neutral, now: now}) when is_integer(now), do: now + div(now, 24)
   defp turn(request), do: (request.repeats || 1) - 1 + folded(request)
 
+  # What faded into an impression counts too, so the turn keeps going over
+  # weeks, not only within the few days details are remembered.
   defp folded(%Request{tone: tone} = request) when tone in [:warm, :cold, :hostile, :gift],
     do: impression_count(request, [Atom.to_string(tone)])
 
@@ -498,6 +522,7 @@ defmodule Aethrion.Expression.Templates do
   @doc false
   # Hurt feelings speak before the mood: a strained or estranged bond, or
   # fresh tension from harsh words.
+  @spec wary_choice(atom(), Request.t()) :: {:bond, :strained | :estranged} | :guarded | nil
   def wary_choice(tone, %Request{relationship: %{bond: bond}})
       when tone in [:warm, :neutral] and bond in [:strained, :estranged],
       do: {:bond, bond}
@@ -508,7 +533,7 @@ defmodule Aethrion.Expression.Templates do
 
   def wary_choice(_tone, _request), do: nil
 
-  defp find_full(request, fun), do: Enum.find(request.memories, &fun.(&1.data))
+  defp find_memory(request, fun), do: Enum.find(request.memories, &fun.(&1.data))
 
   # Hostile words from the listener in the last day, with no apology since.
   defp recently_hurt?(request) do
@@ -537,7 +562,7 @@ defmodule Aethrion.Expression.Templates do
 
   # A gift from the last few days; older ones may well be gone.
   defp recent_gift(request, between) do
-    case find_full(request, &gift?(&1, between)) do
+    case find_memory(request, &gift?(&1, between)) do
       nil ->
         nil
 

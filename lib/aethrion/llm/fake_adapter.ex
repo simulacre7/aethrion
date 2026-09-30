@@ -28,8 +28,6 @@ defmodule Aethrion.LLM.FakeAdapter do
                "사과할께",
                "내 잘못"
              ]
-  # Look like apologies but are not: blaming ("네가 잘못했잖아"), forgiving
-  # ("용서해 줄게"), or 미안한데 as a softener before a request.
   # Blaming the other person ("네가 잘못했잖아") and 미안한데 as a softener are
   # not apologies in themselves, and forgiving ("용서해 줄게") is not one either.
   @not_apology ~r/(?:네가|니가|너가|너)\s*잘못|미안한데/u

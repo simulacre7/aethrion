@@ -86,9 +86,8 @@ defmodule Aethrion.Rules.Apology do
     |> Transition.remember(memory)
   end
 
-  @doc false
   # Unfaded apologies the receiver remembers from the same person.
-  def earlier_apologies(state, %{from: from, to: to}) do
+  defp earlier_apologies(state, %{from: from, to: to}) do
     state
     |> Memories.for_character(to)
     |> Enum.count(

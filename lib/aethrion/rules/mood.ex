@@ -57,6 +57,6 @@ defmodule Aethrion.Rules.Mood do
   @doc "The world's mood thresholds, honoring tuning."
   @spec thresholds(State.t()) :: %{atom() => integer()}
   def thresholds(%State{} = world) do
-    Map.new(params(), fn {key, _default} -> {key, Aethrion.Tuning.get(world, __MODULE__, key)} end)
+    Aethrion.Tuning.all(world, __MODULE__)
   end
 end

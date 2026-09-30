@@ -195,7 +195,7 @@ defmodule Aethrion.Rules.Proactive do
           |> Enum.filter(&match?(%Memory{data: %{"event" => "apology_offered"}}, &1))
 
     witnessed
-    |> Enum.reject(&made_amends?(&1, apologies))
+    |> Enum.reject(&Memories.made_amends?(&1, apologies))
     |> Enum.find_value(fn %Memory{data: %{"from" => person, "to" => friend}} = memory ->
       # One protest per incident, and one per person and friend a day however
       # many hostile messages were witnessed.
@@ -275,7 +275,7 @@ defmodule Aethrion.Rules.Proactive do
   defp unanswered?(state, id, person) do
     case Map.fetch(state.cooldowns, lonely_key(id, person)) do
       {:ok, sent} when sent < state.clock ->
-        case Map.fetch(state.cooldowns, Aethrion.Rules.Reply.contact_key(id, person)) do
+        case Map.fetch(state.cooldowns, Reply.contact_key(id, person)) do
           {:ok, contact} -> contact < sent
           :error -> true
         end
@@ -288,10 +288,7 @@ defmodule Aethrion.Rules.Proactive do
   # Hours since the person last talked to the character, or since the world
   # began if they never have.
   defp silence(state, id, person) do
-    case Map.fetch(state.cooldowns, Aethrion.Rules.Reply.contact_key(id, person)) do
-      {:ok, at} -> state.clock - at
-      :error -> state.clock
-    end
+    State.hours_since(state, Reply.contact_key(id, person)) || state.clock
   end
 
   # Writing again after being ignored stings a little.
@@ -318,21 +315,6 @@ defmodule Aethrion.Rules.Proactive do
        do: Enum.any?(witnessed, &(&1.data["from"] == person))
 
   defp saw_it_firsthand?(_memory, _witnessed), do: false
-
-  # The person apologized to the friend after the hostility (event ids count up).
-  defp made_amends?(%Memory{data: %{"from" => person, "to" => friend}} = hostile, apologies) do
-    Enum.any?(apologies, fn apology ->
-      apology.data["from"] == person and apology.data["to"] == friend and
-        event_number(apology) >= event_number(hostile)
-    end)
-  end
-
-  defp event_number(%Memory{topic: topic}) do
-    case Regex.run(~r/:e(\d+)$/, topic || "") do
-      [_, digits] -> String.to_integer(digits)
-      nil -> 0
-    end
-  end
 
   # A once-per-topic key (curiosity, a protest) only matters while its memory
   # is unfaded, and faded memories never come back, so on each tick keys for
@@ -422,11 +404,7 @@ defmodule Aethrion.Rules.Proactive do
     transition = if ignored?, do: feel_ignored(transition, character, recipient), else: transition
     state = transition.state
 
-    since_contact =
-      case Map.fetch(state.cooldowns, Aethrion.Rules.Reply.contact_key(character.id, recipient)) do
-        {:ok, at} -> max(state.clock - at, 0)
-        :error -> nil
-      end
+    since_contact = State.hours_since(state, Reply.contact_key(character.id, recipient))
 
     request =
       Expression.build_request(

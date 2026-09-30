@@ -119,6 +119,7 @@ defmodule Aethrion.Journal do
   @doc false
   # Whether the tuning in the journal's header fits `pipeline`; loading it
   # with another pipeline would silently drop tuning for unknown rules.
+  @spec check_tuning(Path.t(), Aethrion.Pipeline.t()) :: :ok | {:error, Error.t()}
   def check_tuning(path, pipeline) do
     with {:ok, contents} <- read_file(path),
          [header | _] <- String.split(contents, "\n", parts: 2),

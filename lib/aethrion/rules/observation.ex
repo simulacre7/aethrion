@@ -40,7 +40,7 @@ defmodule Aethrion.Rules.Observation do
   defp observe(%Transition{event: event, state: state} = transition, observer_id) do
     observer = State.character(state, observer_id)
 
-    felt_key = "jealous:#{observer_id}:#{event.from}"
+    felt_key = jealous_key(observer_id, event.from)
 
     cares? =
       State.get_relationship(state, observer_id, event.from).affinity >=
@@ -86,6 +86,11 @@ defmodule Aethrion.Rules.Observation do
       )
     )
   end
+
+  @doc false
+  # When `observer` last felt jealous about `giver` giving to someone else.
+  @spec jealous_key(String.t(), String.t()) :: String.t()
+  def jealous_key(observer, giver), do: "jealous:#{observer}:#{giver}"
 
   # The giver gave the observer something in the last day.
   defp given_lately?(state, observer_id, giver) do

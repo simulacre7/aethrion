@@ -355,6 +355,22 @@ defmodule Aethrion.Transition do
   @spec put_state(t(), State.t()) :: t()
   def put_state(%__MODULE__{} = transition, %State{} = state), do: %{transition | state: state}
 
+  @doc """
+  The values `target`'s fields had before this event, for fields the event
+  changed: `%{field => before}`. `kind` is `:character` (target an id) or
+  `:relationship` (target `{from, to}`).
+  """
+  @spec values_before(t(), :character | :relationship, term()) :: %{atom() => term()}
+  def values_before(%__MODULE__{trace: trace}, kind, target) do
+    # The trace is newest first, so the last entry per field holds the value
+    # before this event.
+    for %Trace{kind: ^kind, target: ^target, field: field, before: before} <- trace,
+        is_atom(field),
+        reduce: %{} do
+      acc -> Map.put(acc, field, before)
+    end
+  end
+
   @doc "Id of the event being processed."
   @spec event_id(t()) :: String.t() | nil
   def event_id(%__MODULE__{event: event}), do: Map.get(event, :id)

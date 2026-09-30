@@ -3,10 +3,14 @@ defmodule Aethrion.Rules.Reply do
   Characters reply when someone outside the cast (such as the user) talks to
   them, gives them something (a reply with tone `:gift`), or apologizes to
   them (tone `:apology`, which sees every apology from that person the
-  character still remembers and the latest harsh words that prompted it). The reply is an expressive output; the only state it keeps is when
-  this person last talked to this character (the `"contact:<character>:<person>"`
-  cooldown key), so the reply can notice a long absence
-  (`Aethrion.Expression.Request` `:since_contact`).
+  character still remembers and the latest harsh words that prompted it).
+
+  The reply is an expressive output. The only state it keeps is when this
+  person last talked to this character (the `"contact:<character>:<person>"`
+  cooldown key), so replies and lonely messages can notice a long absence
+  (`Aethrion.Expression.Request` `:since_contact`), and when they last spoke
+  coldly or harshly (`"rebuff:<character>:<person>"`), so a lonely character
+  does not write right after being brushed off.
   """
 
   use Aethrion.Rule,
@@ -30,11 +34,7 @@ defmodule Aethrion.Rules.Reply do
     if Character.can_act?(receiver) and not State.character?(state, event.from) do
       key = contact_key(event.to, event.from)
 
-      since_contact =
-        case Map.fetch(state.cooldowns, key) do
-          {:ok, at} -> max(state.clock - at, 0)
-          :error -> nil
-        end
+      since_contact = State.hours_since(state, key)
 
       {tone, message, memories, repeats} = incoming(state, event)
 
@@ -72,10 +72,12 @@ defmodule Aethrion.Rules.Reply do
   end
 
   @doc false
+  @spec contact_key(String.t(), String.t()) :: String.t()
   def contact_key(character, person), do: "contact:#{character}:#{person}"
 
   @doc false
   # When this person last brushed the character off (cold or hostile words).
+  @spec rebuff_key(String.t(), String.t()) :: String.t()
   def rebuff_key(character, person), do: "rebuff:#{character}:#{person}"
 
   # A reply comes from how the character felt when the words arrived: the
@@ -87,14 +89,10 @@ defmodule Aethrion.Rules.Reply do
         nil
 
       character ->
-        transition.trace
-        |> Enum.filter(
-          &(&1.kind == :character and &1.target == id and
-              &1.field in Aethrion.CharacterState.numeric_fields())
-        )
-        |> Enum.reduce(character.state, fn entry, acc ->
-          Map.put(acc, entry.field, entry.before)
-        end)
+        transition
+        |> Transition.values_before(:character, id)
+        |> Map.take(Aethrion.CharacterState.numeric_fields())
+        |> then(&struct(character.state, &1))
         |> Aethrion.Rules.Mood.derive(transition.state)
     end
   end
@@ -118,7 +116,7 @@ defmodule Aethrion.Rules.Reply do
       |> Enum.map(& &1.created_tick)
       |> Enum.max(fn -> nil end)
 
-    case Map.fetch(state.cooldowns, "jealous:#{receiver}:#{giver}") do
+    case Map.fetch(state.cooldowns, Aethrion.Rules.Observation.jealous_key(receiver, giver)) do
       {:ok, felt} when state.clock - felt <= 72 and (is_nil(last_gift) or felt > last_gift) ->
         :reassurance
 

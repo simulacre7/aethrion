@@ -72,7 +72,8 @@ defmodule Aethrion.Rules.Autonomy do
 
     candidate =
       mine
-      |> Enum.reject(&(Memory.faded?(&1) or made_amends?(&1, mine)))
+      # Harsh words the teller knows were apologized for are not passed on.
+      |> Enum.reject(&(Memory.faded?(&1) or Memories.made_amends?(&1, mine)))
       |> Enum.filter(&notable?(&1, teller, thresholds))
       |> Enum.find_value(fn memory ->
         case Enum.find(confidants, &(not knows?.(&1, memory.topic))) do
@@ -90,32 +91,6 @@ defmodule Aethrion.Rules.Autonomy do
 
       nil ->
         transition
-    end
-  end
-
-  # Harsh words the teller knows were apologized for afterwards are not worth
-  # passing on. Event ids count up, so the apology's event number tells.
-  defp made_amends?(
-         %Memory{data: %{"event" => "message_sent", "tone" => tone, "from" => from, "to" => to}} =
-           harsh,
-         mine
-       )
-       when tone in ["cold", "hostile"] do
-    Enum.any?(mine, fn
-      %Memory{data: %{"event" => "apology_offered", "from" => ^from, "to" => ^to}} = apology ->
-        event_number(apology) > event_number(harsh)
-
-      _other ->
-        false
-    end)
-  end
-
-  defp made_amends?(_memory, _mine), do: false
-
-  defp event_number(%Memory{topic: topic}) do
-    case Regex.run(~r/:e(\d+)$/, topic || "") do
-      [_, digits] -> String.to_integer(digits)
-      nil -> 0
     end
   end
 

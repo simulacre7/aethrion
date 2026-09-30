@@ -118,10 +118,7 @@ defmodule Aethrion.Rules.Bond do
 
     case now.bond do
       nil ->
-        fields =
-          transition.trace
-          |> Enum.filter(&(&1.kind == :relationship and &1.target == {from, to}))
-          |> Enum.reduce(%{}, fn entry, fields -> Map.put(fields, entry.field, entry.before) end)
+        fields = Transition.values_before(transition, :relationship, {from, to})
 
         derive(%{now | bond: derive(struct(now, fields), thresholds)}, thresholds)
 
@@ -198,6 +195,6 @@ defmodule Aethrion.Rules.Bond do
   @doc "The world's bond thresholds, honoring tuning."
   @spec thresholds(State.t()) :: %{atom() => integer()}
   def thresholds(%State{} = world) do
-    Map.new(params(), fn {key, _default} -> {key, Aethrion.Tuning.get(world, __MODULE__, key)} end)
+    Aethrion.Tuning.all(world, __MODULE__)
   end
 end

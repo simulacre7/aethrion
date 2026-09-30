@@ -40,7 +40,7 @@ defmodule Aethrion.Expression.Request do
           reason: atom(),
           speaker: map(),
           listener: map(),
-          relationship: map(),
+          relationship: map() | nil,
           memories: [map()],
           names: %{optional(String.t()) => String.t()},
           tone: atom() | nil,
@@ -156,9 +156,9 @@ defmodule Aethrion.Expression.Request do
   # topic, so the event number orders what happened even when one of the
   # memories was only heard later. Topics without one fall back to the tick.
   defp moment(memory) do
-    case Regex.run(~r/:e(\d+)$/, Map.get(memory, :topic) || "") do
-      [_, digits] -> {:event, String.to_integer(digits)}
+    case Aethrion.Memories.event_number(memory) do
       nil -> {:tick, Map.get(memory, :created_tick, 0)}
+      number -> {:event, number}
     end
   end
 end

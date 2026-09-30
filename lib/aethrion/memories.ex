@@ -97,6 +97,49 @@ defmodule Aethrion.Memories do
     |> Enum.map(&elem(&1, 2))
   end
 
+  @doc """
+  The number of the event a memory is about, from its topic
+  (`"message:e12"` is 12), or `nil`. Event ids count up, and every memory of
+  one event shares its topic, so this orders what happened even when one of
+  the memories was only heard later. Takes a memory, a memory-like map, or a
+  topic.
+  """
+  @spec event_number(Memory.t() | map() | String.t() | nil) :: non_neg_integer() | nil
+  def event_number(%{topic: topic}), do: event_number(topic)
+
+  def event_number(topic) when is_binary(topic) do
+    case Regex.run(~r/:e(\d+)$/, topic) do
+      [_, digits] -> String.to_integer(digits)
+      nil -> nil
+    end
+  end
+
+  def event_number(_none), do: nil
+
+  @doc """
+  Whether `memories` hold an apology from the author of harsh words (a cold
+  or hostile message) to its target, made after them.
+  """
+  @spec made_amends?(Memory.t(), [Memory.t()]) :: boolean()
+  def made_amends?(
+        %Memory{data: %{"event" => "message_sent", "tone" => tone, "from" => from, "to" => to}} =
+          harsh,
+        memories
+      )
+      when tone in ["cold", "hostile"] do
+    said = event_number(harsh) || 0
+
+    Enum.any?(memories, fn
+      %Memory{data: %{"event" => "apology_offered", "from" => ^from, "to" => ^to}} = apology ->
+        (event_number(apology) || 0) > said
+
+      _other ->
+        false
+    end)
+  end
+
+  def made_amends?(%Memory{}, _memories), do: false
+
   @doc false
   def score(%Memory{} = memory, index, focus) do
     focus_bonus = if Enum.any?(focus, &Memory.involves?(memory, &1)), do: @focus_bonus, else: 0

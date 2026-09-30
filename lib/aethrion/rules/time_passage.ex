@@ -29,6 +29,7 @@ defmodule Aethrion.Rules.TimePassage do
 
   @doc false
   # When a character last had company, as a cooldown key.
+  @spec company_key(String.t()) :: String.t()
   def company_key(character_id), do: "company:#{character_id}"
 
   @impl true

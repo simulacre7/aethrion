@@ -209,6 +209,18 @@ defmodule Aethrion.State do
     end
   end
 
+  @doc """
+  Simulated hours since the rate-limited behavior `key` last fired, or `nil`
+  if it never has.
+  """
+  @spec hours_since(t(), String.t()) :: non_neg_integer() | nil
+  def hours_since(%__MODULE__{} = state, key) do
+    case Map.fetch(state.cooldowns, key) do
+      {:ok, at} -> max(state.clock - at, 0)
+      :error -> nil
+    end
+  end
+
   @doc "Records that `key` fired at the current clock."
   def put_cooldown(%__MODULE__{} = state, key) do
     %{state | cooldowns: Map.put(state.cooldowns, key, state.clock)}

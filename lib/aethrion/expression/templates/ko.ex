@@ -71,6 +71,7 @@ defmodule Aethrion.Expression.Templates.Ko do
   def times(count), do: "#{count}번"
 
   @doc "Renders a request in Korean."
+  @spec render(Request.t()) :: String.t()
   def render(%Request{kind: :proactive_message, reason: :jealous} = request) do
     case Templates.jealous_choice(request) do
       {:gift, to, when_seen} ->
@@ -348,11 +349,12 @@ defmodule Aethrion.Expression.Templates.Ko do
       |> String.to_charlist()
 
     case letters do
-      # -ck (Jack 잭), and -ne or -me with a silent e after a vowel or in -nne
-      # (Jane 제인, Jerome 제롬, Anne 앤), except words that say the e.
+      # -ck (Jack 잭).
       [?k, ?c | _] -> true
       # -le reads as ㄹ: Nicole 니콜, candle 캔들, apple 애플.
       [?e, ?l | _] -> String.downcase(word) not in @spoken_e
+      # -ne or -me with a silent e after a vowel or in -nne (Jane 제인, Jerome
+      # 제롬, Anne 앤), except words that say the e.
       [?e, before, third | _] when before in ~c"nm" -> silent_e?(word, before, third)
       [last | _] when last in ~c"aeiouyrwhsxfvzd" -> false
       [last, before | _] when last in ~c"tkp" -> before in ~c"aeiouy"
@@ -382,7 +384,7 @@ defmodule Aethrion.Expression.Templates.Ko do
           seen_by(event, name)
 
       %{type: :message_sent} ->
-        "#{name.(event.from)} → #{name.(event.to)} (#{ko_tone(event.tone)}): #{event.text}" <>
+        "#{name.(event.from)} → #{name.(event.to)} (#{adverb(event.tone)}): #{event.text}" <>
           seen_by(event, name)
 
       %{type: :apology_offered} ->
@@ -444,15 +446,7 @@ defmodule Aethrion.Expression.Templates.Ko do
          %{"event" => "message_sent", "from" => from, "to" => to, "tone" => tone} = data,
          names
        ) do
-    how =
-      case tone do
-        "warm" -> "다정하게"
-        "cold" -> "차갑게"
-        "hostile" -> "모질게"
-        _other -> ""
-      end
-
-    "#{subject(names.(from))} #{names.(to)}에게 #{how} 말했다: \"#{data["text"]}\""
+    "#{subject(names.(from))} #{names.(to)}에게 #{adverb(tone)} 말했다: \"#{data["text"]}\""
   end
 
   defp describe_data(%{"event" => "apology_offered", "from" => from, "to" => to} = data, names),
@@ -471,14 +465,30 @@ defmodule Aethrion.Expression.Templates.Ko do
 
   defp seen_by(_event, _name), do: ""
 
-  defp subject("너"), do: "네가"
-  defp subject(name), do: with_particle(name, :subject)
+  @doc """
+  A name as the subject of a sentence: "하나가", "Sol이", and "네가" for "너".
+  """
+  @spec subject(String.t()) :: String.t()
+  def subject("너"), do: "네가"
+  def subject(name), do: with_particle(name, :subject)
 
-  defp ko_tone(:warm), do: "다정하게"
-  defp ko_tone(:neutral), do: "담담하게"
-  defp ko_tone(:cold), do: "차갑게"
-  defp ko_tone(:hostile), do: "모질게"
-  defp ko_tone(other), do: to_string(other)
+  @doc "How something was said, as an adverb: `:warm` (or `\"warm\"`) is \"다정하게\"."
+  @spec adverb(atom() | String.t()) :: String.t()
+  def adverb(tone) when is_atom(tone), do: tone |> Atom.to_string() |> adverb()
+  def adverb("warm"), do: "다정하게"
+  def adverb("neutral"), do: "담담하게"
+  def adverb("cold"), do: "차갑게"
+  def adverb("hostile"), do: "모질게"
+  def adverb(other), do: other
+
+  @doc "A bond's name in Korean: `:friendly` is \"친한 사이\"."
+  @spec bond_label(atom()) :: String.t()
+  def bond_label(:estranged), do: "틀어진 사이"
+  def bond_label(:strained), do: "서먹한 사이"
+  def bond_label(:neutral), do: "보통 사이"
+  def bond_label(:friendly), do: "친한 사이"
+  def bond_label(:close), do: "가까운 사이"
+  def bond_label(other), do: to_string(other)
 
   @doc """
   Appends the Korean particle that fits `word`'s final sound. `kind` is
