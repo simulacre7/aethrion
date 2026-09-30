@@ -37,7 +37,6 @@ defmodule Aethrion.Digest do
   alias Aethrion.State
   alias Aethrion.Expression.Templates.Ko
 
-  @bonds [:estranged, :strained, :neutral, :friendly, :close]
   @moods_worth_telling [:happy, :lonely, :jealous, :upset]
 
   @type item :: %{kind: atom(), event_id: String.t() | nil, text: String.t()}
@@ -45,9 +44,11 @@ defmodule Aethrion.Digest do
   @doc "Digest items for `outputs`, with names from `state`."
   @spec of([map()], State.t(), keyword()) :: [item()]
   def of(outputs, %State{} = state, opts \\ []) do
+    locale = opts |> Keyword.get(:locale, :en) |> Aethrion.Report.supported_locale!()
+
     say = %{
-      locale: Keyword.get(opts, :locale, :en),
-      name: &name(state, &1, Keyword.get(opts, :you, "user"), Keyword.get(opts, :locale, :en))
+      locale: locale,
+      name: &name(state, &1, Keyword.get(opts, :you, "user"), locale)
     }
 
     events = Enum.flat_map(outputs, &event_item(&1, say))
@@ -245,7 +246,7 @@ defmodule Aethrion.Digest do
   defp and_list([a, b]), do: "#{a} and #{b}"
   defp and_list(names), do: Enum.join(Enum.drop(names, -1), ", ") <> ", and " <> List.last(names)
 
-  defp rank(bond), do: Enum.find_index(@bonds, &(&1 == bond)) || 2
+  defp rank(bond), do: Enum.find_index(Aethrion.Rules.Bond.bonds(), &(&1 == bond)) || 2
 
   defp ko_bond(:estranged), do: "틀어진 사이"
   defp ko_bond(:strained), do: "서먹한 사이"

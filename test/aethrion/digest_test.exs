@@ -64,6 +64,10 @@ defmodule Aethrion.DigestTest do
              |> Enum.find(&(&1.kind == :belief))
   end
 
+  test "an unsupported locale is an error, not a silent fallback" do
+    assert_raise ArgumentError, ~r/unsupported locale :fr/, fn -> digest([], locale: :fr) end
+  end
+
   test "another person can be the one addressed as you" do
     state =
       State.new(

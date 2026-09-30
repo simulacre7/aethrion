@@ -127,8 +127,8 @@ defmodule Aethrion.World do
   def step(name, event), do: RuntimeServer.step(runtime(name), event)
 
   @doc "Current state of the world."
-  @spec state(atom()) :: Aethrion.State.t()
-  def state(name), do: RuntimeServer.get_state(runtime(name))
+  @spec get_state(atom()) :: Aethrion.State.t()
+  def get_state(name), do: RuntimeServer.get_state(runtime(name))
 
   @doc "Host events dispatched so far."
   @spec history(atom()) :: [Aethrion.Event.t()]

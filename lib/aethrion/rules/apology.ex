@@ -70,10 +70,10 @@ defmodule Aethrion.Rules.Apology do
     |> Transition.remember(memory)
   end
 
-  @doc "The topic every memory of one apology shares."
+  @doc false
   def topic(event), do: "apology:#{event.id}"
 
-  @doc "Structured memory data for an apology."
+  @doc false
   def data(event) do
     %{
       "event" => "apology_offered",

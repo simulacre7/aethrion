@@ -50,6 +50,6 @@ defmodule Aethrion.Rules.Reply do
     end
   end
 
-  @doc "The cooldown key recording when `person` last talked to `character`."
+  @doc false
   def contact_key(character, person), do: "contact:#{character}:#{person}"
 end

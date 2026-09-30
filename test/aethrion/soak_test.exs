@@ -73,7 +73,7 @@ defmodule Aethrion.SoakTest do
         end
       end)
 
-    assert World.state(name) == expected
+    assert World.get_state(name) == expected
     assert expected.seq > 300
 
     # The journal was compacted along the way: far fewer lines than events.
@@ -111,7 +111,7 @@ defmodule Aethrion.SoakTest do
         end
       end)
 
-    assert World.state(name) == expected
+    assert World.get_state(name) == expected
   end
 
   defp wait_for_restart(name, old, attempts \\ 50) do

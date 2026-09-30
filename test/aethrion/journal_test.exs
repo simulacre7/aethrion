@@ -151,7 +151,7 @@ defmodule Aethrion.JournalTest do
                is_pid(new) and new != pid and Process.alive?(new)
              end)
 
-      assert World.state(name) == state
+      assert World.get_state(name) == state
     end
 
     test "journal and snapshot persistence cannot be combined", %{path: path} do
@@ -258,11 +258,25 @@ defmodule Aethrion.JournalTest do
 
       # Compacted after events 2 and 4; event 5 is the only one left.
       assert {:ok, _state, [%{type: :time_tick, hours: 5}]} = Journal.read(path)
-      live = World.state(name)
+      live = World.get_state(name)
       stop_supervised!(:w1)
 
       start_supervised!({World, name: name, journal: path}, id: :w2)
-      assert World.state(name) == live
+      assert World.get_state(name) == live
+    end
+
+    test "a compaction interval must be a positive integer, and needs a journal", %{path: path} do
+      Process.flag(:trap_exit, true)
+
+      for opts <- [
+            [journal: path, journal_compact_every: 0],
+            [journal: path, journal_compact_every: "10"],
+            [journal_compact_every: 10]
+          ] do
+        assert {:error,
+                %Aethrion.Error{code: :invalid_options, details: %{field: :journal_compact_every}}} =
+                 RuntimeServer.start_link(opts)
+      end
     end
 
     test "servers without a journal refuse to compact" do

@@ -293,11 +293,30 @@ defmodule Aethrion.RuntimeServer do
   end
 
   defp check_storage(opts) do
-    if Keyword.get(opts, :journal) && Keyword.get(opts, :persistence),
-      do:
+    every = Keyword.get(opts, :journal_compact_every)
+
+    cond do
+      Keyword.get(opts, :journal) && Keyword.get(opts, :persistence) ->
         {:error,
-         Aethrion.Error.new(:invalid_options, "use either :journal or :persistence, not both")},
-      else: :ok
+         Aethrion.Error.new(:invalid_options, "use either :journal or :persistence, not both")}
+
+      not is_nil(every) and not (is_integer(every) and every > 0) ->
+        {:error,
+         Aethrion.Error.new(
+           :invalid_options,
+           ":journal_compact_every must be a positive integer, got: #{inspect(every)}",
+           %{field: :journal_compact_every}
+         )}
+
+      not is_nil(every) and is_nil(Keyword.get(opts, :journal)) ->
+        {:error,
+         Aethrion.Error.new(:invalid_options, ":journal_compact_every needs :journal", %{
+           field: :journal_compact_every
+         })}
+
+      true ->
+        :ok
+    end
   end
 
   defp initial_world(opts) do

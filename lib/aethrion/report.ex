@@ -37,7 +37,7 @@ defmodule Aethrion.Report do
   """
   @spec html(Scenario.Result.t(), keyword()) :: iodata()
   def html(%Scenario.Result{} = result, opts \\ []) do
-    locale = Keyword.get(opts, :locale, :en)
+    locale = opts |> Keyword.get(:locale, :en) |> supported_locale!()
     result = localize(result, locale)
     t = translator(locale)
     scenario = result.scenario
@@ -1075,6 +1075,12 @@ defmodule Aethrion.Report do
   end
 
   ## Language
+
+  @doc false
+  def supported_locale!(locale) when locale in [:en, :ko], do: locale
+
+  def supported_locale!(locale),
+    do: raise(ArgumentError, "unsupported locale #{inspect(locale)}; use :en or :ko")
 
   # Everything the report says in its own voice, by locale. Strings are the
   # English text; tuples are phrases with values in them.

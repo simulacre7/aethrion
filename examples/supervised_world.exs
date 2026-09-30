@@ -57,4 +57,4 @@ defmodule Example.Listener do
 end
 
 Example.Listener.listen(System.monotonic_time(:millisecond) + 1_500)
-IO.puts("clock: #{World.state(:garden).clock}h, history: #{length(World.history(:garden))} host events")
+IO.puts("clock: #{World.get_state(:garden).clock}h, history: #{length(World.history(:garden))} host events")

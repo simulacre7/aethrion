@@ -78,7 +78,7 @@ Memory fields: `importance`, `strength` (decays with age), `kind` (`:experienced
 | `Event.comfort_offered(from, to, at: label)` | someone comforts a character (usually produced by rules) |
 | `Event.time_spent_together(from, to, at: label)` | two characters spend time together (usually produced by rules) |
 
-`Event.to_data/1` and `Event.from_data/1` convert events to and from JSON-friendly maps. `from_data/1` only accepts built-in types, so untrusted input cannot create atoms.
+`Event.to_data/1` and `Event.from_data/2` convert events to and from JSON-friendly maps. `from_data/2` accepts built-in types, plus custom types registered in the `pipeline:` you pass, so untrusted input cannot create atoms.
 
 ## Outputs
 
@@ -90,7 +90,7 @@ Every output carries `:rule` and `:event_id`.
 | `:memory_created` | `memory` |
 | `:mood_changed` | `character_id`, `before`, `after` |
 | `:bond_changed` | `from`, `to`, `before`, `after` (`:estranged`, `:strained`, `:neutral`, `:friendly`, `:close`) |
-| `:proactive_message` | `character_id`, `to`, `reason` (`:jealous`, `:lonely`, `:curious`), `text`, `memory_refs`, `context` |
+| `:proactive_message` | `character_id`, `to`, `reason` (`:jealous`, `:lonely`, `:curious`, `:protective`), `text`, `memory_refs`, `context` |
 | `:reply` | `character_id`, `to`, `tone`, `text`, `memory_refs`, `context` |
 | `:character_interaction` | `kind` (`:gossip`, `:comfort`, `:together`), `character_id` (who started it), `to`, `text`, `memory_refs`, `context` |
 
@@ -248,7 +248,7 @@ Supervisor.start_link(children, strategy: :one_for_one)
 
 :ok = Aethrion.World.subscribe(:garden)
 {:ok, state, outputs, log} = Aethrion.World.dispatch(:garden, event)
-Aethrion.World.state(:garden)
+Aethrion.World.get_state(:garden)
 Aethrion.World.history(:garden)
 Aethrion.World.unsubscribe(:garden)
 ```

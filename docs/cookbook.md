@@ -23,7 +23,7 @@ Aethrion.World.subscribe(:"world_#{user_id}")
 When the user types something, let the model *propose* what it means, then dispatch it like any other event:
 
 ```elixir
-state = Aethrion.World.state(world)
+state = Aethrion.World.get_state(world)
 
 {:ok, event, _meta} =
   Aethrion.Intent.interpret(state, text, to: "mina", adapter: Aethrion.LLM.Anthropic)
@@ -49,7 +49,7 @@ end
 When the user comes back, show what happened while they were away. Keep the outputs from the subscription (or from `Aethrion.Journal.replay/2`) since their last visit:
 
 ```elixir
-Aethrion.Digest.of(outputs_since_last_visit, Aethrion.World.state(world), locale: :ko)
+Aethrion.Digest.of(outputs_since_last_visit, Aethrion.World.get_state(world), locale: :ko)
 |> Enum.map(& &1.text)
 ```
 

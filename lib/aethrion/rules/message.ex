@@ -165,10 +165,10 @@ defmodule Aethrion.Rules.Message do
     )
   end
 
-  @doc "The topic every memory of one message shares."
+  @doc false
   def topic(event), do: "message:#{event.id}"
 
-  @doc "Structured memory data for a message."
+  @doc false
   def data(event) do
     %{
       "event" => "message_sent",

@@ -292,12 +292,7 @@ defmodule Aethrion.Transition do
     %{transition | log: [line | transition.log]}
   end
 
-  @doc """
-  Records a change to a value derived from the state rather than stored in
-  it, such as a relationship's bond, so it can be explained like any other
-  change. `kind` is the `Aethrion.Trace` kind; `opts` takes `:detail` and a
-  `:log` line.
-  """
+  @doc false
   @spec derived(t(), Trace.kind(), String.t() | nil, term(), atom(), term(), term(), keyword()) ::
           t()
   def derived(%__MODULE__{} = transition, kind, subject, target, field, before, value, opts \\ [])

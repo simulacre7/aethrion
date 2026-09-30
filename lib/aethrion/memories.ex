@@ -57,6 +57,8 @@ defmodule Aethrion.Memories do
   has forgotten the details of is still not news to them).
   """
   @spec knows_topic?(State.t(), String.t(), String.t() | nil) :: boolean()
+  def knows_topic?(_state, _character_id, nil), do: false
+
   def knows_topic?(%State{} = state, character_id, topic) do
     Enum.any?(state.memories, &(&1.character_id == character_id and topic in topics(&1)))
   end
@@ -65,10 +67,11 @@ defmodule Aethrion.Memories do
   The topics a memory stands for: its own, plus for an impression every topic
   folded into it.
   """
-  @spec topics(Memory.t()) :: [String.t() | nil]
+  @spec topics(Memory.t()) :: [String.t()]
   def topics(%Memory{kind: :impression, topic: topic, data: %{"topics" => [_ | _] = folded}}),
     do: [topic | folded]
 
+  def topics(%Memory{topic: nil}), do: []
   def topics(%Memory{topic: topic}), do: [topic]
 
   @doc """

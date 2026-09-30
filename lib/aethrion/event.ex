@@ -43,6 +43,10 @@ defmodule Aethrion.Event do
   @doc "Tones accepted by `message_sent/4`."
   def tones, do: @tones
 
+  @doc """
+  Someone gives a character an item. Characters in `:observed_by` see it.
+  Options: `:observed_by`, `:at`.
+  """
   @spec gift_received(String.t(), String.t(), String.t(), keyword()) :: t()
   def gift_received(from, to, item, opts \\ []) do
     %{
@@ -55,11 +59,19 @@ defmodule Aethrion.Event do
     }
   end
 
+  @doc """
+  Simulated time passes. `now` labels the moment; `:hours` (default 1) is how
+  much time passes.
+  """
   @spec time_tick(String.t(), keyword()) :: t()
   def time_tick(now, opts \\ []) do
     %{type: :time_tick, now: now, hours: Keyword.get(opts, :hours, 1)}
   end
 
+  @doc """
+  Someone apologizes to a character for `reason`. Characters in
+  `:observed_by` witness it. Options: `:observed_by`, `:at`.
+  """
   @spec apology_offered(String.t(), String.t(), String.t(), keyword()) :: t()
   def apology_offered(from, to, reason, opts \\ []) do
     %{

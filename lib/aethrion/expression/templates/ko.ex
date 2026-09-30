@@ -280,8 +280,7 @@ defmodule Aethrion.Expression.Templates.Ko do
     word <> if(batchim?(word), do: with_batchim, else: without)
   end
 
-  @doc false
-  def batchim?(word) do
+  defp batchim?(word) do
     # Compose first (macOS and some inputs use decomposed Hangul), then read the
     # last letter, skipping trailing emoji, punctuation, and variation selectors.
     word

@@ -53,13 +53,7 @@ defmodule Aethrion.Journal do
       else: write_header(path, state)
   end
 
-  @doc """
-  Replaces a journal's contents with `state` as the new starting state and no
-  events. Used by `Aethrion.RuntimeServer.compact_journal/1`, which already
-  holds the current state; to compact a journal on disk, use `compact/2`.
-  Like `create/2`, the file is written aside and renamed into place, so a
-  failure leaves the old journal intact.
-  """
+  @doc false
   @spec rewrite(Path.t(), State.t()) :: :ok | {:error, Error.t()}
   def rewrite(path, %State{} = state), do: write_header(path, state)
 

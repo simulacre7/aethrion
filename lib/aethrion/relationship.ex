@@ -22,6 +22,7 @@ defmodule Aethrion.Relationship do
   @doc "Numeric relationship fields that rules may adjust."
   def fields, do: @fields
 
+  @doc false
   def clamp(%__MODULE__{} = relationship) do
     %{
       relationship

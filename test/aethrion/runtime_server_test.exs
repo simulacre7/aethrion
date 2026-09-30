@@ -246,7 +246,7 @@ defmodule Aethrion.RuntimeServerTest do
       assert_receive {:aethrion, _scheduler, {:scheduler_tick, {:ok, _state, _outputs, _log}}},
                      1_000
 
-      assert World.state(name).clock >= 1
+      assert World.get_state(name).clock >= 1
       assert [%{type: :gift_received} | _] = World.history(name)
     end
 
@@ -265,7 +265,7 @@ defmodule Aethrion.RuntimeServerTest do
       Process.exit(pid, :kill)
 
       assert eventually(fn -> restarted?(World.runtime(name), pid) end)
-      assert World.state(name) == state
+      assert World.get_state(name) == state
     end
   end
 

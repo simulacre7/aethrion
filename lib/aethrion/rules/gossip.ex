@@ -61,7 +61,7 @@ defmodule Aethrion.Rules.Gossip do
     end
   end
 
-  @doc "The id of the memory a listener gains from `event`."
+  @doc false
   def heard_memory_id(event), do: "memory:#{event.to}:heard:#{event.id}"
 
   defp heard_memory(transition, event, %Memory{} = original) do

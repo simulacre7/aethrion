@@ -43,10 +43,10 @@ defmodule Aethrion.Rules.Gift do
     |> Transition.remember(memory)
   end
 
-  @doc "Topic shared by every memory of this gift."
+  @doc false
   def topic(event), do: "gift:#{event.id}"
 
-  @doc "Structured facts about the gift, stored on memories."
+  @doc false
   def data(event) do
     %{"event" => "gift_received", "from" => event.from, "to" => event.to, "item" => event.item}
   end

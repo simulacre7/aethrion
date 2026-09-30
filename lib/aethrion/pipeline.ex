@@ -53,14 +53,7 @@ defmodule Aethrion.Pipeline do
     }
   end
 
-  @doc """
-  Loads every rule module in the pipeline.
-
-  Converting untrusted strings to atoms only accepts atoms that already exist
-  (traits, custom event fields). Rules create the atoms they use when their
-  module is loaded, so this runs before such conversions; otherwise the result
-  would depend on which modules happened to be loaded already.
-  """
+  @doc false
   def ensure_loaded(%__MODULE__{} = pipeline) do
     pipeline.event_rules
     |> Map.values()
