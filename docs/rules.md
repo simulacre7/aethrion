@@ -159,7 +159,7 @@ Names what a directed relationship has become, first match wins:
 | --- | --- |
 | `estranged` | tension >= 50 or affinity <= -30 |
 | `strained` | tension >= 20 or trust <= -10 |
-| `close` | affinity >= 60 and trust >= 50 |
+| `close` | affinity >= 50 and trust >= 30 |
 | `friendly` | affinity >= 25 and trust >= 15 |
 | `neutral` | otherwise |
 

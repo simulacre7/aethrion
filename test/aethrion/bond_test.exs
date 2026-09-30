@@ -11,8 +11,9 @@ defmodule Aethrion.BondTest do
   test "bonds follow the documented priority" do
     assert Bond.derive(rel([])) == :neutral
     assert Bond.derive(rel(affinity: 25, trust: 15)) == :friendly
-    assert Bond.derive(rel(affinity: 60, trust: 50)) == :close
-    assert Bond.derive(rel(affinity: 60, trust: 50, tension: 20)) == :strained
+    assert Bond.derive(rel(affinity: 50, trust: 30)) == :close
+    assert Bond.derive(rel(affinity: 50, trust: 29)) == :friendly
+    assert Bond.derive(rel(affinity: 50, trust: 30, tension: 20)) == :strained
     assert Bond.derive(rel(affinity: 60, trust: -10)) == :strained
     assert Bond.derive(rel(affinity: 80, trust: 80, tension: 50)) == :estranged
     assert Bond.derive(rel(affinity: -30)) == :estranged

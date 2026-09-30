@@ -8,7 +8,7 @@ defmodule Aethrion.Rules.Bond do
   | --- | --- |
   | `:estranged` | tension >= 50 or affinity <= -30 |
   | `:strained` | tension >= 20 or trust <= -10 |
-  | `:close` | affinity >= 60 and trust >= 50 |
+  | `:close` | affinity >= 50 and trust >= 30 |
   | `:friendly` | affinity >= 25 and trust >= 15 |
   | `:neutral` | otherwise |
 
@@ -23,14 +23,14 @@ defmodule Aethrion.Rules.Bond do
   use Aethrion.Rule,
     id: :bond,
     description:
-      "Announces bond changes: estranged (tension>=50 or affinity<=-30) > strained (tension>=20 or trust<=-10) > close (affinity>=60, trust>=50) > friendly (affinity>=25, trust>=15) > neutral.",
+      "Announces bond changes: estranged (tension>=50 or affinity<=-30) > strained (tension>=20 or trust<=-10) > close (affinity>=50, trust>=30) > friendly (affinity>=25, trust>=15) > neutral.",
     params: [
       estranged_tension: 50,
       estranged_affinity: -30,
       strained_tension: 20,
       strained_trust: -10,
-      close_affinity: 60,
-      close_trust: 50,
+      close_affinity: 50,
+      close_trust: 30,
       friendly_affinity: 25,
       friendly_trust: 15
     ]

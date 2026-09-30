@@ -161,7 +161,7 @@ Scenarios are JSON files with a world, a script of events, and expectations. The
 
 <img src="assets/report/the-flower.png" alt="Aethrion scenario report: cast, feelings over time, relationship graph, and timeline" width="720">
 
-Bundled scenarios: the flower, the apology, words matter (tone), rumor mill (news spreading through a trust graph), long silence (loneliness and fading memory), small town (the same rules, tuned differently), crossroads (one moment, four branches, compared side by side), old friends (conversations fading into lasting impressions), benefit of the doubt (the same harsh words landing differently depending on history), company (friends keeping each other company while the user is away), two regulars (two people, each message going to the right one), and word gets around (a harsh word in front of a friend becoming a reputation). See [docs/scenarios.md](docs/scenarios.md).
+Bundled scenarios: the flower, the apology, words matter (tone), rumor mill (news spreading through a trust graph), long silence (loneliness and fading memory), small town (the same rules, tuned differently), crossroads (one moment, four branches, compared side by side), old friends (conversations fading into lasting impressions), benefit of the doubt (the same harsh words landing differently depending on history), company (friends keeping each other company while the user is away), two regulars (two people, each message going to the right one), word gets around (a harsh word in front of a friend becoming a reputation), and slowly closer (a week of small kindnesses, bond by bond). See [docs/scenarios.md](docs/scenarios.md).
 
 ## Interactive Demo
 
