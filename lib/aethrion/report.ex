@@ -59,6 +59,7 @@ defmodule Aethrion.Report do
       css(),
       "</style>\n</head>\n<body>\n<main class=\"viz-root\">\n",
       header(result),
+      in_short(result, locale),
       focus_note(result.state, focus),
       cast(focused, view.(scenario.state)),
       feelings(focused.state, snapshots),
@@ -74,6 +75,32 @@ defmodule Aethrion.Report do
       "</script>\n</body>\n</html>\n"
     ]
     |> IO.iodata_to_binary()
+  end
+
+  ## In short
+
+  # The shared timeline as a digest: what a reader should know first.
+  defp in_short(result, locale) do
+    items = result.outputs |> Aethrion.Digest.of(result.state, locale: locale) |> Enum.take(12)
+
+    case items do
+      [] ->
+        ""
+
+      items ->
+        lang = if locale == :ko, do: " lang=\"ko\"", else: ""
+
+        [
+          "<section><h2>In short</h2><ul class=\"digest\"",
+          lang,
+          ">",
+          Enum.map(
+            items,
+            &["<li class=\"", Atom.to_string(&1.kind), "\">", esc(&1.text), "</li>"]
+          ),
+          "</ul></section>\n"
+        ]
+    end
   end
 
   ## Focus
@@ -1058,6 +1085,9 @@ defmodule Aethrion.Report do
     .why li{margin:3px 0}
     .bond{margin:6px 0 0;font-size:13px;color:var(--text-secondary)}
     .sub{margin:20px 0 6px;font-size:15px}
+    .digest{margin:0;padding-left:18px;max-width:80ch}
+    .digest li{margin:4px 0}
+    .digest li.bond,.digest li.mood{color:var(--text-secondary)}
     .bond-history{margin:0;padding-left:18px;font-size:14px;color:var(--text-secondary)}
     .bond-history li{margin:3px 0}
     .bond-history strong{color:var(--text-primary)}

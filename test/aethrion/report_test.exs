@@ -62,6 +62,16 @@ defmodule Aethrion.ReportTest do
     refute Report.html(result()) =~ "Bond changes"
   end
 
+  test "reports open with a digest of what happened" do
+    html = Report.html(result())
+
+    assert html =~
+             ~s(<h2>In short</h2><ul class="digest"><li class="message">Yuna reached out to you)
+
+    assert Report.html(result(), locale: :ko) =~
+             ~s(<ul class="digest" lang="ko"><li class="message">Yuna가 먼저 연락했다)
+  end
+
   test "reports are deterministic" do
     assert Report.html(result()) == Report.html(result())
   end
