@@ -21,6 +21,7 @@ defmodule Aethrion.Runtime do
 
   @max_depth 4
   @max_events 32
+  @events_per_character 4
 
   def demo_state, do: State.demo()
 
@@ -34,7 +35,8 @@ defmodule Aethrion.Runtime do
 
   - `:pipeline` - an `Aethrion.Pipeline` (default `Aethrion.Pipeline.default/0`)
   - `:max_depth` - maximum follow-up generations (default #{@max_depth})
-  - `:max_events` - maximum events processed per dispatch (default #{@max_events})
+  - `:max_events` - maximum events processed per dispatch (default: the larger
+    of #{@max_events} and #{@events_per_character} per character, so cascades scale with the world)
   """
   def dispatch(state, event, opts \\ []) do
     case step(state, event, opts) do
@@ -54,7 +56,7 @@ defmodule Aethrion.Runtime do
     with :ok <- Validator.validate_dispatch(state, event, pipeline) do
       limits = %{
         max_depth: Keyword.get(opts, :max_depth, @max_depth),
-        max_events: Keyword.get(opts, :max_events, @max_events)
+        max_events: Keyword.get(opts, :max_events, default_max_events(state))
       }
 
       {state, root} = assign_id(state, Map.delete(event, :cause))
@@ -83,6 +85,10 @@ defmodule Aethrion.Runtime do
       error -> error
     end
   end
+
+  @doc false
+  def default_max_events(%State{} = state),
+    do: max(@max_events, @events_per_character * map_size(state.characters))
 
   defp run_queue(queue, acc, pipeline, limits) do
     case :queue.out(queue) do

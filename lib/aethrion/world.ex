@@ -46,6 +46,7 @@ defmodule Aethrion.World do
   - `:expression` - keyword options for asynchronous rendering (without
     `:task_supervisor`), see `Aethrion.RuntimeServer`
   - `:history_limit`
+  - `:max_depth`, `:max_events` - cascade limits, see `Aethrion.Runtime.dispatch/3`
   """
   def start_link(opts) do
     name = Keyword.fetch!(opts, :name)
@@ -69,7 +70,14 @@ defmodule Aethrion.World do
         name: runtime(name),
         initial_state: Keyword.get(opts, :state, Runtime.demo_state())
       ] ++
-        Keyword.take(opts, [:pipeline, :persistence, :journal, :history_limit]) ++
+        Keyword.take(opts, [
+          :pipeline,
+          :persistence,
+          :journal,
+          :history_limit,
+          :max_depth,
+          :max_events
+        ]) ++
         expression_opts(name, Keyword.get(opts, :expression))
 
     scheduler =

@@ -45,6 +45,8 @@ defmodule Aethrion.RuntimeServer do
   - `:initial_state` - an `Aethrion.State` struct. Defaults to the demo state.
   - `:name` - optional GenServer name.
   - `:pipeline` - an `Aethrion.Pipeline`. Defaults to `Aethrion.Pipeline.default/0`.
+  - `:max_depth`, `:max_events` - cascade limits, see `Aethrion.Runtime.dispatch/3`.
+    Journal replay uses the same limits.
   - `:history_limit` - how many host events to keep. Defaults to #{@default_history_limit}.
   - `:persistence` - `{adapter, opts}`, for example
     `{Aethrion.Persistence.JsonFile, path: "tmp/world.json"}`. A saved state is
@@ -117,6 +119,7 @@ defmodule Aethrion.RuntimeServer do
        %{
          world: world,
          pipeline: Keyword.get(opts, :pipeline, Pipeline.default()),
+         limits: Keyword.take(opts, [:max_depth, :max_events]),
          persistence: Keyword.get(opts, :persistence),
          journal: Keyword.get(opts, :journal),
          history: [],
@@ -231,7 +234,7 @@ defmodule Aethrion.RuntimeServer do
   # A crashing rule (for example a custom rule with a bug) must not take down
   # the world and its in-memory state. The event is rejected instead.
   defp safe_step(server, event) do
-    Runtime.step(server.world, event, pipeline: server.pipeline)
+    Runtime.step(server.world, event, [pipeline: server.pipeline] ++ server.limits)
   rescue
     exception ->
       Logger.error(
@@ -258,14 +261,21 @@ defmodule Aethrion.RuntimeServer do
     pipeline = Keyword.get(opts, :pipeline, Pipeline.default())
 
     case Keyword.get(opts, :journal) do
-      nil -> snapshot_world(opts, fallback, pipeline)
-      path -> journal_world(path, fallback, pipeline)
+      nil ->
+        snapshot_world(opts, fallback, pipeline)
+
+      path ->
+        journal_world(
+          path,
+          fallback,
+          [pipeline: pipeline] ++ Keyword.take(opts, [:max_depth, :max_events])
+        )
     end
   end
 
-  defp journal_world(path, fallback, pipeline) do
+  defp journal_world(path, fallback, replay_opts) do
     if File.exists?(path) do
-      case Aethrion.Journal.replay(path, pipeline: pipeline) do
+      case Aethrion.Journal.replay(path, replay_opts) do
         {:ok, state, _steps} ->
           {:ok, state}
 

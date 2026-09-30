@@ -20,7 +20,7 @@ host event
 - Rules are modules implementing `Aethrion.Rule` (`id/0`, `description/0`, `apply/1`).
 - Which rules run for which event is decided by `Aethrion.Pipeline`, not by the rules.
 - Rules change state only through `Aethrion.Transition` helpers, which clamp values and record an `Aethrion.Trace` entry tagged with the rule id and event id, plus an output for relationship changes and memories and usually a log line.
-- Follow-up events carry `:cause` (the id of the event that produced them). A dispatch processes at most 4 generations and 32 events; anything beyond is dropped and explained in the log and trace.
+- Follow-up events carry `:cause` (the id of the event that produced them). A dispatch processes at most 4 generations and, by default, the larger of 32 events or 4 per character; anything beyond is dropped and explained in the log and trace.
 - Rules are pure. They never read the wall clock, use randomness, or perform I/O. The same state and event always produce the same result.
 
 ## Bounds
@@ -151,7 +151,7 @@ Each message carries fallback text from deterministic templates, the ids of the 
 
 ## Tuning
 
-Every rule parameter printed by `mix aethrion.rules` (all the per-rule numbers on this page, including the message tone effects) has a default that a world can override. The faded threshold (20) and the cascade limits (4 generations, 32 events, which are dispatch options) are fixed. A world can override any of them without code, so two worlds can run the same rules with a different temperament:
+Every rule parameter printed by `mix aethrion.rules` (all the per-rule numbers on this page, including the message tone effects) has a default that a world can override. The faded threshold (20) is fixed, and the cascade limits are dispatch options (`max_depth`, `max_events`) rather than tuning. A world can override any of them without code, so two worlds can run the same rules with a different temperament:
 
 ```elixir
 state =

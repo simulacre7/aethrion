@@ -155,4 +155,30 @@ defmodule Aethrion.SocialCascadeTest do
 
     assert [%{type: :time_tick}] = step.events
   end
+
+  test "the default event limit scales with the number of characters" do
+    ids = for i <- 1..80, do: "c#{i}"
+
+    state =
+      state(
+        Enum.map(ids, &character(&1, state: [loneliness: 55])),
+        for {id, i} <- Enum.with_index(ids) do
+          relationship(id, Enum.at(ids, rem(i + 1, 80)), affinity: 40)
+        end
+      )
+
+    assert Runtime.default_max_events(state) == 320
+
+    {:ok, step} = Runtime.step(state, Event.time_tick("t", hours: 1))
+    assert length(step.events) > 32
+    refute Enum.any?(step.log, &String.starts_with?(&1, "[Cascade] dropped"))
+  end
+
+  test "runtime servers honor cascade limits" do
+    {state, _outputs} = dispatch!(Runtime.demo_state(), flower_for_mina())
+    server = start_supervised!({Aethrion.RuntimeServer, initial_state: state, max_events: 2})
+
+    {:ok, step} = Aethrion.RuntimeServer.step(server, Event.time_tick("t2", hours: 2))
+    assert length(step.events) == 2
+  end
 end

@@ -38,7 +38,7 @@ Options for all three:
 | --- | --- | --- |
 | `:pipeline` | `Aethrion.Pipeline.default()` | which rules run for which event |
 | `:max_depth` | 4 | maximum follow-up generations |
-| `:max_events` | 32 | maximum events processed per dispatch |
+| `:max_events` | larger of 32 and 4 per character | maximum events processed per dispatch |
 
 `Aethrion.dispatch/3`, `Aethrion.step/3`, `Aethrion.run/3`, and `Aethrion.demo_state/0` delegate to these; `Aethrion.new_state/1` delegates to `Aethrion.State.new/1`.
 
@@ -229,7 +229,7 @@ A world supervises a `Task.Supervisor` for rendering, an `Aethrion.RuntimeServer
 
 | function | meaning |
 | --- | --- |
-| `start_link(opts)` | `:initial_state`, `:name`, `:pipeline`, `:history_limit`, `:persistence` or `:journal`, `:expression` |
+| `start_link(opts)` | `:initial_state`, `:name`, `:pipeline`, `:max_depth`, `:max_events`, `:history_limit`, `:persistence` or `:journal`, `:expression` |
 | `dispatch(server, event)` | same result as `Runtime.dispatch/3` |
 | `step(server, event)` | `{:ok, %Aethrion.Step{}}` |
 | `get_state(server)`, `put_state(server, state)` | read or replace the state |
