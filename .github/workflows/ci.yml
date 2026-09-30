@@ -64,4 +64,5 @@ jobs:
           mix run examples/supervised_world.exs
           mix run examples/tutorial_cafe.exs
           mix run examples/reputation.exs
+          mix run examples/companion_week.exs
           mix run examples/llm_render.exs  # falls back to the fake adapter without keys
