@@ -153,6 +153,9 @@ defmodule Aethrion.CLI.CommandParser do
       lower != command and lower in @commands ->
         do_parse([lower | args])
 
+      lower in @commands ->
+        {:error, "#{lower} takes no arguments. Type help for all commands."}
+
       guess = Enum.max_by(@commands, &String.jaro_distance(&1, lower), fn -> nil end) ->
         if String.jaro_distance(guess, lower) >= 0.8,
           do:

@@ -80,10 +80,22 @@ defmodule Mix.Tasks.Aethrion.Scenario do
       %{passed: Scenario.passed?(result), json: if(opts[:json], do: json(result))}
     else
       {:error, %Aethrion.Error{} = error} ->
-        Display.error(error)
-        Mix.shell().error("in #{path}")
-        %{passed: false, json: nil}
+        failed(path, error, opts[:json])
     end
+  end
+
+  # In JSON mode stdout stays pure JSON: the failure goes to stderr and is an
+  # entry in the output too.
+  defp failed(path, error, true) do
+    message = Aethrion.Error.format(error)
+    Mix.shell().error("#{message} in #{path}")
+    %{passed: false, json: %{"path" => path, "passed" => false, "error" => message}}
+  end
+
+  defp failed(path, error, _json) do
+    Display.error(error)
+    Mix.shell().error("in #{path}")
+    %{passed: false, json: nil}
   end
 
   defp pipeline(nil), do: nil

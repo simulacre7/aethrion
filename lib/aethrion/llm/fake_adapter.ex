@@ -109,8 +109,7 @@ defmodule Aethrion.LLM.FakeAdapter do
   # Korean negations stand on their own: "안 " after a space ("하나도 안 고마워"),
   # not inside a word ("그동안", "오랫동안"); "하나도" only before 안/못
   # (it is also a name).
-  @negations ["not ", "n't ", "never ", "no longer "]
-  @korean_negation ~r/\s(?:안|못|전혀)\s|하나도\s+(?:안|못)/u
+  @negation_before ~r/(?:\bnot|\bnever|n't|\bno longer|(?:^|\s)(?:안|못|전혀))\s+(?:(?:really|even|that|so|very|too|전혀|별로)\s+)?$/u
   # Korean also negates after the word: "보고 싶지 않아", "좋아하는 척하지 마".
   @negated_after ~r/(?:고맙|고마|좋|보고\s*싶|사랑|반가)\S*\s*(?:지(?:는|도)?\s*않|지\s*마|척)/u
   @warm_idioms ["can't thank", "cannot thank", "couldn't be happier", "never been happier"] ++
@@ -211,17 +210,9 @@ defmodule Aethrion.LLM.FakeAdapter do
       ~r/(?<![a-z])#{Regex.escape(word)}/u
       |> Regex.scan(text, return: :index)
       |> Enum.any?(fn [{start, _length}] ->
-        # The few characters before the word (by character, not byte, so
-        # Korean is never cut in half).
-        # A leading space stands for the start of the text, so "안 좋아" counts
-        # but the end of "그동안" cut off by the window does not.
-        prefix = binary_part(text, 0, start)
-
-        before =
-          if String.length(prefix) <= 8, do: " " <> prefix, else: String.slice(prefix, -8..-1//1)
-
-        Enum.any?(@negations, &String.contains?(before, &1)) or
-          Regex.match?(@korean_negation, before)
+        # The negation must directly precede the word, within its clause.
+        clause = text |> binary_part(0, start) |> String.split(~r/[.,!?~]/u) |> List.last()
+        Regex.match?(@negation_before, clause)
       end)
     end)
   end

@@ -72,6 +72,12 @@ defmodule Aethrion.CLI.CommandParserTest do
     assert {:error, "usage: opinion <character> <other>"} = CommandParser.parse("opinion yuna")
     assert {:error, "usage: gift" <> _} = CommandParser.parse("gift user mina")
     assert {:error, "unknown command" <> _} = CommandParser.parse("dance")
+
+    assert {:ok, :status} = CommandParser.parse("STATUS")
+    assert {:error, "help takes no arguments" <> _} = CommandParser.parse("help me")
+
+    assert {:error, "unknown command tiks; did you mean tick?" <> _} =
+             CommandParser.parse("tiks 2")
   end
 
   test "parses digest" do

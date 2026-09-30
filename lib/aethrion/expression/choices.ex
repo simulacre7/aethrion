@@ -100,7 +100,7 @@ defmodule Aethrion.Expression.Choices do
 
     # An apology after one that already came after the latest harsh words is
     # for something already forgiven.
-    settled? = earlier >= 1 and forgiven?(request, listener)
+    settled? = earlier == 1 and forgiven?(request, listener)
 
     cond do
       settled? -> :settled
