@@ -9,6 +9,7 @@ The social layer release: characters now act on each other, every change is expl
 ### Added
 
 - **Rule pipeline.** `Aethrion.Rule` behaviour (`use Aethrion.Rule, id: ..., description: ...`) and an explicit `Aethrion.Pipeline` mapping event types to ordered rules, plus reactive rules that run after every event. Hosts can append, prepend, and remove rules, and register custom event types. `mix aethrion.rules` prints the pipeline.
+- **Explain.** `Aethrion.Explain` answers why a single value is what it is: every change, the rule that made it, and the chain of events that caused it (`why yuna jealousy` in the interactive demo).
 - **Traced transitions.** Rules change state through `Aethrion.Transition`, which clamps values and records an output, a log line, and an `Aethrion.Trace` entry (rule, event, before, after) for every change. `Aethrion.Runtime.step/3` returns an `Aethrion.Step` with the full trace; every output carries `:rule` and `:event_id`.
 - **Cascades.** Rules can enqueue follow-up events that go through validation and the same pipeline, with `:cause` links and depth/count limits.
 - **Character-to-character behavior.** Observers remember what they see; struggling characters confide in trusted friends (`gossip_shared`); talkative characters retell rumors that fade with each hop; caring friends offer comfort (`comfort_offered`).

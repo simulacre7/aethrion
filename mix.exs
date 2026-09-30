@@ -90,6 +90,7 @@ defmodule Aethrion.MixProject do
           Aethrion.Pipeline,
           Aethrion.Transition,
           Aethrion.Trace,
+          Aethrion.Explain,
           ~r/Aethrion\.Rules\./
         ],
         "Expression & LLMs": [

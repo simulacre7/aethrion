@@ -50,6 +50,8 @@ defmodule Aethrion.CLI.Display do
       "  status                                      characters and relationships",
       "  memories [character]                        what characters remember (faded ones dimmed)",
       "  why <character>                             every traced change to a character, by rule",
+      "  why <character> <field>                     how one value got here, e.g. why yuna jealousy",
+      "  why <from>-><to> <field>                    the same for a relationship, e.g. why yuna->haru trust",
       "  context <character>                         what an LLM would see for a proactive line",
       "  timeline                                    events dispatched this session",
       "  rules                                       the rule pipeline",
@@ -205,6 +207,17 @@ defmodule Aethrion.CLI.Display do
         entries
         |> Enum.reject(&(&1.kind == :output or &1.field == :last_active_at))
         |> Enum.each(&print(["  ", Trace.describe(&1)]))
+    end
+
+    print("")
+  end
+
+  def explain_value(label, changes, names) do
+    print_section("Why", label)
+
+    case Aethrion.Explain.describe(changes, names) do
+      [] -> print([:faint, "  unchanged this session"])
+      lines -> Enum.each(lines, &print(["  ", &1]))
     end
 
     print("")

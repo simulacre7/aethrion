@@ -121,6 +121,25 @@ defmodule Mix.Tasks.Demo.Interactive do
     loop(session)
   end
 
+  defp handle({:ok, {:why, target, field}}, session) do
+    events = Enum.reverse(session.events)
+    names = &State.name(session.state, &1)
+
+    {label, changes} =
+      case target do
+        {from, to} ->
+          {"#{from}->#{to}.#{field}",
+           Aethrion.Explain.relationship(session.trace, events, from, to, field)}
+
+        character ->
+          {"#{character}.#{field}",
+           Aethrion.Explain.character(session.trace, events, character, field)}
+      end
+
+    Display.explain_value(label, changes, names)
+    loop(session)
+  end
+
   defp handle({:ok, {:context, character}}, session) do
     case State.character(session.state, character) do
       nil ->

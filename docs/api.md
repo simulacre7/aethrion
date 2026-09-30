@@ -160,6 +160,22 @@ step.trace
 #    "e1 observation: yuna->mina.tension 0 -> 8", ...]
 ```
 
+To explain a single value, with the chain of events that caused each change:
+
+```elixir
+{:ok, _state, steps} = Aethrion.run(state, events)
+trace = Enum.flat_map(steps, & &1.trace)
+processed = Enum.flat_map(steps, & &1.events)
+
+trace
+|> Aethrion.Explain.character(processed, "yuna", :jealousy)
+|> Aethrion.Explain.describe()
+#=> ["jealousy 0 -> 15 by observation in e1: user gives mina a flower (seen by yuna)",
+#    "jealousy 15 -> 10 by comfort in e4: haru comforts yuna <- yuna confides in haru <- time passes +2h"]
+```
+
+`Aethrion.Explain.relationship/5` does the same for `affinity`, `trust`, or `tension`. In the interactive demo: `why yuna jealousy`, `why yuna->haru trust`.
+
 ## Memory queries
 
 `Aethrion.Memories` answers questions deterministically, without embeddings:

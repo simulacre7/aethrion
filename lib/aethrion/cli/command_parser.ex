@@ -20,6 +20,24 @@ defmodule Aethrion.CLI.CommandParser do
   defp do_parse(["memories"]), do: {:ok, {:memories, nil}}
   defp do_parse(["memories", character]), do: {:ok, {:memories, character}}
   defp do_parse(["why", character]), do: {:ok, {:why, character}}
+
+  defp do_parse(["why", target, field]) do
+    case String.split(target, "->", parts: 2) do
+      [from, to] when from != "" and to != "" ->
+        with {:ok, field} <- field(field, ~w(affinity trust tension)) do
+          {:ok, {:why, {from, to}, field}}
+        end
+
+      [character] ->
+        with {:ok, field} <- field(field, ~w(mood loneliness jealousy joy stress energy)) do
+          {:ok, {:why, character, field}}
+        end
+
+      _ ->
+        {:error, "why expects <character> [field] or <from>-><to> <field>"}
+    end
+  end
+
   defp do_parse(["context", character]), do: {:ok, {:context, character}}
   defp do_parse(["timeline"]), do: {:ok, :timeline}
   defp do_parse(["rules"]), do: {:ok, :rules}
@@ -78,5 +96,12 @@ defmodule Aethrion.CLI.CommandParser do
 
   defp do_parse(_tokens) do
     {:error, "unknown command. Type help for available commands."}
+  end
+
+  # Fields come from a fixed list, so no atoms are created from input.
+  defp field(name, allowed) do
+    if name in allowed,
+      do: {:ok, String.to_existing_atom(name)},
+      else: {:error, "field must be one of: #{Enum.join(allowed, ", ")}"}
   end
 end
