@@ -410,6 +410,21 @@ defmodule Aethrion.ReputationTest do
       assert text == "That was harsh, what you said to Mina. Mina didn't deserve that."
     end
 
+    test "one incident is one protest, even days later" do
+      {state, outputs} =
+        run!(world(), [
+          message("user", "mina", :hostile, ["haru"]),
+          Event.time_tick("t", hours: 30),
+          Event.time_tick("t", hours: 30)
+        ])
+
+      assert [_one] = protective(outputs)
+
+      # The incident key goes once the sighting has faded.
+      {state, _outputs} = dispatch!(state, Event.time_tick("t", hours: 100))
+      refute Enum.any?(Map.keys(state.cooldowns), &String.contains?(&1, ":protested:"))
+    end
+
     test "calm characters say it gently, in both languages" do
       state = put_in(world().characters["haru"].traits, [:calm])
       {_state, outputs} = dispatch!(state, message("user", "mina", :hostile, ["haru"]))

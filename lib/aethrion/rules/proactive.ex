@@ -55,7 +55,7 @@ defmodule Aethrion.Rules.Proactive do
     params = params |> Map.put(:heard, heard) |> Map.put(:witnessed, witnessed)
     outgoing = State.relationships_by_from(state)
 
-    transition = prune_curiosity(transition, heard)
+    transition = prune_once_keys(transition, heard, witnessed)
     state = transition.state
 
     state
@@ -160,14 +160,16 @@ defmodule Aethrion.Rules.Proactive do
     params.witnessed
     |> Map.get(id, [])
     |> Enum.find_value(fn %Memory{data: %{"from" => person, "to" => friend}} = memory ->
-      # One protest per person and friend a day, however many hostile
-      # messages were witnessed.
-      key = "proactive:#{id}:protective:#{person}:#{friend}"
+      # One protest per incident, and one per person and friend a day however
+      # many hostile messages were witnessed.
+      incident = "proactive:#{id}:protested:#{memory.topic}"
+      pair = "proactive:#{id}:protective:#{person}:#{friend}"
 
       if person in people and friend != id and
            State.get_relationship(state, id, friend).affinity >= params.protective_affinity and
-           State.cooldown_ready?(state, key, params.cooldown_hours) do
-        {:protective, key, person, memories: [memory]}
+           State.cooldown_ready?(state, incident, :once) and
+           State.cooldown_ready?(state, pair, params.cooldown_hours) do
+        {:protective, [incident, pair], person, memories: [memory]}
       end
     end)
   end
@@ -191,16 +193,33 @@ defmodule Aethrion.Rules.Proactive do
     end)
   end
 
-  # A curiosity key only matters while its heard memory is unfaded, and faded
-  # memories never come back, so on each tick keys for anything else are
-  # dropped; otherwise they would pile up in long-running worlds.
-  defp prune_curiosity(%Transition{event: %{type: :time_tick}, state: state} = transition, heard) do
+  # A once-per-topic key (curiosity, a protest) only matters while its memory
+  # is unfaded, and faded memories never come back, so on each tick keys for
+  # anything else are dropped; otherwise they would pile up in long-running
+  # worlds.
+  defp prune_once_keys(
+         %Transition{event: %{type: :time_tick}, state: state} = transition,
+         heard,
+         witnessed
+       ) do
     live =
-      for {id, memories} <- heard, memory <- memories, into: MapSet.new() do
-        "proactive:#{id}:curious:#{memory.topic}"
-      end
+      MapSet.new(
+        for(
+          {id, memories} <- heard,
+          memory <- memories,
+          do: "proactive:#{id}:curious:#{memory.topic}"
+        ) ++
+          for(
+            {id, memories} <- witnessed,
+            memory <- memories,
+            do: "proactive:#{id}:protested:#{memory.topic}"
+          )
+      )
 
-    prefixes = for id <- Map.keys(state.characters), do: "proactive:#{id}:curious:"
+    prefixes =
+      for id <- Map.keys(state.characters),
+          kind <- ["curious", "protested"],
+          do: "proactive:#{id}:#{kind}:"
 
     cooldowns =
       Map.filter(state.cooldowns, fn {key, _at} ->
@@ -212,7 +231,7 @@ defmodule Aethrion.Rules.Proactive do
       else: Transition.put_state(transition, %{state | cooldowns: cooldowns})
   end
 
-  defp prune_curiosity(transition, _heard), do: transition
+  defp prune_once_keys(transition, _heard, _witnessed), do: transition
 
   # Unfaded secondhand memories involving someone who is not a character, by
   # character, newest first: what they heard, and hostile messages from a
@@ -274,7 +293,9 @@ defmodule Aethrion.Rules.Proactive do
       )
 
     transition
-    |> Transition.put_cooldown(key)
+    |> then(fn transition ->
+      key |> List.wrap() |> Enum.reduce(transition, &Transition.put_cooldown(&2, &1))
+    end)
     |> Transition.put_cooldown(gap_key(character.id))
     |> Transition.emit(output)
     |> Transition.log("[Output] #{character.name} -> #{recipient}: \"#{output.text}\"")
