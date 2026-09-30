@@ -14,7 +14,7 @@ defmodule Mix.Tasks.Aethrion.Report do
   - `--out` - output file (default: `tmp/<scenario file name>.html`)
   - `--all` - render every bundled scenario
   - `--out-dir` - directory for `--all` (default: `tmp/reports`)
-  - `--locale ko` - character lines in Korean (the rest of the report stays in English)
+  - `--locale ko` - the report in Korean (scenario text stays as written)
   """
 
   use Mix.Task

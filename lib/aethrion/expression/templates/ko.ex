@@ -210,6 +210,59 @@ defmodule Aethrion.Expression.Templates.Ko do
   defp reply(_tone, _mood), do: "..."
 
   @doc """
+  One-line Korean description of an event, like `Aethrion.Event.describe/2`.
+  `names` maps ids to display names. Custom event types fall back to the
+  English description.
+  """
+  def describe_event(event, names) do
+    name = fn id -> names.(id) end
+    subject = fn id -> subject(name.(id)) end
+
+    case event do
+      %{type: :gift_received} ->
+        "#{subject.(event.from)} #{name.(event.to)}에게 #{with_particle(event.item, :object)} 준다" <>
+          seen_by(event, name)
+
+      %{type: :message_sent} ->
+        "#{name.(event.from)} → #{name.(event.to)} (#{ko_tone(event.tone)}): #{event.text}" <>
+          seen_by(event, name)
+
+      %{type: :apology_offered} ->
+        "#{subject.(event.from)} #{name.(event.to)}에게 사과한다: #{event.reason}" <>
+          seen_by(event, name)
+
+      %{type: :time_tick, hours: hours} ->
+        "#{hours}시간이 흐른다"
+
+      %{type: :gossip_shared} ->
+        "#{with_particle(name.(event.from), :topic)} #{name.(event.to)}에게 속마음을 털어놓는다"
+
+      %{type: :comfort_offered} ->
+        "#{with_particle(name.(event.from), :topic)} #{with_particle(name.(event.to), :object)} 위로한다"
+
+      %{type: :time_spent_together} ->
+        "#{with_particle(name.(event.from), :with)} #{with_particle(name.(event.to), :topic)} 함께 시간을 보낸다"
+
+      _other ->
+        Aethrion.Event.describe(event, names)
+    end
+  end
+
+  defp seen_by(%{observed_by: [_ | _] = observers}, name),
+    do: " (#{Enum.map_join(observers, ", ", name)} 목격)"
+
+  defp seen_by(_event, _name), do: ""
+
+  defp subject("너"), do: "네가"
+  defp subject(name), do: with_particle(name, :subject)
+
+  defp ko_tone(:warm), do: "다정하게"
+  defp ko_tone(:neutral), do: "평범하게"
+  defp ko_tone(:cold), do: "차갑게"
+  defp ko_tone(:hostile), do: "모질게"
+  defp ko_tone(other), do: to_string(other)
+
+  @doc """
   Appends the Korean particle that fits `word`'s final sound. `kind` is
   `:subject` (이/가), `:topic` (은/는), `:object` (을/를), `:and` (이랑/랑),
   or `:with` (과/와).
@@ -238,10 +291,16 @@ defmodule Aethrion.Expression.Templates.Ko do
     |> Enum.find_value(false, fn codepoint ->
       cond do
         # Hangul syllables: a final consonant exists when (code - 0xAC00) % 28 != 0.
-        codepoint in 0xAC00..0xD7A3 -> {:ok, rem(codepoint - 0xAC00, 28) != 0}
-        # Latin names read with a final consonant sound when they end in one.
-        codepoint in ?a..?z or codepoint in ?A..?Z -> {:ok, codepoint not in ~c"aeiouyAEIOUY"}
-        true -> nil
+        codepoint in 0xAC00..0xD7A3 ->
+          {:ok, rem(codepoint - 0xAC00, 28) != 0}
+
+        # Latin words read with a final consonant sound when they end in one,
+        # except -r, -w, and -h (flower 플라워, show 쇼, Smith 스미스).
+        codepoint in ?a..?z or codepoint in ?A..?Z ->
+          {:ok, codepoint not in ~c"aeiouyrwhAEIOUYRWH"}
+
+        true ->
+          nil
       end
     end)
     |> case do

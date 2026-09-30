@@ -340,6 +340,6 @@ The `demo.*` tasks live in `dev/` and run only from a checkout of this repositor
 | `mix demo.branches` | one moment (the crossroads scenario), four branches, compared |
 | `mix demo.interactive` | REPL with `say`, `here`, `why`, `context`, `undo`, `--llm`, `--locale ko` |
 | `mix aethrion.scenario PATH \| --all` | run scenarios and check expectations |
-| `mix aethrion.report PATH \| --all` | render HTML reports; `--out` / `--out-dir`, `--locale ko` |
+| `mix aethrion.report PATH \| --all` | render HTML reports; `--out` / `--out-dir`, `--locale ko` for a Korean report |
 | `mix aethrion.rules` | print the rule pipeline |
 | `mix aethrion.journal PATH` | replay a journal; `--scenario` / `--report` to export, `--compact [--archive FILE]`, `--max-depth` / `--max-events` |
