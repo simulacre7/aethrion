@@ -50,7 +50,7 @@ defmodule Aethrion.Rules.Proactive do
 
     state
     |> State.sorted_characters()
-    |> Enum.filter(&Character.can_act?/1)
+    |> Enum.filter(&(Character.can_act?(&1) and could_reach_out?(&1, params)))
     |> Enum.reduce(transition, fn character, transition ->
       people = people(transition.state, character.id, outgoing, params)
 
@@ -88,6 +88,14 @@ defmodule Aethrion.Rules.Proactive do
     |> Enum.filter(&(&1.tension < avoid))
     |> Enum.sort_by(&{-&1.affinity, &1.to})
     |> Enum.map(& &1.to)
+  end
+
+  # Cheap numeric pre-check so people are only computed for characters who
+  # might actually reach out.
+  defp could_reach_out?(%Character{id: id, state: cs}, params) do
+    (cs.jealousy >= params.jealousy_floor and
+       cs.jealousy + cs.loneliness >= params.pressure_threshold) or
+      cs.loneliness >= params.loneliness_threshold or Map.has_key?(params.heard, id)
   end
 
   defp first_trigger(_state, _character, [], _params), do: nil
