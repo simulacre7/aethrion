@@ -4,14 +4,15 @@ defmodule Aethrion.Rules.Apology do
 
   Apologies wear thin: for each earlier apology from the same person the
   receiver still remembers (about a week), the trust gained and the tension
-  eased are halved, so a cycle of insults and apologies does not keep
-  building trust.
+  eased are halved. From someone who has been hostile to the receiver, an
+  apology gives back at most the trust the hostile words since their last
+  apology took, so a cycle of insults and apologies never builds trust.
   """
 
   use Aethrion.Rule,
     id: :apology,
     description:
-      "Receiver: jealousy -15, loneliness -6, stress -10, trust +8 and tension -10 toward the apologizer (halved per remembered earlier apology), remembers the apology.",
+      "Receiver: jealousy -15, loneliness -6, stress -10, trust +8 (no more than hostile words since the last apology took) and tension -10 toward the apologizer (halved per remembered earlier apology), remembers the apology.",
     params: [
       trust_delta: 8,
       jealousy_delta: -15,
@@ -80,11 +81,53 @@ defmodule Aethrion.Rules.Apology do
       event.to,
       event.from,
       :trust,
-      halve.(Transition.param(transition, :trust_delta))
+      repair(
+        halve.(Transition.param(transition, :trust_delta)),
+        trust_lost(transition.state, event)
+      )
     )
     |> ease_tension(event.to, event.from, halve.(Transition.param(transition, :tension_delta)))
     |> Transition.remember(memory)
   end
+
+  # From someone with a record of hostile words, an apology gives back at
+  # most the trust that hostile words since the last one took, so insulting
+  # and apologizing never builds trust. From someone with no such record (an
+  # apology for leaving a friend out, say) it is taken whole.
+  defp trust_lost(state, %{from: from, to: to} = event) do
+    remembered = Memories.for_character(state, to)
+
+    hostile? = fn memory ->
+      match?(
+        %Memory{
+          kind: :experienced,
+          data: %{"event" => "message_sent", "from" => ^from, "tone" => "hostile"}
+        },
+        memory
+      )
+    end
+
+    last_apology =
+      remembered
+      |> Enum.filter(&match?(%Memory{data: %{"event" => "apology_offered", "from" => ^from}}, &1))
+      |> Enum.map(&(Memories.event_number(&1) || 0))
+      |> Enum.max(fn -> -1 end)
+
+    now = Memories.event_number(topic(event)) || 0
+
+    since =
+      Enum.count(
+        remembered,
+        &(hostile?.(&1) and (Memories.event_number(&1) || 0) in (last_apology + 1)..now//1)
+      )
+
+    if Enum.any?(remembered, hostile?),
+      do: since * abs(Aethrion.Tuning.get(state, Aethrion.Rules.Message, :hostile_trust)),
+      else: nil
+  end
+
+  defp repair(trust, nil), do: trust
+  defp repair(trust, lost), do: min(trust, lost)
 
   # Unfaded apologies the receiver remembers from the same person.
   defp earlier_apologies(state, %{from: from, to: to}) do

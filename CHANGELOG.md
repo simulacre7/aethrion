@@ -64,7 +64,7 @@ The social layer release: characters act on each other, every change is explaina
 - `Aethrion.Runtime.dispatch/2` is now `dispatch/3` with options; the two-argument form still works.
 - The v0.1 rule modules (`GiftRules`, `JealousyRules`, `LonelinessRules`, `ReconciliationRules`) are replaced by one module per rule under `Aethrion.Rules`.
 - Proactive messages use cooldowns in simulated hours instead of firing once forever. `:jealous` now requires jealousy >= 15; a separate `:lonely` reason covers loneliness alone.
-- Apologies also ease tension toward the apologizer.
+- Apologies also ease tension toward the apologizer. From someone who has been hostile, an apology gives back no more trust than their hostile words since the last apology took, so an insult-and-apology cycle never builds trust.
 - Gift and apology memory ids include the event id.
 - The demo world gains relationships between Haru, Yuna, and Mina.
 - Persistence writes format version 2 and still reads v0.1 data.

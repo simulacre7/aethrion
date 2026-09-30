@@ -105,7 +105,7 @@ defmodule Aethrion.NarrativeTest do
   end
 
   describe "apologies" do
-    test "each remembered apology halves what the next repairs" do
+    test "an apology repairs at most what the insult took, and less each time" do
       insult = Event.message_sent("user", "mina", "Go away.", tone: :hostile)
       sorry = Event.apology_offered("user", "mina", "Sorry.")
 
@@ -116,7 +116,8 @@ defmodule Aethrion.NarrativeTest do
       {state, _} = run!(after_one, [insult])
       {after_two, _} = run!(state, [sorry])
 
-      assert trust.(after_one) == 25 - 6 + 8
+      # Up to 8, but no more than the insult cost; the next one repairs half.
+      assert trust.(after_one) == 25 - 6 + 6
       assert trust.(after_two) == trust.(after_one) - 6 + 4
     end
 
