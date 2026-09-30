@@ -14,7 +14,8 @@ defmodule Mix.Tasks.Demo.Interactive do
     `Aethrion.LLM.OpenAICompatible` for configuration). Without it, the
     deterministic fake adapter is used. The simulation is identical either way.
   - `--locale ko` - also show every character line rendered with the Korean
-    templates. The simulation is identical in every language.
+    templates, and describe events in Korean; with `--llm`, the model writes
+    in Korean. The simulation is identical in every language.
   - `--effects` - also print every structured output.
   - `--no-status` - do not print the status tables after every event (use
     `status` to see them).
@@ -64,6 +65,10 @@ defmodule Mix.Tasks.Demo.Interactive do
     if session.status?, do: Display.status(session.state)
     loop(session)
   end
+
+  # A real model writes in the session's language.
+  defp adapter_opts(%{locale: :ko}), do: [language: "Korean"]
+  defp adapter_opts(_session), do: []
 
   defp locale(nil), do: nil
   defp locale("ko"), do: :ko
@@ -396,7 +401,7 @@ defmodule Mix.Tasks.Demo.Interactive do
           session.adapter ->
             step.outputs
             |> Enum.filter(&Aethrion.Output.expressive?/1)
-            |> Expression.render(adapter: session.adapter)
+            |> Expression.render(adapter: session.adapter, adapter_opts: adapter_opts(session))
             |> Enum.each(&Display.expressed/1)
 
           session.locale ->

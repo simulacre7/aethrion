@@ -36,17 +36,36 @@ defmodule Aethrion.Expression.Prompt do
   - Otherwise "message" with the tone the character would reasonably perceive.
   """
 
-  @doc "Chat messages (`[%{role, content}]`) for rendering a request."
-  def render_messages(%Request{} = request) do
+  @doc """
+  Chat messages (`[%{role, content}]`) for rendering a request. Options:
+  `:language` (for example `"Korean"`) asks for the line in that language.
+  """
+  def render_messages(%Request{} = request, opts \\ []) do
     [
-      %{role: "system", content: String.trim(@render_rules)},
+      %{role: "system", content: render_rules(opts)},
       %{role: "user", content: render_context(request)}
     ]
   end
 
-  @doc "System prompt and user content for rendering, for providers with a separate system field."
-  def render_parts(%Request{} = request) do
-    {String.trim(@render_rules), render_context(request)}
+  @doc """
+  System prompt and user content for rendering, for providers with a separate
+  system field. Takes the same options as `render_messages/2`.
+  """
+  def render_parts(%Request{} = request, opts \\ []) do
+    {render_rules(opts), render_context(request)}
+  end
+
+  # `language: "Korean"` asks for the line in that language; the draft line
+  # and memories stay as they are.
+  defp render_rules(opts) do
+    case Keyword.get(opts, :language) do
+      nil ->
+        String.trim(@render_rules)
+
+      language ->
+        String.trim(@render_rules) <>
+          "\n- Write the line in #{language}, whatever language the draft line and memories are in."
+    end
   end
 
   @doc "Chat messages for interpreting free text into a structured intent."

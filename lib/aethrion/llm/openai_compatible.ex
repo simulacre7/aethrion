@@ -51,7 +51,7 @@ defmodule Aethrion.LLM.OpenAICompatible do
   @impl true
   def render(%Request{} = request, opts \\ []) do
     with {:ok, config} <- config(opts),
-         {:ok, text} <- complete(config, Prompt.render_messages(request), []) do
+         {:ok, text} <- complete(config, Prompt.render_messages(request, opts), []) do
       case Prompt.clean_line(text) do
         "" -> {:error, :empty_response}
         line -> {:ok, line}

@@ -56,6 +56,15 @@ defmodule Aethrion.LLM.AnthropicTest do
     refute Map.has_key?(body, "temperature")
   end
 
+  test "language: asks the model to write in that language" do
+    opts = stub(message([%{"type" => "text", "text" => "다정하네."}]))
+
+    assert {:ok, "다정하네."} = Anthropic.render(@request, [language: "Korean"] ++ opts)
+
+    assert_received {:stub_request, request}
+    assert Jason.decode!(request.body)["system"] =~ "Write the line in Korean"
+  end
+
   test "fallbacks are only sent for models that support them, and can be disabled" do
     opts = stub(message([%{"type" => "text", "text" => "hi"}]))
 

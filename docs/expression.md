@@ -66,7 +66,7 @@ rendered.text
 #=> "아까 Mina랑 있을 때 즐거워 보이더라. 혹시 나는 잊은 거 아니지?"
 ```
 
-`mix demo.interactive --locale ko` shows every line in both languages. A model adapter can do the same by adding a language instruction to the prompt.
+`mix demo.interactive --locale ko` shows every line in both languages. With a model, pass `adapter_opts: [language: "Korean"]` to `Expression.render/2` (the demo does this for `--llm ... --locale ko`): the prompt then asks for the line in that language.
 
 ## Adapters
 

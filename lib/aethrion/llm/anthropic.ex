@@ -54,7 +54,7 @@ defmodule Aethrion.LLM.Anthropic do
 
   @impl true
   def render(%Request{} = request, opts \\ []) do
-    {system, content} = Prompt.render_parts(request)
+    {system, content} = Prompt.render_parts(request, Keyword.take(opts, [:language]))
 
     with {:ok, config} <- config(opts),
          {:ok, text} <- create_message(config, system, content) do

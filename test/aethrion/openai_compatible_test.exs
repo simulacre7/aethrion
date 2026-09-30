@@ -44,6 +44,29 @@ defmodule Aethrion.LLM.OpenAICompatibleTest do
     assert context =~ "mood: jealous"
   end
 
+  test "language: reaches the system message" do
+    {:ok, base_url, _pid} = StubHTTPServer.start(fn _request -> {200, completion("응")} end)
+
+    request = %Aethrion.Expression.Request{
+      kind: :reply,
+      reason: :reply,
+      speaker: %{name: "Mina"},
+      listener: %{name: "you"},
+      fallback_text: "Sure."
+    }
+
+    assert {:ok, "응"} =
+             OpenAICompatible.render(request,
+               base_url: base_url <> "/v1",
+               model: "m",
+               language: "Korean"
+             )
+
+    assert_received {:stub_request, http}
+    assert [%{"role" => "system", "content" => system} | _] = Jason.decode!(http.body)["messages"]
+    assert system =~ "Write the line in Korean"
+  end
+
   test "omits the authorization header without an api key" do
     {:ok, base_url, _pid} = StubHTTPServer.start(fn _request -> {200, completion("ok")} end)
 
