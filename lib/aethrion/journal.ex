@@ -412,7 +412,8 @@ defmodule Aethrion.Journal do
     Logger.warning(
       "this journal was written by Aethrion #{inspect(version)} and is being read by " <>
         "#{@library_version}; rules may have changed, so replay can differ from the original. " <>
-        "Compact it with #{inspect(version)} before upgrading to keep the world as it was."
+        "Compact it with #{inspect(version)} before upgrading to keep the world as it was, " <>
+        "or compact it now to continue from the world as these rules replay it."
     )
   end
 
