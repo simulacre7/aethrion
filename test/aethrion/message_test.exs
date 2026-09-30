@@ -91,4 +91,59 @@ defmodule Aethrion.MessageTest do
 
     assert [] = of_type(outputs, :reply)
   end
+
+  describe "history" do
+    defp with_history(tone, count) do
+      events =
+        for i <- 1..count, do: Event.message_sent("user", "mina", "m#{i}", tone: tone)
+
+      {state, _outputs} = run!(Runtime.demo_state(), events ++ [Event.time_tick("t", hours: 200)])
+      # Reset feelings so only the next message's effect is measured.
+      state
+      |> State.update_character_state("mina", &%{&1 | stress: 0, joy: 0, loneliness: 50})
+      |> State.update_relationship("mina", "user", &%{&1 | affinity: 0, trust: 0, tension: 0})
+    end
+
+    test "a record of kindness halves the impact of hostility" do
+      state = with_history(:warm, 3)
+      {:ok, step} = Runtime.step(state, Event.message_sent("user", "mina", "ugh", tone: :hostile))
+
+      assert State.get_relationship(step.state, "mina", "user").tension == 5
+      assert character_state(step.state, "mina").stress == 10
+      assert Enum.any?(step.log, &(&1 =~ "benefit of the doubt"))
+      assert [%{text: "That's not like you. Is something wrong?"}] = of_type(step.outputs, :reply)
+    end
+
+    test "too little kindness is not enough" do
+      state = with_history(:warm, 2)
+
+      {state, _outputs} =
+        dispatch!(state, Event.message_sent("user", "mina", "ugh", tone: :hostile))
+
+      assert State.get_relationship(state, "mina", "user").tension == 10
+    end
+
+    test "repeated hostility makes warmth land at half strength" do
+      state = with_history(:hostile, 2)
+
+      {:ok, step} =
+        Runtime.step(state, Event.message_sent("user", "mina", "sorry, you ok?", tone: :warm))
+
+      assert State.get_relationship(step.state, "mina", "user").affinity == 2
+      assert character_state(step.state, "mina").loneliness == 46
+      assert Enum.any?(step.log, &(&1 =~ "wary of kindness"))
+    end
+
+    test "goodwill is tunable" do
+      state =
+        :warm
+        |> with_history(3)
+        |> Aethrion.Tuning.put(:message, :goodwill_percent, 0)
+
+      {state, _outputs} =
+        dispatch!(state, Event.message_sent("user", "mina", "ugh", tone: :hostile))
+
+      assert State.get_relationship(state, "mina", "user").tension == 0
+    end
+  end
 end

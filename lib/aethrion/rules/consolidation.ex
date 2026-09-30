@@ -142,6 +142,17 @@ defmodule Aethrion.Rules.Consolidation do
     )
   end
 
+  @doc """
+  How many times `character` has consolidated `pattern` (for example
+  `"warm"`, `"gift"`, `"hostile"`) from `actor`. Zero without an impression.
+  """
+  def impression_count(%State{} = state, character, pattern, actor) do
+    case State.memory(state, impression_id({character, pattern, actor})) do
+      %Memory{data: %{"count" => count}} when is_integer(count) -> count
+      _ -> 0
+    end
+  end
+
   defp impression_id({character, pattern, actor}),
     do: "memory:#{character}:impression:#{pattern}:#{actor}"
 

@@ -70,6 +70,23 @@ defmodule Aethrion.Expression.Templates do
     "#{request.speaker.name} has something to say about #{request.reason}."
   end
 
+  def render(%Request{kind: :reply, tone: tone, speaker: %{mood: mood}} = request)
+      when tone in [:cold, :hostile] do
+    kind_history? =
+      find_memory(
+        request,
+        &impression?(&1, {request.listener.id, request.speaker.id}, ["warm", "gift", "comfort"])
+      )
+
+    if kind_history? do
+      if tone == :hostile,
+        do: "That's not like you. Is something wrong?",
+        else: "Oh... okay. Is everything alright?"
+    else
+      reply(tone, mood)
+    end
+  end
+
   def render(%Request{kind: :reply, tone: tone, speaker: %{mood: mood}}) do
     reply(tone, mood)
   end

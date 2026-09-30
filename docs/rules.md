@@ -59,6 +59,11 @@ Outputs report the delta that was actually applied after clamping.
 | `cold` | affinity -3, tension +4, joy -5 | yes (35) |
 | `hostile` | affinity -8, trust -6, tension +10, stress +20, joy -10 | yes (65) |
 
+History changes how a message lands, through impressions built by consolidation:
+
+- **Goodwill** - if the receiver holds impressions of at least 3 kind acts from the sender (warm messages, gifts, comfort), cold and hostile effects are halved (`goodwill_count`, `goodwill_percent`). Their reply reflects it: "That's not like you. Is something wrong?"
+- **Wariness** - if the receiver holds an impression of at least 2 hostile messages from the sender, warm effects are halved (`wariness_count`, `wariness_percent`).
+
 **reply** - when someone outside the cast (such as the user) talks to an active, unblocked character, the character emits a `:reply` output phrased from their current mood and memories. Replies do not change state.
 
 ### `apology_offered` -> `apology`

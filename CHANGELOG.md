@@ -16,12 +16,13 @@ The social layer release: characters now act on each other, every change is expl
 - **New outputs.** `:reply`, `:mood_changed`, `:character_interaction`. Expressive outputs carry `memory_refs` and a read-only `context` snapshot.
 - **Richer state.** Simulated clock, cooldowns, derived moods (`:happy`, `:lonely`, `:jealous`, `:upset`), `joy`, `stress`, trait modifiers (`:sensitive`, `:calm`, `:playful`, `:talkative`).
 - **Memory.** Kinds (`:experienced`, `:observed`, `:heard`, `:impression`), topics, sources, structured `data`, age-based strength decay, and deterministic queries in `Aethrion.Memories`.
+- **History matters.** Impressions change how messages land: a record of kindness halves the impact of cold or hostile words (and the reply says "That's not like you"), repeated hostility halves the impact of warmth.
 - **Consolidation.** Faded memories of the same interaction with the same actor fold into a lasting impression ("user has been warm to mina 3 times."), deterministically.
 - **Expression layer.** `Aethrion.Expression` renders outputs through an `Aethrion.LLM.Adapter`, falling back to deterministic templates on any failure. `Aethrion.Intent` lets a model propose an event from free text, limited to a closed set.
 - **LLM adapters.** `Aethrion.LLM.Anthropic` (Messages API) and `Aethrion.LLM.OpenAICompatible` (OpenAI, vLLM, Ollama, llama.cpp), both on Erlang's `:httpc` with no new runtime dependencies.
 - **OTP runtime.** `Aethrion.World` supervises a runtime server, scheduler, and rendering tasks. `Aethrion.RuntimeServer` gains subscriptions, event history, snapshot persistence with restore on restart, and asynchronous rendering with timeouts and crash isolation.
 - **Tuning.** Every rule declares its numbers as `params`; a world can override them in `state.tuning` (`Aethrion.Tuning`), in saved state, or in a scenario's `"tuning"` block. `mix aethrion.rules` prints them.
-- **Scenarios.** JSON scenario files with a world, events, and expectations (`Aethrion.Scenario`, `mix aethrion.scenario`). Eight bundled scenarios run in the test suite.
+- **Scenarios.** JSON scenario files with a world, events, and expectations (`Aethrion.Scenario`, `mix aethrion.scenario`). Nine bundled scenarios run in the test suite.
 - **Branches.** Scenarios can define alternative futures after shared events; each branch has its own expectations, and reports compare branches side by side. The bundled `07_crossroads.json` plays one moment four ways.
 - **Reports.** `mix aethrion.report` renders a scenario as a self-contained HTML report with charts, a relationship graph, and the timeline.
 - **Interactive CLI.** `say` (free text through intent interpretation), `message`, `comfort`, `why`, `context`, `timeline`, `rules`, `undo`, `save`, `load`, `record` (the session as a replayable scenario with snapshot expectations), and `--llm anthropic|openai`.
