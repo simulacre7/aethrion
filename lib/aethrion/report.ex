@@ -296,13 +296,7 @@ defmodule Aethrion.Report do
       |> Enum.map(fn character ->
         series =
           Enum.map(@metrics, fn {field, label, color} ->
-            values =
-              Enum.map(snapshots, fn {_label, state} ->
-                case State.character(state, character.id) do
-                  nil -> 0
-                  found -> Map.fetch!(found.state, field)
-                end
-              end)
+            values = Enum.map(snapshots, &metric_value(elem(&1, 1), character.id, field))
 
             %{name: label, color: color, values: values}
           end)
@@ -321,13 +315,7 @@ defmodule Aethrion.Report do
       |> State.sorted_characters()
       |> Enum.flat_map(fn character ->
         Enum.map(@metrics, fn {field, label, _color} ->
-          values =
-            Enum.map(snapshots, fn {_label, state} ->
-              case State.character(state, character.id) do
-                nil -> "–"
-                found -> to_string(Map.fetch!(found.state, field))
-              end
-            end)
+          values = Enum.map(snapshots, &metric_text(elem(&1, 1), character.id, field))
 
           [
             "<tr><th scope=\"row\">",
@@ -361,6 +349,22 @@ defmodule Aethrion.Report do
   @pad_right 78
   @pad_top 12
   @pad_bottom 26
+
+  # A character missing from a snapshot (added later) reads as 0 on charts
+  # and "–" in tables.
+  defp metric_value(state, id, field) do
+    case State.character(state, id) do
+      nil -> 0
+      found -> Map.fetch!(found.state, field)
+    end
+  end
+
+  defp metric_text(state, id, field) do
+    case State.character(state, id) do
+      nil -> "–"
+      found -> to_string(Map.fetch!(found.state, field))
+    end
+  end
 
   defp line_chart(labels, series, label) do
     count = length(labels)

@@ -45,6 +45,9 @@ jobs:
       - name: Check each scenario in isolation
         run: for f in priv/scenarios/*.json; do mix aethrion.scenario "$f" --quiet || exit 1; done
 
+      - name: Credo
+        run: mix credo
+
       - name: Dialyzer
         run: MIX_ENV=dev mix dialyzer
 

@@ -60,8 +60,10 @@ defmodule Aethrion.Rules.Proactive do
 
     state
     |> State.sorted_characters()
-    |> Enum.filter(&(Character.can_act?(&1) and could_reach_out?(&1, params)))
-    |> Enum.filter(&State.cooldown_ready?(state, gap_key(&1.id), params.min_gap_hours))
+    |> Enum.filter(
+      &(Character.can_act?(&1) and could_reach_out?(&1, params) and
+          State.cooldown_ready?(state, gap_key(&1.id), params.min_gap_hours))
+    )
     |> Enum.reduce(transition, fn character, transition ->
       people = people(transition.state, character.id, outgoing, params)
 

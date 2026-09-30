@@ -41,9 +41,8 @@ defmodule Aethrion.Validator do
     with :ok <- require_string(event, :from),
          :ok <- require_character(state, event, :to),
          :ok <- require_distinct(event),
-         :ok <- require_string(event, :item),
-         :ok <- require_observers(state, Map.get(event, :observed_by, [])) do
-      :ok
+         :ok <- require_string(event, :item) do
+      require_observers(state, Map.get(event, :observed_by, []))
     end
   end
 
@@ -66,9 +65,8 @@ defmodule Aethrion.Validator do
     with :ok <- require_string(event, :from),
          :ok <- require_character(state, event, :to),
          :ok <- require_distinct(event),
-         :ok <- require_string(event, :reason),
-         :ok <- require_observers(state, Map.get(event, :observed_by, [])) do
-      :ok
+         :ok <- require_string(event, :reason) do
+      require_observers(state, Map.get(event, :observed_by, []))
     end
   end
 
@@ -77,18 +75,16 @@ defmodule Aethrion.Validator do
          :ok <- require_character(state, event, :to),
          :ok <- require_distinct(event),
          :ok <- require_string(event, :text),
-         :ok <- require_tone(event),
-         :ok <- require_observers(state, Map.get(event, :observed_by, [])) do
-      :ok
+         :ok <- require_tone(event) do
+      require_observers(state, Map.get(event, :observed_by, []))
     end
   end
 
   defp validate_event(state, %{type: :comfort_offered} = event) do
     with :ok <- require_string(event, :from),
          :ok <- require_character(state, event, :to),
-         :ok <- require_distinct(event),
-         :ok <- require_available(state, event.from, :from) do
-      :ok
+         :ok <- require_distinct(event) do
+      require_available(state, event.from, :from)
     end
   end
 
@@ -96,9 +92,8 @@ defmodule Aethrion.Validator do
     with :ok <- require_character(state, event, :from),
          :ok <- require_character(state, event, :to),
          :ok <- require_distinct(event),
-         :ok <- require_available(state, event.from, :from),
-         :ok <- require_available(state, event.to, :to) do
-      :ok
+         :ok <- require_available(state, event.from, :from) do
+      require_available(state, event.to, :to)
     end
   end
 
@@ -107,9 +102,8 @@ defmodule Aethrion.Validator do
          :ok <- require_character(state, event, :to),
          :ok <- require_distinct(event),
          :ok <- require_available(state, event.from, :from),
-         :ok <- require_available(state, event.to, :to),
-         :ok <- require_owned_memory(state, event) do
-      :ok
+         :ok <- require_available(state, event.to, :to) do
+      require_owned_memory(state, event)
     end
   end
 

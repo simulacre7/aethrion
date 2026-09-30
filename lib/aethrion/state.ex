@@ -442,32 +442,34 @@ defmodule Aethrion.State do
          :ok <- optional(character, "profile", &is_binary/1),
          :ok <- optional(character, "traits", &string_list?/1),
          :ok <- optional(character, "state", &is_map/1) do
-      state = Map.get(character, "state", %{})
-
-      with :ok <- optional(state, "mood", &is_binary/1),
-           :ok <- optional(state, "active", &is_boolean/1),
-           :ok <- optional(state, "blocked", &is_boolean/1),
-           :ok <- optional(state, "last_active_at", &(is_nil(&1) or is_binary(&1))) do
-        Enum.reduce_while(@character_fields, :ok, fn field, :ok ->
-          case optional(state, field, &in_range?(&1, 0, 100)) do
-            :ok -> {:cont, :ok}
-            error -> {:halt, prefix(error, ["state"])}
-          end
-        end)
-      end
+      validate_character_state(Map.get(character, "state", %{}))
     end
+  end
+
+  defp validate_character_state(state) do
+    with :ok <- optional(state, "mood", &is_binary/1),
+         :ok <- optional(state, "active", &is_boolean/1),
+         :ok <- optional(state, "blocked", &is_boolean/1),
+         :ok <- optional(state, "last_active_at", &(is_nil(&1) or is_binary(&1))) do
+      state |> in_range(@character_fields, 0, 100) |> prefix(["state"])
+    end
+  end
+
+  # The first of `fields` that is present and outside min..max.
+  defp in_range(map, fields, min, max) do
+    Enum.reduce_while(fields, :ok, fn field, :ok ->
+      case optional(map, field, &in_range?(&1, min, max)) do
+        :ok -> {:cont, :ok}
+        error -> {:halt, error}
+      end
+    end)
   end
 
   defp validate_relationship(relationship) do
     with :ok <- required(relationship, "from", &non_empty_string?/1),
          :ok <- required(relationship, "to", &non_empty_string?/1),
          :ok <- optional(relationship, "tags", &string_list?/1) do
-      Enum.reduce_while(@relationship_fields, :ok, fn field, :ok ->
-        case optional(relationship, field, &in_range?(&1, -100, 100)) do
-          :ok -> {:cont, :ok}
-          error -> {:halt, error}
-        end
-      end)
+      in_range(relationship, @relationship_fields, -100, 100)
     end
   end
 
@@ -529,6 +531,8 @@ defmodule Aethrion.State do
 
   defp format_path([]), do: "the top level"
   defp format_path(path), do: Enum.map_join(path, ".", &to_string/1)
+
+  defp prefix(:ok, _parents), do: :ok
 
   defp prefix({:error, {:invalid_state_data, path, reason}}, parents),
     do: {:error, {:invalid_state_data, parents ++ path, reason}}

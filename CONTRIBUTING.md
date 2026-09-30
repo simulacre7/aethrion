@@ -6,7 +6,7 @@ Aethrion is currently an early alpha project. The core goal is to keep the socia
 
 ```bash
 mix deps.get
-mix check                     # format, warnings, tests, and every scenario
+mix check                     # format, warnings, tests, every scenario, and Credo
 MIX_ENV=dev mix dialyzer      # typespecs (CI runs it too)
 mix demo.drama
 ```

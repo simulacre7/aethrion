@@ -115,22 +115,26 @@ defmodule Aethrion.Rules.Reputation do
   defp judge(%Transition{state: state} = transition, judge, actor, target, tone, how, percent) do
     if State.get_relationship(state, judge, target).affinity >=
          Transition.param(transition, :care_threshold) do
-      transition
-      |> Transition.note(note(transition, judge, actor, target, tone, how), subject: judge)
-      |> then(fn transition ->
-        Enum.reduce(Map.fetch!(@effects, tone), transition, fn field, transition ->
-          amount = div(Transition.param(transition, :"#{tone}_#{field}") * percent, 100)
+      transition =
+        Transition.note(transition, note(transition, judge, actor, target, tone, how),
+          subject: judge
+        )
 
-          # Easing tension never makes it negative.
-          if field == :tension and amount < 0,
-            do: Apology.ease_tension(transition, judge, actor, amount),
-            else: Transition.adjust_relationship(transition, judge, actor, field, amount)
-        end)
+      Enum.reduce(Map.fetch!(@effects, tone), transition, fn field, transition ->
+        amount = div(Transition.param(transition, :"#{tone}_#{field}") * percent, 100)
+        adjust(transition, judge, actor, field, amount)
       end)
     else
       transition
     end
   end
+
+  # Easing tension never makes it negative.
+  defp adjust(transition, judge, actor, :tension, amount) when amount < 0,
+    do: Apology.ease_tension(transition, judge, actor, amount)
+
+  defp adjust(transition, judge, actor, field, amount),
+    do: Transition.adjust_relationship(transition, judge, actor, field, amount)
 
   defp note(transition, judge, actor, target, tone, how) do
     [judge, actor, target] = Enum.map([judge, actor, target], &Transition.name(transition, &1))

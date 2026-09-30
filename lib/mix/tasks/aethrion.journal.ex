@@ -97,23 +97,17 @@ defmodule Mix.Tasks.Aethrion.Journal do
   end
 
   defp compact(path, opts) do
-    cond do
-      opts[:compact] ->
-        case Journal.compact(path, Keyword.take(opts, [:archive]) ++ limits(opts)) do
-          {:ok, _state, count} ->
-            kept = if archive = opts[:archive], do: "; the old journal is at #{archive}", else: ""
-
-            Display.message(
-              "compacted #{count(count, "event")} into the starting state of #{path}#{kept}"
-            )
-
-          {:error, error} ->
-            Mix.raise("could not compact #{path}: #{Aethrion.Error.format(error)}")
-        end
-
-      true ->
-        :ok
+    if opts[:compact] do
+      case Journal.compact(path, Keyword.take(opts, [:archive]) ++ limits(opts)) do
+        {:ok, _state, count} -> Display.message(compacted(path, count, opts[:archive]))
+        {:error, error} -> Mix.raise("could not compact #{path}: #{Aethrion.Error.format(error)}")
+      end
     end
+  end
+
+  defp compacted(path, count, archive) do
+    kept = if archive, do: "; the old journal is at #{archive}", else: ""
+    "compacted #{count(count, "event")} into the starting state of #{path}#{kept}"
   end
 
   defp limits(opts), do: Keyword.take(opts, [:max_depth, :max_events])

@@ -40,14 +40,16 @@ defmodule Aethrion.MixProject do
 
   def cli, do: [preferred_envs: [check: :test]]
 
-  # `mix check` runs what CI runs except Dialyzer (`MIX_ENV=dev mix dialyzer`).
+  # `mix check` runs what CI runs except Dialyzer (`MIX_ENV=dev mix dialyzer`)
+  # and running each scenario in a fresh VM.
   defp aliases do
     [
       check: [
         "format --check-formatted",
         "compile --warnings-as-errors",
         "test --warnings-as-errors",
-        "aethrion.scenario --all --quiet"
+        "aethrion.scenario --all --quiet",
+        "credo"
       ]
     ]
   end
@@ -71,7 +73,8 @@ defmodule Aethrion.MixProject do
       {:jason, "~> 1.4"},
       {:stream_data, "~> 1.1", only: :test},
       {:ex_doc, "~> 0.34", only: :dev, runtime: false},
-      {:dialyxir, "~> 1.4", only: :dev, runtime: false}
+      {:dialyxir, "~> 1.4", only: :dev, runtime: false},
+      {:credo, "~> 1.7", only: [:dev, :test], runtime: false}
     ]
   end
 

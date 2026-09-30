@@ -33,22 +33,21 @@ defmodule Mix.Tasks.Aethrion.Rules do
       |> Enum.each(fn {{id, description}, index} ->
         Mix.shell().info("  #{index}. #{String.pad_trailing(to_string(id), 14)} #{description}")
 
-        case Map.get(params, id) do
-          nil ->
-            :ok
-
-          values ->
-            line =
-              Enum.map_join(values, ", ", fn {key, default, _current} -> "#{key}=#{default}" end)
-
-            Mix.shell().info(
-              IO.ANSI.format([:faint, "     params: ", line], Aethrion.CLI.Display.color?())
-              |> IO.chardata_to_string()
-            )
-        end
+        print_params(Map.get(params, id))
       end)
 
       Mix.shell().info("")
     end
+  end
+
+  defp print_params(nil), do: :ok
+
+  defp print_params(values) do
+    line = Enum.map_join(values, ", ", fn {key, default, _current} -> "#{key}=#{default}" end)
+
+    Mix.shell().info(
+      IO.ANSI.format([:faint, "     params: ", line], Aethrion.CLI.Display.color?())
+      |> IO.chardata_to_string()
+    )
   end
 end

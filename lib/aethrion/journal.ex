@@ -143,22 +143,27 @@ defmodule Aethrion.Journal do
   defp archive(_path, nil), do: :ok
 
   defp archive(path, archive) do
+    if File.exists?(archive),
+      do: {:error, already_exists(archive)},
+      else: copy_aside(path, archive)
+  end
+
+  # Copies next to the target and renames it into place, so a failed copy
+  # never leaves a partial archive behind.
+  defp copy_aside(path, archive) do
     tmp = tmp_path(archive)
 
-    cond do
-      File.exists?(archive) ->
-        {:error, already_exists(archive)}
+    with :ok <- File.mkdir_p(Path.dirname(archive)),
+         :ok <- File.cp(path, tmp) do
+      File.rename(tmp, archive)
+    end
+    |> case do
+      :ok ->
+        :ok
 
-      true ->
-        with :ok <- File.mkdir_p(Path.dirname(archive)),
-             :ok <- File.cp(path, tmp),
-             :ok <- File.rename(tmp, archive) do
-          :ok
-        else
-          {:error, reason} ->
-            File.rm(tmp)
-            {:error, io_error(archive, reason)}
-        end
+      {:error, reason} ->
+        File.rm(tmp)
+        {:error, io_error(archive, reason)}
     end
   end
 
@@ -174,9 +179,8 @@ defmodule Aethrion.Journal do
     result =
       with :ok <- File.mkdir_p(Path.dirname(path)),
            :ok <- write_synced(tmp, Jason.encode!(header) <> "\n"),
-           :ok <- unchanged(path, version),
-           :ok <- File.rename(tmp, path) do
-        :ok
+           :ok <- unchanged(path, version) do
+        File.rename(tmp, path)
       end
 
     case result do

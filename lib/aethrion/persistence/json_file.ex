@@ -14,9 +14,8 @@ defmodule Aethrion.Persistence.JsonFile do
   def save(%State{} = state, opts \\ []) do
     with {:ok, path} <- fetch_path(opts),
          :ok <- io(File.mkdir_p(Path.dirname(path)), path),
-         {:ok, json} <- encode(state),
-         :ok <- io(File.write(path, json), path) do
-      :ok
+         {:ok, json} <- encode(state) do
+      io(File.write(path, json), path)
     end
   end
 

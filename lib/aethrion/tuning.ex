@@ -157,9 +157,8 @@ defmodule Aethrion.Tuning do
   end
 
   defp resolve(rule) when is_atom(rule) do
-    cond do
-      Code.ensure_loaded?(rule) and function_exported?(rule, :params, 0) -> rule
-      true -> Enum.find(rules(Pipeline.default()), &(&1.id() == rule))
-    end
+    if Code.ensure_loaded?(rule) and function_exported?(rule, :params, 0),
+      do: rule,
+      else: Enum.find(rules(Pipeline.default()), &(&1.id() == rule))
   end
 end
