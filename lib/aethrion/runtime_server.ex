@@ -103,11 +103,6 @@ defmodule Aethrion.RuntimeServer do
   @doc "Removes a subscription."
   def unsubscribe(server, pid \\ self()), do: GenServer.call(server, {:unsubscribe, pid})
 
-  @doc false
-  def crash(server) do
-    GenServer.call(server, :crash)
-  end
-
   ## Server
 
   @impl true
@@ -196,10 +191,6 @@ defmodule Aethrion.RuntimeServer do
         Process.demonitor(ref, [:flush])
         {:reply, :ok, %{server | subscribers: subscribers}}
     end
-  end
-
-  def handle_call(:crash, _from, _server) do
-    raise "intentional RuntimeServer crash"
   end
 
   @impl true

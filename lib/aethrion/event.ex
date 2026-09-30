@@ -2,6 +2,10 @@ defmodule Aethrion.Event do
   @moduledoc """
   Event constructors and helpers.
 
+  `:at` (and `:now` for ticks) are free-form string labels for when something
+  happened, such as `"day2 09:00"`. They default to `"unspecified"`; the
+  simulated clock, not the label, is what rules use.
+
   Events are plain maps with a `:type`. The runtime assigns every processed
   event an `:id` (`"e1"`, `"e2"`, ...) and records `:cause` when a rule derived
   the event from another one. Hosts never need to set either field.
@@ -20,6 +24,7 @@ defmodule Aethrion.Event do
   """
 
   @tones [:warm, :neutral, :cold, :hostile]
+  @unspecified "unspecified"
   @types [
     :gift_received,
     :message_sent,
@@ -45,7 +50,7 @@ defmodule Aethrion.Event do
       to: to,
       item: item,
       observed_by: Keyword.get(opts, :observed_by, []),
-      at: Keyword.get(opts, :at, "demo:t0")
+      at: Keyword.get(opts, :at, @unspecified)
     }
   end
 
@@ -59,7 +64,7 @@ defmodule Aethrion.Event do
       from: from,
       to: to,
       reason: reason,
-      at: Keyword.get(opts, :at, "demo:t0")
+      at: Keyword.get(opts, :at, @unspecified)
     }
   end
 
@@ -77,7 +82,7 @@ defmodule Aethrion.Event do
       to: to,
       text: text,
       tone: Keyword.get(opts, :tone, :neutral),
-      at: Keyword.get(opts, :at, "demo:t0")
+      at: Keyword.get(opts, :at, @unspecified)
     }
   end
 
@@ -90,7 +95,7 @@ defmodule Aethrion.Event do
       from: from,
       to: to,
       memory_id: memory_id,
-      at: Keyword.get(opts, :at, "demo:t0")
+      at: Keyword.get(opts, :at, @unspecified)
     }
   end
 
@@ -102,7 +107,7 @@ defmodule Aethrion.Event do
       type: :comfort_offered,
       from: from,
       to: to,
-      at: Keyword.get(opts, :at, "demo:t0")
+      at: Keyword.get(opts, :at, @unspecified)
     }
   end
 
@@ -110,7 +115,7 @@ defmodule Aethrion.Event do
   Characters `from` and `to` spend time together.
   """
   def time_spent_together(from, to, opts \\ []) do
-    %{type: :time_spent_together, from: from, to: to, at: Keyword.get(opts, :at, "demo:t0")}
+    %{type: :time_spent_together, from: from, to: to, at: Keyword.get(opts, :at, @unspecified)}
   end
 
   @doc """
@@ -118,14 +123,14 @@ defmodule Aethrion.Event do
   `:at` (and `:now` for ticks) default to `"unspecified"`, `:observed_by` to
   `[]`, and `:tone` to `:neutral`. Unknown types pass through unchanged.
   """
-  def normalize(%{type: :time_tick} = event), do: Map.put_new(event, :now, "unspecified")
+  def normalize(%{type: :time_tick} = event), do: Map.put_new(event, :now, @unspecified)
 
   def normalize(%{type: :gift_received} = event) do
-    event |> Map.put_new(:at, "unspecified") |> Map.put_new(:observed_by, [])
+    event |> Map.put_new(:at, @unspecified) |> Map.put_new(:observed_by, [])
   end
 
   def normalize(%{type: :message_sent} = event) do
-    event |> Map.put_new(:at, "unspecified") |> Map.put_new(:tone, :neutral)
+    event |> Map.put_new(:at, @unspecified) |> Map.put_new(:tone, :neutral)
   end
 
   def normalize(%{type: type} = event) when type in @types,
@@ -248,37 +253,39 @@ defmodule Aethrion.Event do
   defp build(:gift_received, data) do
     gift_received(data["from"], data["to"], data["item"],
       observed_by: Map.get(data, "observed_by", []),
-      at: Map.get(data, "at", "scenario")
+      at: Map.get(data, "at", @unspecified)
     )
   end
 
   defp build(:time_tick, data) do
-    time_tick(Map.get(data, "now", "scenario"), hours: Map.get(data, "hours", 1))
+    time_tick(Map.get(data, "now", @unspecified), hours: Map.get(data, "hours", 1))
   end
 
   defp build(:apology_offered, data) do
-    apology_offered(data["from"], data["to"], data["reason"], at: Map.get(data, "at", "scenario"))
+    apology_offered(data["from"], data["to"], data["reason"],
+      at: Map.get(data, "at", @unspecified)
+    )
   end
 
   defp build(:message_sent, data) do
     message_sent(data["from"], data["to"], data["text"],
       tone: tone_from_data(Map.get(data, "tone", "neutral")),
-      at: Map.get(data, "at", "scenario")
+      at: Map.get(data, "at", @unspecified)
     )
   end
 
   defp build(:gossip_shared, data) do
     gossip_shared(data["from"], data["to"], data["memory_id"],
-      at: Map.get(data, "at", "scenario")
+      at: Map.get(data, "at", @unspecified)
     )
   end
 
   defp build(:comfort_offered, data) do
-    comfort_offered(data["from"], data["to"], at: Map.get(data, "at", "scenario"))
+    comfort_offered(data["from"], data["to"], at: Map.get(data, "at", @unspecified))
   end
 
   defp build(:time_spent_together, data) do
-    time_spent_together(data["from"], data["to"], at: Map.get(data, "at", "scenario"))
+    time_spent_together(data["from"], data["to"], at: Map.get(data, "at", @unspecified))
   end
 
   # Unknown tones stay strings so validation can reject them with a clear error.

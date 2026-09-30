@@ -56,7 +56,7 @@ defmodule Aethrion.State do
   end
 
   @doc """
-  The built-in Mina / Yuna / Haru scenario.
+  The built-in Mina / Yuna / Haru world used by the demos and the docs.
   """
   def demo do
     characters = [
@@ -121,12 +121,21 @@ defmodule Aethrion.State do
     end
   end
 
+  @doc """
+  Applies `fun` to a character's state directly, without clamping or tracing.
+  For building worlds and tests; rules change state through
+  `Aethrion.Transition` so every change is traced.
+  """
   def update_character_state(%__MODULE__{} = state, character_id, fun) do
     update_in(state.characters[character_id].state, fun)
   end
 
   ## Relationships
 
+  @doc """
+  The relationship from `from` to `to`, or a neutral one (all zeros) if none
+  has been recorded.
+  """
   def get_relationship(%__MODULE__{} = state, from, to) do
     Map.get(state.relationships, {from, to}, %Relationship{from: from, to: to})
   end
@@ -139,6 +148,10 @@ defmodule Aethrion.State do
     Enum.group_by(Map.values(state.relationships), & &1.from)
   end
 
+  @doc """
+  Applies `fun` to a relationship directly (clamped, not traced). For building
+  worlds and tests; rules use `Aethrion.Transition.adjust_relationship/6`.
+  """
   def update_relationship(%__MODULE__{} = state, from, to, fun) do
     relationship = state |> get_relationship(from, to) |> fun.() |> Relationship.clamp()
     put_in(state.relationships[{from, to}], relationship)
@@ -146,6 +159,10 @@ defmodule Aethrion.State do
 
   ## Memories
 
+  @doc """
+  Prepends a memory directly, without tracing. For building worlds and tests;
+  rules use `Aethrion.Transition.remember/3`.
+  """
   def add_memory(%__MODULE__{} = state, memory) do
     %{state | memories: [memory | state.memories]}
   end

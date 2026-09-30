@@ -182,17 +182,15 @@ To explain a single value, with the chain of events that caused each change:
 
 ```elixir
 {:ok, _state, steps} = Aethrion.run(state, events)
-trace = Enum.flat_map(steps, & &1.trace)
-processed = Enum.flat_map(steps, & &1.events)
 
-trace
-|> Aethrion.Explain.character(processed, "yuna", :jealousy)
+steps
+|> Aethrion.Explain.character("yuna", :jealousy)
 |> Aethrion.Explain.describe()
 #=> ["jealousy 0 -> 15 by observation in e1: user gives mina a flower (seen by yuna)",
 #    "jealousy 15 -> 10 by comfort in e4: haru comforts yuna <- yuna confides in haru <- time passes +2h"]
 ```
 
-`Aethrion.Explain.relationship/5` does the same for `affinity`, `trust`, or `tension`. In the interactive demo: `why yuna jealousy`, `why yuna->haru trust`.
+`Aethrion.Explain.relationship/4` does the same for `affinity`, `trust`, or `tension`; both also accept a trace and event list instead of steps. In the interactive demo: `why yuna jealousy`, `why yuna->haru trust`.
 
 ## Memory queries
 
@@ -225,7 +223,7 @@ See [expression.md](expression.md).
 children = [
   {Aethrion.World,
    name: :garden,
-   state: Aethrion.Runtime.demo_state(),
+   initial_state: Aethrion.Runtime.demo_state(),
    persistence: {Aethrion.Persistence.JsonFile, path: "tmp/garden.json"},
    scheduler: [interval_ms: 60_000, tick_hours: 1],
    expression: [adapter: Aethrion.LLM.OpenAICompatible, timeout: 10_000]}
@@ -237,6 +235,7 @@ Supervisor.start_link(children, strategy: :one_for_one)
 {:ok, state, outputs, log} = Aethrion.World.dispatch(:garden, event)
 Aethrion.World.state(:garden)
 Aethrion.World.history(:garden)
+Aethrion.World.unsubscribe(:garden)
 ```
 
 A world supervises a `Task.Supervisor` for rendering, an `Aethrion.RuntimeServer`, and an optional `Aethrion.Scheduler` under `:rest_for_one`. With `:persistence`, a restarted runtime resumes from its last snapshot.
@@ -261,7 +260,7 @@ Subscriber messages:
 
 ### Scheduler
 
-`Aethrion.Scheduler` emits `time_tick` events into a runtime server every `:interval_ms`, advancing `:tick_hours`. It owns no rules.
+`Aethrion.Scheduler` emits `time_tick` events into a runtime server every `:interval_ms`, advancing `:tick_hours`. It owns no rules. With `notify: pid`, it sends `{:aethrion, scheduler_pid, {:scheduler_tick, result}}` after each tick.
 
 ## Persistence
 

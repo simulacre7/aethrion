@@ -6,7 +6,7 @@ defmodule Aethrion.World do
       children = [
         {Aethrion.World,
          name: :garden,
-         state: Aethrion.Runtime.demo_state(),
+         initial_state: Aethrion.Runtime.demo_state(),
          persistence: {Aethrion.Persistence.JsonFile, path: "tmp/garden.json"},
          scheduler: [interval_ms: 60_000, tick_hours: 1],
          expression: [adapter: Aethrion.LLM.OpenAICompatible, timeout: 10_000]}
@@ -38,7 +38,7 @@ defmodule Aethrion.World do
   Options:
 
   - `:name` (required) - an atom identifying the world
-  - `:state` - initial `Aethrion.State` (default: demo state)
+  - `:initial_state` - the starting `Aethrion.State` (default: demo state)
   - `:pipeline` - an `Aethrion.Pipeline`
   - `:persistence` - `{adapter, opts}`, see `Aethrion.RuntimeServer`
   - `:journal` - path of an `Aethrion.Journal` to rebuild from and append to
@@ -68,7 +68,7 @@ defmodule Aethrion.World do
     runtime_opts =
       [
         name: runtime(name),
-        initial_state: Keyword.get(opts, :state, Runtime.demo_state())
+        initial_state: Keyword.get(opts, :initial_state, Runtime.demo_state())
       ] ++
         Keyword.take(opts, [
           :pipeline,
@@ -124,6 +124,12 @@ defmodule Aethrion.World do
 
   @doc "See `Aethrion.RuntimeServer.subscribe/2`."
   def subscribe(name, pid \\ self()), do: RuntimeServer.subscribe(runtime(name), pid)
+
+  @doc "See `Aethrion.RuntimeServer.unsubscribe/2`."
+  def unsubscribe(name, pid \\ self()), do: RuntimeServer.unsubscribe(runtime(name), pid)
+
+  @doc "See `Aethrion.RuntimeServer.put_state/2`."
+  def put_state(name, state), do: RuntimeServer.put_state(runtime(name), state)
 
   defp expression_opts(_name, nil), do: []
 

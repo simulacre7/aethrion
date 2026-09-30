@@ -23,6 +23,7 @@ defmodule Aethrion.Runtime do
   @max_events 32
   @events_per_character 4
 
+  @doc "The built-in Mina / Yuna / Haru world. See `Aethrion.State.demo/0`."
   def demo_state, do: State.demo()
 
   @doc """

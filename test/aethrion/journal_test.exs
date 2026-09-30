@@ -2,7 +2,6 @@ defmodule Aethrion.JournalTest do
   use ExUnit.Case, async: true
 
   import Aethrion.TestHelpers
-  import ExUnit.CaptureLog
 
   alias Aethrion.{Event, Journal, Runtime, RuntimeServer, Scenario, World}
 
@@ -108,10 +107,8 @@ defmodule Aethrion.JournalTest do
       pid = Process.whereis(World.runtime(name))
       ref = Process.monitor(pid)
 
-      capture_log(fn ->
-        catch_exit(RuntimeServer.crash(World.runtime(name)))
-        assert_receive {:DOWN, ^ref, :process, ^pid, _reason}, 1_000
-      end)
+      Process.exit(pid, :kill)
+      assert_receive {:DOWN, ^ref, :process, ^pid, :killed}, 1_000
 
       assert wait_until(fn ->
                new = Process.whereis(World.runtime(name))

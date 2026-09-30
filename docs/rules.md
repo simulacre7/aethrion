@@ -17,7 +17,7 @@ host event
      each validated and run through the same pipeline
 ```
 
-- Rules are modules implementing `Aethrion.Rule` (`id/0`, `description/0`, `apply/1`).
+- Rules are modules implementing `Aethrion.Rule` (`id/0`, `description/0`, `params/0`, `apply/1`); `use Aethrion.Rule` defines the first three.
 - Which rules run for which event is decided by `Aethrion.Pipeline`, not by the rules.
 - Rules change state only through `Aethrion.Transition` helpers, which clamp values and record an `Aethrion.Trace` entry tagged with the rule id and event id, plus an output for relationship changes and memories and usually a log line.
 - Follow-up events carry `:cause` (the id of the event that produced them). A dispatch processes at most 4 generations and, by default, the larger of 32 events or 4 per character; anything beyond is dropped and explained in the log and trace.

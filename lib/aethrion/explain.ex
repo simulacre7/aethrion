@@ -14,8 +14,7 @@ defmodule Aethrion.Explain do
       {:ok, _state, steps} = Aethrion.run(Aethrion.demo_state(), events)
 
       steps
-      |> Enum.flat_map(& &1.trace)
-      |> Aethrion.Explain.character(Enum.flat_map(steps, & &1.events), "yuna", :jealousy)
+      |> Aethrion.Explain.character("yuna", :jealousy)
       |> Aethrion.Explain.describe()
       #=> ["jealousy 0 -> 15 by observation in e1: user gives mina a flower (seen by yuna)",
       #    "jealousy 15 -> 10 by comfort in e4: haru comforts yuna <- yuna confides in haru <- time passes +2h"]
@@ -33,7 +32,29 @@ defmodule Aethrion.Explain do
         }
 
   @doc """
-  Changes to a character field (such as `:jealousy` or `:mood`), oldest first.
+  Changes to a character field across a list of `Aethrion.Step`s (as returned
+  by `Aethrion.Runtime.run/3`), oldest first.
+  """
+  def character(steps, character_id, field) when is_list(steps) and is_atom(field) do
+    {trace, events} = from_steps(steps)
+    character(trace, events, character_id, field)
+  end
+
+  @doc """
+  Changes to a relationship field across a list of `Aethrion.Step`s, oldest first.
+  """
+  def relationship(steps, from, to, field) when is_list(steps) and is_atom(field) do
+    {trace, events} = from_steps(steps)
+    relationship(trace, events, from, to, field)
+  end
+
+  defp from_steps(steps) do
+    {Enum.flat_map(steps, & &1.trace), Enum.flat_map(steps, & &1.events)}
+  end
+
+  @doc """
+  Changes to a character field (such as `:jealousy` or `:mood`), oldest first,
+  from a trace and the events it refers to.
   """
   def character(trace, events, character_id, field) when is_atom(field) do
     trace

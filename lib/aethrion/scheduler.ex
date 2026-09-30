@@ -3,7 +3,7 @@ defmodule Aethrion.Scheduler do
   Small OTP scheduler that emits `time_tick` events to a runtime server.
 
   The scheduler is intentionally thin. It proves the long-running BEAM shape
-  without moving rule authority out of `Aethrion.Runtime.dispatch/2`.
+  without moving rule authority out of `Aethrion.Runtime.dispatch/3`.
   """
 
   use GenServer
@@ -22,7 +22,8 @@ defmodule Aethrion.Scheduler do
   - `:interval_ms` - tick interval. Defaults to 60 seconds.
   - `:tick_hours` - simulation hours per tick. Defaults to 1.
   - `:now_fun` - zero-arity function used to build event timestamps.
-  - `:notify` - pid that receives `{:aethrion_scheduler_tick, result}`.
+  - `:notify` - pid that receives `{:aethrion, scheduler_pid, {:scheduler_tick, result}}`
+    after every tick, where `result` is what `Aethrion.RuntimeServer.dispatch/2` returned.
   - `:name` - optional GenServer name.
   """
   def start_link(opts) do
@@ -52,7 +53,7 @@ defmodule Aethrion.Scheduler do
     result = RuntimeServer.dispatch(state.runtime, event)
 
     if state.notify do
-      send(state.notify, {:aethrion_scheduler_tick, result})
+      send(state.notify, {:aethrion, self(), {:scheduler_tick, result}})
     end
 
     schedule_tick(state)

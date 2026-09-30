@@ -76,7 +76,7 @@ defmodule Aethrion.Intent do
         }
 
         {proposal, meta} = propose(adapter, request, Keyword.get(opts, :adapter_opts, []))
-        {:ok, build_event(proposal, request, Keyword.get(opts, :at, "intent")), meta}
+        {:ok, build_event(proposal, request, Keyword.get(opts, :at, "unspecified")), meta}
     end
   end
 

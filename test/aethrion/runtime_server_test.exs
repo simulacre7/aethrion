@@ -204,10 +204,8 @@ defmodule Aethrion.RuntimeServerTest do
     pid = Process.whereis(name)
     ref = Process.monitor(pid)
 
-    capture_log(fn ->
-      catch_exit(RuntimeServer.crash(name))
-      assert_receive {:DOWN, ^ref, :process, ^pid, {%RuntimeError{}, _stack}}, 1_000
-    end)
+    Process.exit(pid, :kill)
+    assert_receive {:DOWN, ^ref, :process, ^pid, :killed}, 1_000
 
     assert eventually(fn -> restarted?(name, pid) end)
   end
@@ -224,7 +222,9 @@ defmodule Aethrion.RuntimeServerTest do
         notify: self()
       )
 
-    assert_receive {:aethrion_scheduler_tick, {:ok, next_state, _outputs, _log}}, 1_000
+    assert_receive {:aethrion, _scheduler, {:scheduler_tick, {:ok, next_state, _outputs, _log}}},
+                   1_000
+
     assert next_state.characters["mina"].state.loneliness == 20
     assert RuntimeServer.get_state(server).clock >= 2
   end
@@ -242,7 +242,10 @@ defmodule Aethrion.RuntimeServerTest do
 
       :ok = World.subscribe(name)
       assert {:ok, _state, _outputs, _log} = World.dispatch(name, flower_for_mina())
-      assert_receive {:aethrion_scheduler_tick, {:ok, _state, _outputs, _log}}, 1_000
+
+      assert_receive {:aethrion, _scheduler, {:scheduler_tick, {:ok, _state, _outputs, _log}}},
+                     1_000
+
       assert World.state(name).clock >= 1
       assert [%{type: :gift_received} | _] = World.history(name)
     end
@@ -259,7 +262,7 @@ defmodule Aethrion.RuntimeServerTest do
       {:ok, state, _outputs, _log} = World.dispatch(name, flower_for_mina())
       pid = Process.whereis(World.runtime(name))
 
-      capture_log(fn -> catch_exit(RuntimeServer.crash(World.runtime(name))) end)
+      Process.exit(pid, :kill)
 
       assert eventually(fn -> restarted?(World.runtime(name), pid) end)
       assert World.state(name) == state
