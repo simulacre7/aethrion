@@ -60,6 +60,7 @@ defmodule Aethrion.MixProject do
       extras: [
         "README.md",
         "docs/tutorial.md",
+        "docs/tutorial.ko.md",
         "docs/concept.md",
         "docs/rules.md",
         "docs/expression.md",
