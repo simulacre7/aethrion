@@ -127,6 +127,23 @@ defmodule Aethrion.MixTasksTest do
     end
   end
 
+  @tag :tmp_dir
+  test "report task renders every scenario, in Korean if asked", %{tmp_dir: dir} do
+    capture_io(fn ->
+      Mix.Tasks.Aethrion.Report.run(["--all", "--out-dir", dir, "--locale", "ko"])
+    end)
+
+    files = Path.wildcard(Path.join(dir, "*.html"))
+    assert length(files) == length(Aethrion.Scenario.bundled())
+    assert File.read!(Path.join(dir, "01_the_flower.html")) =~ ~s(<ul class="digest" lang="ko">)
+
+    assert_raise Mix.Error, ~r/unsupported locale "fr"/, fn ->
+      Mix.Tasks.Aethrion.Report.run([hd(Aethrion.Scenario.bundled()), "--locale", "fr"])
+    end
+
+    assert_raise Mix.Error, ~r/usage/, fn -> Mix.Tasks.Aethrion.Report.run([]) end
+  end
+
   test "the interactive demo records and reports a session" do
     dir = Path.join(System.tmp_dir!(), "aethrion-session-#{System.unique_integer([:positive])}")
     on_exit(fn -> File.rm_rf(dir) end)

@@ -59,11 +59,13 @@ defmodule Aethrion.Digest do
   end
 
   defp event_item(%{type: :proactive_message} = output, %{locale: :ko} = say) do
+    from = subject(say.name.(output.character_id), say)
+
     [
       item(
         :message,
         output,
-        "#{Ko.with_particle(say.name.(output.character_id), :subject)} 먼저 연락했다: \"#{line(output, say)}\""
+        "#{from} #{say.name.(output.to)}에게 먼저 연락했다: \"#{line(output, say)}\""
       )
     ]
   end
@@ -81,19 +83,91 @@ defmodule Aethrion.Digest do
   end
 
   defp event_item(%{type: :memory_created, memory: %{kind: :impression} = memory} = output, say) do
-    text =
-      case say.locale do
-        :ko ->
-          "#{Ko.with_particle(say.name.(memory.character_id), :topic)} 이렇게 믿게 되었다: #{memory.content}"
-
-        _en ->
-          "#{say.name.(memory.character_id)} has come to believe: #{memory.content}"
-      end
-
-    [item(:belief, output, text)]
+    case belief(memory.data, say.name.(memory.character_id), say) do
+      nil -> []
+      text -> [item(:belief, output, text)]
+    end
   end
 
   defp event_item(_output, _say), do: []
+
+  # What a new impression means, from its data rather than its internal text.
+  defp belief(
+         %{"event" => "impression", "pattern" => pattern, "from" => actor, "count" => count},
+         holder,
+         say
+       ) do
+    actor = say.name.(actor)
+
+    case {say.locale, pattern} do
+      {:ko, "gift"} ->
+        "#{Ko.with_particle(holder, :topic)} #{actor}에게 받은 선물 #{count}개를 기억한다."
+
+      {:ko, "apology"} ->
+        "#{Ko.with_particle(holder, :topic)} #{actor}의 사과 #{count}번을 기억한다."
+
+      {:ko, "comfort"} ->
+        "#{Ko.with_particle(holder, :topic)} #{actor}에게 위로받은 일 #{count}번을 기억한다."
+
+      {:ko, "together"} ->
+        "#{Ko.with_particle(holder, :topic)} #{Ko.with_particle(actor, :with)} 함께한 시간 #{count}번을 기억한다."
+
+      {:ko, tone} ->
+        "#{Ko.with_particle(holder, :topic)} #{actor}의 #{ko_tone(tone)} 말 #{count}번을 기억한다."
+
+      {_en, "gift"} ->
+        "#{holder} remembers #{count} gifts from #{actor}."
+
+      {_en, "apology"} ->
+        "#{holder} remembers #{count} apologies from #{actor}."
+
+      {_en, "comfort"} ->
+        "#{holder} remembers being comforted by #{actor} #{count} times."
+
+      {_en, "together"} ->
+        "#{holder} remembers #{count} afternoons with #{actor}."
+
+      {_en, tone} ->
+        "#{holder} remembers #{actor} being #{tone} #{count} times."
+    end
+  end
+
+  defp belief(
+         %{
+           "event" => "reputation",
+           "pattern" => tone,
+           "from" => actor,
+           "about" => about,
+           "count" => count
+         },
+         holder,
+         say
+       ) do
+    others = Enum.map(about, say.name)
+
+    case say.locale do
+      :ko ->
+        "#{Ko.with_particle(holder, :topic)} #{subject(say.name.(actor), say)} #{Enum.join(others, ", ")}에게 " <>
+          "#{ko_tone(tone)} 말을 한 걸 안다 (#{count}번)."
+
+      _en ->
+        actor = say.name.(actor)
+        treats = if actor == "you", do: "treat", else: "treats"
+
+        "#{holder} knows how #{actor} #{treats} others: #{tone} to #{and_list(others)}, #{count} times."
+    end
+  end
+
+  defp belief(_data, _holder, _say), do: nil
+
+  defp ko_tone("warm"), do: "다정한"
+  defp ko_tone("cold"), do: "차가운"
+  defp ko_tone("hostile"), do: "모진"
+  defp ko_tone(other), do: other
+
+  # "네가", not "너가".
+  defp subject("너", _say), do: "네가"
+  defp subject(name, _say), do: Ko.with_particle(name, :subject)
 
   # Rendered text for expressive outputs, in the digest's language.
   defp line(%{context: %Aethrion.Expression.Request{} = request}, %{locale: :ko}),
@@ -103,7 +177,7 @@ defmodule Aethrion.Digest do
 
   defp net_bonds(outputs, say) do
     outputs
-    |> Enum.filter(&(&1.type == :bond_changed))
+    |> Enum.filter(&(Map.get(&1, :type) == :bond_changed))
     |> net(&{&1.from, &1.to})
     |> Enum.map(fn {first, last} ->
       item(:bond, last, bond_line(first.from, first.to, first.before, last.after, say))
@@ -114,7 +188,7 @@ defmodule Aethrion.Digest do
   defp net_moods(outputs, say) do
     changes =
       outputs
-      |> Enum.filter(&(&1.type == :mood_changed))
+      |> Enum.filter(&(Map.get(&1, :type) == :mood_changed))
       |> net(& &1.character_id)
       |> Enum.map(fn {_first, last} -> last end)
       |> Enum.filter(&(&1.after in @moods_worth_telling))
@@ -163,9 +237,11 @@ defmodule Aethrion.Digest do
     "#{Ko.with_particle(Enum.join(names, ", "), :topic)} #{feeling}."
   end
 
+  defp mood_line(["you"], mood, _say), do: "You are #{mood}."
   defp mood_line([name], mood, _say), do: "#{name} is #{mood}."
   defp mood_line(names, mood, _say), do: "#{and_list(names)} are #{mood}."
 
+  defp and_list([one]), do: one
   defp and_list([a, b]), do: "#{a} and #{b}"
   defp and_list(names), do: Enum.join(Enum.drop(names, -1), ", ") <> ", and " <> List.last(names)
 
@@ -176,6 +252,7 @@ defmodule Aethrion.Digest do
   defp ko_bond(:neutral), do: "그저 그런 사이"
   defp ko_bond(:friendly), do: "친근한 사이"
   defp ko_bond(:close), do: "가까운 사이"
+  defp ko_bond(other), do: to_string(other)
 
   defp name(_state, you, you, :ko), do: "너"
   defp name(_state, you, you, _en), do: "you"

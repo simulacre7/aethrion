@@ -62,6 +62,16 @@ defmodule Aethrion.ReportTest do
     refute Report.html(result()) =~ "Bond changes"
   end
 
+  test "the digest keeps net changes when it is shortened" do
+    html =
+      Report.html(
+        result(Enum.find(Scenario.bundled(), &String.ends_with?(&1, "08_old_friends.json")))
+      )
+
+    assert html =~ ~s(<li class="more">…and)
+    assert html =~ ~s[<li class="bond">Mina warmed to you (now close).</li>]
+  end
+
   test "reports open with a digest of what happened" do
     html = Report.html(result())
 
@@ -69,7 +79,7 @@ defmodule Aethrion.ReportTest do
              ~s(<h2>In short</h2><ul class="digest"><li class="message">Yuna reached out to you)
 
     assert Report.html(result(), locale: :ko) =~
-             ~s(<ul class="digest" lang="ko"><li class="message">Yuna가 먼저 연락했다)
+             ~s(<ul class="digest" lang="ko"><li class="message">Yuna가 너에게 먼저 연락했다)
   end
 
   test "reports are deterministic" do

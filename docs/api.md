@@ -205,6 +205,8 @@ Aethrion.Digest.of(outputs_since_last_visit, state)
 #    %{kind: :mood, event_id: "e6", text: "Haru, Mina, and Yuna are lonely."}]
 ```
 
+New beliefs read like "Mina remembers you being warm 2 times." or "Haru knows how you treat others: hostile to Mina and Yuna, 2 times."
+
 ## Memory queries
 
 `Aethrion.Memories` answers questions deterministically, without embeddings:

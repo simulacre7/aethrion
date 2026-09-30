@@ -81,9 +81,23 @@ defmodule Aethrion.Report do
 
   # The shared timeline as a digest: what a reader should know first.
   defp in_short(result, locale) do
-    items = result.outputs |> Aethrion.Digest.of(result.state, locale: locale) |> Enum.take(12)
+    # Net bond and mood changes always stay; events fill the rest.
+    {net, events} =
+      result.outputs
+      |> Aethrion.Digest.of(result.state, locale: locale)
+      |> Enum.split_with(&(&1.kind in [:bond, :mood]))
 
-    case items do
+    shown = Enum.take(events, max(12 - length(net), 4))
+    hidden = length(events) - length(shown)
+
+    more =
+      cond do
+        hidden == 0 -> []
+        locale == :ko -> [%{kind: :more, text: "…그 밖에 #{hidden}개"}]
+        true -> [%{kind: :more, text: "…and #{hidden} more"}]
+      end
+
+    case shown ++ more ++ net do
       [] ->
         ""
 

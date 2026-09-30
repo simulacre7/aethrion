@@ -200,10 +200,11 @@ defmodule Aethrion.Rules.Proactive do
         "proactive:#{id}:curious:#{memory.topic}"
       end
 
+    prefixes = for id <- Map.keys(state.characters), do: "proactive:#{id}:curious:"
+
     cooldowns =
       Map.filter(state.cooldowns, fn {key, _at} ->
-        not (String.starts_with?(key, "proactive:") and String.contains?(key, ":curious:")) or
-          MapSet.member?(live, key)
+        not String.starts_with?(key, prefixes) or MapSet.member?(live, key)
       end)
 
     if map_size(cooldowns) == map_size(state.cooldowns),

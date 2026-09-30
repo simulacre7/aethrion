@@ -199,7 +199,9 @@ defmodule Mix.Tasks.Demo.Interactive do
     Display.message("undone")
     if session.status?, do: Display.status(previous.state)
 
-    session |> Map.merge(previous) |> Map.put(:undo, rest) |> loop()
+    # What was already digested stays digested.
+    digested = min(session.digested, length(previous.outputs))
+    session |> Map.merge(previous) |> Map.merge(%{undo: rest, digested: digested}) |> loop()
   end
 
   defp handle({:ok, {:save, path}}, session) do
@@ -428,7 +430,7 @@ defmodule Mix.Tasks.Demo.Interactive do
 
   defp remember(session) do
     snapshot =
-      Map.take(session, [:state, :origin, :trace, :events, :host_events, :outputs, :digested])
+      Map.take(session, [:state, :origin, :trace, :events, :host_events, :outputs])
     %{session | undo: Enum.take([snapshot | session.undo], 50)}
   end
 end

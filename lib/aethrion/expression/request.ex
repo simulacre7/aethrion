@@ -123,13 +123,13 @@ defmodule Aethrion.Expression.Request do
   end
 
   # When a remembered event happened: its tick, then its event number.
+  # Event ids count up (e1, e2, ...) and every memory of one event shares its
+  # topic, so the event number orders what happened even when one of the
+  # memories was only heard later. Topics without one fall back to the tick.
   defp moment(memory) do
-    number =
-      case Regex.run(~r/:e(\d+)$/, Map.get(memory, :topic) || "") do
-        [_, digits] -> String.to_integer(digits)
-        nil -> 0
-      end
-
-    {Map.get(memory, :created_tick, 0), number}
+    case Regex.run(~r/:e(\d+)$/, Map.get(memory, :topic) || "") do
+      [_, digits] -> {:event, String.to_integer(digits)}
+      nil -> {:tick, Map.get(memory, :created_tick, 0)}
+    end
   end
 end

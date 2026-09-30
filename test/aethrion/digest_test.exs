@@ -48,7 +48,7 @@ defmodule Aethrion.DigestTest do
     assert [%{kind: :message, event_id: "e2"}, %{kind: :scene, event_id: "e3"} | _] =
              digest(events)
 
-    assert [%{text: "Yuna가 먼저 연락했다: \"아까 Mina랑 있을 때 즐거워 보이더라. 혹시 나는 잊은 거 아니지?\""} | _] =
+    assert [%{text: "Yuna가 너에게 먼저 연락했다: \"아까 Mina랑 있을 때 즐거워 보이더라. 혹시 나는 잊은 거 아니지?\""} | _] =
              digest(events, locale: :ko)
   end
 
@@ -56,14 +56,12 @@ defmodule Aethrion.DigestTest do
     warm = &Event.message_sent("user", "mina", &1, tone: :warm)
     items = digest([warm.("a"), warm.("b"), Event.time_tick("t", hours: 100)])
 
-    assert Enum.any?(
-             items,
-             &(&1 == %{
-                 kind: :belief,
-                 event_id: "e3",
-                 text: "Mina has come to believe: user has been warm to mina 2 times."
-               })
-           )
+    assert %{kind: :belief, event_id: "e3", text: "Mina remembers you being warm 2 times."} in items
+
+    assert %{text: "Mina는 너의 다정한 말 2번을 기억한다."} =
+             [warm.("a"), warm.("b"), Event.time_tick("t", hours: 100)]
+             |> digest(locale: :ko)
+             |> Enum.find(&(&1.kind == :belief))
   end
 
   test "another person can be the one addressed as you" do
@@ -81,5 +79,22 @@ defmodule Aethrion.DigestTest do
     assert [%{text: "Mina cooled toward you (now strained)."}] =
              Digest.of(step.outputs ++ step2.outputs, step2.state, you: "alex")
              |> Enum.filter(&(&1.kind == :bond))
+  end
+
+  test "reputation beliefs say how someone treats others" do
+    hostile = &Event.message_sent("user", &1, "x", tone: :hostile, observed_by: ["haru"])
+
+    items =
+      digest([hostile.("mina"), hostile.("yuna"), Event.time_tick("t", hours: 120)])
+
+    assert Enum.any?(
+             items,
+             &(&1.text == "Haru knows how you treat others: hostile to Mina and Yuna, 2 times.")
+           )
+
+    ko =
+      digest([hostile.("mina"), hostile.("yuna"), Event.time_tick("t", hours: 120)], locale: :ko)
+
+    assert Enum.any?(ko, &(&1.text == "Haru는 네가 Mina, Yuna에게 모진 말을 한 걸 안다 (2번)."))
   end
 end

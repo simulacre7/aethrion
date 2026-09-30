@@ -105,13 +105,19 @@ defmodule Aethrion.LLM.FakeAdapter do
     })
   end
 
-  # A negation within the few characters before a warm word.
-  # Only a negation right before the apology word ("not sorry", "안 미안해");
-  # "못 가서 미안해" or "I couldn't call, sorry" are still apologies.
+  # A negation attached to the apology itself ("not sorry", "I won't
+  # apologize", "안 미안해", "미안하지 않아"); "못 가서 미안해" or "I couldn't
+  # call, sorry" are still apologies.
   defp negated_apology?(text) do
-    Regex.match?(~r/(?:\bnot|\bnever|n't)\s+(?:really\s+|at all\s+)?sorry/u, text) or
-      Regex.match?(~r/(?:안|전혀|하나도)\s*미안/u, text)
+    Regex.match?(
+      ~r/(?:\bnot|\bnever|n't)\s+(?:\w+\s+){0,2}(?:sorry|apologi[sz]e|forgive)/u,
+      text
+    ) or
+      Regex.match?(~r/(?:^|\s)(?:안|전혀|하나도)\s+(?:안\s+)?(?:미안|죄송)/u, text) or
+      Regex.match?(~r/(?:미안|죄송)\S*지\s*않/u, text)
   end
+
+  # A negation within the few characters before a warm word.
 
   defp negated?(text, words) do
     Enum.any?(words, fn word ->

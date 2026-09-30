@@ -126,6 +126,20 @@ defmodule Aethrion.ReputationTest do
       assert [%{text: "Thanks... but I saw what you said to Mina."}] = of_type(outputs, :reply)
     end
 
+    test "an apology seen before the hostility is heard about still came after it" do
+      {state, _outputs} =
+        run!(world(), [
+          message("user", "mina", :hostile, ["yuna"]),
+          Event.apology_offered("user", "mina", "sorry", observed_by: ["haru"]),
+          Event.time_tick("t", hours: 3),
+          Event.gossip_shared("yuna", "haru", "memory:yuna:observed:e1")
+        ])
+
+      {_state, outputs} = dispatch!(state, message("user", "haru", :warm))
+      [reply] = of_type(outputs, :reply)
+      refute reply.text =~ "what you said to Mina"
+    end
+
     test "a witnessed apology takes the edge off a pointed reply" do
       {state, _outputs} =
         run!(world(), [
@@ -473,6 +487,23 @@ defmodule Aethrion.ReputationTest do
 
       {state, _outputs} = dispatch!(state, Event.time_tick("t", hours: 1))
       assert Map.has_key?(state.cooldowns, "contact:curious:user")
+    end
+
+    test "pruning never touches keys that only mention curious" do
+      state =
+        State.new(
+          characters: [character("curious"), character("mina")],
+          cooldowns: %{
+            "proactive:curious:jealous" => 0,
+            "proactive:mina:protective:curious:user" => 0,
+            "proactive:mina:curious:gift:e9" => 0
+          }
+        )
+
+      {state, _outputs} = dispatch!(state, Event.time_tick("t", hours: 1))
+
+      assert Map.keys(state.cooldowns) |> Enum.sort() ==
+               ["proactive:curious:jealous", "proactive:mina:protective:curious:user"]
     end
   end
 end
