@@ -110,4 +110,23 @@ defmodule Aethrion.ExpressionTest do
 
   defp contains_state?(list) when is_list(list), do: Enum.any?(list, &contains_state?/1)
   defp contains_state?(_value), do: false
+
+  test "prompts map memory ids to names and explain memory kinds" do
+    {:ok, state, _outputs, _log} =
+      Aethrion.Runtime.dispatch(
+        Aethrion.Runtime.demo_state(),
+        Aethrion.Event.gift_received("user", "mina", "flower", observed_by: ["yuna"])
+      )
+
+    request =
+      Aethrion.Expression.build_request(state, :proactive_message, "yuna", "user",
+        reason: :jealous
+      )
+
+    {system, context} = Aethrion.Expression.Prompt.render_parts(request)
+
+    assert system =~ "call people by the names listed under People"
+    assert system =~ "reputation impression"
+    assert context =~ "People: mina = Mina, user = you, yuna = Yuna\nMemories:"
+  end
 end

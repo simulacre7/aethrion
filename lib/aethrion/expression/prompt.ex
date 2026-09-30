@@ -17,7 +17,8 @@ defmodule Aethrion.Expression.Prompt do
 
   Rules:
   - Keep the meaning of the draft line. Do not add events, promises, gifts, or facts that are not in the context.
-  - Only reference memories listed in the context.
+  - Only reference memories listed in the context. Memory contents use ids; call people by the names listed under People.
+  - Memory kinds: experienced happened to the speaker; observed the speaker saw; heard someone told the speaker (secondhand, may be partial); impression is a lasting pattern from many faded memories, and a reputation impression is what the speaker knows about how someone treats others.
   - Stay in character: follow the profile, traits, and current mood.
   - Speak directly to the listener when the kind is proactive_message or reply.
   - For character_interaction, write one sentence of third-person narration.
@@ -70,6 +71,7 @@ defmodule Aethrion.Expression.Prompt do
       "Listener: #{describe_actor(request.listener)}",
       relationship_line(request.relationship),
       incoming_line(request),
+      people_line(request),
       "Memories:",
       memory_lines(request),
       "Draft line: #{request.fallback_text}"
@@ -142,6 +144,13 @@ defmodule Aethrion.Expression.Prompt do
   end
 
   defp incoming_line(_request), do: nil
+
+  defp people_line(%Request{names: names}) when map_size(names) > 0 do
+    "People: " <>
+      (names |> Enum.sort() |> Enum.map_join(", ", fn {id, name} -> "#{id} = #{name}" end))
+  end
+
+  defp people_line(_request), do: nil
 
   defp memory_lines(%Request{memories: []}), do: "- (none)"
 
