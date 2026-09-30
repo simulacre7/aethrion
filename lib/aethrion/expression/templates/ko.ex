@@ -209,6 +209,27 @@ defmodule Aethrion.Expression.Templates.Ko do
   defp reply(:hostile, _mood), do: "왜 그런 말을 해?"
   defp reply(_tone, _mood), do: "..."
 
+  # How a Latin word's end is usually read in Korean. Vowels and -r, -w, -h
+  # have no final consonant (flower 플라워, show 쇼, Smith 스미스), nor do
+  # endings Korean reads with an added vowel: -s, -x, -f, -v, -z, -d (Alex
+  # 알렉스, scarf 스카프, postcard 포스트카드), and -t, -k, -p after another
+  # consonant (desk 데스크, gift 기프트). Other consonants do (book 북, Sol 솔).
+  defp latin_batchim?(word) do
+    letters =
+      word
+      |> String.downcase()
+      |> String.replace(~r/[^a-z]/, "")
+      |> String.reverse()
+      |> String.to_charlist()
+
+    case letters do
+      [last | _] when last in ~c"aeiouyrwhsxfvzd" -> false
+      [last, before | _] when last in ~c"tkp" -> before in ~c"aeiouy"
+      [_last | _] -> true
+      [] -> false
+    end
+  end
+
   @doc """
   One-line Korean description of an event, like `Aethrion.Event.describe/2`.
   `names` maps ids to display names. Custom event types fall back to the
@@ -295,10 +316,8 @@ defmodule Aethrion.Expression.Templates.Ko do
         codepoint in 0xAC00..0xD7A3 ->
           {:ok, rem(codepoint - 0xAC00, 28) != 0}
 
-        # Latin words read with a final consonant sound when they end in one,
-        # except -r, -w, and -h (flower 플라워, show 쇼, Smith 스미스).
         codepoint in ?a..?z or codepoint in ?A..?Z ->
-          {:ok, codepoint not in ~c"aeiouyrwhAEIOUYRWH"}
+          {:ok, latin_batchim?(word)}
 
         true ->
           nil

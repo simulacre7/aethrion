@@ -11,8 +11,8 @@ defmodule Mix.Tasks.Aethrion.Journal do
       mix aethrion.journal tmp/world.jsonl --compact --archive tmp/world-2026-10.jsonl
       mix aethrion.journal tmp/world.jsonl --digest --locale ko
 
-  `--digest` also prints what happened, as `Aethrion.Digest` lines (in
-  Korean with `--locale ko`).
+  `--digest` also prints what happened, as `Aethrion.Digest` lines. With
+  `--locale ko` the digest and the `--report` are in Korean.
 
   `--compact` replaces the journal with one that starts from the replayed
   state (see `Aethrion.Journal.compact/2`); `--archive FILE` keeps a copy of
@@ -95,7 +95,7 @@ defmodule Mix.Tasks.Aethrion.Journal do
         {:ok, scenario} = data |> Jason.encode!() |> Jason.decode!() |> Scenario.from_data()
         {:ok, result} = Scenario.run(scenario)
         File.mkdir_p!(Path.dirname(out))
-        File.write!(out, Report.html(result))
+        File.write!(out, Report.html(result, locale: locale(opts)))
         Display.message("report -> #{out}")
       end
     end
@@ -118,18 +118,19 @@ defmodule Mix.Tasks.Aethrion.Journal do
   end
 
   defp digest(steps, state, opts) do
-    locale =
-      case opts[:locale] do
-        nil -> :en
-        "en" -> :en
-        "ko" -> :ko
-        other -> Mix.raise("unsupported locale #{inspect(other)}; use en or ko")
-      end
-
     steps
     |> Enum.flat_map(& &1.outputs)
-    |> Aethrion.Digest.of(state, locale: locale)
+    |> Aethrion.Digest.of(state, locale: locale(opts))
     |> Display.digest("everything the journal records")
+  end
+
+  defp locale(opts) do
+    case opts[:locale] do
+      nil -> :en
+      "en" -> :en
+      "ko" -> :ko
+      other -> Mix.raise("unsupported locale #{inspect(other)}; use en or ko")
+    end
   end
 
   defp limits(opts), do: Keyword.take(opts, [:max_depth, :max_events])

@@ -427,6 +427,21 @@ defmodule Aethrion.ReputationTest do
       assert text == "That was harsh, what you said to Mina. Mina didn't deserve that."
     end
 
+    test "no protest about hostility the person has since apologized for" do
+      {_state, outputs} =
+        run!(world(), [
+          message("user", "mina", :hostile, ["haru"]),
+          Event.time_tick("t", hours: 2),
+          message("user", "mina", :hostile, ["haru"]),
+          Event.apology_offered("user", "mina", "sorry", observed_by: ["haru"]),
+          Event.time_tick("t", hours: 24)
+        ])
+
+      # Only the first, before the apology; the second waits a day and by then
+      # Haru has seen the amends.
+      assert [_one] = protective(outputs)
+    end
+
     test "one incident is one protest, even days later" do
       {state, outputs} =
         run!(world(), [

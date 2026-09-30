@@ -245,7 +245,7 @@ defmodule Mix.Tasks.Demo.Interactive do
     with {:ok, scenario} <- Scenario.from_data(Jason.decode!(Jason.encode!(data))),
          {:ok, result} <- Scenario.run(scenario),
          :ok <- File.mkdir_p(Path.dirname(path)),
-         :ok <- File.write(path, Aethrion.Report.html(result)) do
+         :ok <- File.write(path, Aethrion.Report.html(result, locale: session.locale || :en)) do
       Display.message("wrote #{path}")
     else
       {:error, %Aethrion.Error{} = error} -> Display.error(error)

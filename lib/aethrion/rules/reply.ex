@@ -67,14 +67,22 @@ defmodule Aethrion.Rules.Reply do
             selected,
           do: to
 
-    amends =
-      state
-      |> Memories.for_character(character)
-      |> Enum.filter(fn memory ->
-        match?(%Memory{data: %{"event" => "apology_offered", "from" => ^sender}}, memory) and
-          memory.data["to"] in wronged
-      end)
+    case wronged -- [character] do
+      [] ->
+        selected
 
-    Enum.uniq_by(selected ++ amends, & &1.id)
+      wronged ->
+        # The latest apology to each wronged person is enough.
+        amends =
+          state
+          |> Memories.for_character(character)
+          |> Enum.filter(fn memory ->
+            match?(%Memory{data: %{"event" => "apology_offered", "from" => ^sender}}, memory) and
+              memory.data["to"] in wronged
+          end)
+          |> Enum.uniq_by(& &1.data["to"])
+
+        Enum.uniq_by(selected ++ amends, & &1.id)
+    end
   end
 end

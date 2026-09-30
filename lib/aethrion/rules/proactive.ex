@@ -18,7 +18,7 @@ defmodule Aethrion.Rules.Proactive do
   | ---------- | ---------------------------------------------------------- | -------- |
   | `:jealous` | jealousy >= 15 and jealousy + loneliness >= 45             | 24h      |
   | `:lonely`  | loneliness >= 60 and jealousy < 15                         | 24h      |
-  | `:protective` | saw a person be hostile to a character they care about (affinity >= 30) | 24h per person and friend |
+  | `:protective` | saw a person be hostile to a character they care about (affinity >= 30), and has not seen or heard them apologize since | once per incident, and 24h per person and friend |
   | `:curious` | heard secondhand news about a person and is `:playful` or has affinity >= 30 toward them | once per topic |
 
   Reasons are tried in the order of the table.
@@ -157,8 +157,19 @@ defmodule Aethrion.Rules.Proactive do
 
   # Speak up to the person who was hostile to someone this character cares about.
   defp trigger(:protective, state, %Character{id: id}, people, params) do
-    params.witnessed
-    |> Map.get(id, [])
+    witnessed = Map.get(params.witnessed, id, [])
+
+    # Apologies this character knows of, to set against what they saw.
+    apologies =
+      if witnessed == [],
+        do: [],
+        else:
+          state
+          |> Memories.for_character(id)
+          |> Enum.filter(&match?(%Memory{data: %{"event" => "apology_offered"}}, &1))
+
+    witnessed
+    |> Enum.reject(&made_amends?(&1, apologies))
     |> Enum.find_value(fn %Memory{data: %{"from" => person, "to" => friend}} = memory ->
       # One protest per incident, and one per person and friend a day however
       # many hostile messages were witnessed.
@@ -191,6 +202,21 @@ defmodule Aethrion.Rules.Proactive do
         _ -> nil
       end
     end)
+  end
+
+  # The person apologized to the friend after the hostility (event ids count up).
+  defp made_amends?(%Memory{data: %{"from" => person, "to" => friend}} = hostile, apologies) do
+    Enum.any?(apologies, fn apology ->
+      apology.data["from"] == person and apology.data["to"] == friend and
+        event_number(apology) >= event_number(hostile)
+    end)
+  end
+
+  defp event_number(%Memory{topic: topic}) do
+    case Regex.run(~r/:e(\d+)$/, topic || "") do
+      [_, digits] -> String.to_integer(digits)
+      nil -> 0
+    end
   end
 
   # A once-per-topic key (curiosity, a protest) only matters while its memory

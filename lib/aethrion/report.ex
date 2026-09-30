@@ -43,7 +43,8 @@ defmodule Aethrion.Report do
     scenario = result.scenario
 
     snapshots = [
-      {"start", scenario.state} | Enum.map(result.steps, &{short_label(&1.event), &1.state})
+      {t.("start"), scenario.state}
+      | Enum.map(result.steps, &{t.({:short_label, &1.event}), &1.state})
     ]
 
     # Large worlds: per-character sections show the most active characters.
@@ -250,7 +251,7 @@ defmodule Aethrion.Report do
             ]
           end)
 
-        traits = Enum.map(character.traits, &["<li>", esc(&1), "</li>"])
+        traits = Enum.map(character.traits, &["<li>", esc(t.({:trait, &1})), "</li>"])
 
         {beliefs, memories} =
           result.state
@@ -1099,6 +1100,7 @@ defmodule Aethrion.Report do
   defp english({:values, a, t, x}), do: "affinity #{a}, trust #{t}, tension #{x}"
   defp english({:caused_by, id}), do: "caused by #{id}"
   defp english({:event, event, names}), do: Event.describe(event, names)
+  defp english({:short_label, event}), do: short_label(event)
   defp english({:why, change, names}), do: [change] |> Aethrion.Explain.describe(names) |> hd()
   defp english({:rule_log, count}), do: "Rule log (#{count} lines)"
   defp english({:identical, count}), do: "#{count} values identical in every branch"
@@ -1159,6 +1161,7 @@ defmodule Aethrion.Report do
     "lines to you" => "너에게 한 말",
     "scenes between characters" => "캐릭터끼리의 장면",
     "Expectations" => "기대치",
+    "start" => "시작",
     "✓ pass" => "✓ 통과",
     "✕ fail" => "✕ 실패",
     "actual: " => "실제: "
@@ -1176,11 +1179,24 @@ defmodule Aethrion.Report do
     kind: %{experienced: "직접", observed: "목격", heard: "전해 들음", impression: "인상"},
     scene: %{gossip: "털어놓기", comfort: "위로", together: "함께"},
     reaches_out: %{jealous: "질투", lonely: "외로움", curious: "궁금함", protective: "편들기"},
-    reply: %{warm: "다정한 말", neutral: "평범한 말", cold: "차가운 말", hostile: "모진 말"}
+    reply: %{warm: "다정한 말", neutral: "평범한 말", cold: "차가운 말", hostile: "모진 말"},
+    trait: %{sensitive: "예민함", calm: "차분함", playful: "장난스러움", talkative: "수다스러움"},
+    rule: %{mood: "기분"},
+    event: %{
+      gift_received: "선물",
+      message_sent: "메시지",
+      apology_offered: "사과",
+      gossip_shared: "이야기",
+      comfort_offered: "위로",
+      time_spent_together: "함께"
+    }
   }
 
   defp korean({:footer, version}),
-    do: "Aethrion #{version}로 생성했습니다. 규칙은 결정론적이라 같은 시나리오는 언제나 이 리포트를 만듭니다."
+    do: "Aethrion #{version} 버전으로 생성했습니다. 규칙은 결정론적이라 같은 시나리오는 언제나 이 리포트를 만듭니다."
+
+  defp korean({:short_label, %{type: :time_tick, hours: hours, id: id}}), do: "#{id} +#{hours}시간"
+  defp korean({:short_label, %{type: type, id: id}}), do: "#{id} #{korean_value(:event, type)}"
 
   defp korean({:focus, total, shown}),
     do:
@@ -1204,7 +1220,7 @@ defmodule Aethrion.Report do
       )
 
     "#{korean_value(:mood, change.before)} → #{korean_value(:mood, change.after)} " <>
-      "(#{change.rule} 규칙, #{change.event_id}: #{chain})"
+      "(#{korean_value(:rule, change.rule)} 규칙, #{change.event_id}: #{chain})"
   end
 
   defp korean({:identical, count}), do: "모든 분기에서 같은 값 #{count}개"
