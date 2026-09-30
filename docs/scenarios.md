@@ -7,6 +7,7 @@ mix aethrion.scenario priv/scenarios/01_the_flower.json   # run and check
 mix aethrion.scenario --all --quiet                       # check every bundled scenario
 mix aethrion.scenario my.json --json                      # machine-readable result
 mix aethrion.report priv/scenarios/01_the_flower.json     # HTML report in tmp/
+mix aethrion.report priv/scenarios/01_the_flower.json --locale ko   # character lines in Korean
 ```
 
 ## Bundled scenarios

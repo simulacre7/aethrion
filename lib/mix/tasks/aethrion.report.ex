@@ -14,13 +14,14 @@ defmodule Mix.Tasks.Aethrion.Report do
   - `--out` - output file (default: `tmp/<scenario file name>.html`)
   - `--all` - render every bundled scenario
   - `--out-dir` - directory for `--all` (default: `tmp/reports`)
+  - `--locale ko` - character lines in Korean (the rest of the report stays in English)
   """
 
   use Mix.Task
 
   alias Aethrion.{Report, Scenario}
 
-  @switches [out: :string, all: :boolean, out_dir: :string]
+  @switches [out: :string, all: :boolean, out_dir: :string, locale: :string]
 
   @impl Mix.Task
   def run(args) do
@@ -49,11 +50,16 @@ defmodule Mix.Tasks.Aethrion.Report do
       with {:ok, scenario} <- Scenario.load(path),
            {:ok, result} <- Scenario.run(scenario) do
         File.mkdir_p!(Path.dirname(out))
-        File.write!(out, Report.html(result))
+        File.write!(out, Report.html(result, locale: locale(opts[:locale])))
         Mix.shell().info("#{scenario.name} -> #{out}")
       else
         {:error, error} -> Mix.raise("could not render #{path}: #{Aethrion.Error.format(error)}")
       end
     end)
   end
+
+  defp locale(nil), do: :en
+  defp locale("en"), do: :en
+  defp locale("ko"), do: :ko
+  defp locale(other), do: Mix.raise("unsupported locale #{inspect(other)}; use en or ko")
 end

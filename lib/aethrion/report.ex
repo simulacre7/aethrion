@@ -25,8 +25,18 @@ defmodule Aethrion.Report do
     {:stress, "Stress", "--series-4"}
   ]
 
-  @doc "Returns the report HTML for a `Aethrion.Scenario.Result`."
-  def html(%Scenario.Result{} = result) do
+  @doc """
+  Returns the report HTML for a `Aethrion.Scenario.Result`.
+
+  Options:
+
+  - `:locale` - `:ko` renders every character line with the Korean templates
+    (`Aethrion.Expression.Templates.Ko`); the rest of the report stays in
+    English. Defaults to `:en`, the deterministic fallback text.
+  """
+  def html(%Scenario.Result{} = result, opts \\ []) do
+    locale = Keyword.get(opts, :locale, :en)
+    result = localize(result, locale)
     scenario = result.scenario
 
     snapshots = [
@@ -39,7 +49,7 @@ defmodule Aethrion.Report do
     focused = %{result | state: view.(result.state)}
 
     [
-      "<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n",
+      "<!doctype html>\n<html lang=\"#{locale}\">\n<head>\n<meta charset=\"utf-8\">\n",
       "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n",
       "<title>",
       esc(scenario.name),
@@ -785,6 +795,30 @@ defmodule Aethrion.Report do
        Enum.map(values, &["<td>", &1, "</td>"]),
        "</tr>"
      ]}
+  end
+
+  defp localize(result, :en), do: result
+
+  defp localize(result, :ko) do
+    lines = fn outputs ->
+      Enum.map(outputs, fn
+        %{context: %Aethrion.Expression.Request{} = request} = output ->
+          %{output | text: Aethrion.Expression.Templates.Ko.render(request)}
+
+        output ->
+          output
+      end)
+    end
+
+    steps = fn steps -> Enum.map(steps, &%{&1 | outputs: lines.(&1.outputs)}) end
+
+    %{
+      result
+      | steps: steps.(result.steps),
+        outputs: lines.(result.outputs),
+        branches:
+          Enum.map(result.branches, &%{&1 | steps: steps.(&1.steps), outputs: lines.(&1.outputs)})
+    }
   end
 
   defp bond_change(same, same), do: esc(same)
