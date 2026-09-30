@@ -8,6 +8,7 @@ defmodule Aethrion.MixProject do
     README.md
     docs/tutorial.md
     docs/tutorial.ko.md
+    notebooks/tour.livemd
     docs/concept.md
     docs/architecture.md
     docs/rules.md
