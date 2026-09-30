@@ -129,7 +129,7 @@ defmodule Aethrion.RuntimeServer do
   @impl true
   def init(opts) do
     with :ok <- check_storage(opts),
-         {:ok, world} <- initial_world(opts),
+         {:ok, world, journaled} <- initial_world(opts),
          {:ok, expression} <- expression_config(Keyword.get(opts, :expression)) do
       {:ok,
        %{
@@ -139,7 +139,8 @@ defmodule Aethrion.RuntimeServer do
          persistence: Keyword.get(opts, :persistence),
          journal: Keyword.get(opts, :journal),
          compact_every: Keyword.get(opts, :journal_compact_every),
-         since_compaction: 0,
+         # Events already in the journal count toward the next compaction.
+         since_compaction: journaled,
          history: [],
          history_limit: Keyword.get(opts, :history_limit, @default_history_limit),
          subscribers: %{},
@@ -305,7 +306,7 @@ defmodule Aethrion.RuntimeServer do
 
     case Keyword.get(opts, :journal) do
       nil ->
-        snapshot_world(opts, fallback, pipeline)
+        with {:ok, state} <- snapshot_world(opts, fallback, pipeline), do: {:ok, state, 0}
 
       path ->
         journal_world(
@@ -319,8 +320,8 @@ defmodule Aethrion.RuntimeServer do
   defp journal_world(path, fallback, replay_opts) do
     if File.exists?(path) do
       case Aethrion.Journal.replay(path, replay_opts) do
-        {:ok, state, _steps} ->
-          {:ok, state}
+        {:ok, state, steps} ->
+          {:ok, state, length(steps)}
 
         {:error, error} ->
           Logger.error("Aethrion.RuntimeServer could not replay its journal: #{error.message}")
@@ -329,7 +330,7 @@ defmodule Aethrion.RuntimeServer do
     else
       with {:ok, state} <- validate_state(fallback),
            :ok <- Aethrion.Journal.create(path, state) do
-        {:ok, state}
+        {:ok, state, 0}
       end
     end
   end
