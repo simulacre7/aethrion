@@ -62,7 +62,8 @@ defmodule Aethrion.PipelineTest do
       |> Pipeline.add_reactive(Festival)
 
     assert [Rivalry | _] = pipeline.event_rules.gift_received
-    assert pipeline.reactive_rules == [Aethrion.Rules.Mood, Aethrion.Rules.Bond, Festival]
+    # Custom reactive rules run before Bond, so their relationship changes are announced.
+    assert pipeline.reactive_rules == [Aethrion.Rules.Mood, Festival, Aethrion.Rules.Bond]
   end
 
   test "describe lists rules with ids and descriptions" do

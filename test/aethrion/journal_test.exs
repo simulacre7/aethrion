@@ -172,7 +172,7 @@ defmodule Aethrion.JournalTest do
       assert step.event.id == id
       assert {:ok, state, [%{event: %{id: ^id}}]} = Journal.replay(path)
       assert state == step.state
-      refute File.exists?(path <> ".tmp")
+      assert Path.wildcard(path <> ".*tmp") == []
     end
 
     test "can archive the old journal first", %{path: path} do
@@ -218,6 +218,56 @@ defmodule Aethrion.JournalTest do
       server = start_supervised!(RuntimeServer)
 
       assert {:error, %{code: :invalid_options}} = RuntimeServer.compact_journal(server)
+    end
+
+    test "a journal that changes while compacting is left alone", %{path: path} do
+      final = journal_events(path, Runtime.demo_state(), @events)
+
+      # Simulate a server appending between the replay and the rewrite.
+      {:ok, step} = Runtime.step(final, Event.time_tick("t", hours: 1))
+      line = Journal.encode(step.event) |> elem(1)
+
+      pipeline =
+        Aethrion.Pipeline.default()
+        |> Aethrion.Pipeline.add_reactive(__MODULE__.AppendOnce)
+
+      :persistent_term.put({__MODULE__, :append}, {path, line})
+      on_exit(fn -> :persistent_term.erase({__MODULE__, :append}) end)
+
+      assert {:error, %{code: :journal_changed}} = Journal.compact(path, pipeline: pipeline)
+      assert {:ok, _state, events} = Journal.read(path)
+      assert length(events) == 4
+      assert Path.wildcard(path <> ".*tmp") == []
+    end
+
+    test "a journal whose tuning names rules outside the pipeline is refused", %{path: path} do
+      state = %{Runtime.demo_state() | tuning: %{warmth_test: %{amount: 3}}}
+      :ok = Journal.create(path, state)
+      before = File.read!(path)
+
+      assert {:error, %{code: :invalid_options, message: message}} = Journal.compact(path)
+      assert message =~ "compact with the pipeline the world runs with"
+      assert File.read!(path) == before
+    end
+  end
+
+  defmodule AppendOnce do
+    # A reactive rule that appends to the journal being compacted, once, while
+    # it is replayed: a stand-in for a server that is still running.
+    use Aethrion.Rule, id: :append_once_test, description: "Test rule."
+
+    @impl true
+    def apply(transition) do
+      case :persistent_term.get({Aethrion.JournalTest, :append}, nil) do
+        {path, line} ->
+          :persistent_term.erase({Aethrion.JournalTest, :append})
+          File.write!(path, line <> "\n", [:append])
+
+        nil ->
+          :ok
+      end
+
+      transition
     end
   end
 end

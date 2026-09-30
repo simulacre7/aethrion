@@ -299,7 +299,7 @@ Aethrion.World.compact_journal(:garden)                                   # a ru
 ```bash
 mix aethrion.journal tmp/garden.jsonl --compact --archive tmp/garden-2026-10.jsonl
 ```
- Journals and snapshot persistence are alternatives; a runtime server accepts one or the other, and refuses `put_state/2` while journaling.
+Journals and snapshot persistence are alternatives; a runtime server accepts one or the other, and refuses `put_state/2` while journaling.
 
 ## Scenarios and reports
 

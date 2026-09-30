@@ -65,48 +65,131 @@ defmodule Aethrion.Journal do
   folded into the new starting state.
 
   Options: `:archive`, and `:pipeline`, `:max_depth`, `:max_events` as for
-  `replay/2`.
+  `replay/2`. The result is only right with the pipeline and limits the world
+  runs with; a journal whose tuning names rules outside `:pipeline` is refused
+  rather than rewritten without them.
+
+  Do not compact a journal a running server is appending to: use
+  `Aethrion.RuntimeServer.compact_journal/1` (or `Aethrion.World.compact_journal/1`)
+  for that. As a safeguard, if the file changes while it is being compacted,
+  it is left alone and `:journal_changed` is returned.
   """
   @spec compact(Path.t(), keyword()) :: {:ok, State.t(), non_neg_integer()} | {:error, Error.t()}
   def compact(path, opts \\ []) do
-    with {:ok, state, steps} <- replay(path, opts),
+    with {:ok, version} <- file_version(path),
+         :ok <- check_tuning(path, Keyword.get(opts, :pipeline, Aethrion.Pipeline.default())),
+         {:ok, state, steps} <- replay(path, opts),
+         :ok <- unchanged(path, version),
          :ok <- archive(path, Keyword.get(opts, :archive)),
-         :ok <- write_header(path, state) do
+         :ok <- write_header(path, state, version) do
       {:ok, state, length(steps)}
+    end
+  end
+
+  # Size, modification time, and inode: an append, a rewrite, or a rename by
+  # someone else all change it.
+  defp file_version(path) do
+    case File.stat(path, time: :posix) do
+      {:ok, stat} -> {:ok, {stat.size, stat.mtime, stat.inode}}
+      {:error, :enoent} -> {:error, Error.new(:not_found, "no journal at #{path}", %{path: path})}
+      {:error, reason} -> {:error, io_error(path, reason)}
+    end
+  end
+
+  defp unchanged(_path, nil), do: :ok
+
+  defp unchanged(path, version) do
+    case file_version(path) do
+      {:ok, ^version} ->
+        :ok
+
+      _changed ->
+        {:error,
+         Error.new(
+           :journal_changed,
+           "#{path} changed while it was being compacted; is a server still appending to it?",
+           %{path: path}
+         )}
+    end
+  end
+
+  defp check_tuning(path, pipeline) do
+    with {:ok, contents} <- read_file(path),
+         [header | _] <- String.split(contents, "\n", parts: 2),
+         {:ok, %{"state" => %{"tuning" => %{} = tuning}}} <- Jason.decode(header),
+         {:error, %Error{} = error} <- Aethrion.Tuning.from_data(tuning, pipeline: pipeline) do
+      {:error,
+       Error.new(
+         :invalid_options,
+         "the journal's tuning does not fit the pipeline (#{error.message}); " <>
+           "compact with the pipeline the world runs with",
+         %{path: path, reason: error}
+       )}
+    else
+      {:error, %Error{} = error} -> {:error, error}
+      _fits_or_no_tuning -> :ok
     end
   end
 
   defp archive(_path, nil), do: :ok
 
   defp archive(path, archive) do
+    tmp = tmp_path(archive)
+
     cond do
       File.exists?(archive) ->
         {:error, already_exists(archive)}
 
       true ->
         with :ok <- File.mkdir_p(Path.dirname(archive)),
-             :ok <- File.cp(path, archive) do
+             :ok <- File.cp(path, tmp),
+             :ok <- File.rename(tmp, archive) do
           :ok
         else
-          {:error, reason} -> {:error, io_error(archive, reason)}
+          {:error, reason} ->
+            File.rm(tmp)
+            {:error, io_error(archive, reason)}
         end
     end
   end
 
-  defp write_header(path, state) do
+  defp write_header(path, state, version \\ nil) do
     header = %{"aethrion_journal" => @version, "state" => State.to_data(state)}
-    tmp = path <> ".tmp"
+    tmp = tmp_path(path)
 
-    with :ok <- File.mkdir_p(Path.dirname(path)),
-         :ok <- File.write(tmp, Jason.encode!(header) <> "\n"),
-         :ok <- File.rename(tmp, path) do
-      :ok
-    else
+    result =
+      with :ok <- File.mkdir_p(Path.dirname(path)),
+           :ok <- write_synced(tmp, Jason.encode!(header) <> "\n"),
+           :ok <- unchanged(path, version),
+           :ok <- File.rename(tmp, path) do
+        :ok
+      end
+
+    case result do
+      :ok ->
+        :ok
+
+      {:error, %Error{} = error} ->
+        File.rm(tmp)
+        {:error, error}
+
       {:error, reason} ->
         File.rm(tmp)
         {:error, io_error(path, reason)}
     end
   end
+
+  # The new contents reach the disk before they replace the old ones.
+  defp write_synced(path, contents) do
+    case File.open(path, [:write, :binary], fn file ->
+           with :ok <- IO.binwrite(file, contents), do: :file.sync(file)
+         end) do
+      {:ok, result} -> result
+      error -> error
+    end
+  end
+
+  defp tmp_path(path), do: "#{path}.#{System.unique_integer([:positive])}.tmp"
 
   defp already_exists(path),
     do: Error.new(:already_exists, "a file already exists at #{path}", %{path: path})

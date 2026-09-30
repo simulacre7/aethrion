@@ -23,6 +23,7 @@ defmodule Aethrion.Error do
   | `:invalid_scenario` | a scenario file is malformed |
   | `:invalid_journal` | a journal file is malformed |
   | `:journal_mismatch` | replaying a journal assigned a different event id than recorded |
+  | `:journal_changed` | a journal changed on disk while it was being compacted |
   | `:journal_failed` | a runtime server could not append to its journal |
   | `:journal_enabled` | `put_state/2` was called on a journaling runtime server |
   | `:invalid_snapshot` | a saved snapshot exists but cannot be loaded |

@@ -61,7 +61,7 @@ defmodule Cafe.Rules.Tip do
 end
 ```
 
-새 이벤트 타입에 등록합니다. 기본 규칙들은 그대로 돌고, 반응형 규칙(기분, 먼저 연락하기)도 여러분의 이벤트 뒤에 실행됩니다.
+새 이벤트 타입에 등록합니다. 기본 규칙들은 그대로 돌고, 반응형 규칙(기분, 관계 단계, 먼저 연락하기)도 여러분의 이벤트 뒤에 실행됩니다.
 
 ```elixir
 pipeline = Pipeline.append(Pipeline.default(), :tip_left, Cafe.Rules.Tip)

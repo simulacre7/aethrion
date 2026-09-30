@@ -12,7 +12,7 @@ mix aethrion.rules
 host event
   -> validate
   -> event rules for its type, in order
-  -> reactive rules (mood, proactive), for every event
+  -> reactive rules (mood, bond, proactive), for every event
   -> follow-up events enqueued by rules, breadth-first,
      each validated and run through the same pipeline
 ```

@@ -61,7 +61,7 @@ defmodule Cafe.Rules.Tip do
 end
 ```
 
-Register it for a new event type. The built-in rules keep running, and the reactive rules (mood, proactive messages) run after your event too.
+Register it for a new event type. The built-in rules keep running, and the reactive rules (mood, bonds, proactive messages) run after your event too.
 
 ```elixir
 pipeline = Pipeline.append(Pipeline.default(), :tip_left, Cafe.Rules.Tip)

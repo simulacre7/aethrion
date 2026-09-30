@@ -7,7 +7,7 @@ defmodule Aethrion.Pipeline do
   1. the event rules registered for the event's type, in order
   2. the reactive rules, in order, for every event
 
-  Reactive rules re-evaluate derived state (mood) and thresholds (proactive
+  Reactive rules re-evaluate derived state (mood, bonds) and thresholds (proactive
   messages) no matter what caused the change.
 
   The default pipeline is visible with `mix aethrion.rules`. Hosts can build
@@ -105,9 +105,14 @@ defmodule Aethrion.Pipeline do
     }
   end
 
-  @doc "Appends a reactive rule that runs after every event."
+  @doc """
+  Adds a reactive rule that runs after every event: after the others, but
+  before `Aethrion.Rules.Bond` when the pipeline has it, so relationship
+  changes the new rule makes are announced as bond changes too.
+  """
   def add_reactive(%__MODULE__{} = pipeline, rule) when is_atom(rule) do
-    %{pipeline | reactive_rules: pipeline.reactive_rules ++ [rule]}
+    {before, rest} = Enum.split_while(pipeline.reactive_rules, &(&1 != Rules.Bond))
+    %{pipeline | reactive_rules: before ++ [rule | rest]}
   end
 
   @doc """

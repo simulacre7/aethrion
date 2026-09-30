@@ -104,7 +104,7 @@ defmodule Aethrion.MixTasksTest do
       end)
       |> plain()
 
-    assert output =~ "compacted 1 events into the starting state"
+    assert output =~ "compacted 1 event into the starting state"
     assert {:ok, compacted, []} = Aethrion.Journal.read(path)
     assert compacted == step.state
     assert {:ok, _state, [_event]} = Aethrion.Journal.read(archive)

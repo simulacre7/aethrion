@@ -429,6 +429,10 @@ defmodule Aethrion.Scenario do
   defp valid_expectation?(%{"character" => id, "field" => field}) when is_binary(id),
     do: is_binary(field)
 
+  # A bond is a name, not a number: it can only be compared with equals.
+  defp valid_expectation?(%{"relationship" => [_from, _to], "field" => "bond"} = expectation),
+    do: not Map.has_key?(expectation, "at_least") and not Map.has_key?(expectation, "at_most")
+
   defp valid_expectation?(%{"relationship" => [from, to], "field" => field}),
     do: is_binary(from) and is_binary(to) and is_binary(field)
 
