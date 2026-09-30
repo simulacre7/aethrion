@@ -141,6 +141,24 @@ defmodule Aethrion.MixTasksTest do
     assert output =~ "KO       네가 Mina에게 꽃을 준다 (Yuna 목격)"
   end
 
+  test "with --locale ko, each line is followed by its Korean rendering" do
+    output =
+      capture_io("gift user mina flower observed_by yuna\ntick 3\nquit\n", fn ->
+        Mix.Tasks.Demo.Interactive.run(["--no-status", "--locale", "ko"])
+      end)
+      |> plain()
+
+    lines = output |> String.split("\n") |> Enum.filter(&String.match?(&1, ~r/^(SAYS|SCENE|KO) /))
+
+    said = for {line, i} <- Enum.with_index(lines), line =~ ~r/^(SAYS|SCENE) /, do: i
+
+    for i <- said do
+      assert Enum.at(lines, i + 1) =~ ~r/^KO /
+    end
+
+    assert Enum.count(lines, &String.starts_with?(&1, ["SAYS", "SCENE"])) >= 4
+  end
+
   test "characters who are here witness what is said" do
     input =
       "here haru\nmessage user yuna hostile leave me alone\nhere none\ngift user mina pin\nquit\n"

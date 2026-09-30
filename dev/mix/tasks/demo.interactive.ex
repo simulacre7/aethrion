@@ -452,30 +452,49 @@ defmodule Mix.Tasks.Demo.Interactive do
 
   defp with_witnesses(event, _present), do: event
 
+  # With --locale ko and no model, each line is followed by its Korean
+  # rendering: every expressive output logs one [Output] or [Scene] line, in
+  # the same order.
+  defp translations(step, %{adapter: nil, locale: locale}) when locale != nil do
+    step.outputs
+    |> Enum.filter(&Aethrion.Output.expressive?/1)
+    |> Expression.render(adapter: FakeAdapter, adapter_opts: [locale: locale])
+  end
+
+  defp translations(_step, _session), do: []
+
+  defp log_line(line, [next | rest] = translated) do
+    Display.log(line)
+
+    if String.starts_with?(line, ["[Output]", "[Scene]"]) do
+      Display.expressed(next, "KO")
+      rest
+    else
+      translated
+    end
+  end
+
+  defp log_line(line, []) do
+    Display.log(line)
+    []
+  end
+
   defp dispatch(session, event) do
     event = with_witnesses(event, session.present)
 
     case Runtime.step(session.state, event) do
       {:ok, step} ->
         Display.event(step.event, session.state, session.locale)
-        Enum.each(step.log, &Display.log/1)
+        translated = translations(step, session)
+        rest = Enum.reduce(step.log, translated, &log_line/2)
+        Enum.each(rest, &Display.expressed(&1, "KO"))
         if session.effects?, do: Enum.each(step.outputs, &Display.output/1)
 
-        cond do
-          session.adapter ->
-            step.outputs
-            |> Enum.filter(&Aethrion.Output.expressive?/1)
-            |> Expression.render(adapter: session.adapter, adapter_opts: adapter_opts(session))
-            |> Enum.each(&Display.expressed/1)
-
-          session.locale ->
-            step.outputs
-            |> Enum.filter(&Aethrion.Output.expressive?/1)
-            |> Expression.render(adapter: FakeAdapter, adapter_opts: [locale: session.locale])
-            |> Enum.each(&Display.expressed(&1, session.locale |> to_string() |> String.upcase()))
-
-          true ->
-            :ok
+        if session.adapter do
+          step.outputs
+          |> Enum.filter(&Aethrion.Output.expressive?/1)
+          |> Expression.render(adapter: session.adapter, adapter_opts: adapter_opts(session))
+          |> Enum.each(&Display.expressed/1)
         end
 
         if session.status?, do: Display.status(step.state)

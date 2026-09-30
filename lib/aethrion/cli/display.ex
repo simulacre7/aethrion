@@ -68,7 +68,9 @@ defmodule Aethrion.CLI.Display do
       "  report <경로>                               이 세션을 HTML 리포트로",
       "  help | quit (또는 exit)",
       "",
-      [:faint, "명령마다 나오는 표를 숨기려면 --no-status로 시작하세요."]
+      [:faint, "명령마다 나오는 표를 숨기려면 --no-status로 시작하세요."],
+      [:faint, "캐릭터 이름은 대소문자와 상관없이 쓸 수 있고, 데모 캐스트는 한글 이름(미나, 유나, 하루)으로도 부를 수 있습니다."],
+      [:faint, "대사·사건·요약은 한국어(KO)로 함께 보여 주고, 규칙 로그와 살펴보기 표는 개발용이라 영어로 둡니다."]
     ])
   end
 
@@ -104,7 +106,8 @@ defmodule Aethrion.CLI.Display do
       "  report <path>                               this session as an HTML report",
       "  help | quit (or exit)",
       "",
-      [:faint, "Start with --no-status to hide the tables after each command."]
+      [:faint, "Start with --no-status to hide the tables after each command."],
+      [:faint, "Character names work in any case, by id or display name."]
     ])
   end
 
