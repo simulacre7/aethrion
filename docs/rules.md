@@ -1,0 +1,174 @@
+# Rules
+
+Every state change in Aethrion comes from a rule. This page lists the built-in rules, the numbers they use, and how they are organized. The same list, generated from code, is available with:
+
+```bash
+mix aethrion.rules
+```
+
+## How a dispatch runs
+
+```txt
+host event
+  -> validate
+  -> event rules for its type, in order
+  -> reactive rules (mood, proactive), for every event
+  -> follow-up events enqueued by rules, breadth-first,
+     each validated and run through the same pipeline
+```
+
+- Rules are modules implementing `Aethrion.Rule` (`id/0`, `description/0`, `apply/1`).
+- Which rules run for which event is decided by `Aethrion.Pipeline`, not by the rules.
+- Rules change state only through `Aethrion.Transition` helpers, which clamp values and record an output, a log line, and an `Aethrion.Trace` entry tagged with the rule id and event id.
+- Follow-up events carry `:cause` (the id of the event that produced them). A dispatch processes at most 4 generations and 32 events; anything beyond is dropped and explained in the log and trace.
+- Rules are pure. They never read the wall clock, use randomness, or perform I/O. The same state and event always produce the same result.
+
+## Bounds
+
+| Value | Range |
+| --- | --- |
+| character `loneliness`, `jealousy`, `joy`, `stress`, `energy` | 0..100 |
+| relationship `affinity`, `trust`, `tension` | -100..100 |
+| memory `importance`, `strength` | 0..100 |
+
+Outputs report the delta that was actually applied after clamping.
+
+## Event rules
+
+### `gift_received` -> `gift`, `observation`
+
+**gift** - the receiver:
+
+- affinity toward the giver +10
+- joy +20, loneliness -10
+- remembers the gift (importance 60, kind `:experienced`)
+
+**observation** - for each observer (the giver and receiver are never observers):
+
+- remembers what they saw (importance 60, kind `:observed`, same topic as the gift)
+- if they care about the giver (affinity >= 30): jealousy +10 (`:sensitive` +5, `:calm` -5) and tension toward the receiver +8
+
+### `message_sent` -> `message`, `reply`
+
+**message** - effects on the receiver, by the event's structured `tone`. Rules never parse the text.
+
+| tone | receiver effects | remembered (importance) |
+| --- | --- | --- |
+| `warm` | affinity +4, trust +2, loneliness -8, joy +8 | yes (45) |
+| `neutral` | loneliness -4 | no |
+| `cold` | affinity -3, tension +4, joy -5 | yes (35) |
+| `hostile` | affinity -8, trust -6, tension +10, stress +20, joy -10 | yes (65) |
+
+**reply** - when someone outside the cast (such as the user) talks to an active, unblocked character, the character emits a `:reply` output phrased from their current mood and memories. Replies do not change state.
+
+### `apology_offered` -> `apology`
+
+The receiver: jealousy -15, loneliness -6, stress -10, trust toward the apologizer +8, remembers the apology (importance 70).
+
+### `time_tick` -> `time_passage`, `memory_decay`, `autonomy`
+
+**time_passage** - advances `state.clock` by `hours`. For each active character, per hour: loneliness +4, joy -2, stress -2. Jealousy does not fade with time alone; it takes an apology or comfort.
+
+**memory_decay** - recomputes each memory's strength from its age:
+
+```txt
+strength = importance - div(age_hours * (100 - importance), 96)
+```
+
+A memory loses `(100 - importance) / 4` strength per simulated day, independent of how time was split into ticks. Memories below strength 20 are *faded*: kept for inspection, excluded from context selection.
+
+| importance | fades after |
+| --- | --- |
+| 45 (warm message) | ~2 days |
+| 60 (gift) | 4 days |
+| 70 (apology) | ~6.7 days |
+| 90 | 4 weeks |
+| 100 | never |
+
+**autonomy** - characters act on their own. A character who is struggling (mood `jealous`, `lonely`, or `upset`) or `:talkative` confides a notable memory to their most trusted friend (trust >= 30) who has not heard about it yet:
+
+- firsthand memories with importance >= 60
+- talkative characters also retell `:heard` memories with importance >= 30
+
+At most one confidence per character per tick. It is enqueued as a `gossip_shared` follow-up event.
+
+### `gossip_shared` -> `gossip`, `empathy`
+
+**gossip** - the listener gains a `:heard` memory of the same topic with importance reduced by 15 (minimum 20) and `source` set to the teller. The teller's loneliness -4 and trust toward the listener +2. If the listener already knew, nothing changes. Emits a `:character_interaction` scene.
+
+Because each retelling loses importance and retelling needs importance >= 30, a rumor starting from an importance-60 observation travels at most three hops: 60 -> 45 -> 30 -> 20.
+
+**empathy** - if the listener cares about the teller (affinity >= 25), the teller is struggling, and the listener is not, the listener offers comfort: a `comfort_offered` follow-up event, at most once per 12 simulated hours per pair.
+
+### `comfort_offered` -> `comfort`
+
+The receiver: loneliness -12, jealousy -5, stress -10, trust +5 and affinity +3 toward the comforter, remembers being comforted (importance 55). Emits a `:character_interaction` scene when the comforter is a character.
+
+## Reactive rules
+
+These run after every event, whatever caused it.
+
+### `mood`
+
+Derives mood from numbers, first match wins:
+
+| mood | condition |
+| --- | --- |
+| `upset` | stress >= 40 |
+| `jealous` | jealousy >= 15 |
+| `lonely` | loneliness >= 50 |
+| `happy` | joy >= 20 |
+| `neutral` | otherwise |
+
+Emits `:mood_changed` when a mood changes.
+
+### `proactive`
+
+Characters reach out to the user when pressure crosses a threshold. At most one proactive message per character per event; the first matching reason wins.
+
+| reason | condition | cooldown |
+| --- | --- | --- |
+| `jealous` | jealousy >= 15 and jealousy + loneliness >= 45 | 24 simulated hours |
+| `lonely` | loneliness >= 60 and jealousy < 15 | 24 simulated hours |
+| `curious` | holds secondhand news involving the user, and is `:playful` or has affinity >= 30 toward the user | once per topic |
+
+Each message carries fallback text from deterministic templates, the ids of the memories it references, and a read-only context snapshot for optional LLM rendering (see [expression.md](expression.md)).
+
+## Writing your own rule
+
+```elixir
+defmodule MyGame.Rules.Rivalry do
+  use Aethrion.Rule,
+    id: :rivalry,
+    description: "Rivals grow tense when the other receives a gift."
+
+  alias Aethrion.Transition
+
+  @impl true
+  def apply(%Transition{event: event} = transition) do
+    case MyGame.rival_of(event.to) do
+      nil -> transition
+      rival -> Transition.adjust_relationship(transition, rival, event.to, :tension, 5)
+    end
+  end
+end
+
+pipeline = Aethrion.Pipeline.append(Aethrion.Pipeline.default(), :gift_received, MyGame.Rules.Rivalry)
+Aethrion.dispatch(state, event, pipeline: pipeline)
+```
+
+Custom event types work the same way: register rules for a new type with `Pipeline.append/3` and dispatch maps with that `:type`. Built-in validation only applies to built-in types; validate custom events in your rules.
+
+Useful `Aethrion.Transition` helpers:
+
+| helper | effect |
+| --- | --- |
+| `adjust_character/5` | add to a numeric character field, clamped, logged, traced |
+| `set_character/4` | set a non-numeric field such as `last_active_at` |
+| `adjust_relationship/6` | add to affinity, trust, or tension; emits `:relationship_changed` |
+| `remember/2` | store a memory; emits `:memory_created` |
+| `update_memory/4` | change an existing memory, traced |
+| `emit/2` | emit any output, tagged with rule and event |
+| `note/3` | record a decision that changed nothing |
+| `enqueue/2` | add a follow-up event |
+| `cooldown_ready?/3`, `put_cooldown/2` | rate-limit behavior in simulated hours |

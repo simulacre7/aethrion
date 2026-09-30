@@ -32,7 +32,7 @@ defmodule Aethrion.RuntimeServerTest do
     def render(_request, _opts), do: Process.exit(self(), :kill)
   end
 
-  defp jealous_yuna_server(opts \\ []) do
+  defp jealous_yuna_server(opts) do
     {state, _outputs} = dispatch!(Runtime.demo_state(), flower_for_mina())
     start_supervised!({RuntimeServer, [initial_state: state] ++ opts})
   end

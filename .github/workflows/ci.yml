@@ -31,5 +31,17 @@ jobs:
       - name: Check formatting
         run: mix format --check-formatted
 
+      - name: Compile without warnings
+        run: mix compile --warnings-as-errors
+
       - name: Run tests
-        run: mix test
+        run: mix test --warnings-as-errors
+
+      - name: Check bundled scenarios
+        run: mix aethrion.scenario --all --quiet
+
+      - name: Run examples
+        run: |
+          mix run examples/embed_runtime.exs
+          mix run examples/custom_rule.exs
+          mix run examples/supervised_world.exs

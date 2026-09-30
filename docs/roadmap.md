@@ -4,37 +4,32 @@ This roadmap starts from the current v0 proof of concept and describes the next 
 
 ## Current State
 
-Aethrion currently proves the core loop:
+Aethrion v0.2 alpha runs this loop:
 
 ```txt
-event -> deterministic rules -> updated in-memory state -> structured outputs
+event -> validate -> rule pipeline -> follow-up events (cascade)
+      -> updated state + structured outputs + trace
+      -> optional LLM expression, outside the authoritative path
 ```
 
-Implemented:
+Implemented in v0.2:
 
-- Elixir Mix library project
-- English and Korean README
-- core domain structs
-- in-memory runtime state
-- `Aethrion.Runtime.dispatch/2`
-- deterministic gift, jealousy, and loneliness rules
-- deterministic apology and reconciliation rules
-- fake LLM adapter
-- `mix demo.drama`
-- `mix demo.branches`
-- ExUnit scenario and invariant tests
-- structured validation errors
-- interactive CLI demo
-- JSON file persistence
-- supervised runtime process
-- scheduler process
-- CI, MIT license, contribution guide, and example script
+- rule behaviour, explicit pipeline, and traced transitions (every change explained by rule and event)
+- cascading follow-up events with depth and count limits
+- character-to-character behavior: observation, confiding, rumor, empathy, comfort
+- tone-aware messages and replies; simulated clock, cooldowns, derived moods, joy and stress
+- memory kinds, topics, sources, age-based decay, deterministic retrieval
+- expression snapshots, LLM adapter behaviour, Anthropic and OpenAI-compatible adapters
+- intent interpretation limited to a closed set of proposals
+- supervised worlds with subscriptions, history, snapshot recovery, and async rendering
+- data-first scenario files with expectations, HTML reports, and a richer interactive CLI
+- property-based invariant tests
 
 Not implemented yet:
 
-- per-character actor runtime
-- real LLM adapters
-- memory retrieval or summarization
+- per-character actor runtime (deliberately deferred, see Phase 4)
+- memory summarization and consolidation
+- rule parameters as data
 - package publishing
 
 ## Phase 1: v0.1 Library Foundation
@@ -103,12 +98,16 @@ TODO:
 
 - [x] Introduce a supervised runtime process.
 - [x] Add a scheduler process that emits `time_tick` events.
-- [ ] Keep character, relationship, memory, and rule state as data by default.
-- [ ] Use processes for runtime behavior, not as the primary simulation model.
+- [x] Keep character, relationship, memory, and rule state as data by default.
+- [x] Use processes for runtime behavior, not as the primary simulation model.
 - [ ] Explore character or relationship processes only if a concrete runtime boundary requires them.
 - [x] Add crash/restart tests for supervised runtime components.
-- [ ] Keep deterministic rule functions testable without processes.
+- [x] Keep deterministic rule functions testable without processes.
 - [ ] Document tradeoffs around process message passing before adding finer-grained actor processes.
+- [x] Run expression rendering in supervised tasks with timeouts, isolated from the runtime.
+- [x] Restore runtime state from snapshots after a supervised restart.
+- [x] Add subscriptions and bounded event history to the runtime server.
+- [x] Add `Aethrion.World` to supervise a runtime, scheduler, and rendering tasks together.
 
 Success criteria:
 
@@ -122,11 +121,13 @@ Goal: add real expression providers without giving them authority over state.
 
 TODO:
 
-- [ ] Define an LLM adapter behaviour.
-- [ ] Keep `FakeAdapter` as the default for tests.
-- [ ] Add an OpenAI-compatible adapter later.
-- [ ] Ensure LLM outputs are text/expression only.
-- [ ] Add tests proving LLM adapters cannot directly mutate simulation state.
+- [x] Define an LLM adapter behaviour.
+- [x] Keep `FakeAdapter` as the default for tests.
+- [x] Add an OpenAI-compatible adapter.
+- [x] Add an Anthropic Messages API adapter.
+- [x] Ensure LLM outputs are text/expression only.
+- [x] Add tests proving LLM adapters cannot directly mutate simulation state.
+- [x] Let models propose intents from free text, limited to a closed set and validated like host events.
 
 Success criteria:
 
@@ -139,11 +140,13 @@ Goal: make memories useful without overbuilding retrieval too early.
 
 TODO:
 
-- [ ] Add recent memory queries.
-- [ ] Add important memory queries.
-- [ ] Add memory decay or summarization rules.
-- [ ] Add relationship-aware context selection.
-- [ ] Avoid vector search until simple memory retrieval is insufficient.
+- [x] Add recent memory queries.
+- [x] Add important memory queries.
+- [x] Add memory decay rules.
+- [ ] Add memory summarization or consolidation.
+- [x] Add relationship-aware context selection.
+- [x] Let knowledge spread between characters as secondhand memories.
+- [x] Avoid vector search until simple memory retrieval is insufficient.
 
 Success criteria:
 
@@ -156,11 +159,13 @@ Goal: keep deterministic rules explicit and manageable as event types grow.
 
 TODO:
 
-- [ ] Introduce a small rule behaviour before considering a generic DSL.
-- [ ] Add a rule pipeline that makes event-to-rule mapping visible.
-- [ ] Keep rule ordering, outputs, and logs explicit.
-- [ ] Add tests for rule ordering and non-mutation on invalid events.
-- [ ] Defer a DSL until repeated rule patterns are proven.
+- [x] Introduce a small rule behaviour before considering a generic DSL.
+- [x] Add a rule pipeline that makes event-to-rule mapping visible.
+- [x] Keep rule ordering, outputs, and logs explicit.
+- [x] Add tests for rule ordering and non-mutation on invalid events.
+- [x] Record a trace entry for every change so each transition is explainable.
+- [ ] Move rule parameters (thresholds, deltas) into data a host can tune.
+- [x] Defer a DSL until repeated rule patterns are proven.
 
 Success criteria:
 
@@ -188,14 +193,27 @@ Success criteria:
 - New contributors can run tests and demos quickly.
 - The project communicates what is stable and what is experimental.
 
+## Phase 8: Scenarios And Tooling
+
+Goal: make social behavior reviewable by people who do not read Elixir.
+
+TODO:
+
+- [x] Define a JSON scenario format with a world, events, and expectations.
+- [x] Run bundled scenarios as tests.
+- [x] Render scenarios as self-contained HTML reports.
+- [x] Add `why`, `context`, `timeline`, and `undo` to the interactive CLI.
+- [ ] Add a scenario diff tool that compares two branches of the same world.
+- [ ] Record interactive sessions as scenario files.
+
 ## Near-Term Priority
 
 Recommended next tasks:
 
-1. Define the first real LLM adapter behaviour without adding provider lock-in.
-2. Add a richer memory retrieval layer.
-3. Introduce a small rule behaviour and rule pipeline when rule count grows.
-4. Keep the simulation core data-first and use OTP processes only around runtime boundaries.
+1. Move rule parameters into data so hosts can tune a world without code.
+2. Add memory consolidation (many small memories -> one summary memory, deterministically).
+3. Record interactive sessions as scenarios, and compare branches side by side.
+4. Publish to Hex once the event and output shapes settle.
 5. Explore per-character processes only if a concrete runtime need appears.
 
-The project should avoid Phoenix, vector databases, distributed BEAM, and real LLM providers until the core runtime interface is clearer.
+Phoenix, vector databases, and distributed BEAM remain out of scope until the core runtime interface is stable.
