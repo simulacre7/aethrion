@@ -123,6 +123,7 @@ defmodule Aethrion.TemplatesKoTest do
     assert Aethrion.Expression.Templates.Ko.with_particle("Jane", :topic) == "Jane은"
     assert Aethrion.Expression.Templates.Ko.with_particle("Nicole", :subject) == "Nicole이"
     assert Aethrion.Expression.Templates.Ko.with_particle("candle", :object) == "candle을"
+    assert Aethrion.Expression.Templates.Ko.with_particle("ukulele", :object) == "ukulele를"
   end
 
   test "items take the article they need" do
@@ -134,5 +135,46 @@ defmodule Aethrion.TemplatesKoTest do
     assert Aethrion.Expression.Templates.with_article("hour") == "an hour"
     assert Aethrion.Expression.Templates.with_article("unicorn") == "a unicorn"
     assert Aethrion.Expression.Templates.with_article("귤") == "귤"
+  end
+
+  test "past tense leaves quoted words alone, wherever a quote appears" do
+    request = %Aethrion.Expression.Request{
+      kind: :character_interaction,
+      reason: :gossip,
+      speaker: %{id: "yuna", name: "Yuna", traits: [], mood: :neutral},
+      listener: %{id: "haru", name: "Haru"},
+      names: %{"user" => "you"},
+      memories: [
+        %{
+          data: %{
+            "event" => "gift_received",
+            "from" => "user",
+            "to" => "yuna",
+            "item" => ~s("행운" 부적)
+          }
+        }
+      ]
+    }
+
+    assert Aethrion.Expression.Templates.Ko.render(request, tense: :past) ==
+             ~s(Yuna는 Haru에게 네가 준 "행운" 부적을 자랑했다.)
+
+    said = %{
+      request
+      | memories: [
+          %{
+            data: %{
+              "event" => "message_sent",
+              "from" => "user",
+              "to" => "yuna",
+              "tone" => "hostile",
+              "text" => "전한다."
+            }
+          }
+        ]
+    }
+
+    assert Aethrion.Expression.Templates.Ko.render(said, tense: :past) ==
+             ~s(Yuna는 Haru에게 네가 자기한테 한 말을 전했다. "전한다.")
   end
 end

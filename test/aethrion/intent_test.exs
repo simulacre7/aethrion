@@ -131,7 +131,20 @@ defmodule Aethrion.IntentTest do
       {"너 싫어", :hostile},
       {"한심해", :hostile},
       {"너한테 질렸어", :hostile},
-      {"다시는 연락하지 마", :hostile}
+      {"다시는 연락하지 마", :hostile},
+      {"내 잘못 아니야", :cold},
+      {"오늘 너무 최악이다", :neutral},
+      {"넌 최악이야", :hostile},
+      {"미안한데, 내가 잘못했어", :apology},
+      {"너 잘못 대해서 미안해", :apology},
+      {"용서해 줄래?", :apology},
+      {"몰라요", :cold},
+      {"나중에~", :cold},
+      {"재수없어", :hostile},
+      {"이제 그만해도 돼, 고마워", :warm},
+      {"고맙지도 않아", :cold},
+      {"ㄱㅅ", :warm},
+      {"thanks for nothing", :cold}
     ]
 
     for {text, expected} <- cases do

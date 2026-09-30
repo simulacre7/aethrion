@@ -17,6 +17,9 @@ defmodule Aethrion.Expression.Templates.Ko do
 
   alias Aethrion.Expression.{Request, Templates}
 
+  # Latin words that end in a pronounced e (애니메, 우쿨렐레), unlike Jane or Nicole.
+  @spoken_e ~w(anime sesame penne persephone karaoke ukulele adobe finale chile tamale pele)
+
   @doc """
   Renders a request in Korean. With `tense: :past`, scenes between
   characters are told as having happened ("함께 저녁을 먹고 늦게까지
@@ -48,12 +51,14 @@ defmodule Aethrion.Expression.Templates.Ko do
   ]
 
   defp past(text) do
-    [narration | quoted] = String.split(text, "\"", parts: 2)
+    {narration, quoted} =
+      case Regex.run(~r/^(.*?\.)( ".*")$/su, text) do
+        [_all, narration, quoted] -> {narration, quoted}
+        nil -> {text, ""}
+      end
 
-    narration =
-      Enum.reduce(@past, narration, fn {now, then}, acc -> String.replace(acc, now, then) end)
-
-    Enum.join([narration | quoted], "\"")
+    Enum.reduce(@past, narration, fn {now, then}, acc -> String.replace(acc, now, then) end) <>
+      quoted
   end
 
   @doc """
@@ -343,7 +348,7 @@ defmodule Aethrion.Expression.Templates.Ko do
       # (Jane 제인, Jerome 제롬, Anne 앤), except words that say the e.
       [?k, ?c | _] -> true
       # -le reads as ㄹ: Nicole 니콜, candle 캔들, apple 애플.
-      [?e, ?l | _] -> true
+      [?e, ?l | _] -> String.downcase(word) not in @spoken_e
       [?e, before, third | _] when before in ~c"nm" -> silent_e?(word, before, third)
       [last | _] when last in ~c"aeiouyrwhsxfvzd" -> false
       [last, before | _] when last in ~c"tkp" -> before in ~c"aeiouy"
@@ -351,8 +356,6 @@ defmodule Aethrion.Expression.Templates.Ko do
       [] -> false
     end
   end
-
-  @spoken_e ~w(anime sesame penne persephone karaoke ukulele adobe)
 
   defp silent_e?(word, before, third) do
     (third in ~c"aeiouy" or (before == ?n and third == ?n)) and

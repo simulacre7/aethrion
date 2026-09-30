@@ -15,10 +15,25 @@ defmodule Aethrion.LLM.FakeAdapter do
   # Korean words are stems ("고마" covers 고마워, 고마웠어) and match anywhere,
   # since endings attach to them without a space.
   @apology ["sorry", "apologize", "apologise", "forgive me", "my bad"] ++
-             ["미안", "죄송", "잘못했", "용서해 줘", "용서해줘", "사과할게", "사과할께", "내 잘못"]
+             [
+               "미안",
+               "죄송",
+               "잘못했",
+               "용서해 줘",
+               "용서해줘",
+               "용서해 줄래",
+               "용서해줄래",
+               "용서해 줄 수",
+               "사과할게",
+               "사과할께",
+               "내 잘못"
+             ]
   # Look like apologies but are not: blaming ("네가 잘못했잖아"), forgiving
   # ("용서해 줄게"), or 미안한데 as a softener before a request.
-  @not_apology ~r/(?:네가|니가|너가|너)\s*잘못|용서해\s*줄|미안한데/u
+  # Blaming the other person ("네가 잘못했잖아") and 미안한데 as a softener are
+  # not apologies in themselves, and forgiving ("용서해 줄게") is not one either.
+  @not_apology ~r/(?:네가|니가|너가|너)\s*잘못|미안한데/u
+  @forgiving ~r/용서해\s*줄(?:게|께)/u
   @hostile [
              "hate",
              "stupid",
@@ -32,11 +47,13 @@ defmodule Aethrion.LLM.FakeAdapter do
              "pathetic",
              "worthless"
            ] ++
-             ["꺼져", "닥쳐", "짜증", "바보", "멍청", "한심", "질렸", "재수 없", "지긋지긋"] ++
-             ["그만해", "연락하지 마", "상종", "역겨"]
+             ["꺼져", "닥쳐", "짜증", "바보", "멍청", "한심", "질렸", "재수 없", "재수없", "지긋지긋"] ++
+             ["연락하지 마", "상종", "역겨"]
+  # "그만해", but not "걱정 그만해" or "그만해도 돼".
+  @stop ~r/(?<!걱정 )그만해(?!도)/u
   # Harsh only when aimed at the listener: "너 싫어", not "비 와서 싫어".
   @hostile_at_you ["싫어", "최악", "미워"]
-  @you ~r/(?:^|\s)(?:너|네가|니가|너가|당신)/u
+  @you ~r/(?:^|\s)(?:너(?![무희])|넌|널|니(?=\s)|네가|니가|너가|당신)/u
   @warm [
     "thank",
     "love",
@@ -53,6 +70,8 @@ defmodule Aethrion.LLM.FakeAdapter do
     "sweet",
     "고마",
     "고맙",
+    "ㄱㅅ",
+    "ㄳ",
     "감사",
     "사랑",
     "보고 싶",
@@ -75,17 +94,18 @@ defmodule Aethrion.LLM.FakeAdapter do
   ]
   # Disappointment is cold even next to a warm word ("대단히 실망했어"), and so
   # is brushing something off ("사랑 따위 필요 없어").
-  @letdown ["disappointed", "let me down", "실망", "서운", "따위", "필요 없어"]
+  @letdown ["disappointed", "let me down", "thanks for nothing", "no thanks"] ++
+             ["실망", "서운", "따위", "필요 없어"]
   # A warm word or an apology right after a negation is cold ("not happy", "하나도 안 고마워"),
   # except in idioms that stay warm.
   @negations ["not ", "n't ", "never ", "no longer "] ++ ["안 ", "못 ", "하나도", "전혀"]
   # Korean also negates after the word: "보고 싶지 않아", "좋아하는 척하지 마".
-  @negated_after ~r/(?:고맙|고마|좋|보고\s*싶|사랑|반가)\S*\s*(?:지\s*않|지\s*마|척)/u
+  @negated_after ~r/(?:고맙|고마|좋|보고\s*싶|사랑|반가)\S*\s*(?:지(?:는|도)?\s*않|지\s*마|척)/u
   @warm_idioms ["can't thank", "cannot thank", "couldn't be happier", "never been happier"]
   @cold ["whatever", "busy", "later", "don't care", "not now"] ++
           ["됐어", "나중에 얘기", "나중에 해", "바빠", "상관없", "알아서 해"]
   # "몰라" on its own, not "잘 몰라서 그러는데".
-  @dont_know ~r/몰라(?:$|[\s.!?~])/u
+  @dont_know ~r/몰라(?!서)|나중에[\s.!?~]*$/u
 
   @impl true
   def render(%Request{} = request, opts \\ []) do
@@ -128,10 +148,15 @@ defmodule Aethrion.LLM.FakeAdapter do
     })
   end
 
-  defp apology?(text), do: mentions?(text, @apology) and not Regex.match?(@not_apology, text)
+  # What is left once blame and softeners are set aside must still apologize:
+  # "너 잘못 대해서 미안해" and "미안한데, 내가 잘못했어" do.
+  defp apology?(text) do
+    not Regex.match?(@forgiving, text) and
+      mentions?(String.replace(text, @not_apology, ""), @apology)
+  end
 
   defp hostile?(text) do
-    mentions?(text, @hostile) or
+    mentions?(text, @hostile) or Regex.match?(@stop, text) or
       (mentions?(text, @hostile_at_you) and Regex.match?(@you, text))
   end
 
@@ -147,7 +172,8 @@ defmodule Aethrion.LLM.FakeAdapter do
     ) or
       Regex.match?(~r/(?:^|\s)(?:안|전혀|하나도)\s+(?:안\s+)?(?:미안|죄송)/u, text) or
       Regex.match?(~r/(?:미안|죄송)\S*지\s*않/u, text) or
-      Regex.match?(~r/미안\s*안|미안하긴|왜\s*미안|미안해할\s*거\s*없|사과할\s*생각\s*없/u, text)
+      Regex.match?(~r/미안\s*안|미안하긴|왜\s*미안|미안해할\s*거\s*없|사과할\s*생각\s*없/u, text) or
+      Regex.match?(~r/잘못\S*\s*(?:이\s*)?(?:아니|아냐)/u, text)
   end
 
   # A negation within the few characters before a warm word, or a Korean one
