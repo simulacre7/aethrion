@@ -191,7 +191,7 @@ defmodule Aethrion.Expression.Templates.Ko do
     end
   end
 
-  def render(%Request{kind: :reply, tone: :warm, speaker: %{mood: mood}} = request) do
+  def render(%Request{kind: :reply, tone: :warm} = request) do
     case Request.harshness_to_others(request) do
       {:observed, target} ->
         "고마워... 그런데 네가 #{name(request, target)}한테 한 말, 나도 봤어."
@@ -203,15 +203,11 @@ defmodule Aethrion.Expression.Templates.Ko do
         "...고마워. 그런데 네가 다른 사람들한테 어떻게 하는지 들었어."
 
       nil ->
-        wary_reply(:warm, request) || reunion_reply(:warm, mood, request) ||
-          bond_reply(:warm, mood, request) || Choices.pick(request, reply(:warm, mood))
+        reply_line(:warm, request)
     end
   end
 
-  def render(%Request{kind: :reply, tone: tone, speaker: %{mood: mood}} = request) do
-    wary_reply(tone, request) || reunion_reply(tone, mood, request) ||
-      bond_reply(tone, mood, request) || Choices.pick(request, reply(tone, mood))
-  end
+  def render(%Request{kind: :reply, tone: tone} = request), do: reply_line(tone, request)
 
   def render(%Request{kind: :character_interaction, reason: :gossip} = request) do
     teller = request.speaker.name
@@ -278,35 +274,17 @@ defmodule Aethrion.Expression.Templates.Ko do
     "#{with_particle(request.speaker.name, :subject)} 반응한다."
   end
 
-  # Only when nothing darker is going on: a jealous or upset mood, or a
-  # strained or estranged bond, speaks first.
-  defp reunion_reply(tone, mood, request)
-       when tone in [:warm, :neutral] and mood in [:neutral, :happy, :lonely] do
-    cond do
-      not Request.reunion?(request) -> nil
-      match?(%{bond: bond} when bond in [:strained, :estranged], request.relationship) -> nil
-      mood == :lonely -> "연락 왔네... 보고 싶었어."
-      tone == :warm -> "오랜만이야! 고마워."
-      true -> "오랜만이네!"
-    end
-  end
-
-  defp reunion_reply(_tone, _mood, _request), do: nil
-
-  defp wary_reply(tone, request) do
-    case Choices.wary_choice(tone, request) do
-      {:bond, bond} -> bond_line(tone, bond)
+  defp reply_line(tone, request) do
+    case Choices.reply_choice(tone, request) do
+      {:bond, bond} -> Choices.pick(request, bond_line(tone, bond))
       :guarded when tone == :warm -> "고마워... 그래도 아직 좀 서운해."
       :guarded -> "...응, 왜."
-      nil -> nil
+      {:reunion, :missed} -> "연락 왔네... 보고 싶었어."
+      {:reunion, :thanks} -> "오랜만이야! 고마워."
+      {:reunion, :hello} -> "오랜만이네!"
+      {:mood, mood} -> Choices.pick(request, reply(tone, mood))
     end
   end
-
-  defp bond_reply(tone, mood, %Request{relationship: %{bond: bond}} = request)
-       when mood in [:neutral, :happy],
-       do: Choices.pick(request, bond_line(tone, bond))
-
-  defp bond_reply(_tone, _mood, _request), do: nil
 
   defp bond_line(:warm, :close),
     do: ["역시 너밖에 없어. 고마워.", "너 진짜 최고야, 알지?", "네 연락이 하루 중에 제일 반가워."]

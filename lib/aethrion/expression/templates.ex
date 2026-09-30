@@ -158,7 +158,7 @@ defmodule Aethrion.Expression.Templates do
     end
   end
 
-  def render(%Request{kind: :reply, tone: :warm, speaker: %{mood: mood}} = request) do
+  def render(%Request{kind: :reply, tone: :warm} = request) do
     case Request.harshness_to_others(request) do
       {:observed, target} ->
         "Thanks... but I saw what you said to #{name(request, target)}."
@@ -170,15 +170,11 @@ defmodule Aethrion.Expression.Templates do
         "...Thanks. I've heard how you treat people, though."
 
       nil ->
-        wary_reply(:warm, request) || reunion_reply(:warm, mood, request) ||
-          bond_reply(:warm, mood, request) || Choices.pick(request, reply(:warm, mood))
+        reply_line(:warm, request)
     end
   end
 
-  def render(%Request{kind: :reply, tone: tone, speaker: %{mood: mood}} = request) do
-    wary_reply(tone, request) || reunion_reply(tone, mood, request) ||
-      bond_reply(tone, mood, request) || Choices.pick(request, reply(tone, mood))
-  end
+  def render(%Request{kind: :reply, tone: tone} = request), do: reply_line(tone, request)
 
   def render(%Request{kind: :character_interaction, reason: :gossip} = request) do
     teller = request.speaker.name
@@ -226,38 +222,17 @@ defmodule Aethrion.Expression.Templates do
     "#{request.speaker.name} reacts."
   end
 
-  # Back after a long absence.
-  # Only when nothing darker is going on: a jealous or upset mood, or a
-  # strained or estranged bond, speaks first.
-  defp reunion_reply(tone, mood, request)
-       when tone in [:warm, :neutral] and mood in [:neutral, :happy, :lonely] do
-    cond do
-      not Request.reunion?(request) -> nil
-      match?(%{bond: bond} when bond in [:strained, :estranged], request.relationship) -> nil
-      mood == :lonely -> "You're back... I missed you."
-      tone == :warm -> "You're back! It's been a while. Thank you."
-      true -> "Hey, it's been a while!"
-    end
-  end
-
-  defp reunion_reply(_tone, _mood, _request), do: nil
-
-  defp wary_reply(tone, request) do
-    case Choices.wary_choice(tone, request) do
-      {:bond, bond} -> bond_line(tone, bond)
+  defp reply_line(tone, request) do
+    case Choices.reply_choice(tone, request) do
+      {:bond, bond} -> Choices.pick(request, bond_line(tone, bond))
       :guarded when tone == :warm -> "Thanks... I'm still a little hurt, though."
       :guarded -> "...Hey."
-      nil -> nil
+      {:reunion, :missed} -> "You're back... I missed you."
+      {:reunion, :thanks} -> "You're back! It's been a while. Thank you."
+      {:reunion, :hello} -> "Hey, it's been a while!"
+      {:mood, mood} -> Choices.pick(request, reply(tone, mood))
     end
   end
-
-  # When the mood has nothing to say, the bond does.
-  defp bond_reply(tone, mood, %Request{relationship: %{bond: bond}} = request)
-       when mood in [:neutral, :happy] do
-    Choices.pick(request, bond_line(tone, bond))
-  end
-
-  defp bond_reply(_tone, _mood, _request), do: nil
 
   defp bond_line(:warm, :close),
     do: [

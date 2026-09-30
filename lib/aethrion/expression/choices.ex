@@ -213,6 +213,44 @@ defmodule Aethrion.Expression.Choices do
   defp folded(_request), do: 0
 
   @doc false
+  # Which reply fits kind or plain words, first match wins: hurt feelings
+  # (`wary_choice/2`), a long absence (when nothing darker is going on), the
+  # bond when the mood has nothing to say, then the mood.
+  @spec reply_choice(atom(), Request.t()) ::
+          {:bond, atom()} | :guarded | {:reunion, :missed | :thanks | :hello} | {:mood, atom()}
+  def reply_choice(tone, %Request{speaker: %{mood: mood}} = request) do
+    bond = match?(%{bond: _}, request.relationship) && request.relationship.bond
+
+    cond do
+      wary = wary_choice(tone, request) ->
+        wary
+
+      reunion = reunion(tone, mood, bond, request) ->
+        {:reunion, reunion}
+
+      tone in [:warm, :neutral] and mood in [:neutral, :happy] and
+          bond in [:close, :strained, :estranged] ->
+        {:bond, bond}
+
+      true ->
+        {:mood, mood}
+    end
+  end
+
+  defp reunion(tone, mood, bond, request)
+       when tone in [:warm, :neutral] and mood in [:neutral, :happy, :lonely] do
+    cond do
+      not Request.reunion?(request) -> nil
+      bond in [:strained, :estranged] -> nil
+      mood == :lonely -> :missed
+      tone == :warm -> :thanks
+      true -> :hello
+    end
+  end
+
+  defp reunion(_tone, _mood, _bond, _request), do: nil
+
+  @doc false
   # Hurt feelings speak before the mood: a strained or estranged bond, or
   # fresh tension from harsh words.
   @spec wary_choice(atom(), Request.t()) :: {:bond, :strained | :estranged} | :guarded | nil
