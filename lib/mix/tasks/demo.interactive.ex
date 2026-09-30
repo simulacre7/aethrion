@@ -14,6 +14,8 @@ defmodule Mix.Tasks.Demo.Interactive do
     `Aethrion.LLM.OpenAICompatible` for configuration). Without it, the
     deterministic fake adapter is used. The simulation is identical either way.
   - `--effects` - also print every structured output.
+  - `--no-status` - do not print the status tables after every event (use
+    `status` to see them).
   """
   @shortdoc "Runs the interactive Aethrion CLI demo"
 
@@ -24,7 +26,7 @@ defmodule Mix.Tasks.Demo.Interactive do
   alias Aethrion.LLM.{Anthropic, FakeAdapter, OpenAICompatible}
   alias Aethrion.Persistence.JsonFile
 
-  @switches [llm: :string, effects: :boolean]
+  @switches [llm: :string, effects: :boolean, status: :boolean]
 
   @impl Mix.Task
   def run(args) do
@@ -42,14 +44,15 @@ defmodule Mix.Tasks.Demo.Interactive do
       host_events: [],
       outputs: [],
       adapter: adapter(opts[:llm]),
-      effects?: Keyword.get(opts, :effects, false)
+      effects?: Keyword.get(opts, :effects, false),
+      status?: Keyword.get(opts, :status, true)
     }
 
     Display.message(
       "Type help for commands, quit to exit. Try: say yuna sorry I forgot about you"
     )
 
-    Display.status(session.state)
+    if session.status?, do: Display.status(session.state)
     loop(session)
   end
 
@@ -104,7 +107,7 @@ defmodule Mix.Tasks.Demo.Interactive do
   end
 
   defp handle({:ok, :status}, session) do
-    Display.status(session.state)
+    if session.status?, do: Display.status(session.state)
     loop(session)
   end
 
@@ -240,7 +243,7 @@ defmodule Mix.Tasks.Demo.Interactive do
           |> Enum.each(&Display.expressed/1)
         end
 
-        Display.status(step.state)
+        if session.status?, do: Display.status(step.state)
 
         session
         |> remember()

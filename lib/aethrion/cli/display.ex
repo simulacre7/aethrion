@@ -202,7 +202,7 @@ defmodule Aethrion.CLI.Display do
 
       entries ->
         entries
-        |> Enum.reject(&(&1.kind == :output))
+        |> Enum.reject(&(&1.kind == :output or &1.field == :last_active_at))
         |> Enum.each(&print(["  ", Trace.describe(&1)]))
     end
 

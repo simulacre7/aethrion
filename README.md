@@ -34,6 +34,10 @@ mix aethrion.scenario --all    # run the bundled scenarios and check their expec
 mix aethrion.report priv/scenarios/01_the_flower.json   # HTML report in tmp/
 ```
 
+A recorded session of the interactive demo (real output, [plain-text transcript](assets/demo/interactive-demo.txt)):
+
+![Aethrion interactive demo](assets/demo/interactive-demo-readable.svg)
+
 With a real model (optional; the simulation is identical without one):
 
 ```bash

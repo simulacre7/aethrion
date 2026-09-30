@@ -34,6 +34,10 @@ mix aethrion.scenario --all    # 번들 시나리오 실행 및 기대값 검증
 mix aethrion.report priv/scenarios/01_the_flower.json   # tmp/에 HTML 리포트 생성
 ```
 
+interactive demo를 녹화한 세션입니다(실제 출력, [plain-text transcript](assets/demo/interactive-demo.txt)):
+
+![Aethrion interactive demo](assets/demo/interactive-demo-readable.svg)
+
 실제 모델과 함께 실행하기 (선택 사항이며, 모델이 없어도 시뮬레이션 결과는 동일합니다):
 
 ```bash
