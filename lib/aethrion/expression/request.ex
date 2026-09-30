@@ -12,7 +12,7 @@ defmodule Aethrion.Expression.Request do
     `:reply`, `:gossip`, `:comfort`)
   - `speaker` / `listener` - `%{id, name, profile, traits, mood}` (listener
     fields other than id and name may be nil for external actors such as `user`)
-  - `relationship` - speaker -> listener `%{affinity, trust, tension}`
+  - `relationship` - speaker -> listener `%{affinity, trust, tension, bond}`
   - `memories` - the speaker's selected memories as plain maps
   - `names` - display names for every id referenced by the memories
   - `tone` - the incoming tone for replies

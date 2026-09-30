@@ -458,6 +458,10 @@ defmodule Aethrion.Scenario do
     end
   end
 
+  defp actual(%{"relationship" => [from, to], "field" => "bond"}, state, _outputs) do
+    state |> State.get_relationship(from, to) |> Aethrion.Rules.Bond.derive(state)
+  end
+
   defp actual(%{"relationship" => [from, to], "field" => field}, state, _outputs) do
     state |> State.get_relationship(from, to) |> Map.from_struct() |> field_value(field)
   end

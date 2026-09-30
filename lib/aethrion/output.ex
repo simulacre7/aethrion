@@ -36,6 +36,14 @@ defmodule Aethrion.Output do
     %{type: :mood_changed, character_id: character_id, before: before_mood, after: after_mood}
   end
 
+  @doc """
+  The bond from `from` toward `to` changed (see `Aethrion.Rules.Bond`), for
+  example from `:friendly` to `:close`.
+  """
+  def bond_changed(from, to, before_bond, after_bond) do
+    %{type: :bond_changed, from: from, to: to, before: before_bond, after: after_bond}
+  end
+
   @doc "A character reached out on their own. `reason` is `:jealous`, `:lonely`, or `:curious`."
   def proactive_message(character_id, to, reason, text, opts \\ []) do
     %{

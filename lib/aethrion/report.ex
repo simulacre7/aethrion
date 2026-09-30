@@ -16,6 +16,7 @@ defmodule Aethrion.Report do
   """
 
   alias Aethrion.{Event, Output, Scenario, State}
+  alias Aethrion.Rules.Bond
 
   @metrics [
     {:loneliness, "Loneliness", "--series-1"},
@@ -525,7 +526,9 @@ defmodule Aethrion.Report do
             value = Map.fetch!(relationship, field)
             ["<td>", to_string(value), delta(value - Map.fetch!(start, field)), "</td>"]
           end),
-          "</tr>"
+          "<td>",
+          bond_change(Bond.derive(start, initial), Bond.derive(relationship, final)),
+          "</td></tr>"
         ]
       end)
 
@@ -539,7 +542,7 @@ defmodule Aethrion.Report do
       edges,
       node_marks,
       "</svg></div>",
-      "<details><summary>Table view</summary><div class=\"table-wrap\"><table><thead><tr><th></th><th scope=\"col\">Affinity</th><th scope=\"col\">Trust</th><th scope=\"col\">Tension</th></tr></thead><tbody>",
+      "<details><summary>Table view</summary><div class=\"table-wrap\"><table><thead><tr><th></th><th scope=\"col\">Affinity</th><th scope=\"col\">Trust</th><th scope=\"col\">Tension</th><th scope=\"col\">Bond</th></tr></thead><tbody>",
       rows,
       "</tbody></table></div></details></section>\n"
     ]
@@ -566,6 +569,7 @@ defmodule Aethrion.Report do
 
     title =
       "#{display(state, relationship.from)} → #{display(state, relationship.to)}: " <>
+        "#{Bond.derive(relationship, state)}; " <>
         "affinity #{relationship.affinity}, trust #{relationship.trust}, tension #{relationship.tension}"
 
     [
@@ -606,6 +610,21 @@ defmodule Aethrion.Report do
               |> Enum.filter(&(Output.expressive?(&1) and &1.event_id == event.id))
               |> Enum.map(&bubble(&1, step.state))
 
+            bonds =
+              step.outputs
+              |> Enum.filter(&(&1.type == :bond_changed and &1.event_id == event.id))
+              |> Enum.map(fn output ->
+                [
+                  "<p class=\"bond\">",
+                  esc(names.(output.from)),
+                  " → ",
+                  esc(names.(output.to)),
+                  ": ",
+                  bond_change(output.before, output.after),
+                  "</p>"
+                ]
+              end)
+
             cause =
               if event[:cause],
                 do: ["<span class=\"cause\">caused by ", esc(event.cause), "</span>"],
@@ -621,6 +640,7 @@ defmodule Aethrion.Report do
               cause,
               "</div>",
               outputs,
+              bonds,
               "</li>"
             ]
           end)
@@ -663,6 +683,14 @@ defmodule Aethrion.Report do
               [to_string(value), delta(value - base)]
             end)
           end) ++
+          [
+            branch_row("#{character.name} → you · bond", columns, fn branch ->
+              branch.state
+              |> State.get_relationship(character.id, "user")
+              |> Bond.derive(branch.state)
+              |> esc()
+            end)
+          ] ++
           Enum.map([:affinity, :trust, :tension], fn field ->
             branch_row("#{character.name} → you · #{field}", columns, fn branch ->
               value =
@@ -758,6 +786,11 @@ defmodule Aethrion.Report do
        "</tr>"
      ]}
   end
+
+  defp bond_change(same, same), do: esc(same)
+
+  defp bond_change(before, after_bond),
+    do: [esc(before), " → <strong>", esc(after_bond), "</strong>"]
 
   defp bubble(output, state) do
     {speaker, listener, tag} =
@@ -927,6 +960,8 @@ defmodule Aethrion.Report do
     .why{margin-top:12px;font-size:13px}
     .why ul{margin:6px 0 0;padding-left:18px;color:var(--text-secondary)}
     .why li{margin:3px 0}
+    .bond{margin:6px 0 0;font-size:13px;color:var(--text-secondary)}
+    .bond strong{color:var(--text-primary)}
     .remembers{margin:14px 0 6px;font-size:12px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em}
     .memories{list-style:none;padding:0;margin:0;display:grid;gap:6px;font-size:13px;color:var(--text-secondary)}
     .memory-kind{display:inline-block;min-width:74px;font-size:11px;color:var(--text-muted)}

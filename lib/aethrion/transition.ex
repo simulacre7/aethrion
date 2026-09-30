@@ -345,6 +345,9 @@ defmodule Aethrion.Transition do
   defp output_detail(%{type: :mood_changed, character_id: id, before: before, after: value}),
     do: " #{id} #{before}->#{value}"
 
+  defp output_detail(%{type: :bond_changed, from: from, to: to, before: before, after: value}),
+    do: " #{from}->#{to} #{before}->#{value}"
+
   defp output_detail(%{kind: kind, character_id: id, to: to}), do: " #{kind} #{id}->#{to}"
 
   defp output_detail(%{character_id: id, to: to} = output),

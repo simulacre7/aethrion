@@ -10,6 +10,7 @@ defmodule Aethrion.CLI.Display do
     "State" => {"STATE", :yellow},
     "Relation" => {"RELATION", :yellow},
     "Mood" => {"MOOD", :light_yellow},
+    "Bond" => {"BOND", :light_yellow},
     "Memory" => {"MEMORY", :green},
     "Output" => {"SAYS", :cyan},
     "Scene" => {"SCENE", :light_magenta},
@@ -100,8 +101,8 @@ defmodule Aethrion.CLI.Display do
     print_section("Relationships")
 
     print_lines([
-      [:faint, "  edge            affinity  trust  tension"],
-      [:faint, "  --------------  --------  -----  -------"]
+      [:faint, "  edge            affinity  trust  tension  bond"],
+      [:faint, "  --------------  --------  -----  -------  ---------"]
     ])
 
     state.relationships
@@ -113,7 +114,8 @@ defmodule Aethrion.CLI.Display do
         pad("#{relationship.from}->#{relationship.to}", 16),
         pad(to_string(relationship.affinity), 10),
         pad(to_string(relationship.trust), 7),
-        to_string(relationship.tension)
+        pad(to_string(relationship.tension), 9),
+        to_string(Aethrion.Rules.Bond.derive(relationship, state))
       ])
     end)
 
@@ -175,6 +177,9 @@ defmodule Aethrion.CLI.Display do
 
         %{type: :mood_changed, character_id: id, after: mood} ->
           "#{id} #{mood}"
+
+        %{type: :bond_changed, from: from, to: to, after: bond} ->
+          "#{from}->#{to} #{bond}"
 
         %{type: :character_interaction, kind: kind, character_id: id, to: to} ->
           "#{kind} #{id}->#{to}"

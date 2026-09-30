@@ -185,14 +185,14 @@
           "required": ["relationship", "field"],
           "properties": {
             "relationship": {"type": "array", "items": {"type": "string"}, "minItems": 2, "maxItems": 2},
-            "field": {"enum": ["affinity", "trust", "tension"]}
+            "field": {"enum": ["affinity", "trust", "tension", "bond"]}
           }
         },
         {
           "required": ["output"],
           "properties": {
             "output": {
-              "enum": ["proactive_message", "reply", "character_interaction", "mood_changed", "relationship_changed", "memory_created"]
+              "enum": ["proactive_message", "reply", "character_interaction", "mood_changed", "bond_changed", "relationship_changed", "memory_created"]
             }
           }
         },

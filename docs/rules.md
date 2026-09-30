@@ -151,6 +151,20 @@ Derives mood from numbers, first match wins:
 
 Emits `:mood_changed` when a mood changes.
 
+### `bond`
+
+Names what a directed relationship has become, first match wins:
+
+| bond | condition |
+| --- | --- |
+| `estranged` | tension >= 50 or affinity <= -30 |
+| `strained` | tension >= 20 or trust <= -10 |
+| `close` | affinity >= 60 and trust >= 50 |
+| `friendly` | affinity >= 25 and trust >= 15 |
+| `neutral` | otherwise |
+
+Bonds are derived, not stored (`Aethrion.Rules.Bond.derive/2`). After each event, every relationship the event changed is compared before and after; when its bond moved, the rule emits `:bond_changed` and logs `[Bond] Mina toward user: friendly -> strained`. Relationships an event did not touch never announce. Bonds appear in the CLI status table, reports, and expression requests.
+
 ### `proactive`
 
 Characters reach out to people (actors who are not characters, such as `user`) when pressure crosses a threshold. Jealousy goes to whoever gave the gift they saw, loneliness to the person they feel closest to, and curiosity to the person the news is about; a world with no relationships to people addresses `user`. A character sends at most one proactive message per simulated hour (`min_gap_hours`); the first matching reason wins.

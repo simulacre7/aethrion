@@ -186,7 +186,8 @@ user> why yuna jealousy
 
 user> context yuna
   Speaker: Yuna (Sensitive, observant, and afraid of being forgotten; traits: observant, sensitive; mood: neutral)
-  Speaker toward listener: affinity 38, trust 28, tension 0 (scale -100..100)
+  Speaker toward listener: friendly; affinity 38, trust 28, tension 0 (scale -100..100)
+  People: mina = Mina, user = you, yuna = Yuna
   Memories:
   - user apologized to yuna: sorry I forgot about you (experienced, importance 70)
   - yuna saw user give mina a flower. (observed, importance 60)

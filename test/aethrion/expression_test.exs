@@ -99,7 +99,7 @@ defmodule Aethrion.ExpressionTest do
 
     assert request.names["user"] == "you"
     assert request.listener == %{id: "user", name: "you", profile: nil, traits: [], mood: nil}
-    assert request.relationship == %{affinity: 38, trust: 20, tension: 0}
+    assert request.relationship == %{affinity: 38, trust: 20, tension: 0, bond: :friendly}
   end
 
   defp contains_state?(%Aethrion.State{}), do: true

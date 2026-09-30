@@ -89,6 +89,7 @@ Every output carries `:rule` and `:event_id`.
 | `:relationship_changed` | `from`, `to`, `delta` (applied, after clamping) |
 | `:memory_created` | `memory` |
 | `:mood_changed` | `character_id`, `before`, `after` |
+| `:bond_changed` | `from`, `to`, `before`, `after` (`:estranged`, `:strained`, `:neutral`, `:friendly`, `:close`) |
 | `:proactive_message` | `character_id`, `to`, `reason` (`:jealous`, `:lonely`, `:curious`), `text`, `memory_refs`, `context` |
 | `:reply` | `character_id`, `to`, `tone`, `text`, `memory_refs`, `context` |
 | `:character_interaction` | `kind` (`:gossip`, `:comfort`, `:together`), `character_id` (who started it), `to`, `text`, `memory_refs`, `context` |

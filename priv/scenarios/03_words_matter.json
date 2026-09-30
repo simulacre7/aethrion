@@ -86,6 +86,21 @@
         "kind": "experienced"
       },
       "count": 4
+    },
+    {
+      "output": "bond_changed",
+      "from": "mina",
+      "to": "user",
+      "after": "strained",
+      "count": 1
+    },
+    {
+      "relationship": [
+        "mina",
+        "user"
+      ],
+      "field": "bond",
+      "equals": "friendly"
     }
   ]
 }

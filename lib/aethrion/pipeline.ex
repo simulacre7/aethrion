@@ -49,7 +49,7 @@ defmodule Aethrion.Pipeline do
         comfort_offered: [Rules.Comfort],
         time_spent_together: [Rules.Together]
       },
-      reactive_rules: [Rules.Mood, Rules.Proactive]
+      reactive_rules: [Rules.Mood, Rules.Bond, Rules.Proactive]
     }
   end
 

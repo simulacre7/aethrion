@@ -142,7 +142,13 @@ defmodule Aethrion.Expression do
 
   defp relationship(state, from, to) do
     relationship = State.get_relationship(state, from, to)
-    %{affinity: relationship.affinity, trust: relationship.trust, tension: relationship.tension}
+
+    %{
+      affinity: relationship.affinity,
+      trust: relationship.trust,
+      tension: relationship.tension,
+      bond: Aethrion.Rules.Bond.derive(relationship, state)
+    }
   end
 
   defp memory_view(%Memory{} = memory) do

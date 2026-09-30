@@ -133,8 +133,10 @@ defmodule Aethrion.Expression.Prompt do
   defp traits([_ | _] = traits), do: "traits: " <> Enum.map_join(traits, ", ", &to_string/1)
   defp traits(_traits), do: nil
 
-  defp relationship_line(%{affinity: affinity, trust: trust, tension: tension}) do
-    "Speaker toward listener: affinity #{affinity}, trust #{trust}, tension #{tension} (scale -100..100)"
+  defp relationship_line(%{affinity: affinity, trust: trust, tension: tension} = relationship) do
+    bond = if relationship[:bond], do: "#{relationship.bond}; ", else: ""
+
+    "Speaker toward listener: #{bond}affinity #{affinity}, trust #{trust}, tension #{tension} (scale -100..100)"
   end
 
   defp relationship_line(_relationship), do: nil
