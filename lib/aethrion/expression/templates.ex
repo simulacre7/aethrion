@@ -11,7 +11,9 @@ defmodule Aethrion.Expression.Templates do
 
   @doc "Renders the fallback text for a request."
   def render(%Request{kind: :proactive_message, reason: :jealous} = request) do
-    case find_memory(request, &gift_to_someone_else?(&1, request.speaker.id)) do
+    between = {request.listener.id, request.speaker.id}
+
+    case find_memory(request, &gift_to_someone_else?(&1, between)) do
       %{"to" => to} ->
         "You looked happy with #{name(request, to)} earlier. I wondered if you forgot about me."
 
@@ -46,6 +48,13 @@ defmodule Aethrion.Expression.Templates do
           "#{name(request, source)} mentioned #{gift}. Is there something I should know?"
         end
 
+      %{source: source, data: %{"event" => "message_sent", "tone" => tone} = data}
+      when tone in ["hostile", "cold"] ->
+        said = if data["to"] == source, do: "", else: " to #{name(request, data["to"])}"
+
+        "#{name(request, source)} told me what you said#{said}. " <>
+          "That didn't sound like you. Is everything okay?"
+
       %{source: source} ->
         "#{name(request, source)} told me something about you. Want to tell me your side?"
 
@@ -70,6 +79,10 @@ defmodule Aethrion.Expression.Templates do
       [%{data: %{"event" => "gift_received"} = data} | _] ->
         "#{teller} tells #{listener} about the #{data["item"]} " <>
           "#{name(request, data["from"])} gave #{name(request, data["to"])}."
+
+      [%{data: %{"event" => "message_sent", "tone" => tone} = data} | _]
+      when tone in ["hostile", "cold"] ->
+        "#{teller} tells #{listener} what #{name(request, data["from"])} said: \"#{data["text"]}\""
 
       _ ->
         "#{teller} confides in #{listener}."
@@ -105,10 +118,11 @@ defmodule Aethrion.Expression.Templates do
     request.memories |> Enum.map(& &1.data) |> Enum.find(fun)
   end
 
-  defp gift_to_someone_else?(%{"event" => "gift_received", "to" => to}, speaker),
-    do: to != speaker
+  # The listener gave a gift to someone other than the speaker.
+  defp gift_to_someone_else?(%{"event" => "gift_received"} = data, {listener, speaker}),
+    do: data["from"] == listener and data["to"] != speaker
 
-  defp gift_to_someone_else?(_data, _speaker), do: false
+  defp gift_to_someone_else?(_data, _between), do: false
 
   defp warm_message?(%{"event" => "message_sent", "tone" => "warm"} = data, {from, to}),
     do: data["from"] == from and data["to"] == to

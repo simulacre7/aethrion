@@ -22,7 +22,7 @@ defmodule Aethrion.Persistence.JsonFile do
     with {:ok, path} <- fetch_path(opts),
          {:ok, json} <- File.read(path),
          {:ok, data} <- Jason.decode(json) do
-      {:ok, State.from_data(data)}
+      State.parse(data)
     end
   end
 

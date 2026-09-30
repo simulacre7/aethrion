@@ -20,12 +20,18 @@ The social layer release: characters now act on each other, every change is expl
 - **LLM adapters.** `Aethrion.LLM.Anthropic` (Messages API) and `Aethrion.LLM.OpenAICompatible` (OpenAI, vLLM, Ollama, llama.cpp), both on Erlang's `:httpc` with no new runtime dependencies.
 - **OTP runtime.** `Aethrion.World` supervises a runtime server, scheduler, and rendering tasks. `Aethrion.RuntimeServer` gains subscriptions, event history, snapshot persistence with restore on restart, and asynchronous rendering with timeouts and crash isolation.
 - **Tuning.** Every rule declares its numbers as `params`; a world can override them in `state.tuning` (`Aethrion.Tuning`), in saved state, or in a scenario's `"tuning"` block. `mix aethrion.rules` prints them.
-- **Scenarios.** JSON scenario files with a world, events, and expectations (`Aethrion.Scenario`, `mix aethrion.scenario`). Six bundled scenarios run in the test suite.
+- **Scenarios.** JSON scenario files with a world, events, and expectations (`Aethrion.Scenario`, `mix aethrion.scenario`). Seven bundled scenarios run in the test suite.
+- **Branches.** Scenarios can define alternative futures after shared events; each branch has its own expectations, and reports compare branches side by side. The bundled `07_crossroads.json` plays one moment four ways.
 - **Reports.** `mix aethrion.report` renders a scenario as a self-contained HTML report with charts, a relationship graph, and the timeline.
 - **Interactive CLI.** `say` (free text through intent interpretation), `message`, `comfort`, `why`, `context`, `timeline`, `rules`, `undo`, `save`, `load`, `record` (the session as a replayable scenario with snapshot expectations), and `--llm anthropic|openai`.
 - Property-based tests for bounds, determinism, persistence round trips, cascade causality, and the expression boundary.
 
 ### Changed
+
+- Characters do not proactively reach out to someone they feel tense toward (tension >= 10, `proactive.avoid_tension`); they confide in friends instead.
+- Untrusted data is validated: `Aethrion.State.parse/1` checks shapes, types, and ranges; unknown traits stay strings instead of becoming atoms; a runtime server refuses to start from an unreadable snapshot rather than overwrite it.
+- Hand-built event maps may omit `:at`, `:now`, `:observed_by`, and `:tone`. Inactive or blocked characters cannot comfort or gossip (`:unavailable_character`), and characters cannot give themselves gifts.
+- A rule that raises inside a `RuntimeServer` rejects the event with `:rule_failed` instead of crashing the world.
 
 - `Aethrion.Runtime.dispatch/2` is now `dispatch/3` with options; the two-argument form still works.
 - The v0.1 rule modules (`GiftRules`, `JealousyRules`, `LonelinessRules`, `ReconciliationRules`) are replaced by one module per rule under `Aethrion.Rules`.

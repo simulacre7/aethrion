@@ -205,7 +205,19 @@ defmodule Aethrion.State do
   end
 
   @doc """
+  Validates and rebuilds state from untrusted data (a save file, a scenario
+  world). Returns `{:ok, state}` or `{:error, {:invalid_state_data, path, reason}}`
+  instead of raising, and never creates atoms.
+  """
+  def parse(data) do
+    with :ok <- validate_data(data) do
+      {:ok, from_data(data)}
+    end
+  end
+
+  @doc """
   Rebuilds state from `to_data/1` output. Version 1 data (v0.1 alpha) is migrated.
+  Raises on malformed input; use `parse/1` for data you did not produce.
   """
   def from_data(data) when is_map(data) do
     new(
@@ -353,6 +365,125 @@ defmodule Aethrion.State do
     )
   end
 
+  ## Validation of untrusted data
+
+  @character_fields ~w(energy loneliness jealousy joy stress)
+  @relationship_fields ~w(affinity trust tension)
+
+  defp validate_data(data) when is_map(data) do
+    with :ok <- each(data, "characters", &validate_character/1),
+         :ok <- each(data, "relationships", &validate_relationship/1),
+         :ok <- each(data, "memories", &validate_memory/1),
+         :ok <- optional(data, "clock", &non_neg_integer?/1),
+         :ok <- optional(data, "seq", &non_neg_integer?/1),
+         :ok <- optional(data, "cooldowns", &cooldowns?/1) do
+      optional(data, "tuning", &is_map/1)
+    end
+  end
+
+  defp validate_data(_data), do: invalid([], "expected an object")
+
+  defp validate_character(character) do
+    with :ok <- required(character, "id", &non_empty_string?/1),
+         :ok <- required(character, "name", &is_binary/1),
+         :ok <- optional(character, "profile", &is_binary/1),
+         :ok <- optional(character, "traits", &string_list?/1),
+         :ok <- optional(character, "state", &is_map/1) do
+      state = Map.get(character, "state", %{})
+
+      with :ok <- optional(state, "mood", &is_binary/1),
+           :ok <- optional(state, "active", &is_boolean/1),
+           :ok <- optional(state, "blocked", &is_boolean/1),
+           :ok <- optional(state, "last_active_at", &(is_nil(&1) or is_binary(&1))) do
+        Enum.reduce_while(@character_fields, :ok, fn field, :ok ->
+          case optional(state, field, &in_range?(&1, 0, 100)) do
+            :ok -> {:cont, :ok}
+            error -> {:halt, prefix(error, ["state"])}
+          end
+        end)
+      end
+    end
+  end
+
+  defp validate_relationship(relationship) do
+    with :ok <- required(relationship, "from", &non_empty_string?/1),
+         :ok <- required(relationship, "to", &non_empty_string?/1),
+         :ok <- optional(relationship, "tags", &string_list?/1) do
+      Enum.reduce_while(@relationship_fields, :ok, fn field, :ok ->
+        case optional(relationship, field, &in_range?(&1, -100, 100)) do
+          :ok -> {:cont, :ok}
+          error -> {:halt, error}
+        end
+      end)
+    end
+  end
+
+  defp validate_memory(memory) do
+    with :ok <- required(memory, "id", &non_empty_string?/1),
+         :ok <- required(memory, "character_id", &non_empty_string?/1),
+         :ok <- required(memory, "content", &is_binary/1),
+         :ok <- required(memory, "importance", &in_range?(&1, 0, 100)),
+         :ok <- required(memory, "created_at", &is_binary/1),
+         :ok <- optional(memory, "strength", &(is_nil(&1) or in_range?(&1, 0, 100))),
+         :ok <- optional(memory, "created_tick", &non_neg_integer?/1),
+         :ok <- optional(memory, "related_characters", &string_list?/1),
+         :ok <- optional(memory, "shared_with", &string_list?/1),
+         :ok <- optional(memory, "kind", &is_binary/1),
+         :ok <- optional(memory, "topic", &(is_nil(&1) or is_binary(&1))),
+         :ok <- optional(memory, "source", &(is_nil(&1) or is_binary(&1))) do
+      optional(memory, "data", &is_map/1)
+    end
+  end
+
+  defp each(data, key, validate) do
+    case Map.get(data, key, []) do
+      list when is_list(list) ->
+        list
+        |> Enum.with_index()
+        |> Enum.reduce_while(:ok, fn {item, index}, :ok ->
+          result = if is_map(item), do: validate.(item), else: invalid([], "expected an object")
+
+          case result do
+            :ok -> {:cont, :ok}
+            error -> {:halt, prefix(error, [key, index])}
+          end
+        end)
+
+      _other ->
+        invalid([key], "expected a list")
+    end
+  end
+
+  defp required(map, key, valid?) do
+    case Map.fetch(map, key) do
+      {:ok, value} -> check(valid?.(value), key)
+      :error -> invalid([key], "is required")
+    end
+  end
+
+  defp optional(map, key, valid?) do
+    case Map.fetch(map, key) do
+      {:ok, value} -> check(valid?.(value), key)
+      :error -> :ok
+    end
+  end
+
+  defp check(true, _key), do: :ok
+  defp check(false, key), do: invalid([key], "has an invalid value")
+
+  defp invalid(path, reason), do: {:error, {:invalid_state_data, path, reason}}
+
+  defp prefix({:error, {:invalid_state_data, path, reason}}, parents),
+    do: {:error, {:invalid_state_data, parents ++ path, reason}}
+
+  defp non_empty_string?(value), do: is_binary(value) and value != ""
+  defp non_neg_integer?(value), do: is_integer(value) and value >= 0
+  defp in_range?(value, min, max), do: is_integer(value) and value >= min and value <= max
+  defp string_list?(value), do: is_list(value) and Enum.all?(value, &is_binary/1)
+
+  defp cooldowns?(value),
+    do: is_map(value) and Enum.all?(value, fn {k, v} -> is_binary(k) and non_neg_integer?(v) end)
+
   # Enumerated values are converted through a whitelist so untrusted JSON cannot
   # create arbitrary atoms.
   defp enum_from_data(value, allowed, default) when is_binary(value) do
@@ -361,8 +492,15 @@ defmodule Aethrion.State do
 
   defp enum_from_data(_value, _allowed, default), do: default
 
-  # Traits and tags are open-ended descriptive atoms authored by the host.
-  defp trait_from_data(value) when is_binary(value), do: String.to_atom(value)
+  # Traits and tags are descriptive. Values that match an existing atom (such
+  # as the traits rules understand) become atoms; anything else stays a string,
+  # so untrusted data cannot grow the atom table.
+  defp trait_from_data(value) when is_binary(value) do
+    String.to_existing_atom(value)
+  rescue
+    ArgumentError -> value
+  end
+
   defp trait_from_data(value) when is_atom(value), do: value
 
   defp atom_to_string(value) when is_atom(value), do: Atom.to_string(value)

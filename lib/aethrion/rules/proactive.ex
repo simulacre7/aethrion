@@ -3,6 +3,9 @@ defmodule Aethrion.Rules.Proactive do
   Characters reach out to the user on their own when social pressure crosses a
   threshold. At most one proactive message per character per event.
 
+  Characters do not reach out to someone they currently feel tense toward
+  (tension >= 10); they turn to friends instead.
+
   | reason     | condition                                                  | cooldown |
   | ---------- | ---------------------------------------------------------- | -------- |
   | `:jealous` | jealousy >= 15 and jealousy + loneliness >= 45             | 24h      |
@@ -19,7 +22,8 @@ defmodule Aethrion.Rules.Proactive do
       pressure_threshold: 45,
       loneliness_threshold: 60,
       cooldown_hours: 24,
-      curious_affinity: 30
+      curious_affinity: 30,
+      avoid_tension: 10
     ]
 
   alias Aethrion.{Character, Expression, Memories, Memory, Output, State, Transition}
@@ -33,6 +37,10 @@ defmodule Aethrion.Rules.Proactive do
     transition.state
     |> State.sorted_characters()
     |> Enum.filter(&Character.can_act?/1)
+    |> Enum.reject(fn character ->
+      State.get_relationship(transition.state, character.id, @recipient).tension >=
+        params.avoid_tension
+    end)
     |> Enum.reduce(transition, fn character, transition ->
       case first_trigger(transition.state, character, params) do
         nil -> transition

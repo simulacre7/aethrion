@@ -105,6 +105,26 @@ defmodule Aethrion.Event do
   end
 
   @doc """
+  Fills optional fields that hosts may omit when building event maps by hand:
+  `:at` (and `:now` for ticks) default to `"unspecified"`, `:observed_by` to
+  `[]`, and `:tone` to `:neutral`. Unknown types pass through unchanged.
+  """
+  def normalize(%{type: :time_tick} = event), do: Map.put_new(event, :now, "unspecified")
+
+  def normalize(%{type: :gift_received} = event) do
+    event |> Map.put_new(:at, "unspecified") |> Map.put_new(:observed_by, [])
+  end
+
+  def normalize(%{type: :message_sent} = event) do
+    event |> Map.put_new(:at, "unspecified") |> Map.put_new(:tone, :neutral)
+  end
+
+  def normalize(%{type: type} = event) when type in @types,
+    do: Map.put_new(event, :at, "unspecified")
+
+  def normalize(event), do: event
+
+  @doc """
   One-line human-readable description of an event.
   """
   def describe(event, names \\ &Function.identity/1)

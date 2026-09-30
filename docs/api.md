@@ -104,7 +104,16 @@ Every output carries `:rule` and `:event_id`.
 }
 ```
 
-Codes: `:invalid_state`, `:invalid_event`, `:unknown_character`, `:unsupported_event`.
+| code | meaning |
+| --- | --- |
+| `:invalid_state` | the state is not an `Aethrion.State` |
+| `:invalid_event` | a field is missing or has the wrong type or value |
+| `:unknown_character` | an id does not name a character in the world |
+| `:unavailable_character` | an inactive or blocked character was asked to comfort or gossip |
+| `:unsupported_event` | no rules are registered for the event type |
+| `:rule_failed` | (RuntimeServer only) a rule raised; the event was rejected and state kept |
+
+Optional fields may be omitted from hand-built event maps: `:at` and `:now` default to `"unspecified"`, `:observed_by` to `[]`, and `:tone` to `:neutral`.
 
 ## Rules and pipeline
 
@@ -227,7 +236,7 @@ Subscriber messages:
 {:ok, loaded} = Aethrion.Persistence.JsonFile.load(path: "tmp/aethrion.json")
 ```
 
-`Aethrion.State.to_data/1` writes format version 2. `from_data/1` also reads v0.1 data. `Aethrion.Persistence.InMemory` is the reference adapter; implement `Aethrion.Persistence` for your own storage.
+`Aethrion.State.to_data/1` writes format version 2. `from_data/1` also reads v0.1 data. For data you did not produce, use `Aethrion.State.parse/1`, which validates shapes, types, and ranges and returns `{:error, {:invalid_state_data, path, reason}}` instead of raising. `JsonFile.load/1` uses it. A runtime server whose snapshot exists but cannot be read refuses to start rather than overwrite it. `Aethrion.Persistence.InMemory` is the reference adapter; implement `Aethrion.Persistence` for your own storage.
 
 ## Scenarios and reports
 

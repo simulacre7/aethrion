@@ -203,7 +203,7 @@ TODO:
 - [x] Run bundled scenarios as tests.
 - [x] Render scenarios as self-contained HTML reports.
 - [x] Add `why`, `context`, `timeline`, and `undo` to the interactive CLI.
-- [ ] Add a scenario diff tool that compares two branches of the same world.
+- [x] Compare branches of the same world side by side (scenario branches and report comparison).
 - [x] Record interactive sessions as scenario files.
 
 ## Near-Term Priority
@@ -211,8 +211,7 @@ TODO:
 Recommended next tasks:
 
 1. Add memory consolidation (many small memories -> one summary memory, deterministically).
-2. Compare branches of the same world side by side.
-3. Publish to Hex once the event and output shapes settle.
-4. Explore per-character processes only if a concrete runtime need appears.
+2. Publish to Hex once the event and output shapes settle.
+3. Explore per-character processes only if a concrete runtime need appears.
 
 Phoenix, vector databases, and distributed BEAM remain out of scope until the core runtime interface is stable.

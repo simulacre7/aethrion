@@ -32,6 +32,26 @@ defmodule Aethrion.Scenario do
   example `{"autonomy": {"trust_threshold": 15}}` (see `Aethrion.Tuning`).
   Unknown rules or parameters are rejected.
 
+  ## Branches
+
+  A scenario may continue into alternative futures after its shared events:
+
+  ```json
+  "branches": [
+    {"name": "Ignore Yuna", "events": [{"type": "time_tick", "hours": 2}],
+     "expect": [{"output": "proactive_message", "character": "yuna", "count": 1}]},
+    {"name": "Apologize", "events": [{"type": "apology_offered", "from": "user", "to": "yuna", "reason": "sorry"},
+                                     {"type": "time_tick", "hours": 2}],
+     "expect": [{"output": "proactive_message", "count": 0}]}
+  ]
+  ```
+
+  Every branch starts from the state after the shared events. Branch
+  expectations are checked against that branch's final state and the outputs
+  produced after the split.
+
+  ## Expectations
+
   Expectations select a value and compare it with one of `equals`,
   `at_least`, or `at_most`. Output and memory expectations count matches;
   without a comparison they pass when at least one matches (`count` is
@@ -46,7 +66,15 @@ defmodule Aethrion.Scenario do
           state: State.t(),
           events: [map()],
           expectations: [map()],
+          branches: [branch()],
           path: String.t() | nil
+        }
+
+  @type branch :: %{
+          name: String.t(),
+          description: String.t(),
+          events: [map()],
+          expectations: [map()]
         }
 
   defstruct name: "Untitled scenario",
@@ -54,6 +82,7 @@ defmodule Aethrion.Scenario do
             state: nil,
             events: [],
             expectations: [],
+            branches: [],
             path: nil
 
   defmodule Result do
@@ -71,10 +100,21 @@ defmodule Aethrion.Scenario do
             state: Aethrion.State.t(),
             steps: [Aethrion.Step.t()],
             outputs: [map()],
+            checks: [check()],
+            branches: [branch()]
+          }
+
+    @typedoc "The outcome of one branch, run from the state after the shared events."
+    @type branch :: %{
+            name: String.t(),
+            description: String.t(),
+            state: Aethrion.State.t(),
+            steps: [Aethrion.Step.t()],
+            outputs: [map()],
             checks: [check()]
           }
 
-    defstruct [:scenario, :state, steps: [], outputs: [], checks: []]
+    defstruct [:scenario, :state, steps: [], outputs: [], checks: [], branches: []]
   end
 
   @doc "Loads a scenario from a JSON file."
@@ -94,10 +134,13 @@ defmodule Aethrion.Scenario do
 
   @doc "Builds a scenario from decoded JSON data."
   def from_data(%{} = data) do
-    with {:ok, state} <- world(Map.get(data, "world", "demo")),
+    with :ok <- string_field(data, "name"),
+         :ok <- string_field(data, "description"),
+         {:ok, state} <- world(Map.get(data, "world", "demo")),
          {:ok, tuning} <- Aethrion.Tuning.from_data(Map.get(data, "tuning")),
          {:ok, events} <- events(Map.get(data, "events", [])),
-         {:ok, expectations} <- expectations(Map.get(data, "expect", [])) do
+         {:ok, expectations} <- expectations(Map.get(data, "expect", [])),
+         {:ok, branches} <- branches(Map.get(data, "branches", [])) do
       {:ok,
        %__MODULE__{
          name: Map.get(data, "name", "Untitled scenario"),
@@ -107,7 +150,8 @@ defmodule Aethrion.Scenario do
            | tuning: Map.merge(state.tuning, tuning, fn _rule, a, b -> Map.merge(a, b) end)
          },
          events: events,
-         expectations: expectations
+         expectations: expectations,
+         branches: branches
        }}
     end
   end
@@ -117,8 +161,9 @@ defmodule Aethrion.Scenario do
   @doc """
   Runs the scenario and evaluates its expectations.
 
-  Returns `{:ok, %Result{}}`, or `{:error, {index, error}}` when an event is
-  rejected by validation. Options are passed to `Aethrion.Runtime.step/3`.
+  Returns `{:ok, %Result{}}`, or `{:error, {index, error}}` when a shared
+  event is rejected by validation (`{:error, {{branch_name, index}, error}}`
+  for a branch event). Options are passed to `Aethrion.Runtime.step/3`.
   """
   def run(%__MODULE__{} = scenario, opts \\ []) do
     case Runtime.run(scenario.state, scenario.events, opts) do
@@ -126,16 +171,62 @@ defmodule Aethrion.Scenario do
         outputs = Enum.flat_map(steps, & &1.outputs)
         checks = Enum.map(scenario.expectations, &check(&1, state, outputs))
 
-        {:ok,
-         %Result{scenario: scenario, state: state, steps: steps, outputs: outputs, checks: checks}}
+        with {:ok, branches} <- run_branches(scenario.branches, state, opts) do
+          {:ok,
+           %Result{
+             scenario: scenario,
+             state: state,
+             steps: steps,
+             outputs: outputs,
+             checks: checks,
+             branches: branches
+           }}
+        end
 
       {:error, {index, error, _steps}} ->
         {:error, {index, error}}
     end
   end
 
-  @doc "Returns true when every expectation passed."
-  def passed?(%Result{checks: checks}), do: Enum.all?(checks, & &1.passed?)
+  defp run_branches(branches, state, opts) do
+    Enum.reduce_while(branches, {:ok, []}, fn branch, {:ok, acc} ->
+      case Runtime.run(state, branch.events, opts) do
+        {:ok, final, steps} ->
+          outputs = Enum.flat_map(steps, & &1.outputs)
+
+          result = %{
+            name: branch.name,
+            description: branch.description,
+            state: final,
+            steps: steps,
+            outputs: outputs,
+            checks: Enum.map(branch.expectations, &check(&1, final, outputs))
+          }
+
+          {:cont, {:ok, [result | acc]}}
+
+        {:error, {index, error, _steps}} ->
+          {:halt, {:error, {{branch.name, index}, error}}}
+      end
+    end)
+    |> case do
+      {:ok, results} -> {:ok, Enum.reverse(results)}
+      error -> error
+    end
+  end
+
+  @doc "Returns true when every expectation, including every branch's, passed."
+  def passed?(%Result{checks: checks, branches: branches}) do
+    Enum.all?(checks ++ Enum.flat_map(branches, & &1.checks), & &1.passed?)
+  end
+
+  @doc "Every check in the result: shared first, then each branch's, tagged with the branch name."
+  def all_checks(%Result{checks: checks, branches: branches}) do
+    Enum.map(checks, &Map.put(&1, :branch, nil)) ++
+      Enum.flat_map(branches, fn branch ->
+        Enum.map(branch.checks, &Map.put(&1, :branch, branch.name))
+      end)
+  end
 
   @doc """
   Builds scenario data (ready for `Jason.encode!/2`) from a recorded session.
@@ -203,9 +294,10 @@ defmodule Aethrion.Scenario do
   defp world("demo"), do: {:ok, State.demo()}
 
   defp world(%{"characters" => characters} = data) when is_list(characters) do
-    {:ok, State.from_data(data)}
-  rescue
-    error in [KeyError] -> {:error, {:invalid_world, Exception.message(error)}}
+    case State.parse(data) do
+      {:ok, state} -> {:ok, state}
+      {:error, {:invalid_state_data, path, reason}} -> {:error, {:invalid_world, path, reason}}
+    end
   end
 
   defp world(other), do: {:error, {:invalid_world, other}}
@@ -226,6 +318,42 @@ defmodule Aethrion.Scenario do
   end
 
   defp events(_list), do: {:error, :events_must_be_a_list}
+
+  defp string_field(data, key) do
+    case Map.get(data, key) do
+      nil -> :ok
+      value when is_binary(value) -> :ok
+      value -> {:error, {:invalid_field, key, value}}
+    end
+  end
+
+  defp branches(list) when is_list(list) do
+    list
+    |> Enum.with_index()
+    |> Enum.reduce_while({:ok, []}, fn {data, index}, {:ok, acc} ->
+      with %{} <- data,
+           {:ok, events} <- events(Map.get(data, "events", [])),
+           {:ok, expectations} <- expectations(Map.get(data, "expect", [])) do
+        branch = %{
+          name: Map.get(data, "name", "Branch #{index + 1}"),
+          description: Map.get(data, "description", ""),
+          events: events,
+          expectations: expectations
+        }
+
+        {:cont, {:ok, [branch | acc]}}
+      else
+        {:error, reason} -> {:halt, {:error, {:invalid_branch, index, reason}}}
+        _other -> {:halt, {:error, {:invalid_branch, index, :not_an_object}}}
+      end
+    end)
+    |> case do
+      {:ok, branches} -> {:ok, Enum.reverse(branches)}
+      error -> error
+    end
+  end
+
+  defp branches(_list), do: {:error, :branches_must_be_a_list}
 
   defp expectations(list) when is_list(list) do
     case Enum.find(list, &(not valid_expectation?(&1))) do
@@ -348,28 +476,35 @@ defmodule Aethrion.Scenario do
       expectation
       |> Map.drop(["output", "count", "equals", "at_least", "at_most"])
       |> Enum.sort()
-      |> Enum.map_join(" ", fn {key, value} -> "#{key}=#{value}" end)
+      |> Enum.map_join(" ", fn {key, value} -> "#{key}=#{show(value)}" end)
 
     String.trim("#{type} #{filters}") <> " " <> count_comparison(expectation)
   end
 
   def describe(%{"memory" => filters} = expectation) do
     filters =
-      filters |> Enum.sort() |> Enum.map_join(" ", fn {key, value} -> "#{key}=#{value}" end)
+      filters |> Enum.sort() |> Enum.map_join(" ", fn {key, value} -> "#{key}=#{show(value)}" end)
 
     "memory #{filters} " <> count_comparison(expectation)
   end
 
-  def describe(%{"clock" => value}), do: "clock == #{value}"
+  def describe(%{"clock" => value}), do: "clock == #{show(value)}"
 
-  defp comparison(%{"equals" => value}), do: "== #{value}"
-  defp comparison(%{"at_least" => value}), do: ">= #{value}"
-  defp comparison(%{"at_most" => value}), do: "<= #{value}"
+  defp comparison(%{"equals" => value}), do: "== #{show(value)}"
+  defp comparison(%{"at_least" => value}), do: ">= #{show(value)}"
+  defp comparison(%{"at_most" => value}), do: "<= #{show(value)}"
   defp comparison(_expectation), do: "(no comparison)"
 
-  defp count_comparison(%{"count" => value}), do: "count == #{value}"
-  defp count_comparison(%{"equals" => value}), do: "count == #{value}"
-  defp count_comparison(%{"at_least" => value}), do: "count >= #{value}"
-  defp count_comparison(%{"at_most" => value}), do: "count <= #{value}"
+  defp count_comparison(%{"count" => value}), do: "count == #{show(value)}"
+  defp count_comparison(%{"equals" => value}), do: "count == #{show(value)}"
+  defp count_comparison(%{"at_least" => value}), do: "count >= #{show(value)}"
+  defp count_comparison(%{"at_most" => value}), do: "count <= #{show(value)}"
   defp count_comparison(_expectation), do: "count >= 1"
+
+  defp show(value) when is_binary(value), do: value
+
+  defp show(value) when is_number(value) or is_boolean(value) or is_nil(value),
+    do: to_string(value)
+
+  defp show(value), do: inspect(value)
 end

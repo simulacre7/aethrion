@@ -19,6 +19,7 @@ mix aethrion.report priv/scenarios/01_the_flower.json     # HTML report in tmp/
 | `04_rumor_mill.json` | A custom world where one witnessed gift travels three hops along lines of trust and dies out. |
 | `05_long_silence.json` | Days without contact: lonely messages quote kind words while remembered, then the memory fades. |
 | `06_small_town.json` | The rumor mill's rules with small-town tuning: news spreads through acquaintances and travels four hops. |
+| `07_crossroads.json` | One moment, four branches: say nothing, apologize, kind words, or snap. Compared side by side in the report. |
 
 ## Format
 
@@ -75,6 +76,23 @@ An optional `tuning` object overrides rule parameters for this world. Unknown ru
 | `comfort_offered` | `from`, `to`, `at` |
 
 Events are validated when they run. A rejected event stops the scenario and reports its index.
+
+### Branches
+
+After the shared `events`, a scenario may define alternative futures. Each branch starts from the state after the shared events; its expectations are checked against its own final state and the outputs produced after the split.
+
+```json
+"branches": [
+  {"name": "Say nothing", "events": [{"type": "time_tick", "hours": 2}],
+   "expect": [{"output": "proactive_message", "character": "yuna", "count": 1}]},
+  {"name": "Apologize",
+   "events": [{"type": "apology_offered", "from": "user", "to": "yuna", "reason": "sorry"},
+              {"type": "time_tick", "hours": 2}],
+   "expect": [{"output": "proactive_message", "count": 0}]}
+]
+```
+
+The HTML report adds a comparison table (values that differ between branches first, identical ones folded away) and each branch's timeline.
 
 ### Expectations
 

@@ -132,6 +132,8 @@ Characters reach out to the user when pressure crosses a threshold. At most one 
 | `lonely` | loneliness >= 60 and jealousy < 15 | 24 simulated hours |
 | `curious` | holds secondhand news involving the user, and is `:playful` or has affinity >= 30 toward the user | once per topic |
 
+Characters do not reach out to someone they feel tense toward (tension >= 10, parameter `avoid_tension`); they confide in friends instead.
+
 Each message carries fallback text from deterministic templates, the ids of the memories it references, and a read-only context snapshot for optional LLM rendering (see [expression.md](expression.md)).
 
 ## Tuning

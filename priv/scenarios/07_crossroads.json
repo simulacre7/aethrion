@@ -1,0 +1,195 @@
+{
+  "name": "Crossroads",
+  "description": "Yuna has just watched the user give Mina a flower. Four ways the next two hours could go, from the same moment. Only the user's choice differs; everything else follows from the rules.",
+  "world": "demo",
+  "events": [
+    {
+      "type": "gift_received",
+      "from": "user",
+      "to": "mina",
+      "item": "flower",
+      "observed_by": [
+        "yuna"
+      ],
+      "at": "day1:10:00"
+    }
+  ],
+  "expect": [
+    {
+      "character": "yuna",
+      "field": "mood",
+      "equals": "jealous"
+    }
+  ],
+  "branches": [
+    {
+      "name": "Say nothing",
+      "description": "The user moves on. Yuna reaches out, confides in Haru, and Haru comforts her.",
+      "events": [
+        {
+          "type": "time_tick",
+          "now": "day1:12:00",
+          "hours": 2
+        }
+      ],
+      "expect": [
+        {
+          "output": "proactive_message",
+          "character": "yuna",
+          "reason": "jealous",
+          "count": 1
+        },
+        {
+          "output": "character_interaction",
+          "kind": "comfort",
+          "count": 1
+        },
+        {
+          "relationship": [
+            "yuna",
+            "user"
+          ],
+          "field": "trust",
+          "equals": 20
+        }
+      ]
+    },
+    {
+      "name": "Apologize",
+      "description": "The user acknowledges Yuna before she has to ask.",
+      "events": [
+        {
+          "type": "apology_offered",
+          "from": "user",
+          "to": "yuna",
+          "reason": "I should have checked in with you too.",
+          "at": "day1:10:05"
+        },
+        {
+          "type": "time_tick",
+          "now": "day1:12:00",
+          "hours": 2
+        }
+      ],
+      "expect": [
+        {
+          "output": "proactive_message",
+          "count": 0
+        },
+        {
+          "character": "yuna",
+          "field": "jealousy",
+          "equals": 0
+        },
+        {
+          "relationship": [
+            "yuna",
+            "user"
+          ],
+          "field": "trust",
+          "equals": 28
+        }
+      ]
+    },
+    {
+      "name": "Kind words",
+      "description": "A warm message eases Yuna's loneliness enough that she does not reach out, but it does not touch her jealousy: she still confides in Haru, who comforts her.",
+      "events": [
+        {
+          "type": "message_sent",
+          "from": "user",
+          "to": "yuna",
+          "text": "You matter to me too, you know.",
+          "tone": "warm",
+          "at": "day1:10:05"
+        },
+        {
+          "type": "time_tick",
+          "now": "day1:12:00",
+          "hours": 2
+        }
+      ],
+      "expect": [
+        {
+          "output": "reply",
+          "character": "yuna",
+          "text": "...Thanks. I guess I needed to hear that.",
+          "count": 1
+        },
+        {
+          "character": "yuna",
+          "field": "jealousy",
+          "at_least": 10
+        },
+        {
+          "relationship": [
+            "yuna",
+            "user"
+          ],
+          "field": "affinity",
+          "equals": 42
+        },
+        {
+          "output": "proactive_message",
+          "character": "yuna",
+          "count": 0
+        }
+      ]
+    },
+    {
+      "name": "Snap at her",
+      "description": "The user tells Yuna to stop being dramatic. Hurt and tense, she does not reach out to the user; she tells Haru what was said, and Haru checks in with the user about it.",
+      "events": [
+        {
+          "type": "message_sent",
+          "from": "user",
+          "to": "yuna",
+          "text": "Stop being so dramatic.",
+          "tone": "hostile",
+          "at": "day1:10:05"
+        },
+        {
+          "type": "time_tick",
+          "now": "day1:12:00",
+          "hours": 2
+        }
+      ],
+      "expect": [
+        {
+          "relationship": [
+            "yuna",
+            "user"
+          ],
+          "field": "tension",
+          "equals": 10
+        },
+        {
+          "relationship": [
+            "yuna",
+            "user"
+          ],
+          "field": "trust",
+          "equals": 14
+        },
+        {
+          "output": "proactive_message",
+          "character": "yuna",
+          "count": 0
+        },
+        {
+          "output": "character_interaction",
+          "kind": "gossip",
+          "from": "yuna",
+          "count": 1
+        },
+        {
+          "output": "proactive_message",
+          "character": "haru",
+          "reason": "curious",
+          "text": "Yuna told me what you said. That didn't sound like you. Is everything okay?",
+          "count": 1
+        }
+      ]
+    }
+  ]
+}

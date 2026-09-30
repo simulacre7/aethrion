@@ -26,6 +26,7 @@ defmodule Aethrion.Validator do
   defp validate_event(state, %{type: :gift_received} = event) do
     with :ok <- require_string(event, :from),
          :ok <- require_character(state, event, :to),
+         :ok <- require_distinct(event),
          :ok <- require_string(event, :item),
          :ok <- require_observers(state, Map.get(event, :observed_by, [])) do
       :ok
@@ -69,7 +70,8 @@ defmodule Aethrion.Validator do
   defp validate_event(state, %{type: :comfort_offered} = event) do
     with :ok <- require_string(event, :from),
          :ok <- require_character(state, event, :to),
-         :ok <- require_distinct(event) do
+         :ok <- require_distinct(event),
+         :ok <- require_available(state, event.from, :from) do
       :ok
     end
   end
@@ -78,6 +80,8 @@ defmodule Aethrion.Validator do
     with :ok <- require_character(state, event, :from),
          :ok <- require_character(state, event, :to),
          :ok <- require_distinct(event),
+         :ok <- require_available(state, event.from, :from),
+         :ok <- require_available(state, event.to, :to),
          :ok <- require_owned_memory(state, event) do
       :ok
     end
@@ -107,6 +111,26 @@ defmodule Aethrion.Validator do
          field: field,
          character_id: character_id
        })}
+    end
+  end
+
+  # Characters who are inactive or blocked cannot initiate or join interactions.
+  # External actors such as "user" are always available.
+  defp require_available(state, id, field) do
+    case State.character(state, id) do
+      %Aethrion.Character{} = character ->
+        if Aethrion.Character.can_act?(character) do
+          :ok
+        else
+          {:error,
+           error(:unavailable_character, "#{inspect(id)} is inactive or blocked", %{
+             field: field,
+             character_id: id
+           })}
+        end
+
+      nil ->
+        :ok
     end
   end
 

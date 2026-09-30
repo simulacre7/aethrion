@@ -95,8 +95,18 @@ defmodule Aethrion.Expression do
     kind, reason -> {:error, {kind, reason}}
   end
 
-  defp apply_rendering(output, adapter, {:ok, text}) when is_binary(text) and text != "" do
-    Map.merge(output, %{text: String.trim(text), expression: %{status: :ok, adapter: adapter}})
+  defp apply_rendering(output, adapter, {:ok, text}) when is_binary(text) do
+    case String.trim(text) do
+      "" ->
+        Map.put(output, :expression, %{
+          status: :fallback,
+          adapter: adapter,
+          reason: :empty_response
+        })
+
+      text ->
+        Map.merge(output, %{text: text, expression: %{status: :ok, adapter: adapter}})
+    end
   end
 
   defp apply_rendering(output, adapter, {:error, reason}) do

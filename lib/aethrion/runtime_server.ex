@@ -123,7 +123,7 @@ defmodule Aethrion.RuntimeServer do
 
   @impl true
   def handle_call({:step, event}, _from, server) do
-    case Runtime.step(server.world, event, pipeline: server.pipeline) do
+    case safe_step(server, event) do
       {:ok, %Step{} = step} ->
         server =
           %{server | world: step.state}
@@ -214,14 +214,49 @@ defmodule Aethrion.RuntimeServer do
 
   ## Helpers
 
+  # A crashing rule (for example a custom rule with a bug) must not take down
+  # the world and its in-memory state. The event is rejected instead.
+  defp safe_step(server, event) do
+    Runtime.step(server.world, event, pipeline: server.pipeline)
+  rescue
+    exception ->
+      Logger.error(
+        "Aethrion.RuntimeServer rejected an event after a rule raised: " <>
+          Exception.format(:error, exception, __STACKTRACE__)
+      )
+
+      {:error,
+       %Aethrion.Error{
+         code: :rule_failed,
+         message: "a rule raised while processing the event: #{Exception.message(exception)}",
+         details: %{exception: exception.__struct__}
+       }}
+  end
+
   defp initial_world(opts) do
     fallback = Keyword.get(opts, :initial_state, Runtime.demo_state())
 
     case Keyword.get(opts, :persistence) do
       {adapter, persistence_opts} ->
         case adapter.load(persistence_opts) do
-          {:ok, %State{} = state} -> {:ok, state}
-          {:error, _reason} -> validate_state(fallback)
+          {:ok, %State{} = state} ->
+            {:ok, state}
+
+          # No snapshot yet: start fresh.
+          {:error, :enoent} ->
+            validate_state(fallback)
+
+          {:error, :missing_state} ->
+            validate_state(fallback)
+
+          # A snapshot exists but cannot be read. Refuse to start rather than
+          # overwrite it with a fresh world on the next dispatch.
+          {:error, reason} ->
+            Logger.error(
+              "Aethrion.RuntimeServer could not restore its snapshot: #{inspect(reason)}"
+            )
+
+            {:error, {:invalid_snapshot, reason}}
         end
 
       nil ->

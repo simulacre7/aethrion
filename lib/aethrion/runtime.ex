@@ -49,6 +49,7 @@ defmodule Aethrion.Runtime do
   """
   def step(state, event, opts \\ []) do
     pipeline = Keyword.get(opts, :pipeline, Pipeline.default())
+    event = Aethrion.Event.normalize(event)
 
     with :ok <- Validator.validate_dispatch(state, event, pipeline) do
       limits = %{
@@ -139,9 +140,9 @@ defmodule Aethrion.Runtime do
         {queue, drop(acc, event, "cascade event limit #{limits.max_events} reached")}
 
       true ->
-        case Validator.validate_dispatch(acc.state, event, pipeline) do
+        case Validator.validate_dispatch(acc.state, Aethrion.Event.normalize(event), pipeline) do
           :ok ->
-            {state, event} = assign_id(acc.state, event)
+            {state, event} = assign_id(acc.state, Aethrion.Event.normalize(event))
             {:queue.in({event, depth}, queue), %{acc | state: state}}
 
           {:error, %Error{message: message}} ->

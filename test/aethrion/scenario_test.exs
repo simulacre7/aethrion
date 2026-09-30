@@ -128,4 +128,88 @@ defmodule Aethrion.ScenarioTest do
     assert Scenario.passed?(result)
     assert result.state == final
   end
+
+  describe "branches" do
+    defp branching(branches) do
+      {:ok, scenario} =
+        Scenario.from_data(%{
+          "events" => [
+            %{
+              "type" => "gift_received",
+              "from" => "user",
+              "to" => "mina",
+              "item" => "flower",
+              "observed_by" => ["yuna"]
+            }
+          ],
+          "branches" => branches
+        })
+
+      scenario
+    end
+
+    test "every branch starts from the shared state and is checked on its own outputs" do
+      scenario =
+        branching([
+          %{
+            "name" => "ignore",
+            "events" => [%{"type" => "time_tick", "hours" => 2}],
+            "expect" => [%{"output" => "proactive_message", "character" => "yuna", "count" => 1}]
+          },
+          %{
+            "name" => "apologize",
+            "events" => [
+              %{
+                "type" => "apology_offered",
+                "from" => "user",
+                "to" => "yuna",
+                "reason" => "sorry"
+              },
+              %{"type" => "time_tick", "hours" => 2}
+            ],
+            "expect" => [%{"output" => "proactive_message", "count" => 0}]
+          }
+        ])
+
+      assert {:ok, result} = Scenario.run(scenario)
+      assert [%{name: "ignore"} = ignore, %{name: "apologize"} = apologize] = result.branches
+      assert Scenario.passed?(result)
+
+      # Branches do not see each other's events, and both continue from e1.
+      assert [%{event: %{id: "e2"}}] = ignore.steps
+      assert [%{event: %{id: "e2"}}, %{event: %{id: "e3"}}] = apologize.steps
+      assert result.state.clock == 0
+      assert ignore.state.clock == 2
+
+      assert ["ignore", "apologize"] = Enum.map(Scenario.all_checks(result), & &1.branch)
+      assert Aethrion.Report.html(result) =~ "<h2>Branches</h2>"
+    end
+
+    test "a failing branch expectation fails the scenario" do
+      scenario =
+        branching([
+          %{
+            "name" => "wrong",
+            "events" => [%{"type" => "time_tick", "hours" => 1}],
+            "expect" => [%{"clock" => 99}]
+          }
+        ])
+
+      assert {:ok, result} = Scenario.run(scenario)
+      refute Scenario.passed?(result)
+    end
+
+    test "invalid branch events and definitions are reported" do
+      scenario =
+        branching([%{"name" => "bad", "events" => [%{"type" => "time_tick", "hours" => 0}]}])
+
+      assert {:error, {{"bad", 0}, %{code: :invalid_event}}} = Scenario.run(scenario)
+
+      assert {:error, {:invalid_branch, 0, :not_an_object}} =
+               Scenario.from_data(%{"branches" => ["x"]})
+
+      assert {:error, {:invalid_branch, 0, {:invalid_event, 0, _}}} =
+               Scenario.from_data(%{"branches" => [%{"events" => [%{"type" => "dance"}]}]})
+    end
+  end
 end
