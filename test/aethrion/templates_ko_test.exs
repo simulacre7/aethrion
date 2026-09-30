@@ -96,7 +96,7 @@ defmodule Aethrion.TemplatesKoTest do
 
     [scene] = of_type(step.outputs, :character_interaction)
 
-    assert Ko.render(scene.context) == ~s(Yuna는 Haru에게 네가 자기한테 한 말을 전한다. "go away")
+    assert Ko.render(scene.context) == ~s(Yuna는 Haru에게 네가 자기한테 "go away"라고 한 걸 전한다.)
   end
 
   test "every event in the bundled scenarios is described in Korean" do
@@ -176,6 +176,6 @@ defmodule Aethrion.TemplatesKoTest do
     }
 
     assert Aethrion.Expression.Templates.Ko.render(said, tense: :past) ==
-             ~s(Yuna는 Haru에게 네가 자기한테 한 말을 전했다. "전한다.")
+             ~s(Yuna는 Haru에게 네가 자기한테 "전한다."라고 한 걸 전했다.)
   end
 end

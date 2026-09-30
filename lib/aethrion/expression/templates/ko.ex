@@ -51,14 +51,15 @@ defmodule Aethrion.Expression.Templates.Ko do
   ]
 
   defp past(text) do
-    {narration, quoted} =
-      case Regex.run(~r/^(.*?\.)( ".*")$/su, text) do
-        [_all, narration, quoted] -> {narration, quoted}
-        nil -> {text, ""}
-      end
+    ~r/"[^"]*"/u
+    |> Regex.split(text, include_captures: true)
+    |> Enum.map_join(fn
+      "\"" <> _quoted = part ->
+        part
 
-    Enum.reduce(@past, narration, fn {now, then}, acc -> String.replace(acc, now, then) end) <>
-      quoted
+      narration ->
+        Enum.reduce(@past, narration, fn {now, then}, acc -> String.replace(acc, now, then) end)
+    end)
   end
 
   @doc """
@@ -153,7 +154,7 @@ defmodule Aethrion.Expression.Templates.Ko do
 
   def render(%Request{kind: :reply, tone: :gift, message: item} = request) do
     case Choices.gift_choice(request) do
-      :wary -> "...고마워. 뭐라고 해야 할지 모르겠네."
+      :wary -> Choices.pick(request, ["...고마워. 뭐라고 해야 할지 모르겠네.", "...또 줬네. 고맙긴 한데."])
       :reassured -> "나한테 주는 거야? ...나 잊은 줄 알았어."
       :spoiled -> "또 줘? 이러다 버릇 나빠지겠다."
       :another -> "또 선물이야? 정말 고마워!"
@@ -254,7 +255,7 @@ defmodule Aethrion.Expression.Templates.Ko do
   defp gossip(request, %{"event" => "message_sent", "tone" => tone} = data)
        when tone in ["hostile", "cold"],
        do:
-         "#{actor(request, data["from"])} #{target(request, data)}한테 한 말을 전한다. \"#{data["text"]}\""
+         "#{actor(request, data["from"])} #{target(request, data)}한테 \"#{data["text"]}\"라고 한 걸 전한다."
 
   defp gossip(request, %{"event" => event} = data)
        when event in ["apology_offered", "comfort_offered", "message_sent"] do
@@ -326,7 +327,7 @@ defmodule Aethrion.Expression.Templates.Ko do
   defp reply(:warm, _mood), do: ["그 말 들으니까 좋다. 고마워.", "헤헤, 고마워.", "고마워, 진심으로."]
   defp reply(:neutral, :happy), do: "응! 무슨 일이야?"
   defp reply(:neutral, :jealous), do: "아, 안녕."
-  defp reply(:neutral, :lonely), do: "연락 줘서 반가워."
+  defp reply(:neutral, :lonely), do: ["연락 줘서 반가워.", "응, 얘기해 줘. 듣고 있어."]
   defp reply(:neutral, :upset), do: "...왜?"
   defp reply(:neutral, _mood), do: ["응, 무슨 일이야?", "응, 왜?", "응.", "응, 계속 말해 봐."]
   defp reply(:cold, :jealous), do: "그래, 알겠어."

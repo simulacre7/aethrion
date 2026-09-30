@@ -94,7 +94,10 @@ defmodule Aethrion.Expression.Templates do
   def render(%Request{kind: :reply, tone: :gift, message: item} = request) do
     case Choices.gift_choice(request) do
       :wary ->
-        "...Thanks. I don't know what to say."
+        Choices.pick(request, [
+          "...Thanks. I don't know what to say.",
+          "...Another one. Thanks, I guess."
+        ])
 
       :reassured ->
         "For me? ...I thought you'd forgotten about me."
@@ -353,7 +356,10 @@ defmodule Aethrion.Expression.Templates do
 
   defp reply(:neutral, :happy), do: "Hey! What's up?"
   defp reply(:neutral, :jealous), do: "Oh. Hi."
-  defp reply(:neutral, :lonely), do: "Hey... it's good to hear from you."
+
+  defp reply(:neutral, :lonely),
+    do: ["Hey... it's good to hear from you.", "Tell me more. I'm listening."]
+
   defp reply(:neutral, :upset), do: "...What is it?"
 
   defp reply(:neutral, _mood),
