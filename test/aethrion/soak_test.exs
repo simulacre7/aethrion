@@ -74,6 +74,40 @@ defmodule Aethrion.SoakTest do
     assert length(remaining) < 23
   end
 
+  @tag :tmp_dir
+  test "a snapshotting world survives the same crashes", %{tmp_dir: dir} do
+    name = :"soak_snap_#{System.unique_integer([:positive])}"
+    events = events(200, 11)
+
+    start_supervised!(
+      {World,
+       name: name,
+       persistence: {Aethrion.Persistence.JsonFile, path: Path.join(dir, "world.json")}}
+    )
+
+    events
+    |> Enum.with_index(1)
+    |> Enum.each(fn {event, index} ->
+      _result = World.dispatch(name, event)
+
+      if rem(index, 37) == 0 do
+        runtime = Process.whereis(World.runtime(name))
+        Process.exit(runtime, :kill)
+        wait_for_restart(name, runtime)
+      end
+    end)
+
+    expected =
+      Enum.reduce(events, Runtime.demo_state(), fn event, state ->
+        case Runtime.step(state, event) do
+          {:ok, step} -> step.state
+          {:error, _error} -> state
+        end
+      end)
+
+    assert World.state(name) == expected
+  end
+
   defp wait_for_restart(name, old, attempts \\ 50) do
     case Process.whereis(World.runtime(name)) do
       pid when is_pid(pid) and pid != old ->
