@@ -54,3 +54,4 @@ jobs:
           mix run examples/custom_rule.exs
           mix run examples/supervised_world.exs
           mix run examples/tutorial_cafe.exs
+          mix run examples/reputation.exs

@@ -280,12 +280,12 @@ defmodule Aethrion.Transition do
 
   @doc """
   Records a rule decision that did not directly change state, and logs it as
-  `[Rule] text`.
+  `[Rule] text` (or under another tag with `log: "Tag"`).
   """
   def note(%__MODULE__{} = transition, text, opts \\ []) do
     transition
     |> add_trace(:note, Keyword.get(opts, :subject), nil, nil, nil, nil, detail: text)
-    |> log("[Rule] #{text}")
+    |> log("[#{Keyword.get(opts, :log, "Rule")}] #{text}")
   end
 
   @doc """
