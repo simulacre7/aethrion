@@ -23,7 +23,7 @@ mix aethrion.report priv/scenarios/01_the_flower.json --locale ko   # the report
 | `07_crossroads.json` | One moment, four branches: say nothing, apologize, kind words, or snap. Compared side by side in the report. |
 | `08_old_friends.json` | Days of kindness, then silence: conversations fade into lasting impressions, and when an unanswered message makes Mina wait days before trying again, the impression is what she remembers. |
 | `09_benefit_of_the_doubt.json` | The same hostile words land at half strength on a friend with a record of kindness, and in full on someone without one. |
-| `10_company.json` | Four quiet days: friends keep each other company while the character without a close friend grows loneliest and, when nobody answers, waits days before writing again. |
+| `10_company.json` | Four quiet days: friends keep each other company until the shyer one asks first, while the character without a close friend grows loneliest and, when nobody answers, waits days before writing again. |
 | `11_two_regulars.json` | Two people visit the same characters: each message goes to the person it is about or the one the character feels closest to, and an apology for a gift someone else got lands as relief, not forgiveness. |
 | `12_word_gets_around.json` | The user snaps at Mina in front of Haru; Haru and, through Mina, Yuna trust the user less. Repeat it and a reputation forms; apologize in public and their trust comes back. |
 | `13_slowly_closer.json` | A week of small kindnesses moves Haru's bond with the user from neutral to friendly to close; one harsh word lands at half strength and is not enough to undo it. |

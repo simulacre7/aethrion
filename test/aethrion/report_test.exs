@@ -89,7 +89,7 @@ defmodule Aethrion.ReportTest do
 
     assert html =~ ~s(<li class="more">…and)
     assert html =~ ~s[<li class="bond">Yuna cooled toward Mina (now strained).</li>]
-    assert html =~ ~s[<li class="scene">Haru and Yuna spent time together 7 times.</li>]
+    assert html =~ ~s[<li class="scene">Haru and Yuna spent time together 6 times.</li>]
   end
 
   test "reports open with a digest of what happened" do

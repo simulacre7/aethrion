@@ -1,7 +1,7 @@
 {
   "$schema": "../scenario.schema.json",
   "name": "Company",
-  "description": "The user goes quiet for four days. Haru, who looks out for Yuna, keeps inviting Yuna to spend the afternoon; Yuna likes Haru but not yet enough to ask first, and once, between afternoons, she writes to the user instead. Mina has no friend that close: she ends up the loneliest, reaches out to the user, and when nobody answers waits three days before trying again. Four afternoons together bring Yuna close enough to Haru to be the one who asks next time.",
+  "description": "The user goes quiet for four days. Haru, who looks out for Yuna, keeps inviting Yuna to spend the afternoon; Yuna likes Haru but not yet enough to ask first, and once, between afternoons, she writes to the user instead. Three afternoons together bring her close enough that on the fourth day she is the one who asks. Mina has no friend that close: she ends up the loneliest, reaches out to the user, and when nobody answers waits three days before trying again.",
   "world": "demo",
   "events": [
     {
@@ -50,8 +50,15 @@
       "output": "character_interaction",
       "kind": "together",
       "to": "yuna",
-      "count": 4,
+      "count": 3,
       "character": "haru"
+    },
+    {
+      "output": "character_interaction",
+      "character": "yuna",
+      "kind": "together",
+      "to": "haru",
+      "count": 1
     },
     {
       "output": "proactive_message",

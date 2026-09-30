@@ -125,7 +125,7 @@ At most one confidence per character per tick, and never harsh words the teller 
 
 ### `time_spent_together` -> `together`
 
-Both characters: loneliness -20, joy +6, affinity toward each other +2 (up to 60: past that, afternoons are comfortable rather than ever closer), and both remember it (importance 40). Emits a `:character_interaction` scene of kind `:together`, which varies from day to day (a quiet afternoon, a long walk, dinner, sitting together). Repeated outings consolidate into impressions and count as kindness for goodwill.
+Both characters: loneliness -25, joy +6, affinity toward each other +2 (up to 60: past that, afternoons are comfortable rather than ever closer), and both remember it (importance 40). Emits a `:character_interaction` scene of kind `:together`, which varies from day to day (a quiet afternoon, a long walk, dinner, sitting together). Repeated outings consolidate into impressions and count as kindness for goodwill.
 
 ### `gossip_shared` -> `gossip`, `reputation`, `empathy`
 

@@ -26,7 +26,9 @@ Yes, as a library. Keep the state wherever you like (a `Aethrion.World` process,
 
 ## Can there be more than one human?
 
-Yes. Any actor id that is not a character is a person. Characters address proactive messages to people they have relationships with: jealousy to the giver of the gift they saw, loneliness to the person they feel closest to, curiosity to the person the news is about. A world with no relationships to people addresses `"user"`. See the `11_two_regulars.json` scenario.
+Yes. Any actor id that is not a character is a person. Characters address proactive messages to people they have relationships with: jealousy to the giver of the gift they saw, loneliness to the person they feel closest to, curiosity to the person the news is about. A world with no relationships to people addresses `"user"`. Give players display names with `State.new(people: %{"player:alex" => "Alex"})`, and each their own digest with `Digest.of(outputs, state, you: "player:alex", only_you: true)`. See the `11_two_regulars.json` scenario and the cookbook.
+
+People act and are talked about, but only characters witness, remember, and feel: `observed_by` takes characters, and events go from a person to a character. What a player saw is your game's to track.
 
 ## How do I change how characters behave?
 
