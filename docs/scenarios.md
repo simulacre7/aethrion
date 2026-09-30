@@ -36,6 +36,8 @@ A JSON Schema for editor completion and validation ships at `priv/scenario.schem
 {"$schema": "../scenario.schema.json", "name": "..."}
 ```
 
+`python3 scripts/check_schema.py [FILE ...]` (with `pip install jsonschema`) validates files against it; CI checks every bundled scenario.
+
 ```json
 {
   "name": "The flower",
