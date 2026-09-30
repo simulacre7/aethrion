@@ -8,12 +8,11 @@ defmodule Aethrion.Rules.Empathy do
   use Aethrion.Rule,
     id: :empathy,
     description:
-      "A caring listener (affinity >= 25) comforts a struggling teller, once per 12h per pair."
+      "A caring listener (affinity >= 25) comforts a struggling teller, once per 12h per pair.",
+    params: [affinity_threshold: 25, cooldown_hours: 12]
 
   alias Aethrion.{Character, CharacterState, Event, State, Transition}
   alias Aethrion.Rules.{Comfort, Mood}
-
-  @affinity_threshold 25
 
   @impl true
   def apply(%Transition{event: event, state: state} = transition) do
@@ -21,10 +20,15 @@ defmodule Aethrion.Rules.Empathy do
     teller = State.character(state, event.from)
 
     if Character.can_act?(listener) and
-         State.get_relationship(state, listener.id, teller.id).affinity >= @affinity_threshold and
-         CharacterState.distressed?(Mood.derive(teller.state)) and
-         not CharacterState.distressed?(Mood.derive(listener.state)) and
-         Transition.cooldown_ready?(transition, Comfort.cooldown_key(listener.id, teller.id), 12) do
+         State.get_relationship(state, listener.id, teller.id).affinity >=
+           Transition.param(transition, :affinity_threshold) and
+         CharacterState.distressed?(Mood.derive(teller.state, state)) and
+         not CharacterState.distressed?(Mood.derive(listener.state, state)) and
+         Transition.cooldown_ready?(
+           transition,
+           Comfort.cooldown_key(listener.id, teller.id),
+           Transition.param(transition, :cooldown_hours)
+         ) do
       Transition.enqueue(transition, Event.comfort_offered(listener.id, teller.id, at: event.at))
     else
       transition

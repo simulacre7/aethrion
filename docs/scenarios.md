@@ -18,6 +18,7 @@ mix aethrion.report priv/scenarios/01_the_flower.json     # HTML report in tmp/
 | `03_words_matter.json` | Hostile messages upset Mina; an apology and warm words repair some, not all, of the damage. |
 | `04_rumor_mill.json` | A custom world where one witnessed gift travels three hops along lines of trust and dies out. |
 | `05_long_silence.json` | Days without contact: lonely messages quote kind words while remembered, then the memory fades. |
+| `06_small_town.json` | The rumor mill's rules with small-town tuning: news spreads through acquaintances and travels four hops. |
 
 ## Format
 
@@ -53,6 +54,14 @@ Either `"demo"` (Mina, Yuna, Haru) or an object in the persistence format:
 ```
 
 Unknown moods and memory kinds fall back to defaults, so untrusted files cannot create atoms. Traits are open-ended.
+
+### Tuning
+
+An optional `tuning` object overrides rule parameters for this world. Unknown rules or parameters are rejected. See [rules.md](rules.md#tuning).
+
+```json
+"tuning": {"autonomy": {"trust_threshold": 15}, "gossip": {"importance_drop": 10}}
+```
 
 ### Events
 

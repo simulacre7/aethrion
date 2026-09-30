@@ -119,7 +119,7 @@ defmodule Aethrion.Expression do
           name: character.name,
           profile: character.profile,
           traits: character.traits,
-          mood: Aethrion.Rules.Mood.derive(character.state)
+          mood: Aethrion.Rules.Mood.derive(character.state, state)
         }
 
       nil ->

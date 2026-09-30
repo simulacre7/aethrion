@@ -3,7 +3,7 @@ defmodule Mix.Tasks.Aethrion.Rules do
 
   @moduledoc """
   Prints which rules run for each event type, in order, with their
-  descriptions.
+  descriptions and tunable parameters (see `Aethrion.Tuning`).
 
       mix aethrion.rules
   """
@@ -15,6 +15,7 @@ defmodule Mix.Tasks.Aethrion.Rules do
   @impl Mix.Task
   def run(_args) do
     Mix.Task.run("app.start")
+    params = Map.new(Aethrion.Tuning.describe(Aethrion.State.new()))
 
     for {type, rules} <- Pipeline.describe(Pipeline.default()) do
       heading =
@@ -28,6 +29,20 @@ defmodule Mix.Tasks.Aethrion.Rules do
       |> Enum.with_index(1)
       |> Enum.each(fn {{id, description}, index} ->
         Mix.shell().info("  #{index}. #{String.pad_trailing(to_string(id), 14)} #{description}")
+
+        case Map.get(params, id) do
+          nil ->
+            :ok
+
+          values ->
+            line =
+              Enum.map_join(values, ", ", fn {key, default, _current} -> "#{key}=#{default}" end)
+
+            Mix.shell().info(
+              IO.ANSI.format([:faint, "     params: ", line], true)
+              |> IO.chardata_to_string()
+            )
+        end
       end)
 
       Mix.shell().info("")

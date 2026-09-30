@@ -7,14 +7,10 @@ defmodule Aethrion.Rules.Gift do
   use Aethrion.Rule,
     id: :gift,
     description:
-      "Receiver: affinity toward giver +10, joy +20, loneliness -10, remembers the gift."
+      "Receiver: affinity toward giver +10, joy +20, loneliness -10, remembers the gift.",
+    params: [affinity_delta: 10, joy_delta: 20, loneliness_delta: -10, importance: 60]
 
   alias Aethrion.{Memory, Transition}
-
-  @affinity_delta 10
-  @joy_delta 20
-  @loneliness_delta -10
-  @importance 60
 
   @impl true
   def apply(%Transition{event: event} = transition) do
@@ -23,7 +19,7 @@ defmodule Aethrion.Rules.Gift do
         id: "memory:#{event.to}:gift:#{event.id}",
         character_id: event.to,
         content: "#{event.from} gave #{event.to} a #{event.item}.",
-        importance: @importance,
+        importance: Transition.param(transition, :importance),
         created_at: event.at,
         related_characters: [event.from],
         kind: :experienced,
@@ -32,9 +28,18 @@ defmodule Aethrion.Rules.Gift do
       )
 
     transition
-    |> Transition.adjust_relationship(event.to, event.from, :affinity, @affinity_delta)
-    |> Transition.adjust_character(event.to, :joy, @joy_delta)
-    |> Transition.adjust_character(event.to, :loneliness, @loneliness_delta)
+    |> Transition.adjust_relationship(
+      event.to,
+      event.from,
+      :affinity,
+      Transition.param(transition, :affinity_delta)
+    )
+    |> Transition.adjust_character(event.to, :joy, Transition.param(transition, :joy_delta))
+    |> Transition.adjust_character(
+      event.to,
+      :loneliness,
+      Transition.param(transition, :loneliness_delta)
+    )
     |> Transition.remember(memory)
   end
 

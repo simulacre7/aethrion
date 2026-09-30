@@ -9,7 +9,8 @@ defmodule Aethrion.Rules.Mood do
   use Aethrion.Rule,
     id: :mood,
     description:
-      "Derives mood: upset (stress>=40) > jealous (jealousy>=15) > lonely (loneliness>=50) > happy (joy>=20) > neutral."
+      "Derives mood: upset (stress>=40) > jealous (jealousy>=15) > lonely (loneliness>=50) > happy (joy>=20) > neutral.",
+    params: [upset_stress: 40, jealous_jealousy: 15, lonely_loneliness: 50, happy_joy: 20]
 
   alias Aethrion.{CharacterState, Output, State, Transition}
 
@@ -18,7 +19,7 @@ defmodule Aethrion.Rules.Mood do
     transition.state
     |> State.sorted_characters()
     |> Enum.reduce(transition, fn character, transition ->
-      mood = derive(character.state)
+      mood = derive(character.state, transition.state)
 
       if mood == character.state.mood do
         transition
@@ -31,13 +32,23 @@ defmodule Aethrion.Rules.Mood do
     end)
   end
 
-  @doc "Pure mood derivation from numeric state."
-  def derive(%CharacterState{} = state) do
+  @doc """
+  Pure mood derivation from numeric state. Pass the world state to honor its
+  `Aethrion.Tuning` overrides; without it the defaults are used.
+  """
+  def derive(%CharacterState{} = cs, world \\ nil) do
+    threshold = fn key ->
+      case world do
+        %State{} -> Aethrion.Tuning.get(world, __MODULE__, key)
+        nil -> Keyword.fetch!(params(), key)
+      end
+    end
+
     cond do
-      state.stress >= 40 -> :upset
-      state.jealousy >= 15 -> :jealous
-      state.loneliness >= 50 -> :lonely
-      state.joy >= 20 -> :happy
+      cs.stress >= threshold.(:upset_stress) -> :upset
+      cs.jealousy >= threshold.(:jealous_jealousy) -> :jealous
+      cs.loneliness >= threshold.(:lonely_loneliness) -> :lonely
+      cs.joy >= threshold.(:happy_joy) -> :happy
       true -> :neutral
     end
   end

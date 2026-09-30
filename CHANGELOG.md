@@ -19,7 +19,8 @@ The social layer release: characters now act on each other, every change is expl
 - **Expression layer.** `Aethrion.Expression` renders outputs through an `Aethrion.LLM.Adapter`, falling back to deterministic templates on any failure. `Aethrion.Intent` lets a model propose an event from free text, limited to a closed set.
 - **LLM adapters.** `Aethrion.LLM.Anthropic` (Messages API) and `Aethrion.LLM.OpenAICompatible` (OpenAI, vLLM, Ollama, llama.cpp), both on Erlang's `:httpc` with no new runtime dependencies.
 - **OTP runtime.** `Aethrion.World` supervises a runtime server, scheduler, and rendering tasks. `Aethrion.RuntimeServer` gains subscriptions, event history, snapshot persistence with restore on restart, and asynchronous rendering with timeouts and crash isolation.
-- **Scenarios.** JSON scenario files with a world, events, and expectations (`Aethrion.Scenario`, `mix aethrion.scenario`). Five bundled scenarios run in the test suite.
+- **Tuning.** Every rule declares its numbers as `params`; a world can override them in `state.tuning` (`Aethrion.Tuning`), in saved state, or in a scenario's `"tuning"` block. `mix aethrion.rules` prints them.
+- **Scenarios.** JSON scenario files with a world, events, and expectations (`Aethrion.Scenario`, `mix aethrion.scenario`). Six bundled scenarios run in the test suite.
 - **Reports.** `mix aethrion.report` renders a scenario as a self-contained HTML report with charts, a relationship graph, and the timeline.
 - **Interactive CLI.** `say` (free text through intent interpretation), `message`, `comfort`, `why`, `context`, `timeline`, `rules`, `undo`, `save`, `load`, and `--llm anthropic|openai`.
 - Property-based tests for bounds, determinism, persistence round trips, cascade causality, and the expression boundary.

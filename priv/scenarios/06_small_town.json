@@ -1,0 +1,39 @@
+{
+  "name": "Small town",
+  "description": "The same rules as the rumor mill, tuned for a small town: people confide in acquaintances, not just close friends, and retellings lose less weight. Nobody here trusts anyone past 20, so with default tuning nothing would spread at all. Here one witnessed gift reaches the end of the street.",
+  "tuning": {
+    "autonomy": {"trust_threshold": 15},
+    "gossip": {"importance_drop": 10}
+  },
+  "world": {
+    "characters": [
+      {"id": "ana", "name": "Ana", "profile": "Runs the bakery; sees everyone.", "traits": ["talkative"]},
+      {"id": "ben", "name": "Ben", "profile": "Buys bread from Ana every morning.", "traits": ["talkative"]},
+      {"id": "cai", "name": "Cai", "profile": "Ben's neighbor.", "traits": ["talkative"]},
+      {"id": "dot", "name": "Dot", "profile": "Plays cards with Cai.", "traits": ["talkative"]},
+      {"id": "eve", "name": "Eve", "profile": "Lives at the end of the street.", "traits": []},
+      {"id": "fay", "name": "Fay", "profile": "Received the gift.", "traits": []}
+    ],
+    "relationships": [
+      {"from": "ana", "to": "ben", "trust": 20},
+      {"from": "ben", "to": "cai", "trust": 20},
+      {"from": "cai", "to": "dot", "trust": 20},
+      {"from": "dot", "to": "eve", "trust": 20}
+    ]
+  },
+  "events": [
+    {"type": "gift_received", "from": "user", "to": "fay", "item": "bouquet", "observed_by": ["ana"], "at": "morning"},
+    {"type": "time_tick", "now": "09:00", "hours": 1},
+    {"type": "time_tick", "now": "10:00", "hours": 1},
+    {"type": "time_tick", "now": "11:00", "hours": 1},
+    {"type": "time_tick", "now": "12:00", "hours": 1},
+    {"type": "time_tick", "now": "13:00", "hours": 1}
+  ],
+  "expect": [
+    {"memory": {"character": "ben", "kind": "heard", "source": "ana", "importance": 50}, "count": 1},
+    {"memory": {"character": "cai", "kind": "heard", "source": "ben", "importance": 40}, "count": 1},
+    {"memory": {"character": "dot", "kind": "heard", "source": "cai", "importance": 30}, "count": 1},
+    {"memory": {"character": "eve", "kind": "heard", "source": "dot", "importance": 20}, "count": 1},
+    {"output": "character_interaction", "kind": "gossip", "count": 4}
+  ]
+}

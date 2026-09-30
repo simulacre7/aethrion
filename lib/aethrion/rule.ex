@@ -11,16 +11,22 @@ defmodule Aethrion.Rule do
   Which rules run for which event is decided by `Aethrion.Pipeline`, not by the
   rule itself.
 
+  Rules declare their tunable numbers as `params`. A world can override any of
+  them through `Aethrion.Tuning` (or a scenario's `"tuning"` block) without
+  code; rules read them with `Aethrion.Transition.param/2`.
+
       defmodule MyGame.Rules.Rivalry do
         use Aethrion.Rule,
           id: :rivalry,
-          description: "Rivals grow tense when either receives a gift."
+          description: "Rivals grow tense when either receives a gift.",
+          params: [tension_delta: 5]
 
         alias Aethrion.Transition
 
         @impl true
         def apply(%Transition{event: event} = transition) do
-          Transition.adjust_relationship(transition, "rival", event.to, :tension, 5)
+          delta = Transition.param(transition, :tension_delta)
+          Transition.adjust_relationship(transition, "rival", event.to, :tension, delta)
         end
       end
   """
@@ -33,12 +39,16 @@ defmodule Aethrion.Rule do
   @doc "One sentence describing what the rule does."
   @callback description() :: String.t()
 
+  @doc "Default values of the rule's tunable parameters."
+  @callback params() :: keyword()
+
   @doc "Applies the rule to the transition for the current event."
   @callback apply(Transition.t()) :: Transition.t()
 
   defmacro __using__(opts) do
     id = Keyword.fetch!(opts, :id)
     description = Keyword.fetch!(opts, :description)
+    params = Keyword.get(opts, :params, [])
 
     quote do
       @behaviour Aethrion.Rule
@@ -48,6 +58,9 @@ defmodule Aethrion.Rule do
 
       @impl Aethrion.Rule
       def description, do: unquote(description)
+
+      @impl Aethrion.Rule
+      def params, do: unquote(params)
     end
   end
 end

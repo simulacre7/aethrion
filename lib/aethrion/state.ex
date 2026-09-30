@@ -8,6 +8,7 @@ defmodule Aethrion.State do
   - `clock` - simulated hours elapsed, advanced by `time_tick` events
   - `seq` - number of events processed; used to assign stable event ids
   - `cooldowns` - `%{key => clock}` recording when a rate-limited behavior last fired
+  - `tuning` - rule parameter overrides, see `Aethrion.Tuning`
   """
 
   alias Aethrion.{Character, CharacterState, Memory, Relationship}
@@ -18,17 +19,25 @@ defmodule Aethrion.State do
           memories: [Memory.t()],
           clock: non_neg_integer(),
           seq: non_neg_integer(),
-          cooldowns: %{optional(String.t()) => non_neg_integer()}
+          cooldowns: %{optional(String.t()) => non_neg_integer()},
+          tuning: Aethrion.Tuning.t()
         }
 
   @data_version 2
 
-  defstruct characters: %{}, relationships: %{}, memories: [], clock: 0, seq: 0, cooldowns: %{}
+  defstruct characters: %{},
+            relationships: %{},
+            memories: [],
+            clock: 0,
+            seq: 0,
+            cooldowns: %{},
+            tuning: %{}
 
   @doc """
   Builds a runtime state from explicit characters and relationships.
 
-  Options: `:characters`, `:relationships`, `:memories`, `:clock`, `:seq`, `:cooldowns`.
+  Options: `:characters`, `:relationships`, `:memories`, `:clock`, `:seq`,
+  `:cooldowns`, `:tuning`.
   """
   def new(opts \\ []) do
     %__MODULE__{
@@ -41,7 +50,8 @@ defmodule Aethrion.State do
       memories: Keyword.get(opts, :memories, []),
       clock: Keyword.get(opts, :clock, 0),
       seq: Keyword.get(opts, :seq, 0),
-      cooldowns: Map.new(Keyword.get(opts, :cooldowns, %{}))
+      cooldowns: Map.new(Keyword.get(opts, :cooldowns, %{})),
+      tuning: Map.new(Keyword.get(opts, :tuning, %{}))
     }
   end
 
@@ -189,7 +199,8 @@ defmodule Aethrion.State do
         |> Enum.sort_by(&{&1.from, &1.to})
         |> Enum.map(&relationship_to_data/1),
       "memories" => Enum.map(state.memories, &memory_to_data/1),
-      "cooldowns" => state.cooldowns
+      "cooldowns" => state.cooldowns,
+      "tuning" => Aethrion.Tuning.to_data(state.tuning)
     }
   end
 
@@ -203,9 +214,23 @@ defmodule Aethrion.State do
       memories: Enum.map(Map.get(data, "memories", []), &memory_from_data/1),
       clock: Map.get(data, "clock", 0),
       seq: Map.get(data, "seq", 0),
-      cooldowns: cooldowns_from_data(data)
+      cooldowns: cooldowns_from_data(data),
+      tuning: tuning_from_data(data)
     )
   end
+
+  # Unknown rules or parameters in saved data are dropped rather than failing
+  # the load; scenarios validate tuning strictly instead.
+  defp tuning_from_data(%{"tuning" => tuning}) when is_map(tuning) do
+    Enum.reduce(tuning, %{}, fn {rule, params}, acc ->
+      case Aethrion.Tuning.from_data(%{rule => params}) do
+        {:ok, parsed} -> Map.merge(acc, parsed)
+        {:error, _reason} -> acc
+      end
+    end)
+  end
+
+  defp tuning_from_data(_data), do: %{}
 
   defp cooldowns_from_data(%{"cooldowns" => cooldowns}) when is_map(cooldowns), do: cooldowns
 

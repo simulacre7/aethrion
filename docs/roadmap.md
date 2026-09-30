@@ -23,13 +23,13 @@ Implemented in v0.2:
 - intent interpretation limited to a closed set of proposals
 - supervised worlds with subscriptions, history, snapshot recovery, and async rendering
 - data-first scenario files with expectations, HTML reports, and a richer interactive CLI
+- rule parameters as data (`Aethrion.Tuning`), per world, persisted, and settable from scenarios
 - property-based invariant tests
 
 Not implemented yet:
 
 - per-character actor runtime (deliberately deferred, see Phase 4)
 - memory summarization and consolidation
-- rule parameters as data
 - package publishing
 
 ## Phase 1: v0.1 Library Foundation
@@ -164,7 +164,7 @@ TODO:
 - [x] Keep rule ordering, outputs, and logs explicit.
 - [x] Add tests for rule ordering and non-mutation on invalid events.
 - [x] Record a trace entry for every change so each transition is explainable.
-- [ ] Move rule parameters (thresholds, deltas) into data a host can tune.
+- [x] Move rule parameters (thresholds, deltas) into data a host can tune.
 - [x] Defer a DSL until repeated rule patterns are proven.
 
 Success criteria:
@@ -210,10 +210,9 @@ TODO:
 
 Recommended next tasks:
 
-1. Move rule parameters into data so hosts can tune a world without code.
-2. Add memory consolidation (many small memories -> one summary memory, deterministically).
-3. Record interactive sessions as scenarios, and compare branches side by side.
-4. Publish to Hex once the event and output shapes settle.
-5. Explore per-character processes only if a concrete runtime need appears.
+1. Add memory consolidation (many small memories -> one summary memory, deterministically).
+2. Record interactive sessions as scenarios, and compare branches side by side.
+3. Publish to Hex once the event and output shapes settle.
+4. Explore per-character processes only if a concrete runtime need appears.
 
 Phoenix, vector databases, and distributed BEAM remain out of scope until the core runtime interface is stable.

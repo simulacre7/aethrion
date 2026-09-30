@@ -7,28 +7,44 @@ defmodule Aethrion.Rules.Comfort do
   use Aethrion.Rule,
     id: :comfort,
     description:
-      "Receiver: loneliness -12, jealousy -5, stress -10, trust +5 and affinity +3 toward the comforter, remembers it."
+      "Receiver: loneliness -12, jealousy -5, stress -10, trust +5 and affinity +3 toward the comforter, remembers it.",
+    params: [
+      loneliness_delta: -12,
+      jealousy_delta: -5,
+      stress_delta: -10,
+      trust_delta: 5,
+      affinity_delta: 3,
+      importance: 55
+    ]
 
   alias Aethrion.{Expression, Memory, Output, State, Transition}
-
-  @importance 55
 
   @impl true
   def apply(%Transition{event: event, state: state} = transition) do
     transition =
       transition
       |> Transition.put_cooldown(cooldown_key(event.from, event.to))
-      |> Transition.adjust_character(event.to, :loneliness, -12)
-      |> Transition.adjust_character(event.to, :jealousy, -5)
-      |> Transition.adjust_character(event.to, :stress, -10)
-      |> Transition.adjust_relationship(event.to, event.from, :trust, 5)
-      |> Transition.adjust_relationship(event.to, event.from, :affinity, 3)
+      |> Transition.adjust_character(event.to, :loneliness, param(transition, :loneliness_delta))
+      |> Transition.adjust_character(event.to, :jealousy, param(transition, :jealousy_delta))
+      |> Transition.adjust_character(event.to, :stress, param(transition, :stress_delta))
+      |> Transition.adjust_relationship(
+        event.to,
+        event.from,
+        :trust,
+        param(transition, :trust_delta)
+      )
+      |> Transition.adjust_relationship(
+        event.to,
+        event.from,
+        :affinity,
+        param(transition, :affinity_delta)
+      )
       |> Transition.remember(
         Memory.new(
           id: "memory:#{event.to}:comfort:#{event.id}",
           character_id: event.to,
           content: "#{event.from} comforted #{event.to}.",
-          importance: @importance,
+          importance: param(transition, :importance),
           created_at: event.at,
           related_characters: [event.from],
           kind: :experienced,
@@ -58,4 +74,6 @@ defmodule Aethrion.Rules.Comfort do
 
   @doc false
   def cooldown_key(from, to), do: "comfort:#{from}:#{to}"
+
+  defp param(transition, key), do: Transition.param(transition, key)
 end

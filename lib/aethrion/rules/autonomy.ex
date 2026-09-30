@@ -17,36 +17,37 @@ defmodule Aethrion.Rules.Autonomy do
   use Aethrion.Rule,
     id: :autonomy,
     description:
-      "Struggling or talkative characters confide a notable memory to their most trusted friend; talkative ones retell rumors."
+      "Struggling or talkative characters confide a notable memory to their most trusted friend; talkative ones retell rumors.",
+    params: [notable_importance: 60, retell_importance: 30, trust_threshold: 30]
 
   alias Aethrion.{Character, CharacterState, Event, Memories, Memory, State, Transition}
   alias Aethrion.Rules.Mood
-
-  @notable_importance 60
-  @retell_importance 30
-  @trust_threshold 30
 
   @impl true
   def apply(%Transition{} = transition) do
     transition.state
     |> State.sorted_characters()
-    |> Enum.filter(&wants_to_confide?/1)
+    |> Enum.filter(&wants_to_confide?(transition.state, &1))
     |> Enum.reduce(transition, &confide(&2, &1))
   end
 
-  defp wants_to_confide?(%Character{} = character) do
+  defp wants_to_confide?(state, %Character{} = character) do
     Character.can_act?(character) and
-      (CharacterState.distressed?(Mood.derive(character.state)) or
+      (CharacterState.distressed?(Mood.derive(character.state, state)) or
          Character.trait?(character, :talkative))
   end
 
   defp confide(%Transition{state: state} = transition, %Character{} = teller) do
-    confidants = confidants(state, teller.id)
+    confidants = confidants(state, teller.id, Transition.param(transition, :trust_threshold))
+
+    thresholds =
+      {Transition.param(transition, :notable_importance),
+       Transition.param(transition, :retell_importance)}
 
     candidate =
       state
       |> Memories.for_character(teller.id)
-      |> Enum.filter(&notable?(&1, teller))
+      |> Enum.filter(&notable?(&1, teller, thresholds))
       |> Enum.find_value(fn memory ->
         case Enum.find(confidants, &(not Memories.knows_topic?(state, &1, memory.topic))) do
           nil -> nil
@@ -66,21 +67,23 @@ defmodule Aethrion.Rules.Autonomy do
     end
   end
 
-  defp notable?(%Memory{topic: topic}, _teller) when not is_binary(topic), do: false
+  defp notable?(%Memory{topic: topic}, _teller, _thresholds) when not is_binary(topic),
+    do: false
 
-  defp notable?(%Memory{kind: :heard} = memory, teller) do
-    Character.trait?(teller, :talkative) and memory.importance >= @retell_importance
+  defp notable?(%Memory{kind: :heard} = memory, teller, {_notable, retell}) do
+    Character.trait?(teller, :talkative) and memory.importance >= retell
   end
 
-  defp notable?(%Memory{} = memory, _teller), do: memory.importance >= @notable_importance
+  defp notable?(%Memory{} = memory, _teller, {notable, _retell}),
+    do: memory.importance >= notable
 
   # Most trusted first; ties broken by id.
-  defp confidants(state, teller_id) do
+  defp confidants(state, teller_id, trust_threshold) do
     state
     |> State.sorted_characters()
     |> Enum.filter(&(&1.id != teller_id and Character.can_act?(&1)))
     |> Enum.map(&{State.get_relationship(state, teller_id, &1.id).trust, &1.id})
-    |> Enum.filter(fn {trust, _id} -> trust >= @trust_threshold end)
+    |> Enum.filter(fn {trust, _id} -> trust >= trust_threshold end)
     |> Enum.sort_by(fn {trust, id} -> {-trust, id} end)
     |> Enum.map(&elem(&1, 1))
   end

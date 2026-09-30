@@ -80,8 +80,24 @@ defmodule Aethrion.Report do
       Enum.map(stats, fn {value, label} ->
         ["<div><dt>", esc(label), "</dt><dd>", esc(value), "</dd></div>"]
       end),
-      "</dl>\n</header>\n"
+      "</dl>\n",
+      tuning(result.state),
+      "</header>\n"
     ]
+  end
+
+  defp tuning(%State{tuning: tuning}) when map_size(tuning) == 0, do: ""
+
+  defp tuning(%State{tuning: tuning}) do
+    items =
+      tuning
+      |> Enum.sort()
+      |> Enum.flat_map(fn {rule, params} ->
+        params |> Enum.sort() |> Enum.map(fn {key, value} -> "#{rule}.#{key} = #{value}" end)
+      end)
+      |> Enum.map(&["<li><code>", esc(&1), "</code></li>"])
+
+    ["<div class=\"tuning\"><span>Tuned rules</span><ul>", items, "</ul></div>\n"]
   end
 
   defp cast(result, initial) do
@@ -623,6 +639,9 @@ defmodule Aethrion.Report do
     .eyebrow{margin:0;color:var(--text-muted);font-size:13px;text-transform:uppercase;letter-spacing:.08em}
     .lede{max-width:72ch;color:var(--text-secondary);margin:0}
     .note{color:var(--text-secondary);margin:0 0 16px;font-size:14px;max-width:80ch}
+    .tuning{margin-top:16px;display:flex;flex-wrap:wrap;gap:8px;align-items:baseline;font-size:13px;color:var(--text-secondary)}
+    .tuning ul{display:flex;flex-wrap:wrap;gap:6px;list-style:none;margin:0;padding:0}
+    .tuning code{font:12px ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--chip);border-radius:6px;padding:2px 6px}
     .stats{display:flex;flex-wrap:wrap;gap:12px;margin:24px 0 0;padding:0}
     .stats div{background:var(--surface-1);border:1px solid var(--border);border-radius:12px;padding:12px 16px;min-width:140px}
     .stats dt{color:var(--text-secondary);font-size:13px}

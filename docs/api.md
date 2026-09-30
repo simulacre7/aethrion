@@ -127,6 +127,18 @@ Aethrion.dispatch(state, event, pipeline: pipeline)
 
 See [rules.md](rules.md) for every built-in rule and for writing your own with `use Aethrion.Rule`.
 
+### Tuning
+
+Rule parameters are data. Override them per world:
+
+```elixir
+state = Aethrion.Tuning.put(state, :proactive, :cooldown_hours, 8)
+Aethrion.Tuning.get(state, Aethrion.Rules.Proactive, :cooldown_hours)  #=> 8
+Aethrion.Tuning.describe(state)  #=> [{rule_id, [{key, default, current}]}]
+```
+
+Tuning lives in `state.tuning`, persists with the state, and can be set in a scenario's `"tuning"` block.
+
 ## Explainability
 
 ```elixir

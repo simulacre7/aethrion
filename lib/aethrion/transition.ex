@@ -20,6 +20,7 @@ defmodule Aethrion.Transition do
           state: State.t(),
           event: map(),
           rule: atom() | nil,
+          rule_module: module() | nil,
           outputs: [map()],
           log: [String.t()],
           trace: [Trace.t()],
@@ -27,13 +28,35 @@ defmodule Aethrion.Transition do
         }
 
   # outputs, log, trace, and follow_ups are accumulated in reverse order.
-  defstruct [:state, :event, rule: nil, outputs: [], log: [], trace: [], follow_ups: []]
+  defstruct [
+    :state,
+    :event,
+    rule: nil,
+    rule_module: nil,
+    outputs: [],
+    log: [],
+    trace: [],
+    follow_ups: []
+  ]
 
   @doc false
   def new(%State{} = state, event), do: %__MODULE__{state: state, event: event}
 
   @doc false
-  def put_rule(%__MODULE__{} = transition, rule), do: %{transition | rule: rule}
+  def put_rule(%__MODULE__{} = transition, rule) when is_atom(rule) do
+    if Code.ensure_loaded?(rule) and function_exported?(rule, :id, 0),
+      do: %{transition | rule: rule.id(), rule_module: rule},
+      else: %{transition | rule: rule, rule_module: nil}
+  end
+
+  @doc """
+  Reads a parameter of the current rule: the world's override from
+  `Aethrion.Tuning` if present, otherwise the rule's declared default.
+  Raises for parameters the rule does not declare.
+  """
+  def param(%__MODULE__{rule_module: module, state: state}, key) when is_atom(module) do
+    Aethrion.Tuning.get(state, module, key)
+  end
 
   @doc false
   def finalize(%__MODULE__{} = transition) do

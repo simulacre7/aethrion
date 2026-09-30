@@ -106,6 +106,7 @@ host event
 - **Cascades** let characters act on each other: observation, confiding, rumor, empathy, comfort.
 - **Traces** record every change: which rule, which event, before and after. `why yuna` in the interactive demo answers "why does Yuna feel this way?".
 - **Memory** has kinds (experienced, observed, heard), sources, topics that link everyone's memory of the same event, and age-based decay. Retrieval is deterministic; no vector search.
+- **Tuning** makes every rule's numbers data: a world, saved state, or scenario can override them without code.
 - **Determinism** makes it testable: the same events always produce the same world. Property tests check bounds, determinism, and persistence round trips on random event sequences.
 
 See [docs/rules.md](docs/rules.md) for every rule and number.
@@ -149,7 +150,7 @@ Scenarios are JSON files with a world, a script of events, and expectations. The
 
 <img src="assets/report/the-flower.png" alt="Aethrion scenario report: cast, feelings over time, relationship graph, and timeline" width="720">
 
-Bundled scenarios: the flower, the apology, words matter (tone), rumor mill (news spreading through a trust graph), and long silence (loneliness and fading memory). See [docs/scenarios.md](docs/scenarios.md).
+Bundled scenarios: the flower, the apology, words matter (tone), rumor mill (news spreading through a trust graph), long silence (loneliness and fading memory), and small town (the same rules, tuned differently). See [docs/scenarios.md](docs/scenarios.md).
 
 ## Interactive Demo
 

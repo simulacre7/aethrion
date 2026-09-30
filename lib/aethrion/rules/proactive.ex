@@ -13,56 +13,61 @@ defmodule Aethrion.Rules.Proactive do
   use Aethrion.Rule,
     id: :proactive,
     description:
-      "Jealous (pressure>=45), lonely (>=60), or curious (heard news about the user) characters message the user."
+      "Jealous (pressure>=45), lonely (>=60), or curious (heard news about the user) characters message the user.",
+    params: [
+      jealousy_floor: 15,
+      pressure_threshold: 45,
+      loneliness_threshold: 60,
+      cooldown_hours: 24,
+      curious_affinity: 30
+    ]
 
   alias Aethrion.{Character, Expression, Memories, Memory, Output, State, Transition}
 
   @recipient "user"
-  @jealousy_floor 15
-  @pressure_threshold 45
-  @loneliness_threshold 60
-  @cooldown_hours 24
-  @curious_affinity 30
 
   @impl true
   def apply(%Transition{} = transition) do
+    params = Map.new(params(), fn {key, _default} -> {key, Transition.param(transition, key)} end)
+
     transition.state
     |> State.sorted_characters()
     |> Enum.filter(&Character.can_act?/1)
     |> Enum.reduce(transition, fn character, transition ->
-      case first_trigger(transition.state, character) do
+      case first_trigger(transition.state, character, params) do
         nil -> transition
         {reason, key, opts} -> send_message(transition, character, reason, key, opts)
       end
     end)
   end
 
-  defp first_trigger(state, character) do
-    Enum.find_value([:jealous, :lonely, :curious], &trigger(&1, state, character))
+  defp first_trigger(state, character, params) do
+    Enum.find_value([:jealous, :lonely, :curious], &trigger(&1, state, character, params))
   end
 
-  defp trigger(:jealous, state, %Character{id: id, state: cs}) do
+  defp trigger(:jealous, state, %Character{id: id, state: cs}, params) do
     key = "proactive:#{id}:jealous"
 
-    if cs.jealousy >= @jealousy_floor and cs.jealousy + cs.loneliness >= @pressure_threshold and
-         State.cooldown_ready?(state, key, @cooldown_hours) do
+    if cs.jealousy >= params.jealousy_floor and
+         cs.jealousy + cs.loneliness >= params.pressure_threshold and
+         State.cooldown_ready?(state, key, params.cooldown_hours) do
       {:jealous, key, []}
     end
   end
 
-  defp trigger(:lonely, state, %Character{id: id, state: cs}) do
+  defp trigger(:lonely, state, %Character{id: id, state: cs}, params) do
     key = "proactive:#{id}:lonely"
 
-    if cs.loneliness >= @loneliness_threshold and cs.jealousy < @jealousy_floor and
-         State.cooldown_ready?(state, key, @cooldown_hours) do
+    if cs.loneliness >= params.loneliness_threshold and cs.jealousy < params.jealousy_floor and
+         State.cooldown_ready?(state, key, params.cooldown_hours) do
       {:lonely, key, []}
     end
   end
 
-  defp trigger(:curious, state, %Character{id: id} = character) do
+  defp trigger(:curious, state, %Character{id: id} = character, params) do
     interested? =
       Character.trait?(character, :playful) or
-        State.get_relationship(state, id, @recipient).affinity >= @curious_affinity
+        State.get_relationship(state, id, @recipient).affinity >= params.curious_affinity
 
     if interested? do
       state

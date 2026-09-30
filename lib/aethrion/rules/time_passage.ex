@@ -8,19 +8,18 @@ defmodule Aethrion.Rules.TimePassage do
   use Aethrion.Rule,
     id: :time_passage,
     description:
-      "Advances the clock; per hour for active characters: loneliness +4, joy -2, stress -2."
+      "Advances the clock; per hour for active characters: loneliness +4, joy -2, stress -2.",
+    params: [loneliness_per_hour: 4, joy_per_hour: -2, stress_per_hour: -2]
 
   alias Aethrion.{State, Transition}
-
-  @loneliness_per_hour 4
-  @joy_per_hour -2
-  @stress_per_hour -2
 
   @impl true
   def apply(%Transition{event: %{hours: hours, now: now}} = transition) do
     state = transition.state
     transition = Transition.put_state(transition, %{state | clock: state.clock + hours})
-    loneliness = hours * @loneliness_per_hour
+    loneliness = hours * Transition.param(transition, :loneliness_per_hour)
+    joy = hours * Transition.param(transition, :joy_per_hour)
+    stress = hours * Transition.param(transition, :stress_per_hour)
 
     transition =
       transition.state
@@ -29,10 +28,8 @@ defmodule Aethrion.Rules.TimePassage do
       |> Enum.reduce(transition, fn character, transition ->
         transition
         |> Transition.adjust_character(character.id, :loneliness, loneliness, log: false)
-        |> Transition.adjust_character(character.id, :joy, hours * @joy_per_hour, log: false)
-        |> Transition.adjust_character(character.id, :stress, hours * @stress_per_hour,
-          log: false
-        )
+        |> Transition.adjust_character(character.id, :joy, joy, log: false)
+        |> Transition.adjust_character(character.id, :stress, stress, log: false)
         |> Transition.set_character(character.id, :last_active_at, now)
       end)
 

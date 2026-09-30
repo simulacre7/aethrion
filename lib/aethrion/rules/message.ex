@@ -14,7 +14,8 @@ defmodule Aethrion.Rules.Message do
   use Aethrion.Rule,
     id: :message,
     description:
-      "Tone-driven effects on the receiver: warm comforts, cold cools, hostile hurts; notable messages are remembered."
+      "Tone-driven effects on the receiver: warm comforts, cold cools, hostile hurts; notable messages are remembered.",
+    params: [warm_importance: 45, cold_importance: 35, hostile_importance: 65]
 
   alias Aethrion.{Memory, Transition}
 
@@ -27,8 +28,6 @@ defmodule Aethrion.Rules.Message do
       character: [stress: 20, joy: -10]
     ]
   }
-
-  @importance %{warm: 45, cold: 35, hostile: 65}
 
   @impl true
   def apply(%Transition{event: event} = transition) do
@@ -44,9 +43,13 @@ defmodule Aethrion.Rules.Message do
         Transition.adjust_character(transition, event.to, field, delta)
       end)
 
-    case Map.fetch(@importance, event.tone) do
-      {:ok, importance} -> Transition.remember(transition, memory(event, importance))
-      :error -> transition
+    case event.tone do
+      :neutral ->
+        transition
+
+      tone ->
+        importance = Transition.param(transition, :"#{tone}_importance")
+        Transition.remember(transition, memory(event, importance))
     end
   end
 

@@ -134,21 +134,45 @@ Characters reach out to the user when pressure crosses a threshold. At most one 
 
 Each message carries fallback text from deterministic templates, the ids of the memories it references, and a read-only context snapshot for optional LLM rendering (see [expression.md](expression.md)).
 
+## Tuning
+
+Every number on this page is a declared rule parameter with a default. A world can override any of them without code, so two worlds can run the same rules with a different temperament:
+
+```elixir
+state =
+  state
+  |> Aethrion.Tuning.put(:autonomy, :trust_threshold, 15)   # confide in acquaintances too
+  |> Aethrion.Tuning.put(:gossip, :importance_drop, 10)     # retellings keep more weight
+```
+
+The same in a scenario or a saved state:
+
+```json
+"tuning": {"autonomy": {"trust_threshold": 15}, "gossip": {"importance_drop": 10}}
+```
+
+Only parameters a rule declares are accepted. `mix aethrion.rules` prints every parameter and its default, and `Aethrion.Tuning.describe/2` returns defaults alongside a world's current values. The bundled `06_small_town.json` scenario shows the effect: with default tuning nothing spreads in that world; tuned, one witnessed gift reaches the end of the street.
+
 ## Writing your own rule
 
 ```elixir
 defmodule MyGame.Rules.Rivalry do
   use Aethrion.Rule,
     id: :rivalry,
-    description: "Rivals grow tense when the other receives a gift."
+    description: "Rivals grow tense when the other receives a gift.",
+    params: [tension_delta: 5]
 
   alias Aethrion.Transition
 
   @impl true
   def apply(%Transition{event: event} = transition) do
     case MyGame.rival_of(event.to) do
-      nil -> transition
-      rival -> Transition.adjust_relationship(transition, rival, event.to, :tension, 5)
+      nil ->
+        transition
+
+      rival ->
+        delta = Transition.param(transition, :tension_delta)
+        Transition.adjust_relationship(transition, rival, event.to, :tension, delta)
     end
   end
 end
@@ -172,3 +196,4 @@ Useful `Aethrion.Transition` helpers:
 | `note/3` | record a decision that changed nothing |
 | `enqueue/2` | add a follow-up event |
 | `cooldown_ready?/3`, `put_cooldown/2` | rate-limit behavior in simulated hours |
+| `param/2` | read one of the rule's declared parameters, honoring the world's tuning |

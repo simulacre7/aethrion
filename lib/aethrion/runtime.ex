@@ -113,7 +113,7 @@ defmodule Aethrion.Runtime do
       pipeline
       |> Pipeline.rules_for(event.type)
       |> Enum.reduce(Transition.new(acc.state, event), fn rule, transition ->
-        transition |> Transition.put_rule(rule.id()) |> rule.apply()
+        transition |> Transition.put_rule(rule) |> rule.apply()
       end)
       |> Transition.finalize()
 

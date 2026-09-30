@@ -1,7 +1,7 @@
 defmodule Aethrion.Rules.Observation do
   @moduledoc """
   Characters who see a gift remember it. Observers who care about the giver
-  (affinity >= #{30}) also become jealous and tense toward the receiver.
+  (affinity >= 30) also become jealous and tense toward the receiver.
 
   Trait modifiers: `:sensitive` +5 jealousy, `:calm` -5 jealousy.
   """
@@ -9,15 +9,18 @@ defmodule Aethrion.Rules.Observation do
   use Aethrion.Rule,
     id: :observation,
     description:
-      "Observers remember the gift; those who care about the giver get jealous (+10, sensitive +5, calm -5) and tense toward the receiver (+8)."
+      "Observers remember the gift; those who care about the giver get jealous (+10, sensitive +5, calm -5) and tense toward the receiver (+8).",
+    params: [
+      care_threshold: 30,
+      jealousy_delta: 10,
+      sensitive_bonus: 5,
+      calm_reduction: 5,
+      tension_delta: 8,
+      importance: 60
+    ]
 
   alias Aethrion.{Character, Memory, State, Transition}
   alias Aethrion.Rules.Gift
-
-  @care_threshold 30
-  @jealousy_delta 10
-  @tension_delta 8
-  @importance 60
 
   @impl true
   def apply(%Transition{event: event} = transition) do
@@ -30,7 +33,10 @@ defmodule Aethrion.Rules.Observation do
 
   defp observe(%Transition{event: event, state: state} = transition, observer_id) do
     observer = State.character(state, observer_id)
-    cares? = State.get_relationship(state, observer_id, event.from).affinity >= @care_threshold
+
+    cares? =
+      State.get_relationship(state, observer_id, event.from).affinity >=
+        Transition.param(transition, :care_threshold)
 
     transition
     |> Transition.note(
@@ -40,8 +46,17 @@ defmodule Aethrion.Rules.Observation do
     |> then(fn transition ->
       if cares? do
         transition
-        |> Transition.adjust_character(observer_id, :jealousy, jealousy_delta(observer))
-        |> Transition.adjust_relationship(observer_id, event.to, :tension, @tension_delta)
+        |> Transition.adjust_character(
+          observer_id,
+          :jealousy,
+          jealousy_delta(transition, observer)
+        )
+        |> Transition.adjust_relationship(
+          observer_id,
+          event.to,
+          :tension,
+          Transition.param(transition, :tension_delta)
+        )
       else
         transition
       end
@@ -51,7 +66,7 @@ defmodule Aethrion.Rules.Observation do
         id: "memory:#{observer_id}:observed:#{event.id}",
         character_id: observer_id,
         content: "#{observer_id} saw #{event.from} give #{event.to} a #{event.item}.",
-        importance: @importance,
+        importance: Transition.param(transition, :importance),
         created_at: event.at,
         related_characters: [event.from, event.to],
         kind: :observed,
@@ -61,8 +76,17 @@ defmodule Aethrion.Rules.Observation do
     )
   end
 
-  defp jealousy_delta(%Character{} = observer) do
-    @jealousy_delta + if(Character.trait?(observer, :sensitive), do: 5, else: 0) -
-      if(Character.trait?(observer, :calm), do: 5, else: 0)
+  defp jealousy_delta(transition, %Character{} = observer) do
+    bonus =
+      if Character.trait?(observer, :sensitive),
+        do: Transition.param(transition, :sensitive_bonus),
+        else: 0
+
+    reduction =
+      if Character.trait?(observer, :calm),
+        do: Transition.param(transition, :calm_reduction),
+        else: 0
+
+    Transition.param(transition, :jealousy_delta) + bonus - reduction
   end
 end

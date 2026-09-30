@@ -28,6 +28,10 @@ defmodule Aethrion.Scenario do
   `world` is either `"demo"` or an object with `characters` and
   `relationships` in the persistence format (see `Aethrion.State.to_data/1`).
 
+  An optional `tuning` object overrides rule parameters for this world, for
+  example `{"autonomy": {"trust_threshold": 15}}` (see `Aethrion.Tuning`).
+  Unknown rules or parameters are rejected.
+
   Expectations select a value and compare it with one of `equals`,
   `at_least`, or `at_most`. Output and memory expectations count matches;
   without a comparison they pass when at least one matches (`count` is
@@ -91,13 +95,17 @@ defmodule Aethrion.Scenario do
   @doc "Builds a scenario from decoded JSON data."
   def from_data(%{} = data) do
     with {:ok, state} <- world(Map.get(data, "world", "demo")),
+         {:ok, tuning} <- Aethrion.Tuning.from_data(Map.get(data, "tuning")),
          {:ok, events} <- events(Map.get(data, "events", [])),
          {:ok, expectations} <- expectations(Map.get(data, "expect", [])) do
       {:ok,
        %__MODULE__{
          name: Map.get(data, "name", "Untitled scenario"),
          description: Map.get(data, "description", ""),
-         state: state,
+         state: %{
+           state
+           | tuning: Map.merge(state.tuning, tuning, fn _rule, a, b -> Map.merge(a, b) end)
+         },
          events: events,
          expectations: expectations
        }}

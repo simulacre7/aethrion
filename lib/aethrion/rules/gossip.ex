@@ -11,14 +11,10 @@ defmodule Aethrion.Rules.Gossip do
   use Aethrion.Rule,
     id: :gossip,
     description:
-      "Listener gains a secondhand memory (importance -15, min 20); teller loneliness -4 and trust toward listener +2."
+      "Listener gains a secondhand memory (importance -15, min 20); teller loneliness -4 and trust toward listener +2.",
+    params: [importance_drop: 15, min_importance: 20, loneliness_delta: -4, trust_delta: 2]
 
   alias Aethrion.{Expression, Memories, Memory, Output, State, Transition}
-
-  @importance_drop 15
-  @min_importance 20
-  @loneliness_delta -4
-  @trust_delta 2
 
   @impl true
   def apply(%Transition{event: event, state: state} = transition) do
@@ -43,9 +39,18 @@ defmodule Aethrion.Rules.Gossip do
         &%{&1 | shared_with: &1.shared_with ++ [event.to]},
         field: :shared_with
       )
-      |> Transition.remember(heard_memory(event, memory))
-      |> Transition.adjust_character(event.from, :loneliness, @loneliness_delta)
-      |> Transition.adjust_relationship(event.from, event.to, :trust, @trust_delta)
+      |> Transition.remember(heard_memory(transition, event, memory))
+      |> Transition.adjust_character(
+        event.from,
+        :loneliness,
+        Transition.param(transition, :loneliness_delta)
+      )
+      |> Transition.adjust_relationship(
+        event.from,
+        event.to,
+        :trust,
+        Transition.param(transition, :trust_delta)
+      )
       |> Transition.emit(
         Output.character_interaction(:gossip, event.from, event.to, request.fallback_text,
           memory_refs: [memory.id],
@@ -56,12 +61,15 @@ defmodule Aethrion.Rules.Gossip do
     end
   end
 
-  defp heard_memory(event, %Memory{} = original) do
+  defp heard_memory(transition, event, %Memory{} = original) do
+    drop = Transition.param(transition, :importance_drop)
+    floor = Transition.param(transition, :min_importance)
+
     Memory.new(
       id: "memory:#{event.to}:heard:#{event.id}",
       character_id: event.to,
       content: "#{event.from} told #{event.to}: #{original.content}",
-      importance: max(original.importance - @importance_drop, @min_importance),
+      importance: max(original.importance - drop, floor),
       created_at: event.at,
       related_characters: Enum.uniq([event.from | original.related_characters]) -- [event.to],
       kind: :heard,
