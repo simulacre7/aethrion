@@ -316,5 +316,6 @@ Recommended local versions:
 - [docs/expression.md](docs/expression.md) - the LLM boundary and adapters
 - [docs/scenarios.md](docs/scenarios.md) - the scenario format
 - [docs/api.md](docs/api.md) - the public API
+- [docs/architecture.md](docs/architecture.md) - how it is built, for contributors
 - [docs/roadmap.md](docs/roadmap.md) - what's next
 - [CHANGELOG.md](CHANGELOG.md)

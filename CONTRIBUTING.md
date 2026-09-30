@@ -24,6 +24,8 @@ mix demo.drama
 - Keep new dependencies minimal. Runtime dependencies are currently just `jason`.
 - Document public event and output shapes when changing them (`docs/api.md`, `docs/rules.md`).
 
+See [docs/architecture.md](docs/architecture.md) for how the pieces fit together.
+
 ## Layout
 
 - `lib/` - the library, including the `mix aethrion.*` tasks that ship with it

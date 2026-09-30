@@ -313,5 +313,6 @@ flowchart TD
 - [docs/expression.md](docs/expression.md) - LLM 경계와 adapter
 - [docs/scenarios.md](docs/scenarios.md) - 시나리오 형식
 - [docs/api.md](docs/api.md) - 공개 API
+- [docs/architecture.md](docs/architecture.md) - 내부 구조 (기여자용, 영문)
 - [docs/roadmap.md](docs/roadmap.md) - 다음 계획
 - [CHANGELOG.md](CHANGELOG.md)

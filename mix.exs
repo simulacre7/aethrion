@@ -65,6 +65,7 @@ defmodule Aethrion.MixProject do
         "docs/tutorial.md",
         "docs/tutorial.ko.md",
         "docs/concept.md",
+        "docs/architecture.md",
         "docs/rules.md",
         "docs/expression.md",
         "docs/scenarios.md",
