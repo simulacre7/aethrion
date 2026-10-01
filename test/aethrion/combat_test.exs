@@ -474,6 +474,17 @@ defmodule Aethrion.CombatTest do
     asked = Combat.action(state, "user", nil, "Mina, 나 좀 치료해줘")
     assert %{type: :heal, from: "mina", to: "user", asked_by: "user"} = asked
 
+    # It survives a journal: the same event comes back from JSON.
+    {:ok, step} = Runtime.step(state, asked)
+
+    assert {:ok, ^asked} =
+             step.event
+             |> Map.delete(:id)
+             |> Jason.encode!()
+             |> Jason.decode!()
+             |> Event.from_data()
+             |> then(fn {:ok, e} -> {:ok, Map.delete(e, :id)} end)
+
     {_after, outputs, _steps} = run(state, [asked])
 
     assert [%{kind: :healed, character_id: "mina"} | _] = combat(outputs)

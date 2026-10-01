@@ -176,6 +176,7 @@ defmodule Aethrion.Validator do
          :ok <- require_fighter(state, event, :to),
          :ok <- require_hurt(state, event.to),
          :ok <- optional_name(event, :item),
+         :ok <- optional_name(event, :asked_by),
          :ok <- require_means(state, event) do
       case Map.get(event, :amount) do
         nil ->

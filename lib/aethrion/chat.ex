@@ -51,8 +51,8 @@ defmodule Aethrion.Chat do
   @doc """
   Like `read/4`, for a line that may both say something and do something
   in a fight ("카엘, 고마워! 늑대왕을 벤다"): the sentences that act are the
-  move, the others are talk, to whoever they call by name ("카엘, ...") or
-  `to`. Talk comes first, as it was said. Outside a fight, one reading.
+  move, and the others, when they call someone by name ("카엘, ..."), are
+  talk to them, first, as it was said. Outside a fight, one reading.
   """
   @spec read_all(State.t(), String.t(), String.t(), String.t()) ::
           [reading() | {:talk, String.t(), String.t()}]
@@ -68,9 +68,13 @@ defmodule Aethrion.Chat do
             sentences -> {:combat, fight(state, from, Enum.join(sentences, " "))}
           end
 
-        case Enum.join(talking, " ") do
-          "" -> [move]
-          said -> [{:talk, addressee(state, said, to), said}, move]
+        # Talk is what calls someone by name ("리아, 고마워!"); a cry like
+        # "한 번 더!" is part of the move.
+        said = Enum.join(talking, " ")
+
+        case addressee(state, said) do
+          nil -> [move]
+          called -> [{:talk, called, said}, move]
         end
 
       reading ->
@@ -82,14 +86,12 @@ defmodule Aethrion.Chat do
     do: text |> String.split(~r/(?<=[.!?~])\s+|\n+/u, trim: true) |> Enum.map(&String.trim/1)
 
   # "카엘, 고마워" or "카엘아 고마워" talks to Kael, if he can listen.
-  defp addressee(state, said, to) do
-    called =
-      Enum.find(State.sorted_characters(state), fn c ->
-        Regex.match?(~r/^#{Regex.escape(c.name)}(?:아|야|씨)?(?:,|\s)/u, said) and
-          not State.down?(state, c.id)
-      end)
-
-    if called, do: called.id, else: to
+  defp addressee(state, said) do
+    Enum.find_value(State.sorted_characters(state), fn c ->
+      if Regex.match?(~r/^#{Regex.escape(c.name)}(?:아|야|씨)?(?:,|\s)/u, said) and
+           not State.down?(state, c.id),
+         do: c.id
+    end)
   end
 
   defp fight(state, from, text) do

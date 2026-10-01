@@ -434,6 +434,7 @@ defmodule Aethrion.Event do
     heal(data["from"], data["to"],
       amount: data["amount"],
       item: data["item"],
+      asked_by: data["asked_by"],
       at: Map.get(data, "at", @unspecified)
     )
   end
