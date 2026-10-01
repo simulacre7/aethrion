@@ -94,8 +94,8 @@ defmodule Aethrion.Rules.Apology do
   # folded into an impression), an apology gives back at most the trust that
   # their hostile words since their last apology to the receiver actually
   # took, so insulting and apologizing never builds trust. From someone with
-  # no such record (an apology for leaving a friend out, say) it is taken
-  # whole.
+  # no such record, it is taken whole when there is something to forgive
+  # (tension, cold words, being left out) and gives no trust otherwise.
   defp trust_lost(state, %{from: from, to: to} = event) do
     remembered = Memories.for_character(state, to, include_faded: true)
 
@@ -123,12 +123,38 @@ defmodule Aethrion.Rules.Apology do
           )
         )
 
-    if record? do
-      hostile
-      |> Enum.filter(&((Memories.event_number(&1) || 0) in (last_apology + 1)..now//1))
-      |> Enum.map(&Map.get(&1.data, "trust_lost", default_loss(state)))
-      |> Enum.sum()
+    cond do
+      record? ->
+        hostile
+        |> Enum.filter(&((Memories.event_number(&1) || 0) in (last_apology + 1)..now//1))
+        |> Enum.map(&Map.get(&1.data, "trust_lost", default_loss(state)))
+        |> Enum.sum()
+
+      something_to_forgive?(state, to, from, remembered) ->
+        nil
+
+      # Saying sorry for nothing does not build trust.
+      true ->
+        0
     end
+  end
+
+  # Tension, cold words, or a gift seen going to someone else.
+  defp something_to_forgive?(state, to, from, remembered) do
+    Aethrion.State.get_relationship(state, to, from).tension > 0 or
+      Enum.any?(remembered, fn
+        %Memory{
+          kind: :experienced,
+          data: %{"event" => "message_sent", "from" => ^from, "tone" => "cold"}
+        } ->
+          true
+
+        %Memory{kind: :observed, data: %{"event" => "gift_received", "from" => ^from}} ->
+          true
+
+        _memory ->
+          false
+      end)
   end
 
   defp hostile_from?(memory, from) do

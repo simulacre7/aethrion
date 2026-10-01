@@ -500,12 +500,58 @@ defmodule Aethrion.State do
          :ok <- optional(data, "seq", &non_neg_integer?/1),
          :ok <- optional(data, "cooldowns", &cooldowns?/1),
          :ok <- optional(data, "people", &names?/1),
-         :ok <- optional(data, "conversations", &Aethrion.Conversation.valid_data?/1) do
-      optional(data, "tuning", &is_map/1)
+         :ok <- optional(data, "conversations", &Aethrion.Conversation.valid_data?/1),
+         :ok <- optional(data, "tuning", &is_map/1) do
+      validate_cast(data)
     end
   end
 
   defp validate_data(_data), do: invalid([], "expected an object")
+
+  # Mistakes in hand-written casts that would otherwise pass silently: a
+  # second character with the same id replaces the first, and feelings
+  # belong to characters, about someone else.
+  defp validate_cast(data) do
+    ids = data |> Map.get("characters", []) |> Enum.map(& &1["id"])
+    duplicate = ids -- Enum.uniq(ids)
+
+    relationships = data |> Map.get("relationships", []) |> Enum.with_index()
+
+    cond do
+      duplicate != [] ->
+        invalid(
+          ["characters"],
+          "the id #{inspect(hd(duplicate))} is used by more than one character"
+        )
+
+      bad = Enum.find(relationships, fn {r, _i} -> r["from"] not in ids end) ->
+        {r, i} = bad
+
+        invalid(
+          ["relationships", i, "from"],
+          "#{inspect(r["from"])} is not a character in this cast"
+        )
+
+      bad = Enum.find(relationships, fn {r, _i} -> r["from"] == r["to"] end) ->
+        {r, i} = bad
+
+        invalid(
+          ["relationships", i, "to"],
+          "#{inspect(r["to"])} cannot have a relationship with themselves"
+        )
+
+      true ->
+        pairs = Enum.map(relationships, fn {r, _i} -> {r["from"], r["to"]} end)
+
+        case pairs -- Enum.uniq(pairs) do
+          [] ->
+            :ok
+
+          [{from, to} | _] ->
+            invalid(["relationships"], "#{from} -> #{to} is listed more than once")
+        end
+    end
+  end
 
   # v1 one-shot proactive records, migrated to cooldowns.
   defp validate_emitted(item) do
@@ -537,9 +583,14 @@ defmodule Aethrion.State do
   # The first of `fields` that is present and outside min..max.
   defp in_range(map, fields, min, max) do
     Enum.reduce_while(fields, :ok, fn field, :ok ->
-      case optional(map, field, &in_range?(&1, min, max)) do
-        :ok -> {:cont, :ok}
-        error -> {:halt, error}
+      case Map.fetch(map, field) do
+        {:ok, value} ->
+          if in_range?(value, min, max),
+            do: {:cont, :ok},
+            else: {:halt, invalid([field], "must be a whole number from #{min} to #{max}")}
+
+        :error ->
+          {:cont, :ok}
       end
     end)
   end

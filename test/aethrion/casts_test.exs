@@ -11,4 +11,23 @@ defmodule Aethrion.CastsTest do
       assert Enum.all?(Map.values(state.characters), &(&1.voice != ""))
     end
   end
+
+  test "mistakes in a hand-written cast are errors with a path" do
+    c = fn id -> %{"id" => id, "name" => id} end
+
+    for {data, message} <- [
+          {%{"characters" => [c.("a"), c.("a")]}, "used by more than one character"},
+          {%{"characters" => [c.("a")], "relationships" => [%{"from" => "elena", "to" => "a"}]},
+           "not a character"},
+          {%{"characters" => [c.("a")], "relationships" => [%{"from" => "a", "to" => "a"}]},
+           "themselves"},
+          {%{
+             "characters" => [c.("a")],
+             "relationships" => [%{"from" => "a", "to" => "user", "affinity" => 250}]
+           }, "from -100 to 100"}
+        ] do
+      assert {:error, %{code: :invalid_state, message: got}} = Aethrion.State.parse(data)
+      assert got =~ message
+    end
+  end
 end

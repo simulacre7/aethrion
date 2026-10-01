@@ -234,7 +234,8 @@ defmodule Aethrion.API do
         characters
         |> Enum.flat_map(&Conversation.recent(state, &1, person))
         |> Enum.filter(&(event_index(&1.event_id) > after_event))
-        |> Enum.sort_by(&event_index(&1.event_id))
+        # Within one event, what the person did comes before the reactions.
+        |> Enum.sort_by(&{event_index(&1.event_id), if(&1.from == person, do: 0, else: 1)})
 
       {:ok, 200,
        %{turns: Enum.map(turns, &Map.take(&1, [:from, :to, :text, :kind, :tone, :event_id, :at]))}}
@@ -252,6 +253,7 @@ defmodule Aethrion.API do
     with {:ok, data} <- decode(body),
          {:ok, to} <- required(data, "to"),
          {:ok, text} <- required(data, "text"),
+         :ok <- observers_list(data),
          :ok <- short_enough(text, config.max_text),
          {:ok, state} <- Worlds.get_state(config.worlds, key),
          {:ok, event, meta} <-
@@ -355,7 +357,10 @@ defmodule Aethrion.API do
       character_id: output.character_id,
       to: output.to,
       text: output.text,
-      rendered: match?(%{expression: %{status: :ok}}, output)
+      # Phrased by a model; the built-in templates (FakeAdapter) do not count.
+      rendered:
+        match?(%{expression: %{status: :ok}}, output) and
+          output.expression.adapter != Aethrion.LLM.FakeAdapter
     }
     |> Map.merge(Map.take(output, [:reason, :kind, :tone]))
   end
@@ -386,6 +391,11 @@ defmodule Aethrion.API do
   end
 
   defp event_index(_none), do: -1
+
+  defp observers_list(%{"observed_by" => observers}) when not is_list(observers),
+    do: {:error, 400, Error.new(:invalid_request, "observed_by must be a list of character ids")}
+
+  defp observers_list(_data), do: :ok
 
   defp short_enough(text, max) do
     if String.length(text) <= max,

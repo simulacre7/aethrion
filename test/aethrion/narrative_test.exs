@@ -233,6 +233,13 @@ defmodule Aethrion.NarrativeTest do
       assert Ko.render(request) =~ "어떻게 하는지도 들었어"
     end
 
+    test "saying sorry for nothing builds no trust" do
+      trust = fn state -> State.get_relationship(state, "haru", "user").trust end
+      sorry = Event.apology_offered("user", "haru", "Sorry!")
+      {state, _} = run!(Runtime.demo_state(), [sorry, sorry, sorry])
+      assert trust.(state) == trust.(Runtime.demo_state())
+    end
+
     test "apologizing again for one thing is not taken as a pattern" do
       events =
         [Event.message_sent("user", "haru", "Useless.", tone: :hostile)] ++
