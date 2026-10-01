@@ -226,6 +226,43 @@ defmodule Aethrion.APITest do
     assert Enum.any?(rest, &(&1["type"] == "combat" and &1["to"] == "wolf"))
   end
 
+  test "the cast editor: its page, checking a cast, and simulating routes", %{base: base} do
+    {:ok, {{_v, 200, _r}, _h, html}} =
+      :httpc.request(:get, {String.to_charlist(base <> "/editor"), []}, [], body_format: :binary)
+
+    assert html =~ "캐스트 편집기"
+
+    cast = "priv/casts/summer.json" |> File.read!() |> Jason.decode!()
+
+    assert {200, %{"ok" => true, "summary" => %{"endings" => [_ | _]}}} =
+             request(:post, base <> "/casts/check", %{"cast" => cast})
+
+    broken = put_in(cast, ["story", "endings", Access.at(0), "tilte"], "oops")
+
+    assert {200,
+            %{
+              "ok" => false,
+              "error" => %{"path" => ["story", "endings", "0"], "message" => message}
+            }} =
+             request(:post, base <> "/casts/check", %{"cast" => broken})
+
+    assert message =~ "tilte"
+
+    route = %{"name" => "study", "to" => "seoyun", "days" => 30, "script" => "오늘은 공부하자"}
+
+    assert {200, %{"routes" => [%{"ending" => %{"id" => "burnout"}, "day" => _}]}} =
+             request(:post, base <> "/casts/simulate", %{"cast" => cast, "routes" => [route]})
+
+    assert {400, _error} =
+             request(:post, base <> "/casts/simulate", %{
+               "cast" => cast,
+               "routes" => [%{route | "days" => 999}]
+             })
+
+    # This server was started without a cast.
+    assert {404, _error} = request(:get, base <> "/casts/current")
+  end
+
   test "mistakes are errors with a status", %{base: base} do
     assert {400, %{"error" => %{"code" => "invalid_key"}}} =
              request(:post, base <> "/worlds/..%2Fetc/say", %{"to" => "mina", "text" => "hi"})

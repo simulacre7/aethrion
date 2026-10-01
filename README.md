@@ -370,6 +370,24 @@ mix run examples/den.exs
 mix aethrion.serve --cast priv/casts/den.json --locale ko   # then just chat at http://localhost:4848
 ```
 
+## Authoring Worlds
+
+A world is a cast file (JSON): characters with a profile, a voice, and traits; relationships; stats; a story with activities, endings, and bond stories; and tuning for the rules' numbers. `mix aethrion.serve` also serves a **cast editor** at `/editor`: characters, relationships, stats, endings, and bond stories in forms (conditions with a builder: stat, relationship, bond, mood, time), checked by the server as you type (the problem and where it is), and downloaded as JSON. Its **route simulator** plays the story along routes written the way a player chats, and shows where each ends, on which day, and how close the other endings came:
+
+```txt
+오늘은 같이 그림 그리자
+3일마다: 내일은 좀 쉬자
+10일째: 너 주려고 물감 사 왔어
+```
+
+`Aethrion.Simulator` and `POST /casts/simulate` do the same from code. Every route is deterministic, so a changed number shows its effect at once.
+
+## Reading Chat Lines
+
+What a line does is decided by an interpreter (`Aethrion.Interpreter`), the seam between free text and the rules: it proposes events with a confidence, and the rules check and apply them, so a replay never asks it again. The built-in `Interpreter.Rules` reads keywords and patterns. A model plugs in by answering `Interpreter.questions/1`, typed choices drawn from the cast (what the line does, at whom, in what tone, which activity, who should heal), and `Interpreter.from_answers/2` turns the answers into events; a decision model that returns choices with probabilities (such as Jev) or an LLM with structured output fits this shape, and the rules stand in when it fails, answers outside the choices, or is unsure.
+
+`mix aethrion.interpret.eval` scores an interpreter on 170 Korean chat lines labeled with what a person means (`priv/eval/interpret.ko.json`, quest, den, summer, and academy casts). The rules read 105 of them right (62%): they miss phrasings they have no words for ("ㄱㄱ 늑대왕 잡자", "수채화 연습하자", "쿠키 구워 왔어"), which is the gap a model is for. `--interpreter MyApp.Interpreter` scores another one on the same lines.
+
 ## Runtime vs LLM Server
 
 Aethrion does not run model inference inside the BEAM, and most runtime events do not call an LLM.

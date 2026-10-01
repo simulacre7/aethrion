@@ -28,6 +28,10 @@ defmodule Aethrion.API do
   | `GET` | `/worlds/{key}/story` | the ending reached (or `null`), how close every ending is with what is missing (`Aethrion.Story`), the story's `activities`, the world's `hour`, and the `deadline` |
   | `GET` | `/worlds/{key}/replies?character=hana&person=user` | two or three replies the person might send, each with its tone (`Aethrion.Replies`), for a messenger-style chat; send one as a `message_sent` event with that tone |
   | `GET` | `/worlds/{key}/state` | the whole state, as `Aethrion.State.to_data/1` |
+  | `GET` | `/editor` | a cast editor: characters, relationships, endings, and bond stories in forms, checked as you type, with a route simulator |
+  | `GET` | `/casts/current` | the cast this server was started with (`mix aethrion.serve --cast`) |
+  | `POST` | `/casts/check` | `{"cast": {...}}`: `{"ok": true, "summary": ...}` or `{"ok": false, "error": {"message", "path"}}` |
+  | `POST` | `/casts/simulate` | `{"cast": {...}, "routes": [{"name", "to", "days", "script"}]}`: where each route ends (`Aethrion.Simulator`) |
   | `GET` | `/health` | `{"ok": true}` |
   | `GET` | `/` | a small chat page for trying a world in a browser (no token needed to load it; its requests send one) |
 
@@ -106,6 +110,7 @@ defmodule Aethrion.API do
       intent: Keyword.get(opts, :intent, []),
       interpreter: Keyword.get(opts, :interpreter, Aethrion.Interpreter.Rules),
       interpreter_opts: Keyword.get(opts, :interpreter_opts, []),
+      cast: Keyword.get(opts, :cast),
       render_timeout: Keyword.get(opts, :render_timeout, 15_000),
       max_text: Keyword.get(opts, :max_text, 2_000),
       locale: Keyword.get(opts, :locale, :en),
@@ -133,10 +138,14 @@ defmodule Aethrion.API do
   @chat_path Path.expand("../../priv/api/chat.html", __DIR__)
   @external_resource @chat_path
   @chat_html File.read!(@chat_path)
+  @editor_path Path.expand("../../priv/api/editor.html", __DIR__)
+  @external_resource @editor_path
+  @editor_html File.read!(@editor_path)
 
   @doc false
   # The chat page holds no data, so it loads without a token.
   def handle(_config, "GET", [], _query, _headers, _body), do: {200, :html, @chat_html}
+  def handle(_config, "GET", ["editor"], _query, _headers, _body), do: {200, :html, @editor_html}
 
   # Health checks come from load balancers that hold no token.
   def handle(_config, "GET", ["health"], _query, _headers, _body),
@@ -170,6 +179,12 @@ defmodule Aethrion.API do
   @key ~r/^[A-Za-z0-9_\-.:@]{1,128}$/
 
   defp route("GET", ["health"]), do: {:ok, :health}
+  defp route("GET", ["casts", "current"]), do: {:ok, :cast_current}
+  defp route("POST", ["casts", "check"]), do: {:ok, :cast_check}
+  defp route("POST", ["casts", "simulate"]), do: {:ok, :cast_simulate}
+
+  defp route(_method, ["casts", action]) when action in ["current", "check", "simulate"],
+    do: {:error, 405, Error.new(:method_not_allowed, "method not allowed")}
 
   defp route(method, ["worlds", key | rest]) do
     if Regex.match?(@key, key) and not String.contains?(key, "..") do
@@ -214,6 +229,39 @@ defmodule Aethrion.API do
   defp run(config, {:state, key}, _query, _body) do
     with {:ok, state} <- Worlds.peek_state(config.worlds, key) do
       {:ok, 200, State.to_data(state)}
+    end
+  end
+
+  defp run(%{cast: nil}, :cast_current, _query, _body),
+    do: {:error, 404, Error.new(:not_found, "this server was started without a cast")}
+
+  defp run(config, :cast_current, _query, _body),
+    do: {:ok, 200, %{cast: State.to_data(config.cast)}}
+
+  defp run(_config, :cast_check, _query, body) do
+    with {:ok, data} <- decode(body) do
+      case State.parse(Map.get(data, "cast")) do
+        {:ok, state} ->
+          {:ok, 200, %{ok: true, summary: cast_summary(state)}}
+
+        {:error, error} ->
+          {:ok, 200, %{ok: false, error: %{message: error.message, path: path(error)}}}
+      end
+    end
+  end
+
+  defp run(config, :cast_simulate, _query, body) do
+    with {:ok, data} <- decode(body),
+         {:ok, routes} <- routes(data),
+         {:ok, state} <- cast_state(data) do
+      results =
+        Aethrion.Simulator.run(state, routes,
+          locale: if(config.locale == :ko, do: :ko, else: :en),
+          interpreter: config.interpreter,
+          interpreter_opts: config.interpreter_opts
+        )
+
+      {:ok, 200, %{routes: results}}
     end
   end
 
@@ -400,6 +448,58 @@ defmodule Aethrion.API do
       dispatch(config, key, event, %{interpreted: interpreted})
     end
   end
+
+  defp cast_summary(state) do
+    %{
+      characters: Enum.map(State.sorted_characters(state), &%{id: &1.id, name: &1.name}),
+      endings: state.story |> Map.get(:endings, []) |> Enum.map(&Map.take(&1, [:id, :title])),
+      milestones:
+        state.story |> Map.get(:milestones, []) |> Enum.map(&Map.take(&1, [:id, :title])),
+      activities: state.story |> Map.get(:activities, %{}) |> Map.keys() |> Enum.sort()
+    }
+  end
+
+  defp path(%Error{details: %{path: path}}) when is_list(path), do: Enum.map(path, &to_string/1)
+  defp path(_error), do: []
+
+  defp cast_state(data) do
+    case State.parse(Map.get(data, "cast")) do
+      {:ok, state} -> {:ok, state}
+      {:error, error} -> {:error, 400, error}
+    end
+  end
+
+  # A few routes of a few months at most: simulation runs on the request.
+  defp routes(%{"routes" => routes}) when is_list(routes) and length(routes) in 1..8 do
+    Enum.reduce_while(routes, {:ok, []}, fn
+      %{"to" => to, "script" => script} = route, {:ok, acc}
+      when is_binary(to) and is_binary(script) and byte_size(script) <= 4_000 ->
+        days = Map.get(route, "days", 30)
+
+        if is_integer(days) and days in 1..120,
+          do:
+            {:cont,
+             {:ok,
+              acc ++
+                [
+                  %{
+                    name: to_string(Map.get(route, "name", "route")),
+                    to: to,
+                    days: days,
+                    script: script
+                  }
+                ]}},
+          else: {:halt, {:error, 400, Error.new(:invalid_request, "days must be 1 to 120")}}
+
+      _route, _acc ->
+        {:halt,
+         {:error, 400,
+          Error.new(:invalid_request, "a route needs to (a character) and script (text)")}}
+    end)
+  end
+
+  defp routes(_data),
+    do: {:error, 400, Error.new(:invalid_request, "routes must be a list of 1 to 8 routes")}
 
   defp known_character(state, id) do
     if State.character?(state, id),

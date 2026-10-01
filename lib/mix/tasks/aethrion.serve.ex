@@ -92,7 +92,8 @@ defmodule Mix.Tasks.Aethrion.Serve do
         bind: opts[:bind] || "127.0.0.1",
         token: token,
         intent: if(adapter, do: [adapter: adapter, adapter_opts: adapter_opts], else: []),
-        locale: if(opts[:locale] == "ko", do: :ko, else: :en)
+        locale: if(opts[:locale] == "ko", do: :ko, else: :en),
+        cast: cast
       )
 
     notes =
