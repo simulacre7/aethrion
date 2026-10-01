@@ -106,7 +106,13 @@ defmodule Aethrion.LLM.CLI do
         cd: dir
       ])
 
-    {:os_pid, os_pid} = Port.info(port, :os_pid)
+    # A tool that already finished has no pid left to ask for.
+    os_pid =
+      case Port.info(port, :os_pid) do
+        {:os_pid, pid} -> pid
+        nil -> nil
+      end
+
     caller = self()
     reaper = spawn(fn -> reap(caller, os_pid) end)
 
@@ -130,8 +136,11 @@ defmodule Aethrion.LLM.CLI do
         {:ok, IO.iodata_to_binary(acc), status}
     after
       wait ->
-        {:os_pid, os_pid} = Port.info(port, :os_pid) || {:os_pid, nil}
-        if os_pid, do: kill_tree(os_pid)
+        case Port.info(port, :os_pid) do
+          {:os_pid, os_pid} -> kill_tree(os_pid)
+          nil -> :ok
+        end
+
         close(port)
         {:error, :timeout}
     end
@@ -142,6 +151,8 @@ defmodule Aethrion.LLM.CLI do
   catch
     :error, _closed -> :ok
   end
+
+  defp reap(_caller, nil), do: :ok
 
   defp reap(caller, os_pid) do
     ref = Process.monitor(caller)
