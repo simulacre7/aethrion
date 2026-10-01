@@ -54,6 +54,7 @@ Or chat with the characters in a browser, through the HTTP API a game or chat ba
 ```bash
 mix aethrion.serve              # then open http://localhost:4848
 mix aethrion.serve --locale ko  # characters answer in Korean
+mix aethrion.serve --tick-every 10   # an hour passes every 10 seconds: characters reach out on their own
 ```
 
 ## Two Events In, A Story Out

@@ -30,6 +30,10 @@ defmodule Mix.Tasks.Aethrion.Serve do
   - `--locale ko` - lines in Korean: with `--llm` the model writes them,
     otherwise the built-in Korean templates do
   - `--idle MINUTES` - stop worlds unused for this long (default 30)
+  - `--tick-every SECONDS` - let an hour pass in each running world every
+    this many seconds, so characters reach out on their own (their lines
+    show up when a client polls `conversation`); by default time passes
+    only when a client sends a `time_tick`
 
   See `Aethrion.API` for the endpoints.
   """
@@ -46,11 +50,12 @@ defmodule Mix.Tasks.Aethrion.Serve do
     token: :string,
     llm: :string,
     locale: :string,
-    idle: :integer
+    idle: :integer,
+    tick_every: :integer
   ]
 
   @usage "mix aethrion.serve [--cast FILE] [--data DIR] [--port N] [--bind ADDRESS] " <>
-           "[--token TOKEN] [--llm anthropic|openai] [--locale ko] [--idle MINUTES]"
+           "[--token TOKEN] [--llm anthropic|openai] [--locale ko] [--idle MINUTES] [--tick-every SECONDS]"
 
   @impl Mix.Task
   def run(args) do
@@ -73,7 +78,7 @@ defmodule Mix.Tasks.Aethrion.Serve do
             initial_state: cast,
             journal: Path.join(data, Aethrion.Worlds.file_name(key) <> ".jsonl")
           ] ++
-            expression
+            expression ++ scheduler(opts[:tick_every])
         end
       )
 
@@ -100,6 +105,13 @@ defmodule Mix.Tasks.Aethrion.Serve do
 
     unless iex_running?(), do: Process.sleep(:infinity)
   end
+
+  defp scheduler(nil), do: []
+
+  defp scheduler(seconds) when seconds > 0,
+    do: [scheduler: [interval_ms: seconds * 1000, tick_hours: 1]]
+
+  defp scheduler(_seconds), do: Mix.raise("--tick-every must be a positive number of seconds")
 
   # A model when given; Korean templates for --locale ko without one.
   defp expression(nil, _adapter_opts, "ko"),

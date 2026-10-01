@@ -52,6 +52,9 @@ const store = {
   set(key, value) { try { localStorage.setItem(key, value); } catch {} }
 };
 let names = {};
+// The last event seen, so polling shows only what is new.
+let last = null;
+const seen = (id) => { if (id && (!last || Number(id.slice(1)) > Number(last.slice(1)))) last = id; };
 
 $("world").value = store.get("aethrion.world", "guest-" + Math.random().toString(36).slice(2, 7));
 $("token").value = store.get("aethrion.token", "");
@@ -108,8 +111,27 @@ async function history() {
   for (const turn of data.turns) {
     if (turn.from === "user") add("me", turn.kind === "gift" ? "(gives " + turn.text + ")" : turn.text, "You");
     else add("them", turn.text, names[turn.from] || turn.from);
+    seen(turn.event_id);
   }
+  const all = await call("GET", worldPath("/conversation"));
+  for (const turn of all.turns) seen(turn.event_id);
+  if (!last) last = "e0";
 }
+
+// Characters write on their own when time passes on the server.
+async function poll() {
+  if (!last) return;
+  try {
+    const data = await call("GET", worldPath("/conversation?after=" + last));
+    for (const turn of data.turns) {
+      seen(turn.event_id);
+      if (turn.from === "user") continue;
+      const who = names[turn.from] || turn.from;
+      add("them", turn.text, turn.from === $("character").value ? who : who + " (messaged you)");
+    }
+  } catch {}
+}
+setInterval(poll, 5000);
 
 $("form").addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -120,6 +142,7 @@ $("form").addEventListener("submit", async (event) => {
   try {
     const data = await call("POST", worldPath("/say"), {to: $("character").value, text});
     show(data.lines);
+    seen(data.last_event_id);
   } catch (error) { add("error", error.message); }
 });
 
@@ -128,6 +151,7 @@ $("later").addEventListener("click", async () => {
   try {
     const data = await call("POST", worldPath("/events"), {type: "time_tick", hours: 6, now: "later"});
     show(data.lines);
+    seen(data.last_event_id);
     if (!data.lines.length) add("note", "Nothing much happened.");
   } catch (error) { add("error", error.message); }
 });
