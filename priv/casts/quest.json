@@ -178,7 +178,7 @@
               "user"
             ],
             "field": "trust",
-            "at_least": 24
+            "at_least": 20
           },
           {
             "stat": [
@@ -193,7 +193,7 @@
               "user"
             ],
             "field": "trust",
-            "at_least": 26
+            "at_least": 22
           },
           {
             "stat": [
@@ -226,7 +226,7 @@
                       "user"
                     ],
                     "field": "trust",
-                    "at_least": 24
+                    "at_least": 20
                   },
                   {
                     "stat": [
@@ -245,7 +245,7 @@
                       "user"
                     ],
                     "field": "trust",
-                    "at_least": 26
+                    "at_least": 22
                   },
                   {
                     "stat": [
@@ -263,7 +263,7 @@
       {
         "id": "alone",
         "title": "혼자만의 승리",
-        "description": "늑대왕은 쓰러졌지만, 돌아보니 아무도 곁에 없다.",
+        "description": "늑대왕은 쓰러졌지만, 누구도 너와 눈을 마주치지 않는다.",
         "when": [
           {
             "stat": [
