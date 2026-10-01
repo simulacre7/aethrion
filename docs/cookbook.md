@@ -4,62 +4,96 @@ Patterns for putting Aethrion inside an application. Each recipe uses only the p
 
 ## A companion app: one world per user
 
-Each user gets their own `Aethrion.World`, journaled so it survives restarts and compacted so it starts quickly. The app subscribes to hear what characters say.
+`Aethrion.Worlds` keeps a world per user, keyed by their id (never made an atom), started on first use, stopped when idle, and journaled so it comes back as it was. Give the characters a `voice` so a model can tell them apart.
 
 ```elixir
+cast = Aethrion.Runtime.demo_state()   # or your own cast, as Aethrion.State
+
 children = [
-  {Aethrion.World,
-   name: :"world_#{user_id}",
-   initial_state: MyApp.Worlds.starting_state(),
-   journal: "data/worlds/#{user_id}.jsonl",
-   journal_compact_every: 500,
-   scheduler: [interval_ms: 60_000, tick_hours: 1],
-   expression: [adapter: Aethrion.LLM.Anthropic, timeout: 10_000]}
+  {Aethrion.Worlds,
+   name: MyApp.Worlds,
+   idle_after: :timer.minutes(30),
+   world: fn user_id ->
+     [
+       initial_state: cast,
+       journal: "data/worlds/#{user_id}.jsonl",
+       journal_compact_every: 500,
+       expression: [adapter: Aethrion.LLM.Anthropic, timeout: 10_000]
+     ]
+   end}
 ]
 
-Aethrion.World.subscribe(:"world_#{user_id}")
+Aethrion.Worlds.subscribe(MyApp.Worlds, user_id)
 ```
 
 When the user types something, let the model *propose* what it means, then dispatch it like any other event:
 
 ```elixir
-state = Aethrion.World.get_state(world)
+{:ok, state} = Aethrion.Worlds.get_state(MyApp.Worlds, user_id)
 
 {:ok, event, _meta} =
   Aethrion.Intent.interpret(state, text, to: "mina", adapter: Aethrion.LLM.Anthropic)
 
-{:ok, _state, _outputs, _log} = Aethrion.World.dispatch(world, event)
+{:ok, _state, _outputs, _log} = Aethrion.Worlds.dispatch(MyApp.Worlds, user_id, event)
 ```
 
 Then handle messages in the process that subscribed:
 
 ```elixir
-# The second element is the world's name, so one process can serve many worlds.
-# Subscriptions survive a runtime restart.
-def handle_info({:aethrion, _world, {:expressed, %{type: type} = output}}, socket)
+# The second element is {manager, key}, so one process can serve many users.
+def handle_info({:aethrion, {MyApp.Worlds, _user}, {:expressed, %{type: type} = output}}, socket)
     when type in [:proactive_message, :reply] do
   # output.text is the model's line, or the deterministic fallback
   {:noreply, push_line(socket, output.character_id, output.text)}
 end
 
-def handle_info({:aethrion, _world, {:dispatched, step}}, socket) do
+def handle_info({:aethrion, {MyApp.Worlds, _user}, {:dispatched, step}}, socket) do
   # step.outputs has everything else: mood_changed, bond_changed, ...
   {:noreply, update_panels(socket, step)}
 end
 ```
 
+The model sees the recent conversation (`Aethrion.Conversation`), so a reply follows the thread; what it said is journaled, so after a restart the thread is still there:
+
+```elixir
+{:ok, state} = Aethrion.Worlds.get_state(MyApp.Worlds, user_id)
+Aethrion.Conversation.recent(state, "mina", "user")   # to show the chat history
+```
+
 When the user comes back, show what happened while they were away. Keep the outputs from the subscription since their last visit (store them yourself: a compacted journal starts over from the current state, so it cannot replay what came before):
 
 ```elixir
-Aethrion.Digest.of(outputs_since_last_visit, Aethrion.World.get_state(world), locale: :ko)
+Aethrion.Digest.of(outputs_since_last_visit, state, locale: :ko)
 |> Enum.map(& &1.text)
 ```
 
 `examples/companion_week.exs` plays ten days of this with the demo cast (five days of mornings with a harsh word and an apology, then five days away) and prints the digest on return, in English and Korean.
 
-To load a save into a running world, `Aethrion.World.put_state(world, state)` (a journaled world starts its journal over from it). A world's `:initial_state` only applies when no journal or snapshot exists yet. World names are atoms, so start worlds for active users and stop idle ones (`DynamicSupervisor.terminate_child(sup, Aethrion.World.whereis(name))`) rather than keeping one per user ever seen.
+To load a save into a running world, `Aethrion.Worlds.put_state(MyApp.Worlds, user_id, state)` (a journaled world starts its journal over from it). The cast only applies when no journal exists yet.
 
-The simulation never waits for the model: `dispatch` returns as soon as the rules have run, and each line arrives when it is rendered (or its fallback, if the model is slow or fails).
+The simulation never waits for the model: `dispatch` returns as soon as the rules have run, and each line arrives when it is rendered (or its fallback, if the model is slow or fails). Rate limits and overload are retried by the adapters.
+
+## A game in another engine: the HTTP API
+
+A Unity, Godot, or web game talks to `mix aethrion.serve` (or `Aethrion.API` in an Elixir app) over JSON. Each save slot is a world key; the game sends what the player did and shows what characters say.
+
+```bash
+AETHRION_TOKEN=secret mix aethrion.serve --cast priv/cast.json --data saves --llm anthropic
+```
+
+```gdscript
+# Godot: the player talks to an NPC
+var body = JSON.stringify({"to": "mina", "text": line_edit.text})
+http.request("http://127.0.0.1:4848/worlds/slot-1/say",
+  ["content-type: application/json", "authorization: Bearer secret"],
+  HTTPClient.METHOD_POST, body)
+
+# on request_completed: show each line
+for line in JSON.parse_string(body.get_string_from_utf8())["lines"]:
+  show_bubble(line["character_id"], line["text"])
+```
+
+Witnesses come from the game's own world (`"observed_by": ["yuna"]`), time from its clock (`POST /worlds/slot-1/events` with `{"type": "time_tick", "hours": 6}`), and gifts or apologies are events too (`{"type": "gift_received", "from": "user", "to": "mina", "item": "flower"}`). Lines characters say on their own appear in the response of whatever event caused them, and in `GET /worlds/slot-1/conversation?character=mina&after=e12`.
 
 ## Game NPCs: witnesses and bonds
 

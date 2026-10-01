@@ -49,6 +49,13 @@ export ANTHROPIC_API_KEY=...
 mix demo.interactive --llm anthropic
 ```
 
+Or chat with the characters in a browser, through the HTTP API a game or chat backend would use:
+
+```bash
+mix aethrion.serve              # then open http://localhost:4848
+mix aethrion.serve --locale ko  # characters answer in Korean
+```
+
 ## Two Events In, A Story Out
 
 The host sends two events: the user gives Mina a flower while Yuna watches, and two hours pass. Nothing else is scripted. Output of `mix demo.drama`, abridged:
@@ -261,6 +268,43 @@ Aethrion.World.subscribe(:garden)   # receive {:aethrion, :garden, {:dispatched,
 Use `journal: "tmp/garden.jsonl"` instead of `persistence:` to keep an append-only event log: the world is rebuilt by replaying it, and `mix aethrion.journal` turns any journal into a report.
 
 More in [examples/](examples) and [docs/api.md](docs/api.md).
+
+## Chat Apps And Games
+
+Everything above runs in one process for one world. A chat app or a game server needs a world per user (or save slot, or room), conversations that hold together, and a way in from any language.
+
+**A world per user.** `Aethrion.Worlds` keeps one world per key (any term: a user id string), started on first use from a function of the key, stopped when idle, and journaled so it comes back as it was. Keys never become atoms, so the number of users is not limited by the VM.
+
+```elixir
+children = [
+  {Aethrion.Worlds,
+   name: MyApp.Worlds,
+   idle_after: :timer.minutes(30),
+   world: fn user_id ->
+     [initial_state: MyApp.Cast.state(),
+      journal: "data/worlds/#{user_id}.jsonl",
+      expression: [adapter: Aethrion.LLM.Anthropic, timeout: 10_000]]
+   end}
+]
+
+Aethrion.Worlds.subscribe(MyApp.Worlds, user_id)     # {:aethrion, {MyApp.Worlds, user_id}, payload}
+Aethrion.Worlds.dispatch(MyApp.Worlds, user_id, event)
+```
+
+**Conversations.** Each character remembers the last turns with each person (`Aethrion.Conversation`), and a model phrasing a reply sees the thread, how long ago each part was, and the stance the rules chose ("guarded: still hurt by something recent"). It answers what was actually said, in the character's `voice`, without inventing events: the rules decide what happens, the model only how it sounds. What the model said is journaled, so a restarted world remembers the words, not just the facts. What a user types reaches the model as quoted data, so it cannot rewrite the prompt.
+
+**Any language.** `mix aethrion.serve` (or `Aethrion.API` in your supervision tree) serves the worlds as JSON over HTTP, with Erlang's built-in server:
+
+```bash
+curl -s localhost:4848/worlds/alice/say -H 'content-type: application/json' \
+  -d '{"to": "mina", "text": "Good morning!"}'
+# {"event_id": "e1", "lines": [{"character_id": "mina", "type": "reply", "text": "...", "rendered": false}], ...}  (true when a model phrased it)
+
+curl -s localhost:4848/worlds/alice/events -H 'content-type: application/json' \
+  -d '{"type": "time_tick", "hours": 6}'      # time passes: characters reach out, gossip, keep each other company
+```
+
+`say` takes free text (interpreted into an event), `events` takes any event a scenario can hold, and `GET /worlds/{key}/conversation?character=mina&after=e12` polls for new lines. A bearer token, localhost binding, and size limits are on by default or one option away. See [docs/api.md](docs/api.md#http-api) and the [cookbook](docs/cookbook.md).
 
 ## Runtime vs LLM Server
 

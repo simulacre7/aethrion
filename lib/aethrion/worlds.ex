@@ -168,9 +168,11 @@ defmodule Aethrion.Worlds do
 
   @doc "The world for `key`'s supervisor pid, or `nil` when it is not running."
   @spec whereis(atom(), key()) :: pid() | nil
+  # A registry forgets a stopped process a moment after it exits; until then
+  # its pid is not handed out.
   def whereis(manager, key) do
     case Registry.lookup(registry(manager), {key, :world}) do
-      [{pid, _value}] -> pid
+      [{pid, _value}] -> if Process.alive?(pid), do: pid
       [] -> nil
     end
   end
@@ -187,16 +189,20 @@ defmodule Aethrion.Worlds do
   ## Helpers
 
   # A world stopped (idle, or by someone else) between finding it and calling
-  # it is started again once.
-  defp with_world(manager, key, call, retried? \\ false) do
+  # it is started again; the registry may take a moment to forget the old one.
+  @attempts 3
+
+  defp with_world(manager, key, call, attempt \\ 1) do
     with {:ok, _pid} <- start(manager, key) do
       __MODULE__.Janitor.touch(manager, key)
 
       try do
         call.(via(manager, key, :runtime))
       catch
-        :exit, {reason, _call} when reason in [:noproc, :normal, :shutdown] and not retried? ->
-          with_world(manager, key, call, true)
+        :exit, {reason, _call}
+        when reason in [:noproc, :normal, :shutdown] and attempt < @attempts ->
+          Process.sleep(10 * attempt)
+          with_world(manager, key, call, attempt + 1)
 
         :exit, {reason, _call} when reason in [:noproc, :normal, :shutdown] ->
           {:error, not_running(manager, key)}

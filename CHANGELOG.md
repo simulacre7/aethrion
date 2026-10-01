@@ -2,6 +2,23 @@
 
 All notable changes to Aethrion are documented here. The project is in early alpha; minor versions may contain breaking changes.
 
+## Unreleased
+
+Ready for chat apps and games: a world per user, conversations a model can follow, and a way in from any language.
+
+### Added
+
+- `Aethrion.Conversation`: the last 24 turns per character and person (messages, gifts, apologies, replies, proactive messages), recorded at the end of every step, saved with the state, and never read by rules. Replies and proactive messages carry the last 12 in `Request.conversation`. A server rendering with a model puts what the model said into the conversation and journals it (`{"rendered": ...}` lines), so a restarted world remembers the words; `Journal.read/2` still returns events only.
+- `Aethrion.Worlds`: worlds keyed by any term (a user id), named through a `Registry` rather than atoms, started on first use from a function of the key, stopped after `:idle_after` (only with a journal or snapshot), with subscriptions that outlast a stop. `Aethrion.RuntimeServer`'s `:subscribers` also takes `{scope, group}`.
+- `Aethrion.API`: JSON over HTTP on Erlang's built-in `:httpd` (`say`, `events`, `conversation`, `state`, `health`), waiting for a model's lines when the world renders with one; bearer token, localhost by default, body and text limits, safe world keys. `GET /` is a small chat page for trying worlds in a browser.
+- `mix aethrion.serve`: the API over a world per key from a cast file, with a journal per world, `--llm`, `--locale ko` (Korean templates without a model), and `--idle`.
+- Characters have a `voice` (how they talk), saved, validated, and given to the model; the demo cast has one each.
+
+### Changed
+
+- Prompts: a reply to a message answers it. The prompt states the stance the rules chose and shows the draft as example wording; real-world knowledge is fine, inventing things in the world is not; time gaps and unanswered messages show in the thread; off-script requests are met in character. What a user typed reaches the model as quoted, single-line data, so it cannot forge prompt fields.
+- LLM adapters retry 408, 429, 5xx, 529, and failed connections (`:retries`, default 2) with backoff and `retry-after`. The OpenAI-compatible default `max_tokens` is 200.
+
 ## v0.2.0-alpha
 
 The social layer release: characters act on each other, every change is explainable, relationship history changes outcomes, and language models can phrase what happens without deciding it.

@@ -272,7 +272,7 @@ A world supervises a `:pg` scope for its subscribers, a `Task.Supervisor` for re
 
 | function | meaning |
 | --- | --- |
-| `start_link(opts)` | `:initial_state`, `:name`, `:pipeline`, `:max_depth`, `:max_events`, `:history_limit`, `:persistence` or `:journal` (with `:journal_compact_every`), `:expression`, `:subscribers` (a `:pg` scope), `:tag` |
+| `start_link(opts)` | `:initial_state`, `:name`, `:pipeline`, `:max_depth`, `:max_events`, `:history_limit`, `:persistence` or `:journal` (with `:journal_compact_every`), `:expression`, `:subscribers` (a `:pg` scope, or `{scope, group}`), `:tag` |
 | `dispatch(server, event)` | same result as `Runtime.dispatch/3` |
 | `step(server, event)` | `{:ok, %Aethrion.Step{}}` |
 | `get_state(server)`, `put_state(server, state)` | read or replace the state |
@@ -289,9 +289,65 @@ Subscriber messages:
 
 `tag` is the world's name for an `Aethrion.World` (so one process can listen to many worlds), and the server's pid for a bare `RuntimeServer` unless it was given `tag:`. A World keeps its subscribers outside the runtime server, so they stay subscribed when it restarts.
 
+### Many worlds
+
+`Aethrion.Worlds` runs one world per key (any term, never made an atom) for chat apps and game servers:
+
+```elixir
+children = [
+  {Aethrion.Worlds,
+   name: MyApp.Worlds,
+   idle_after: :timer.minutes(30),     # stop unused worlds; needs :journal or :persistence
+   world: fn user_id ->                # options of Aethrion.World, except :name
+     [initial_state: MyApp.Cast.state(), journal: "data/worlds/#{user_id}.jsonl"]
+   end}
+]
+
+{:ok, state, outputs, log} = Aethrion.Worlds.dispatch(MyApp.Worlds, "user-42", event)
+{:ok, step} = Aethrion.Worlds.step(MyApp.Worlds, "user-42", event)
+{:ok, state} = Aethrion.Worlds.get_state(MyApp.Worlds, "user-42")
+:ok = Aethrion.Worlds.subscribe(MyApp.Worlds, "user-42")   # {:aethrion, {MyApp.Worlds, "user-42"}, payload}
+Aethrion.Worlds.running(MyApp.Worlds)                       # keys of running worlds
+:ok = Aethrion.Worlds.stop(MyApp.Worlds, "user-42")
+```
+
+Worlds start on first use. Subscriptions belong to the key, so they last while its world stops and starts. A world's options are checked when it starts; unknown keys and `:idle_after` without storage are `:invalid_options` errors.
+
+### Conversations
+
+Every step records what people said to characters (messages, gifts, apologies) and what characters said back (replies, proactive messages): the last 24 turns per pair, in `state.conversations`, saved and journaled with the state. No rule reads them.
+
+```elixir
+Aethrion.Conversation.recent(state, "mina", "user")
+# [%{from: "user", to: "mina", text: "...", kind: :message, tone: :warm, event_id: "e3", at: 12}, ...]
+```
+
+Replies and proactive messages carry the last 12 turns in their request (`Request.conversation`). A server rendering with a model replaces a character's draft with what the model said (`Aethrion.Conversation.put_rendered/2`) and journals it, so replay holds the same words. Hosts rendering on their own (`Aethrion.Expression.render/2`) can call `put_rendered/2` with the rendered outputs.
+
 ### Scheduler
 
 `Aethrion.Scheduler` emits `time_tick` events into a runtime server every `:interval_ms`, advancing `:tick_hours`. It owns no rules. With `notify: pid`, it sends `{:aethrion, scheduler_pid, {:scheduler_tick, result}}` after each tick.
+
+## HTTP API
+
+`Aethrion.API` serves an `Aethrion.Worlds` as JSON over HTTP (Erlang's built-in `:httpd`), for engines and backends in any language. `mix aethrion.serve` runs both from a cast file.
+
+```elixir
+{Aethrion.API, worlds: MyApp.Worlds, port: 4848, token: System.fetch_env!("AETHRION_TOKEN")}
+```
+
+| method | path | body / query | returns |
+| --- | --- | --- | --- |
+| `POST` | `/worlds/{key}/say` | `{"to", "text", "from"?, "observed_by"?}` | the step: `event_id`, `lines`, `outputs`, `interpreted` |
+| `POST` | `/worlds/{key}/events` | an event as in a scenario (`{"type": "gift_received", ...}`) | the step |
+| `GET` | `/worlds/{key}/conversation` | `character`, `person` (default `user`), `after` (an event id) | `{"turns": [...]}` |
+| `GET` | `/worlds/{key}/state` | | `State.to_data/1` |
+| `GET` | `/health` | | `{"ok": true}` |
+| `GET` | `/` | | a chat page for trying worlds in a browser |
+
+`lines` are what characters said or did in the step: `{type, character_id, to, text, rendered, reason | kind | tone}`. When the world renders with a model, the response waits (up to `:render_timeout`, default 15 s) for the model's lines; `rendered: false` means the deterministic text. Errors are `{"error": {"code", "message"}}` with 400 (bad request, unknown character, invalid event, `text_too_long`), 401, 404, 405, 413, or 503 (a world could not start).
+
+Options: `:worlds`, `:port` (0 for a free one; `Aethrion.API.port/1`), `:bind` (default `"127.0.0.1"`), `:token`, `:intent` (adapter for `say`, default the fake adapter), `:render_timeout`, `:max_body` (bytes), `:max_text` (characters of `say` text, default 2,000). World keys are 1-128 characters of letters, digits, and `_ - . : @`, so they are safe in file names.
 
 ## Persistence
 
@@ -363,4 +419,5 @@ The `demo.*` tasks live in `dev/` and run only from a checkout of this repositor
 | `mix aethrion.scenario PATH \| --all` | run scenarios and check expectations |
 | `mix aethrion.report PATH \| --all` | render HTML reports (`Aethrion.Report.html(result, locale: :ko)` from code); `--out` / `--out-dir`, `--locale ko` for a Korean report |
 | `mix aethrion.rules` | print the rule pipeline |
+| `mix aethrion.serve` | the HTTP API over a world per key: `--cast FILE`, `--data DIR`, `--port`, `--bind`, `--token` (or `AETHRION_TOKEN`), `--llm anthropic\|openai`, `--locale ko`, `--idle MINUTES` |
 | `mix aethrion.journal PATH` | replay a journal; `--scenario` / `--report` to export, `--compact [--archive FILE]`, `--digest [--locale ko]`, `--max-depth` / `--max-events` |
