@@ -104,6 +104,8 @@ defmodule Aethrion.API do
       worlds: worlds,
       token: Keyword.get(opts, :token),
       intent: Keyword.get(opts, :intent, []),
+      interpreter: Keyword.get(opts, :interpreter, Aethrion.Interpreter.Rules),
+      interpreter_opts: Keyword.get(opts, :interpreter_opts, []),
       render_timeout: Keyword.get(opts, :render_timeout, 15_000),
       max_text: Keyword.get(opts, :max_text, 2_000),
       locale: Keyword.get(opts, :locale, :en),
@@ -338,10 +340,15 @@ defmodule Aethrion.API do
          :ok <- short_enough(text, config.max_text),
          {:ok, state} <- Worlds.peek_state(config.worlds, key),
          :ok <- known_character(state, to) do
-      state
-      |> Aethrion.Chat.read_all(Map.get(data, "from", "user"), to, text)
-      |> Enum.reduce_while(nil, fn reading, said ->
-        case chat_step(config, key, data, to, text, reading) do
+      {:ok, readings, meta} =
+        Aethrion.Interpreter.read(state, Map.get(data, "from", "user"), to, text,
+          interpreter: config.interpreter,
+          interpreter_opts: config.interpreter_opts,
+          intent: config.intent
+        )
+
+      Enum.reduce_while(readings, nil, fn reading, said ->
+        case chat_step(config, key, data, reading, meta) do
           {:ok, status, body} -> {:cont, merge_said(said, {:ok, status, body})}
           error -> {:halt, error}
         end
@@ -349,14 +356,20 @@ defmodule Aethrion.API do
     end
   end
 
-  defp chat_step(config, key, data, to, text, :talk), do: talk(config, key, data, to, text)
+  defp chat_step(config, key, data, %{as: as, event: event}, meta) do
+    event =
+      if as == :talk and is_list(data["observed_by"]),
+        do: Map.put(event, :observed_by, data["observed_by"]),
+        else: event
 
-  defp chat_step(config, key, data, _to, _text, {:talk, to, said}),
-    do: talk(config, key, data, to, said)
-
-  defp chat_step(config, key, _data, _to, _text, {as, event}) do
     dispatch(config, key, event, %{
-      interpreted: %{as: as, type: event.type, to: Map.get(event, :to)}
+      interpreted: %{
+        as: as,
+        type: event.type,
+        to: Map.get(event, :to),
+        tone: Map.get(event, :tone),
+        status: meta.status
+      }
     })
   end
 

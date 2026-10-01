@@ -129,6 +129,14 @@ defmodule Aethrion.Chat do
   # 왔어" is paint, "너 주려고 꽃 사 왔어" a flower), else "선물".
   @not_things ~w(너 너한테 너에게 너 내가 나 제가 오늘 어제 새로 좀 하나 많이 진짜 그냥 잠깐 방금 이거 이것 이건 그거 이걸 요거 짠 자 여기 선물 선물이야 선물로)
 
+  @doc false
+  # What a gift line hands over, named from the words, for interpreters
+  # that decide it is a gift but cannot quote the item (a decision model).
+  def item(text) do
+    words = String.downcase(text)
+    korean_item(words) || english_item(words) || "선물"
+  end
+
   defp gift(words) do
     if Regex.match?(@gives, words), do: korean_item(words) || english_item(words) || "선물"
   end
