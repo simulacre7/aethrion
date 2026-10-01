@@ -614,7 +614,7 @@ defmodule Aethrion.NarrativeTest do
 
       assert [first, second] = replies(outputs, "haru")
       assert first.text != second.text
-      assert Ko.render(first.context) == "초콜릿? ...고맙다. 잘 쓸게."
+      assert Ko.render(first.context) == "초콜릿? ...고맙다. 잘 먹을게."
       assert Ko.render(second.context) == "또 선물이야? 정말 고마워!"
 
       {_state, outputs} =

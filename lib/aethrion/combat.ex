@@ -91,10 +91,10 @@ defmodule Aethrion.Combat do
   # attacks, since a potion can be thrown.
   # Blows with a body or a weapon; spells and throws are attacks too, but
   # a healing spell is a heal.
-  @blows ~r/(벤다|베어|베고|벤 |벰|찌른|찌르|찔러|(?<!도망|소리|외)(?:친다|치고|쳐서|쳐라)|(?<!도망)쳐(?=$|[\s!.~?])|때린|때려|때리|휘두른|휘둘|공격|반격|내려친|후려친|일격|날린|날려|쏜다|쏘아|쏴|베기|돌진|달려든|처치|따버|던진|던져|물어뜯|싸운|싸우|싸워|찬다|걷어|발차기|죽인|죽여|죽어라|박치기|덤빈|덤벼)|\b(attack|attacks|strike|strikes|hit|hits|slash|stab|swing|swings|bash|smash|shoot|cut|charge|charges|punch|kick|thrust|lunge|throw|fight)\b/u
+  @blows ~r/(벤다|베어|베고|벤 |벰|찌른|찌르|찔러|(?<!도망|소리|외)(?:친다|치고|쳐서|쳐라)|(?<!도망)쳐(?=$|[\s!.~?])|때린|때려|때리|휘두른|휘둘|공격|반격|내려친|후려친|일격|날린|날려|쏜다|쏘아|쏴|베기|돌진|달려든|처치|따버|던진|던져|물어뜯|싸운|싸우|싸워|찬다|걷어|발차기|죽인|죽여|죽어라|박치기|덤빈|덤벼|마무리|숨통)|\b(attack|attacks|strike|strikes|hit|hits|slash|stab|swing|swings|bash|smash|shoot|cut|charge|charges|punch|kick|thrust|lunge|throw|fight)\b/u
   @spells ~r/(마법|주문을|파이어볼|화염구)|\b(fireball|spell|magic)\b/u
   @defend ~r/(막는|막아|막았|막자|막고|막으|막기|방어|가드|방패를 (들|세|올)|방패를 든|웅크|감싸|감싼|지킨|지켜|버틴|버텨|숨을 고르|숨을 고른|숨을 돌|기다린|버티|맞선|숨는|숨어)|\b(defend|guard|block|parry|brace|protect|cover|wait|stand|shield|hide)\b/u
-  @heal ~r/(치료|치유|회복|포션|물약|붕대|상처를 (감|싸)|힐)|\b(heal|heals|healing|healed|potion|bandage|cure|patch)\b/u
+  @heal ~r/(치료|치유|회복|포션|물약|붕대|상처를 (감|싸)|힐|살려|일으켜)|\b(heal|heals|healing|healed|potion|bandage|cure|patch)\b/u
   @flee ~r/(도망|후퇴|달아나|달아난|피신|튀자|튀어|튄다|빠져나|(?<![\p{L}])런(?![\p{L}]))|\b(flee|escape|retreat|run away|run)\b/u
   # Asking someone else: "리아, 나 좀 치료해줘", "리아, 포션 좀 줘", "heal me, Ria".
   @asks ~r/(해\s?줘|해\s?주세요|해\s?줄래|부탁|줘)|\b(heal me|patch me up|help me)\b/u
@@ -131,7 +131,8 @@ defmodule Aethrion.Combat do
 
     case reading(state, words, from, foe) do
       :asked ->
-        Event.heal(healer(state, words, from), from, asked_by: from)
+        healer = healer(state, words, from)
+        Event.heal(healer, patient(state, words, healer) || from, asked_by: from)
 
       :heal ->
         heal(state, from, target, words)
@@ -209,13 +210,23 @@ defmodule Aethrion.Combat do
     Event.heal(from, to, item: item(state, from, words))
   end
 
+  # Who the request is for: a companion named besides the healer ("세라,
+  # 도윤 좀 살려 줘"), else the one asking.
+  defp patient(state, words, healer) do
+    names(state)
+    |> Enum.filter(fn {name, id} ->
+      id != healer and State.stat(state, id, "party") > 0 and says?(words, name)
+    end)
+    |> Enum.map(&elem(&1, 1))
+    |> List.first()
+  end
+
   # A companion named in a request who can heal.
   defp healer(state, words, from) do
-    case named(state, words, "heal") do
-      nil -> nil
-      ^from -> nil
-      id -> if healer?(state, id), do: id
-    end
+    names(state)
+    |> Enum.filter(fn {name, id} -> id != from and healer?(state, id) and says?(words, name) end)
+    |> Enum.map(&elem(&1, 1))
+    |> List.first()
   end
 
   @doc """
@@ -246,7 +257,7 @@ defmodule Aethrion.Combat do
   # word ("aerial" does not name Ria; "리아를" does). With several named,
   # one with the `prefer` stat (an enemy to strike, a companion to heal)
   # wins, then the longest name. `only: true` takes only those with it.
-  defp named(state, words, prefer, opts \\ []) do
+  defp named(state, words, prefer, opts) do
     state
     |> names()
     |> Enum.filter(fn {name, id} ->

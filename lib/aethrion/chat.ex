@@ -134,7 +134,8 @@ defmodule Aethrion.Chat do
   end
 
   defp korean_item(words) do
-    case Regex.run(~r/^(.*?)(?:선물|사\s?왔|사\s?옴|가져왔|챙겨\s?왔|[을를]?\s?줄게)/u, words) do
+    # The giving nearest the end ("선물이야. 쿠키 사 왔어" gives cookies).
+    case Regex.run(~r/^(.*)(?:선물|사\s?왔|사\s?옴|가져왔|챙겨\s?왔|[을를]?\s?줄게)/u, words) do
       [_all, before] ->
         candidates =
           before

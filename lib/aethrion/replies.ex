@@ -5,7 +5,8 @@ defmodule Aethrion.Replies do
   tone it carries (`:warm`, `:neutral`, `:cold`), the way a messenger game
   offers a few replies instead of a keyboard.
 
-  The choices follow what the character last said: a question gets answers
+  The choices follow what is going on: in a fight, words for the fight;
+  otherwise what the character last said: a question gets answers
   ("응, 좋아! 같이 하자." / "일정 보고 알려 줄게." / "그건 좀 어려울 것 같아."),
   a character who is upset or lonely gets comfort or distance, and anything
   else gets a reaction. Unlike in many games the choice matters: sent with
@@ -26,6 +27,7 @@ defmodule Aethrion.Replies do
 
     situation =
       cond do
+        Aethrion.Combat.foe(state) != nil and not Aethrion.Combat.over?(state) -> :fight
         last == nil -> :hello
         String.contains?(last.text, "?") -> :question
         mood(state, character) in [:upset, :lonely, :jealous] -> :troubled
@@ -46,6 +48,20 @@ defmodule Aethrion.Replies do
       character -> Mood.derive(character.state, state)
     end
   end
+
+  defp lines(:ko, :fight),
+    do: [
+      warm: ["조심해! 내가 엄호할게.", "같이 버티자. 거의 다 왔어."],
+      neutral: ["왼쪽을 맡아 줘.", "상황 보고 움직이자."],
+      cold: ["알아서 버텨.", "네 몫은 네가 해."]
+    ]
+
+  defp lines(:en, :fight),
+    do: [
+      warm: ["Careful! I've got your back.", "Hold on, we're almost there."],
+      neutral: ["Take the left.", "Watch and move with me."],
+      cold: ["Hold your own.", "Pull your weight."]
+    ]
 
   defp lines(:ko, :hello),
     do: [

@@ -78,6 +78,7 @@ defmodule Aethrion.Expression.Templates.Ko do
   @endings [
     {~r/^(응|그래)$/u, "네"},
     {~r/^(안녕)$/u, "안녕하세요"},
+    {~r/아니야$/u, "아니에요"},
     {~r/이야$/u, "이에요"},
     {~r/야$/u, "예요"},
     {~r/좋다$/u, "좋아요"},
@@ -401,15 +402,50 @@ defmodule Aethrion.Expression.Templates.Ko do
         "오랜만이네!"
 
       :question ->
-        Choices.pick(request, ["음, 글쎄. 생각 좀 해 볼게.", "왜? 궁금해?", "음... 좋은 질문이네."])
+        Choices.pick(request, answer(request.message, Choices.temperament(request)))
 
       {:mood, mood} ->
         Choices.pick(
           request,
-          voiced(Choices.temperament(request), tone, mood) || reply(tone, mood)
+          thanked(tone, request.message, Choices.temperament(request)) ||
+            voiced(Choices.temperament(request), tone, mood) || reply(tone, mood)
         )
     end
   end
+
+  # A question is answered as what it is: an invitation ("같이 먹을래?") is
+  # taken up, "어땠어?" is told, and anything else is thought over.
+  defp answer(message, temperament) when is_binary(message) do
+    cond do
+      Regex.match?(~r/(같이|함께).*(래|자|까|어때)|(갈래|먹을래|할래|볼래)/u, message) ->
+        invited(temperament)
+
+      Regex.match?(~r/어땠|어때|괜찮아\?|잘 지냈/u, message) ->
+        ["나쁘지 않았어. 너는?", "괜찮았어. 물어봐 줘서 고마워.", "음, 그럭저럭? 너는 어땠어?"]
+
+      true ->
+        ["음, 글쎄. 생각 좀 해 볼게.", "왜? 궁금해?", "음... 좋은 질문이네."]
+    end
+  end
+
+  defp answer(_message, _temperament), do: ["음, 글쎄. 생각 좀 해 볼게.", "왜? 궁금해?"]
+
+  defp invited(:calm), do: ["그래. 가자.", "좋아. 시간 맞춰 갈게."]
+  defp invited(:playful), do: ["진짜? 좋아, 같이 가!", "오예! 그럼 내가 맛있는 데 알아."]
+  defp invited(:sensitive), do: ["...나랑? 응, 좋아.", "응, 좋아. 불러 줘서 고마워."]
+  defp invited(_temperament), do: ["좋아, 같이 하자!", "응, 좋아."]
+
+  # Being thanked is answered with "별말을", not with thanks back.
+  defp thanked(:warm, message, temperament) when is_binary(message) do
+    if Regex.match?(~r/고마|감사|thank/iu, message), do: welcome(temperament)
+  end
+
+  defp thanked(_tone, _message, _temperament), do: nil
+
+  defp welcome(:calm), do: ["별것 아니야.", "그 정도는 당연하지."]
+  defp welcome(:playful), do: ["헤헤, 이 정도쯤이야!", "그럼 다음엔 간식으로 갚아!"]
+  defp welcome(:sensitive), do: ["도움이 됐다니 다행이야.", "...그렇게 말해 주니까 좋다."]
+  defp welcome(_temperament), do: ["별말을. 도움이 됐다니 다행이야.", "천만에!"]
 
   # Everyday replies in the speaker's temperament: a calm character says
   # little, a playful one teases, a sensitive one takes it to heart. Moods
@@ -419,8 +455,10 @@ defmodule Aethrion.Expression.Templates.Ko do
 
   defp voiced(_temperament, _tone, _mood), do: nil
 
-  defp voiced(:calm, :warm), do: ["...고맙다.", "그래. 고맙다.", "알았어. 고마워."]
-  defp voiced(:calm, :neutral), do: ["왜.", "응. 말해.", "듣고 있어."]
+  defp voiced(:calm, :warm),
+    do: ["...고맙다.", "그렇게 말해 주면, 나쁘지 않네.", "흠. 기억해 둘게.", "알았어. 고마워."]
+
+  defp voiced(:calm, :neutral), do: ["응.", "응, 알겠어.", "듣고 있어."]
 
   defp voiced(:playful, :warm),
     do: ["에이, 갑자기 왜 이래? 기분은 좋네.", "헤헤, 그런 말은 더 해 줘도 돼.", "오, 오늘 왜 이렇게 다정해?"]
@@ -461,6 +499,9 @@ defmodule Aethrion.Expression.Templates.Ko do
   defp reply(:hostile, _mood), do: "왜 그런 말을 해?"
   defp reply(_tone, _mood), do: "..."
 
+  @edible ~w(쿠키 케이크 초콜릿 사탕 빵 머핀 간식 도시락 과자 귤 디저트 커피 차 음료 아이스크림 젤리 떡 마카롱 샌드위치 우유 주스)
+
+  defp gift_thanks(:calm, gift) when gift in @edible, do: "#{gift}? ...고맙다. 잘 먹을게."
   defp gift_thanks(:calm, gift), do: "#{gift}? ...고맙다. 잘 쓸게."
   defp gift_thanks(:playful, gift), do: "#{gift}? 뭐야, 나 주는 거야? 최고!"
   defp gift_thanks(:sensitive, gift), do: "#{gift}... 나 주려고 챙긴 거야? 고마워."

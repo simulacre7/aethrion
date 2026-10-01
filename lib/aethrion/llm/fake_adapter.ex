@@ -121,7 +121,14 @@ defmodule Aethrion.LLM.FakeAdapter do
     "대박",
     "멋졌",
     "지켜줄게",
-    "지켜 줄게"
+    "지켜 줄게",
+    "좋구나",
+    "잘하는구나",
+    "든든",
+    "완벽",
+    "내가 있잖아",
+    "잘했",
+    "훌륭"
   ]
   # Disappointment is cold even next to a warm word ("대단히 실망했어"), and so
   # is brushing something off ("사랑 따위 필요 없어").

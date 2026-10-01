@@ -173,7 +173,8 @@ defmodule Aethrion.Validator do
   defp validate_combat(state, %{type: :heal} = event) do
     with :ok <- require_name(event, :from),
          :ok <- require_healer(state, event.from),
-         :ok <- require_fighter(state, event, :to),
+         # A heal can bring someone at 0 hp back up, as in the SRD.
+         :ok <- require_fighter(state, event, :to, alive: false),
          :ok <- require_hurt(state, event.to),
          :ok <- optional_name(event, :item),
          :ok <- optional_name(event, :asked_by),

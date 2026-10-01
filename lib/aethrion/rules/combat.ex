@@ -95,6 +95,7 @@ defmodule Aethrion.Rules.Combat do
     end
   end
 
+  defp actors(%{type: :heal, from: from}), do: [from]
   defp actors(%{type: :defend, from: from} = event), do: [from | List.wrap(Map.get(event, :to))]
   defp actors(%{from: from, to: to}), do: [from, to]
 
@@ -458,11 +459,11 @@ defmodule Aethrion.Rules.Combat do
     end
   end
 
-  # Who a healer tends: the most hurt of the player and the companions
-  # still standing, below 60% of their hp.
+  # Who a healer tends: the most hurt of the player and the companions,
+  # below 60% of their hp; someone knocked out first.
   defp most_hurt(state, leader) do
     [leader | Combat.party(state)]
-    |> Enum.filter(&(State.stat(state, &1, "hp") > 0 and share(state, &1) < 60))
+    |> Enum.filter(&(share(state, &1) < 60))
     |> Enum.min_by(&share(state, &1), fn -> nil end)
   end
 

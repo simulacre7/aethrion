@@ -190,11 +190,11 @@ defmodule Aethrion.CombatTest do
     assert Combat.describe(hd(combat(step.outputs)), step.state, :ko) =~ "늑대왕에게"
   end
 
-  test "the fallen are not revived, the unhurt are not healed, and nobody fights once it is decided" do
+  test "healers revive the fallen, the unhurt are not healed, and nobody fights once it is decided" do
+    # A healer can bring someone at 0 hp back up, as in the SRD.
     down = put_in(arena().stats["yuna"]["hp"], 0)
-
-    assert {:error, %{message: "yuna is already down"}} =
-             Runtime.step(down, Event.heal("mina", "yuna"))
+    {:ok, step} = Runtime.step(down, Event.heal("mina", "yuna"))
+    assert State.stat(step.state, "yuna", "hp") > 0
 
     assert {:error, %{message: "mina is not hurt"}} =
              Runtime.step(arena(), Event.heal("user", "mina"))
