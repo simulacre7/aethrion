@@ -94,13 +94,19 @@ defmodule Aethrion.Validator do
   defp validate_event(state, %{type: :activity} = event) do
     with :ok <- require_character(state, event, :character),
          :ok <- require_name(event, :activity) do
-      if Map.has_key?(Map.get(state.story, :activities, %{}), event.activity),
-        do: :ok,
-        else:
+      cond do
+        not Map.has_key?(Map.get(state.story, :activities, %{}), event.activity) ->
           {:error,
            error(:invalid_event, "the story has no activity #{inspect(event.activity)}", %{
              field: :activity
            })}
+
+        Aethrion.Rules.Ending.reached?(state) ->
+          {:error, error(:invalid_event, "the story has reached its ending", %{field: :activity})}
+
+        true ->
+          :ok
+      end
     end
   end
 

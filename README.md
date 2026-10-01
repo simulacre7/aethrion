@@ -328,7 +328,11 @@ Two things AI chat and games keep asking for, decided the same way as everything
 }
 ```
 
-`Aethrion.Story.progress/1` says how close each ending is and what is missing ("mina art 55 (needs at least 70)"), so a game can hint at a route; `examples/endings.exs` plays thirty days four ways to four endings.
+`Aethrion.Story.progress/1` says how close each ending is and what is missing ("mina art 55 (needs at least 70)"), so a game can hint at a route; `examples/endings.exs` plays thirty days four ways to four endings. `priv/casts/summer.json` is a Korean raising sim to play in the chat page: thirty days with Seoyun before her art school exam, where what she spends each day on (`/do 그림`, `/do 공부`, `/do 휴식`) and how you talk to her decide one of six endings; push her to 100 stress and it ends before the deadline, and once an ending is decided no more days can be spent. `/story` shows how close each ending is and what is missing:
+
+```bash
+mix aethrion.serve --cast priv/casts/summer.json --locale ko   # then /do 그림 and /story in the chat page
+```
 
 **Fights** for actors with an `hp` stat, players included: attack, guard, heal, flee, with damage from attack, defense, and a roll derived from who acts on whom and where the fight stands (their hp), so a fight replays exactly and chatting in between does not change the dice. Guarding or healing gives the enemies (actors with an `enemy` stat) their turn; the fallen are not revived; once the ending is decided, nobody fights. Characters feel it: the attacked resent it, witnesses who care about them trust you less, companions who fight beside you trust you more, the healed grow fonder. And it runs the other way: party members (a `party` stat) fight beside a player whose trust they hold, above a threshold (`combat.party_trust`, 10 by default; the quest uses 15), with a healer tending a hurt player first, and otherwise hold back (saying so once), so how you talked to your companions decides who stands with you. Companions gain trust by joining in, not by watching. In a chat, `POST /worlds/{key}/act` turns "I swing my sword at the wolf" or "방패로 막는다" into the action, aimed at the first enemy still standing unless `to` says otherwise. `priv/casts/quest.json` is a Korean party against the wolf king whose ending depends on how the fight went and how you treated your companions:
 

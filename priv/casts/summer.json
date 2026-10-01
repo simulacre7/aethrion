@@ -1,0 +1,189 @@
+{
+  "characters": [
+    {
+      "id": "seoyun",
+      "name": "서윤",
+      "profile": "미대 입시를 한 달 앞둔 열일곱 살. 그림을 좋아하지만 성적 걱정에 늘 지쳐 있다. 이번 여름, 너는 그녀를 돌보는 보호자다.",
+      "voice": "조심스럽고 솔직한 반말. 지치면 말이 짧아지고, 기분이 좋으면 그림 얘기를 길게 한다.",
+      "traits": [
+        "sensitive"
+      ]
+    },
+    {
+      "id": "taeo",
+      "name": "태오",
+      "profile": "서윤의 소꿉친구. 장난스럽지만 서윤이 무리하면 제일 먼저 눈치챈다.",
+      "voice": "가볍고 장난스러운 반말. 진지한 얘기는 농담으로 감싼다.",
+      "traits": [
+        "playful"
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "from": "seoyun",
+      "to": "user",
+      "affinity": 30,
+      "trust": 25
+    },
+    {
+      "from": "seoyun",
+      "to": "taeo",
+      "affinity": 45,
+      "trust": 40
+    },
+    {
+      "from": "taeo",
+      "to": "seoyun",
+      "affinity": 50,
+      "trust": 45
+    },
+    {
+      "from": "taeo",
+      "to": "user",
+      "affinity": 10,
+      "trust": 10
+    }
+  ],
+  "stats": {
+    "seoyun": {
+      "intelligence": 20,
+      "art": 20
+    }
+  },
+  "story": {
+    "deadline": 720,
+    "activities": {
+      "공부": {
+        "intelligence": 4,
+        "stress": 9,
+        "joy": -2
+      },
+      "그림": {
+        "art": 4,
+        "joy": 4,
+        "stress": 4
+      },
+      "휴식": {
+        "stress": -25,
+        "energy": 15
+      },
+      "산책": {
+        "joy": 6,
+        "stress": -10
+      }
+    },
+    "endings": [
+      {
+        "id": "family",
+        "title": "곁에 남은 사람",
+        "description": "결과가 어떻든, 서윤은 가장 먼저 너에게 달려온다. \"이번 여름, 고마웠어.\"",
+        "when": [
+          {
+            "relationship": [
+              "seoyun",
+              "user"
+            ],
+            "field": "affinity",
+            "at_least": 80
+          },
+          {
+            "relationship": [
+              "seoyun",
+              "user"
+            ],
+            "field": "trust",
+            "at_least": 70
+          },
+          {
+            "bond": [
+              "seoyun",
+              "user"
+            ],
+            "is": "close"
+          }
+        ]
+      },
+      {
+        "id": "burnout",
+        "title": "지쳐 버린 여름",
+        "description": "시험 날 아침, 서윤은 방문을 열지 않는다. 너무 오래 혼자 버텼다.",
+        "when": [
+          {
+            "character": "seoyun",
+            "field": "stress",
+            "at_least": 85
+          }
+        ]
+      },
+      {
+        "id": "painter",
+        "title": "화가의 길",
+        "description": "서윤의 그림이 실기 시험장 벽에 걸린다. 구석에 작게 네 이름이 적혀 있다.",
+        "when": [
+          {
+            "stat": [
+              "seoyun",
+              "art"
+            ],
+            "at_least": 80
+          },
+          {
+            "relationship": [
+              "seoyun",
+              "user"
+            ],
+            "field": "affinity",
+            "at_least": 40
+          }
+        ]
+      },
+      {
+        "id": "scholar",
+        "title": "합격 통지서",
+        "description": "성적표를 받은 서윤이 조용히 웃는다. 그림 이야기는 이제 하지 않는다.",
+        "when": [
+          {
+            "stat": [
+              "seoyun",
+              "intelligence"
+            ],
+            "at_least": 80
+          }
+        ]
+      },
+      {
+        "id": "apart",
+        "title": "닫힌 방문",
+        "description": "서윤은 더 이상 너에게 아무것도 묻지 않는다.",
+        "when": [
+          {
+            "bond": [
+              "seoyun",
+              "user"
+            ],
+            "at_most": "strained"
+          }
+        ]
+      },
+      {
+        "id": "ordinary",
+        "title": "평범한 여름",
+        "description": "특별한 일은 없었다. 그래도 여름은 지나갔다.",
+        "when": []
+      }
+    ],
+    "decide_when": [
+      {
+        "character": "seoyun",
+        "field": "stress",
+        "at_least": 100
+      }
+    ]
+  },
+  "tuning": {
+    "time_passage": {
+      "stress_per_hour": 0
+    }
+  }
+}

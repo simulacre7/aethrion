@@ -40,7 +40,7 @@ form input{flex:1;min-width:0}
   </header>
   <div id="log" aria-live="polite"></div>
   <form id="form">
-    <input id="text" autocomplete="off" placeholder="Say something… (/gift flower, /sorry …, /act swing the sword)" aria-label="Message">
+    <input id="text" autocomplete="off" placeholder="Say something… (/gift flower, /sorry …, /act swing the sword, /do study, /story)" aria-label="Message">
     <button class="primary" type="submit">Send</button>
   </form>
   <p class="hint">Each world key is its own world, kept on the server. Characters remember what you say, react to how you treat them, and talk to each other while time passes.</p>
@@ -141,9 +141,12 @@ $("form").addEventListener("submit", async (event) => {
   $("text").value = "";
   const to = $("character").value;
   // "/gift tea" gives a gift, "/sorry ..." apologizes, "/act ..." fights
-  // (whoever the words name, else the first enemy standing);
+  // (whoever the words name, else the first enemy standing), "/do study"
+  // spends a day on an activity, "/story" shows how close each ending is;
   // anything else is said.
-  const [, command, rest] = text.match(/^\/(gift|sorry|act)\s*(.*)$/) || [];
+  const [, command, rest] = text.match(/^\/(gift|sorry|act|do|story)\s*(.*)$/) || [];
+  if (command === "story") return story().catch((e) => add("error", e.message));
+  if (command === "do") return spendDay(to, rest).catch((e) => add("error", e.message));
   add("me", command === "gift" ? "(gives " + (rest || "a gift") + ")" : command === "sorry" ? "(apologizes) " + rest : command === "act" ? "(" + rest + ")" : text, "You");
   const request = command === "gift"
     ? ["/events", {type: "gift_received", from: "user", to, item: rest || "gift"}]
@@ -158,6 +161,27 @@ $("form").addEventListener("submit", async (event) => {
     seen(data.last_event_id);
   } catch (error) { add("error", error.message); }
 });
+
+// A day spent on an activity, the way a raising sim counts days.
+async function spendDay(character, activity) {
+  add("me", "(" + (names[character] || character) + ": " + activity + ")", "You");
+  const done = await call("POST", worldPath("/events"), {type: "activity", character, activity});
+  show(done.lines);
+  const day = await call("POST", worldPath("/events"), {type: "time_tick", hours: 24, now: "the next day"});
+  show(day.lines);
+  seen(day.last_event_id);
+  const s = await call("GET", worldPath("/story"));
+  if (s.deadline && !s.reached) add("note", "Day " + Math.floor(s.hour / 24) + " of " + Math.floor(s.deadline / 24));
+}
+
+async function story() {
+  const s = await call("GET", worldPath("/story"));
+  if (s.reached) return add("note", "★ " + s.reached.title + " — " + s.reached.description);
+  if (s.activities.length) add("note", "Activities (/do …): " + s.activities.join(", "));
+  for (const e of s.endings) {
+    add("note", Math.round(e.closeness * 100) + "% " + e.title + (e.missing.length ? " — missing: " + e.missing.join("; ") : ""));
+  }
+}
 
 $("later").addEventListener("click", async () => {
   add("note", "A few hours pass…");

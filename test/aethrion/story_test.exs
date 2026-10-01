@@ -167,4 +167,51 @@ defmodule Aethrion.StoryTest do
     {:ok, step} = Runtime.step(trusting, Event.activity("mina", "study"))
     assert [%{ending: "smart"}] = for(%{type: :ending_reached} = o <- step.outputs, do: o)
   end
+
+  test "the summer cast: each daily routine reaches its own ending, and the story then closes" do
+    {:ok, world} = "priv/casts/summer.json" |> File.read!() |> Jason.decode!() |> State.parse()
+    say = &Event.message_sent("user", "seoyun", &1, tone: &2)
+    act = &Event.activity("seoyun", &1)
+    every = fn d, n, yes, no -> if rem(d, n) == 0, do: yes, else: no end
+
+    routines = %{
+      "family" => fn d ->
+        [say.("오늘도 고생했어. 네 그림 정말 좋아.", :warm), act.(every.(d, 3, "휴식", "그림"))] ++
+          every.(d, 6, [Event.gift_received("user", "seoyun", "물감")], [])
+      end,
+      "painter" => fn d ->
+        [act.(every.(d, 4, "휴식", "그림"))] ++ every.(d, 5, [say.("멋지다.", :warm)], [])
+      end,
+      "scholar" => fn d -> [act.(every.(d, 3, "휴식", "공부"))] end,
+      "burnout" => fn _d -> [act.("공부")] end,
+      "apart" => fn d ->
+        [every.(d, 2, say.("또 그림이야? 한심하다.", :hostile), say.("알아서 해.", :cold)), act.("휴식")]
+      end,
+      "ordinary" => fn d -> [act.(Enum.at(["공부", "그림", "휴식", "산책"], rem(d, 4)))] end
+    }
+
+    for {expected, routine} <- routines do
+      {_state, reached} =
+        Enum.reduce_while(1..30, {world, nil}, fn d, {state, nil} ->
+          {state, reached} =
+            Enum.reduce(routine.(d) ++ [Event.time_tick("day #{d}", hours: 24)], {state, nil}, fn
+              event, {state, reached} ->
+                {:ok, step} = Runtime.step(state, event)
+                {step.state, reached || Enum.find(step.outputs, &(&1.type == :ending_reached))}
+            end)
+
+          if reached, do: {:halt, {state, reached}}, else: {:cont, {state, nil}}
+        end)
+
+      assert %{ending: ^expected} = reached
+    end
+
+    # Pushed past breaking, she stops before the deadline; after that the
+    # days are not spent anymore.
+    {state, _} = run(world, List.duplicate(act.("공부"), 12))
+    assert Aethrion.Rules.Ending.reached(state).id == "burnout"
+
+    assert {:error, %{message: "the story has reached its ending"}} =
+             Runtime.step(state, act.("휴식"))
+  end
 end
