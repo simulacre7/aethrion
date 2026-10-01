@@ -311,7 +311,7 @@ defmodule Aethrion.Validator do
   end
 
   defp require_means(state, %{from: from}) do
-    if State.stat(state, from, "heal") > 0,
+    if Aethrion.Combat.healer?(state, from),
       do: :ok,
       else:
         {:error,

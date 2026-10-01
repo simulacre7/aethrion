@@ -508,7 +508,13 @@ defmodule Aethrion.API do
       :amount,
       :hp,
       :max_hp,
-      :text
+      :text,
+      :d20,
+      :d20_rolls,
+      :attack_bonus,
+      :ac,
+      :dice,
+      :dice_rolls
     ])
     |> Map.put(:rendered, false)
   end

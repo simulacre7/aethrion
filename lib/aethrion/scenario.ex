@@ -500,7 +500,7 @@ defmodule Aethrion.Scenario do
 
   defp filter_problem(_expectation, _custom?), do: nil
 
-  defp kinds("combat"), do: ~w(hit critical defeated guarded healed fled caught holds_back)
+  defp kinds("combat"), do: ~w(hit critical missed defeated guarded healed fled caught holds_back)
   defp kinds(_type), do: @values["kind"]
 
   defp value_problem(filters, type) do

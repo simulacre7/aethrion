@@ -16,7 +16,8 @@ defmodule Aethrion.Combat do
   Events: `Aethrion.Event.attack/3`, `defend/2`, `heal/3`, `flee/3` (or
   `{"type": "attack", "from": "user", "to": "goblin"}` in JSON). Outputs are
   `:combat` maps: `kind` (`:hit`, `:critical`, `:defeated`, `:guarded`,
-  `:healed`, `:fled`, `:caught`, `:holds_back`), `character_id` (who acted),
+  `:healed`, `:fled`, `:caught`, `:holds_back`, and `:missed` under the d20
+  rules), `character_id` (who acted),
   `to`,
   `subject` (whose hp is reported), `amount`, `hp`, `max_hp`, and an English
   `text`; `describe/3` tells it in Korean. A model can narrate the scene from
@@ -45,6 +46,29 @@ defmodule Aethrion.Combat do
       6
     )
   end
+
+  @doc false
+  # One die of `sides` (1..sides), the `index`th of this action, from the
+  # same things as `roll/2`: replays exactly, chat does not change it.
+  def die(event, %State{} = state, sides, index) do
+    to = Map.get(event, :to)
+
+    :erlang.phash2(
+      {event.type, event.from, to, State.stat(state, event.from, "hp"),
+       State.stat(state, to, "hp"), State.stat(state, event.from, "turns"), index},
+      sides
+    ) + 1
+  end
+
+  @doc false
+  def dice_label(count, die, 0), do: "#{count}d#{die}"
+  def dice_label(count, die, plus) when plus > 0, do: "#{count}d#{die}+#{plus}"
+  def dice_label(count, die, plus), do: "#{count}d#{die}#{plus}"
+
+  @doc false
+  # Someone who can heal without an item: a "heal" stat, or healing dice.
+  def healer?(state, id),
+    do: State.stat(state, id, "heal") > 0 or State.stat(state, id, "heal_dice") > 0
 
   @doc false
   def guard_key(id), do: "combat:guard:#{id}"
@@ -190,7 +214,7 @@ defmodule Aethrion.Combat do
     case named(state, words, "heal") do
       nil -> nil
       ^from -> nil
-      id -> if State.stat(state, id, "heal") > 0, do: id
+      id -> if healer?(state, id), do: id
     end
   end
 
@@ -289,7 +313,9 @@ defmodule Aethrion.Combat do
   def describe(output, %State{} = state, locale) do
     name = &name(state, &1, locale)
     output = with_traits(output, state)
-    told(locale, output.kind, output, name, hp_suffix(output, name, locale))
+
+    rolled(output, locale) <>
+      told(locale, output.kind, output, name, hp_suffix(output, name, locale))
   end
 
   defp told(:en, kind, output, name, hp) when kind in [:hit, :critical] do
@@ -301,6 +327,9 @@ defmodule Aethrion.Combat do
         "#{name.(by)} #{verb(by, "hit")} #{name.(output.to)} for #{output.amount}#{guarded(output, :en)}.#{hp}"
       )
   end
+
+  defp told(:en, :missed, %{character_id: by, to: to}, name, _hp),
+    do: capitalize("#{name.(by)} #{verb(by, "miss", "misses")} #{name.(to)}.")
 
   defp told(:en, :defeated, %{character_id: by}, name, _hp),
     do: capitalize("#{name.(by)} #{if by == "user", do: "fall", else: "falls"}.")
@@ -344,6 +373,9 @@ defmodule Aethrion.Combat do
       "#{output.amount}의 피해를 입혔다.#{guarded(output, :ko)}#{hp}"
   end
 
+  defp told(:ko, :missed, %{character_id: by, to: to}, name, _hp),
+    do: "#{Ko.with_particle(name.(by), :topic)} #{name.(to)}에게 닿지 못했다."
+
   defp told(:ko, :defeated, %{character_id: by}, name, _hp), do: "#{Ko.subject(name.(by))} 쓰러졌다."
 
   defp told(:ko, :guarded, %{character_id: by, to: to}, name, _hp) when is_binary(to),
@@ -381,6 +413,44 @@ defmodule Aethrion.Combat do
   end
 
   defp with_traits(output, _state), do: output
+
+  # The dice, the way a table reads them out: "d20 14+6=20 vs AC 15, hit."
+  defp rolled(%{d20: d20, d20_rolls: rolls, attack_bonus: bonus, ac: ac} = output, locale) do
+    roll =
+      case rolls do
+        [_one] -> "#{d20}"
+        two -> Enum.join(two, "/") <> "→#{d20}"
+      end
+
+    dice = if output.kind == :missed, do: "", else: " #{dice_text(output)}"
+
+    "[d20 #{roll}#{signed(bonus)}=#{d20 + bonus} vs AC #{ac}#{disadvantage(rolls, locale)}, " <>
+      "#{verdict(output.kind, d20, locale)}#{dice}] "
+  end
+
+  defp rolled(%{dice: _dice} = output, _locale), do: "[#{dice_text(output)}] "
+  defp rolled(_output, _locale), do: ""
+
+  defp verdict(:critical, _d20, :ko), do: "자연 20!"
+  defp verdict(:critical, _d20, :en), do: "natural 20!"
+  defp verdict(:missed, 1, :ko), do: "자연 1, 빗나감."
+  defp verdict(:missed, 1, :en), do: "natural 1, miss."
+  defp verdict(:missed, _d20, :ko), do: "빗나감."
+  defp verdict(:missed, _d20, :en), do: "miss."
+  defp verdict(_hit, _d20, :ko), do: "명중."
+  defp verdict(_hit, _d20, :en), do: "hit."
+
+  defp disadvantage([_one], _locale), do: ""
+  defp disadvantage(_two, :ko), do: " (불리)"
+  defp disadvantage(_two, :en), do: " (disadvantage)"
+
+  defp dice_text(%{dice: dice, dice_rolls: rolls}) when rolls != [],
+    do: "#{dice} (#{Enum.join(rolls, ",")})"
+
+  defp dice_text(%{dice: dice}), do: dice
+
+  defp signed(n) when n >= 0, do: "+#{n}"
+  defp signed(n), do: "#{n}"
 
   defp hp_suffix(%{max_hp: max, hp: hp, subject: subject}, name, _locale) when is_integer(max),
     do: " (#{name.(subject)} #{hp}/#{max})"

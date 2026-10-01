@@ -56,7 +56,10 @@ defmodule Aethrion.Rules.Combat do
       fought_beside_trust: 2,
       healed_affinity: 5,
       healed_trust: 4,
-      default_heal: 10
+      default_heal: 10,
+      potion_dice: 0,
+      potion_die: 4,
+      potion_bonus: 2
     ]
 
   alias Aethrion.{Combat, Event, Memory, State, Transition}
@@ -97,19 +100,13 @@ defmodule Aethrion.Rules.Combat do
 
   defp act(transition, %{type: :attack} = event) do
     state = transition.state
-    roll = Combat.roll(event, state)
     guard = Combat.guard_key(event.to)
     guarded? = Map.has_key?(state.cooldowns, guard)
 
-    base =
-      max(
-        State.stat(state, event.from, "attack") + roll - State.stat(state, event.to, "defense"),
-        1
-      )
-
-    critical? = roll == 5
-    damage = if critical?, do: div(base * 3, 2), else: base
-    damage = if guarded?, do: max(div(damage, 2), 1), else: damage
+    {kind, damage, detail} =
+      if d20?(state, event),
+        do: d20_attack(state, event, guarded?),
+        else: classic_attack(state, event, guarded?)
 
     transition =
       transition
@@ -119,9 +116,7 @@ defmodule Aethrion.Rules.Combat do
     hp = State.stat(transition.state, event.to, "hp")
 
     transition
-    |> combat_output(event, event.to, if(critical?, do: :critical, else: :hit), damage,
-      guarded?: guarded?
-    )
+    |> combat_output(event, event.to, kind, damage, guarded?: guarded?, detail: detail)
     |> attacked(event)
     |> witnessed(event)
     |> then(fn transition ->
@@ -198,13 +193,75 @@ defmodule Aethrion.Rules.Combat do
       else: transition
   end
 
+  defp classic_attack(state, event, guarded?) do
+    roll = Combat.roll(event, state)
+
+    base =
+      max(
+        State.stat(state, event.from, "attack") + roll - State.stat(state, event.to, "defense"),
+        1
+      )
+
+    critical? = roll == 5
+    damage = if critical?, do: div(base * 3, 2), else: base
+    damage = if guarded?, do: max(div(damage, 2), 1), else: damage
+    {if(critical?, do: :critical, else: :hit), damage, %{}}
+  end
+
+  # The d20 rules of the 5th edition SRD: an attacker with an
+  # "attack_bonus" against a target with an "ac".
+  defp d20?(state, event),
+    do: State.stat?(state, event.from, "attack_bonus") and State.stat?(state, event.to, "ac")
+
+  # d20 + attack bonus against armor class; a natural 20 always hits and
+  # rolls the damage dice twice, a natural 1 always misses. A target who
+  # took the Dodge action (a guard) is attacked with disadvantage: two d20s,
+  # the lower counts.
+  defp d20_attack(state, event, guarded?) do
+    rolls =
+      if guarded?,
+        do: [Combat.die(event, state, 20, 0), Combat.die(event, state, 20, 1)],
+        else: [Combat.die(event, state, 20, 0)]
+
+    d20 = Enum.min(rolls)
+    bonus = State.stat(state, event.from, "attack_bonus")
+    ac = State.stat(state, event.to, "ac")
+    hit? = d20 == 20 or (d20 != 1 and d20 + bonus >= ac)
+    critical? = d20 == 20
+    {count, die, plus} = damage_dice(state, event.from)
+    count = if critical?, do: count * 2, else: count
+    dice = for i <- 1..count, do: Combat.die(event, state, die, 10 + i)
+    damage = if hit?, do: max(Enum.sum(dice) + plus, 1), else: 0
+
+    detail = %{
+      d20: d20,
+      d20_rolls: rolls,
+      attack_bonus: bonus,
+      ac: ac,
+      dice: Combat.dice_label(count, die, plus),
+      dice_rolls: if(hit?, do: dice, else: [])
+    }
+
+    kind =
+      cond do
+        not hit? -> :missed
+        critical? -> :critical
+        true -> :hit
+      end
+
+    {kind, damage, detail}
+  end
+
+  defp damage_dice(state, id),
+    do:
+      {max(stat_or(state, id, "damage_dice", 1), 1), max(stat_or(state, id, "damage_die", 6), 2),
+       State.stat(state, id, "damage_bonus")}
+
   # While a player guards or heals, the companions still act (a healer
   # tends them, the others strike the first enemy standing), then the
   # enemies (characters with an "enemy" stat) strike: guarding costs a turn.
   defp heal(%Transition{state: state} = transition, event) do
-    amount =
-      event.amount ||
-        stat_or(state, event.from, "heal", Transition.param(transition, :default_heal))
+    {amount, detail} = heal_amount(transition, event)
 
     max_hp = stat_or(state, event.to, "max_hp", State.stat(state, event.to, "hp") + amount)
     before = State.stat(state, event.to, "hp")
@@ -213,8 +270,41 @@ defmodule Aethrion.Rules.Combat do
     transition
     |> Transition.adjust_stat(event.to, "hp", healed, log: false)
     |> use_potion(event)
-    |> combat_output(event, event.to, :healed, healed)
+    |> combat_output(event, event.to, :healed, healed, detail: detail)
     |> grateful(event, healed)
+  end
+
+  # How much: the event's amount; else a healer's dice ("heal_dice" d
+  # "heal_die" + "heal_bonus", like a Cure Wounds); a potion's dice
+  # (`potion_dice` d `potion_die` + `potion_bonus`: 2d4+2 is the SRD's
+  # Potion of Healing); else the healer's "heal" stat or `default_heal`.
+  defp heal_amount(%Transition{state: state} = transition, event) do
+    param = &Transition.param(transition, &1)
+
+    cond do
+      event.amount != nil ->
+        {event.amount, %{}}
+
+      State.stat(state, event.from, "heal_dice") > 0 ->
+        rolled(
+          event,
+          state,
+          State.stat(state, event.from, "heal_dice"),
+          stat_or(state, event.from, "heal_die", 8),
+          State.stat(state, event.from, "heal_bonus")
+        )
+
+      event.item == "potion" and param.(:potion_dice) > 0 ->
+        rolled(event, state, param.(:potion_dice), param.(:potion_die), param.(:potion_bonus))
+
+      true ->
+        {stat_or(state, event.from, "heal", param.(:default_heal)), %{}}
+    end
+  end
+
+  defp rolled(event, state, count, die, plus) do
+    dice = for i <- 1..count, do: Combat.die(event, state, die, 10 + i)
+    {Enum.sum(dice) + plus, %{dice: Combat.dice_label(count, die, plus), dice_rolls: dice}}
   end
 
   defp enemies_turn(%Transition{state: state} = transition, player, event) do
@@ -254,11 +344,12 @@ defmodule Aethrion.Rules.Combat do
     if State.stat(state, player, "hp") > 0 do
       state
       |> enemies()
-      |> Enum.reject(&(&1 == Keyword.get(opts, :except)))
-      |> Enum.reduce(transition, fn enemy, transition ->
+      |> Enum.with_index()
+      |> Enum.reject(fn {enemy, _i} -> enemy == Keyword.get(opts, :except) end)
+      |> Enum.reduce(transition, fn {enemy, i}, transition ->
         Transition.enqueue(
           transition,
-          Event.attack(enemy, target(state, enemy, player), counter: true, at: event.at)
+          Event.attack(enemy, target(state, enemy, player, i), counter: true, at: event.at)
         )
       end)
     else
@@ -269,13 +360,13 @@ defmodule Aethrion.Rules.Combat do
   # Enemies go for someone badly hurt (below 40% of their hp) to finish
   # them, and otherwise take turns between the player and the companions
   # still standing, by the enemy's own turn count.
-  defp target(state, enemy, player) do
+  defp target(state, enemy, player, index) do
     side = [player | for(id <- Combat.party(state), State.stat(state, id, "hp") > 0, do: id)]
     weakest = Enum.min_by(side, &share(state, &1))
 
     if share(state, weakest) < 40,
       do: weakest,
-      else: Enum.at(side, rem(State.stat(state, enemy, "turns"), length(side)))
+      else: Enum.at(side, rem(State.stat(state, enemy, "turns") + index, length(side)))
   end
 
   defp share(state, id) do
@@ -345,7 +436,7 @@ defmodule Aethrion.Rules.Combat do
         |> Transition.put_cooldown(held)
         |> combat_output(%{event | from: id, to: event.from}, id, :holds_back, 0)
 
-      State.stat(state, id, "heal") > 0 and patient != nil and
+      Combat.healer?(state, id) and patient != nil and
           (target_hp > 0 or Combat.foe(state) != nil) ->
         transition
         |> Transition.clear_cooldown(held)
@@ -529,18 +620,20 @@ defmodule Aethrion.Rules.Combat do
 
   # `subject` is whose hp the output reports: the one hit, healed, or down.
   defp combat_output(transition, event, subject, kind, amount, opts \\ []) do
-    output = %{
-      type: :combat,
-      kind: kind,
-      character_id: event.from,
-      to: Map.get(event, :to),
-      subject: subject,
-      amount: amount,
-      hp: State.stat(transition.state, subject, "hp"),
-      max_hp: stat_or(transition.state, subject, "max_hp", nil),
-      skill: Map.get(event, :skill) || Map.get(event, :item),
-      guarded: Keyword.get(opts, :guarded?, false)
-    }
+    output =
+      %{
+        type: :combat,
+        kind: kind,
+        character_id: event.from,
+        to: Map.get(event, :to),
+        subject: subject,
+        amount: amount,
+        hp: State.stat(transition.state, subject, "hp"),
+        max_hp: stat_or(transition.state, subject, "max_hp", nil),
+        skill: Map.get(event, :skill) || Map.get(event, :item),
+        guarded: Keyword.get(opts, :guarded?, false)
+      }
+      |> Map.merge(Keyword.get(opts, :detail, %{}))
 
     output = Map.put(output, :text, Combat.describe(output, transition.state, :en))
 

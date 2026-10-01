@@ -350,6 +350,13 @@ mix run examples/combat.exs                                   # the quest, five 
 mix aethrion.serve --cast priv/casts/quest.json --locale ko   # then just chat at http://localhost:4848
 ```
 
+**Tabletop rules (D&D 5e SRD).** Give fighters an `attack_bonus` and an `ac` (and damage dice: `damage_dice`, `damage_die`, `damage_bonus`) and attacks follow the d20 rules of the System Reference Document 5.1: d20 + bonus against armor class, a natural 20 hits and rolls the damage dice twice, a natural 1 misses, a guarding (dodging) target is attacked with disadvantage, healers roll their dice (`heal_dice` 1, `heal_die` 8, `heal_bonus` 3 is a Cure Wounds), and a potion can be the SRD's Potion of Healing (2d4+2). The dice come from the fight itself, so they replay exactly, and every line shows them the way a table reads them out: `[d20 13+5=18 vs AC 14, 명중. 1d8+3 (3)] 네가 다이어 울프에게 6의 피해를 입혔다.` `priv/casts/den.json` is a wolf den with the SRD's Dire Wolf and Wolves against a fighter (you), a cleric, and a rogue; `examples/den.exs` plays it in plain Korean three ways to three endings. SRD material is used under CC-BY-4.0 (`priv/casts/SRD-NOTICE.md`). A Dodge lasts until the next blow rather than a full round, and save effects such as a wolf knocking someone prone are not modeled.
+
+```bash
+mix run examples/den.exs
+mix aethrion.serve --cast priv/casts/den.json --locale ko   # then just chat at http://localhost:4848
+```
+
 ## Runtime vs LLM Server
 
 Aethrion does not run model inference inside the BEAM, and most runtime events do not call an LLM.

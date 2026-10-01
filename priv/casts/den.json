@@ -1,0 +1,341 @@
+{
+  "characters": [
+    {
+      "id": "sera",
+      "name": "세라",
+      "profile": "새벽의 신을 섬기는 3레벨 클레릭. 다친 사람을 그냥 지나치지 못하고, 동료가 무모하면 따끔하게 말한다.",
+      "voice": "차분하고 단정한 존댓말. 걱정될 때는 기도문처럼 짧게 말한다.",
+      "traits": [
+        "calm"
+      ]
+    },
+    {
+      "id": "doyun",
+      "name": "도윤",
+      "profile": "입이 가벼운 3레벨 로그. 겁이 많지만 친구가 위험하면 제일 먼저 뛰어든다.",
+      "voice": "장난스러운 반말. 긴장하면 농담이 많아진다.",
+      "traits": [
+        "playful"
+      ]
+    },
+    {
+      "id": "dire_wolf",
+      "name": "다이어 울프",
+      "profile": "굴의 우두머리. 말보다 큰 회색 늑대로, 먹잇감을 넘어뜨려 무리에게 넘긴다.",
+      "voice": "낮게 으르렁거릴 뿐 말하지 않는다."
+    },
+    {
+      "id": "wolf_grey",
+      "name": "회색 늑대",
+      "profile": "무리의 늑대. 다친 자를 먼저 노린다.",
+      "voice": "으르렁거린다."
+    },
+    {
+      "id": "wolf_black",
+      "name": "검은 늑대",
+      "profile": "무리의 늑대. 우두머리 곁을 떠나지 않는다.",
+      "voice": "으르렁거린다."
+    }
+  ],
+  "relationships": [
+    {
+      "from": "sera",
+      "to": "user",
+      "affinity": 25,
+      "trust": 14
+    },
+    {
+      "from": "doyun",
+      "to": "user",
+      "affinity": 35,
+      "trust": 12
+    },
+    {
+      "from": "sera",
+      "to": "doyun",
+      "affinity": 30,
+      "trust": 25
+    },
+    {
+      "from": "doyun",
+      "to": "sera",
+      "affinity": 40,
+      "trust": 30
+    }
+  ],
+  "stats": {
+    "user": {
+      "hp": 28,
+      "max_hp": 28,
+      "ac": 16,
+      "attack_bonus": 5,
+      "damage_dice": 1,
+      "damage_die": 8,
+      "damage_bonus": 3,
+      "speed": 3,
+      "potions": 2
+    },
+    "sera": {
+      "hp": 21,
+      "max_hp": 21,
+      "ac": 18,
+      "attack_bonus": 4,
+      "damage_dice": 1,
+      "damage_die": 6,
+      "damage_bonus": 2,
+      "heal_dice": 1,
+      "heal_die": 8,
+      "heal_bonus": 3,
+      "speed": 3,
+      "party": 1
+    },
+    "doyun": {
+      "hp": 20,
+      "max_hp": 20,
+      "ac": 14,
+      "attack_bonus": 5,
+      "damage_dice": 1,
+      "damage_die": 6,
+      "damage_bonus": 3,
+      "speed": 4,
+      "party": 1
+    },
+    "dire_wolf": {
+      "hp": 37,
+      "max_hp": 37,
+      "ac": 14,
+      "attack_bonus": 5,
+      "damage_dice": 2,
+      "damage_die": 6,
+      "damage_bonus": 3,
+      "speed": 5,
+      "enemy": 1
+    },
+    "wolf_grey": {
+      "hp": 11,
+      "max_hp": 11,
+      "ac": 13,
+      "attack_bonus": 4,
+      "damage_dice": 2,
+      "damage_die": 4,
+      "damage_bonus": 2,
+      "speed": 4,
+      "enemy": 1
+    },
+    "wolf_black": {
+      "hp": 11,
+      "max_hp": 11,
+      "ac": 13,
+      "attack_bonus": 4,
+      "damage_dice": 2,
+      "damage_die": 4,
+      "damage_bonus": 2,
+      "speed": 4,
+      "enemy": 1
+    }
+  },
+  "story": {
+    "labels": {
+      "hp": "체력",
+      "fled": "도망친 횟수"
+    },
+    "decide_when": [
+      {
+        "all": [
+          {
+            "stat": [
+              "dire_wolf",
+              "hp"
+            ],
+            "at_most": 0
+          },
+          {
+            "stat": [
+              "wolf_grey",
+              "hp"
+            ],
+            "at_most": 0
+          },
+          {
+            "stat": [
+              "wolf_black",
+              "hp"
+            ],
+            "at_most": 0
+          }
+        ]
+      },
+      {
+        "stat": [
+          "user",
+          "hp"
+        ],
+        "at_most": 0
+      },
+      {
+        "stat": [
+          "user",
+          "fled"
+        ],
+        "at_least": 1
+      }
+    ],
+    "endings": [
+      {
+        "id": "fallen",
+        "title": "굴 앞에서 쓰러지다",
+        "description": "늑대들의 울음이 멀어진다. 눈을 뜨니 세라가 네 상처에 손을 얹고 기도하고 있다.",
+        "when": [
+          {
+            "stat": [
+              "user",
+              "hp"
+            ],
+            "at_most": 0
+          },
+          {
+            "stat": [
+              "sera",
+              "hp"
+            ],
+            "at_least": 1
+          },
+          {
+            "relationship": [
+              "sera",
+              "user"
+            ],
+            "field": "trust",
+            "at_least": 10
+          }
+        ]
+      },
+      {
+        "id": "abandoned",
+        "title": "아무도 돌아보지 않았다",
+        "description": "쓰러진 너를 두고 발소리가 멀어진다. 네게서 등을 돌린 동료들의 발소리다.",
+        "when": [
+          {
+            "stat": [
+              "user",
+              "hp"
+            ],
+            "at_most": 0
+          }
+        ]
+      },
+      {
+        "id": "fellowship",
+        "title": "모닥불 곁의 세 사람",
+        "description": "다이어 울프의 가죽 곁에 모닥불을 피운다. 도윤은 무용담을 부풀리고, 세라는 못 이긴 척 웃는다.",
+        "when": [
+          {
+            "stat": [
+              "dire_wolf",
+              "hp"
+            ],
+            "at_most": 0
+          },
+          {
+            "stat": [
+              "sera",
+              "hp"
+            ],
+            "at_least": 1
+          },
+          {
+            "stat": [
+              "doyun",
+              "hp"
+            ],
+            "at_least": 1
+          },
+          {
+            "relationship": [
+              "sera",
+              "user"
+            ],
+            "field": "trust",
+            "at_least": 16
+          },
+          {
+            "relationship": [
+              "doyun",
+              "user"
+            ],
+            "field": "trust",
+            "at_least": 14
+          }
+        ]
+      },
+      {
+        "id": "costly",
+        "title": "승리의 대가",
+        "description": "굴은 조용해졌지만, 동료 한 명이 일어나지 못한다. 돌아가는 길이 길다.",
+        "when": [
+          {
+            "stat": [
+              "dire_wolf",
+              "hp"
+            ],
+            "at_most": 0
+          },
+          {
+            "any": [
+              {
+                "stat": [
+                  "sera",
+                  "hp"
+                ],
+                "at_most": 0
+              },
+              {
+                "stat": [
+                  "doyun",
+                  "hp"
+                ],
+                "at_most": 0
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "cleared",
+        "title": "굴을 비우다",
+        "description": "의뢰는 끝났다. 보수를 나누는 동안 누구도 먼저 말을 꺼내지 않는다.",
+        "when": [
+          {
+            "stat": [
+              "dire_wolf",
+              "hp"
+            ],
+            "at_most": 0
+          }
+        ]
+      },
+      {
+        "id": "retreat",
+        "title": "후퇴",
+        "description": "굴 입구가 등 뒤로 멀어진다. 의뢰는 실패했지만 모두 살아 있다.",
+        "when": [
+          {
+            "stat": [
+              "user",
+              "fled"
+            ],
+            "at_least": 1
+          }
+        ]
+      }
+    ]
+  },
+  "tuning": {
+    "combat": {
+      "party_trust": 10,
+      "potion_dice": 2,
+      "potion_die": 4,
+      "potion_bonus": 2
+    }
+  }
+}

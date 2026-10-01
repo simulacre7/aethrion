@@ -520,4 +520,52 @@ defmodule Aethrion.CombatTest do
     assert %{type: :attack, to: "haru"} = Combat.action(state, "user", nil, "Goblin 말고 Haru를 공격")
     assert %{type: :attack, to: "goblin"} = Combat.action(state, "user", nil, "Haru, 같이 공격하자")
   end
+
+  test "the d20 rules: attack bonus against armor class, natural 20s, dice, and disadvantage" do
+    {:ok, den} = "priv/casts/den.json" |> File.read!() |> Jason.decode!() |> State.parse()
+
+    {:ok, step} = Runtime.step(den, Event.attack("user", "dire_wolf"))
+    [first | _] = combat(step.outputs)
+
+    assert %{d20: d20, attack_bonus: 5, ac: 14, kind: kind, amount: amount} = first
+    assert d20 in 1..20
+
+    case kind do
+      :missed -> assert amount == 0 and (d20 == 1 or d20 + 5 < 14)
+      :hit -> assert amount in 4..11 and d20 + 5 >= 14
+      :critical -> assert d20 == 20 and amount in 5..19
+    end
+
+    assert Combat.describe(first, step.state, :ko) =~ ~r/^\[d20 \d+\+5=\d+ vs AC 14, /
+
+    # Every d20 a roll can show: over many standoffs, both ends come up.
+    rolls =
+      for hp <- 1..60 do
+        Combat.die(
+          Event.attack("user", "dire_wolf"),
+          put_in(den.stats["dire_wolf"]["hp"], hp),
+          20,
+          0
+        )
+      end
+
+    assert Enum.min(rolls) >= 1 and Enum.max(rolls) <= 20
+    assert length(Enum.uniq(rolls)) > 10
+
+    # A dodging target (a guard) is attacked with two d20s, the lower counting.
+    guarded = %{den | cooldowns: Map.put(den.cooldowns, Combat.guard_key("dire_wolf"), 0)}
+    {:ok, step} = Runtime.step(guarded, Event.attack("user", "dire_wolf"))
+    assert [%{d20_rolls: [a, b], d20: low} | _] = combat(step.outputs)
+    assert low == min(a, b)
+
+    # A cleric heals with dice (1d8+3); a potion is the SRD's 2d4+2.
+    hurt = put_in(den.stats["user"]["hp"], 5)
+    {:ok, step} = Runtime.step(hurt, Event.heal("sera", "user"))
+    assert [%{kind: :healed, dice: "1d8+3", amount: healed} | _] = combat(step.outputs)
+    assert healed in 4..11
+
+    {:ok, step} = Runtime.step(hurt, Event.heal("user", "user", item: "potion"))
+    assert [%{kind: :healed, dice: "2d4+2", amount: drunk} | _] = combat(step.outputs)
+    assert drunk in 4..10
+  end
 end
