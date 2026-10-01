@@ -23,12 +23,12 @@ defmodule Aethrion.APITest do
            [journal: Path.join(dir, "#{key}.jsonl"), expression: [adapter: ParrotAdapter]]
 
          key ->
-           [journal: Path.join(dir, "#{key}.jsonl")]
+           [journal: Path.join(dir, Worlds.file_name(key) <> ".jsonl")]
        end}
     )
 
     pid = start_supervised!({API, worlds: Worlds.Test.API, port: 0, token: "secret"})
-    %{base: "http://127.0.0.1:#{API.port(pid)}"}
+    %{base: "http://127.0.0.1:#{API.port(pid)}", dir: dir}
   end
 
   defp request(method, url, body \\ nil, token \\ "secret") do
@@ -48,12 +48,12 @@ defmodule Aethrion.APITest do
   end
 
   test "health, and a token is required", %{base: base} do
-    assert {200, %{"ok" => true}} = request(:get, base <> "/health")
+    assert {200, %{"ok" => true}} = request(:get, base <> "/health", nil, nil)
 
     assert {401, %{"error" => %{"code" => "unauthorized"}}} =
-             request(:get, base <> "/health", nil, nil)
+             request(:get, base <> "/worlds/a/state", nil, nil)
 
-    assert {401, _body} = request(:get, base <> "/health", nil, "wrong")
+    assert {401, _body} = request(:get, base <> "/worlds/a/state", nil, "wrong")
 
     # The chat page holds no data and loads without a token.
     {:ok, {{_version, 200, _reason}, headers, html}} =
@@ -131,6 +131,45 @@ defmodule Aethrion.APITest do
     assert %{"rendered" => true, "text" => "(model) " <> _} = line
   end
 
+  test "reads do not create worlds, and polling has a cursor", %{base: base, dir: dir} do
+    assert {200, %{"characters" => [_ | _]}} = request(:get, base <> "/worlds/reader/characters")
+    assert {200, %{"turns" => []}} = request(:get, base <> "/worlds/reader/conversation")
+    assert File.ls!(dir) == []
+
+    gift = %{
+      "type" => "gift_received",
+      "from" => "user",
+      "to" => "mina",
+      "item" => "tea",
+      "observed_by" => ["yuna"]
+    }
+
+    {200, _body} = request(:post, base <> "/worlds/reader/events", gift)
+
+    {200, step} =
+      request(:post, base <> "/worlds/reader/events", %{"type" => "time_tick", "hours" => 2})
+
+    assert %{"event_id" => "e2", "last_event_id" => last} = step
+    assert last != "e2"
+    assert Enum.all?(step["lines"], &is_binary(&1["event_id"]))
+
+    # Every thread of the person at once; nothing after the step's last event.
+    assert {200, %{"turns" => turns}} = request(:get, base <> "/worlds/reader/conversation")
+    assert Enum.any?(turns, &(&1["from"] == "yuna")) and Enum.any?(turns, &(&1["from"] == "mina"))
+
+    assert {200, %{"turns" => []}} =
+             request(:get, base <> "/worlds/reader/conversation?after=" <> last)
+  end
+
+  test "a world that cannot start is a 503, without its insides", %{base: base, dir: dir} do
+    File.write!(Path.join(dir, Worlds.file_name("broken") <> ".jsonl"), "not a journal\n")
+
+    assert {503, %{"error" => %{"code" => "world_failed", "message" => message}}} =
+             request(:post, base <> "/worlds/broken/say", %{"to" => "mina", "text" => "hi"})
+
+    refute message =~ "journal"
+  end
+
   test "mistakes are errors with a status", %{base: base} do
     assert {400, %{"error" => %{"code" => "invalid_key"}}} =
              request(:post, base <> "/worlds/..%2Fetc/say", %{"to" => "mina", "text" => "hi"})
@@ -146,6 +185,21 @@ defmodule Aethrion.APITest do
                "type" => "gift_received",
                "from" => "user",
                "to" => "mina"
+             })
+
+    assert {400, %{"error" => %{"code" => "invalid_request"}}} =
+             request(:post, base <> "/worlds/carol/say", %{"to" => "mina", "text" => "  \n "})
+
+    assert {400, %{"error" => %{"code" => "invalid_request"}}} =
+             request(:get, base <> "/worlds/carol/conversation?after=soon")
+
+    assert {400, %{"error" => %{"code" => "unknown_character"}}} =
+             request(:get, base <> "/worlds/carol/conversation?character=nobody")
+
+    assert {413, %{"error" => %{"code" => "body_too_large"}}} =
+             request(:post, base <> "/worlds/carol/say", %{
+               "to" => "mina",
+               "text" => String.duplicate("a", 70_000)
              })
 
     assert {404, _body} = request(:get, base <> "/nothing")

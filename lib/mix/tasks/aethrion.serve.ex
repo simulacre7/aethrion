@@ -69,7 +69,10 @@ defmodule Mix.Tasks.Aethrion.Serve do
         name: Aethrion.Serve.Worlds,
         idle_after: :timer.minutes(opts[:idle] || 30),
         world: fn key ->
-          [initial_state: cast, journal: Path.join(data, journal_name(key) <> ".jsonl")] ++
+          [
+            initial_state: cast,
+            journal: Path.join(data, Aethrion.Worlds.file_name(key) <> ".jsonl")
+          ] ++
             expression
         end
       )
@@ -106,10 +109,6 @@ defmodule Mix.Tasks.Aethrion.Serve do
 
   defp expression(adapter, adapter_opts, _locale),
     do: [expression: [adapter: adapter, adapter_opts: adapter_opts]]
-
-  # Keys are already restricted by the API; colons and @ are kept out of
-  # file names anyway.
-  defp journal_name(key), do: String.replace(key, ~r/[^A-Za-z0-9_\-.]/, "_")
 
   defp cast!(nil), do: Aethrion.Runtime.demo_state()
 

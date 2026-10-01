@@ -181,7 +181,7 @@ defmodule Aethrion.Conversation do
   def valid_data?(_data), do: false
 
   @kinds [:message, :gift, :apology, :reply, :proactive]
-  @tones [:warm, :neutral, :cold, :hostile]
+  @tones [:warm, :neutral, :cold, :hostile, :gift, :apology]
 
   defp valid_turn?(%{"from" => from, "to" => to, "text" => text, "kind" => kind} = turn) do
     is_binary(from) and is_binary(to) and is_binary(text) and
@@ -253,7 +253,8 @@ defmodule Aethrion.Conversation do
           to: to,
           text: text,
           kind: kind,
-          tone: nil,
+          # For a reply, the tone it answers (a gift and an apology count too).
+          tone: Map.get(output, :tone),
           event_id: Map.get(output, :event_id),
           at: state.clock
         }

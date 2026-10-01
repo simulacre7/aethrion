@@ -456,21 +456,30 @@ defmodule Aethrion.RuntimeServer do
 
   # What a model said goes into the world's conversation, so the next line
   # it phrases sees it, and into the journal, so replay restores it.
+  # If the journal cannot take the line, the world keeps the draft, so a
+  # replay never differs from the live world.
   defp remember_rendered(server, rendered) do
     world = Aethrion.Conversation.put_rendered(server.world, rendered)
 
-    if world == server.world do
-      server
-    else
-      if server.journal do
-        with {:error, error} <- Aethrion.Journal.append_rendered(server.journal, rendered) do
-          Logger.warning(
-            "Aethrion.RuntimeServer could not journal a rendered line: #{error.message}"
-          )
-        end
-      end
+    cond do
+      world == server.world ->
+        server
 
-      persist(%{server | world: world})
+      server.journal == nil ->
+        persist(%{server | world: world})
+
+      true ->
+        case Aethrion.Journal.append_rendered(server.journal, rendered) do
+          :ok ->
+            persist(%{server | world: world})
+
+          {:error, error} ->
+            Logger.warning(
+              "Aethrion.RuntimeServer could not journal a rendered line: #{error.message}"
+            )
+
+            server
+        end
     end
   end
 

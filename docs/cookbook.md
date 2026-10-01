@@ -16,7 +16,7 @@ children = [
    world: fn user_id ->
      [
        initial_state: cast,
-       journal: "data/worlds/#{user_id}.jsonl",
+       journal: "data/worlds/#{Aethrion.Worlds.file_name(user_id)}.jsonl",
        journal_compact_every: 500,
        expression: [adapter: Aethrion.LLM.Anthropic, timeout: 10_000]
      ]

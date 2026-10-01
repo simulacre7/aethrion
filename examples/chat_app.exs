@@ -31,7 +31,7 @@ start = fn ->
     world: fn user_id ->
       [
         initial_state: Aethrion.Runtime.demo_state(),
-        journal: Path.join(data, "#{user_id}.jsonl"),
+        journal: Path.join(data, Worlds.file_name(user_id) <> ".jsonl"),
         expression: [adapter: StandInModel, timeout: 5_000]
       ]
     end

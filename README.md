@@ -282,7 +282,7 @@ children = [
    idle_after: :timer.minutes(30),
    world: fn user_id ->
      [initial_state: MyApp.Cast.state(),
-      journal: "data/worlds/#{user_id}.jsonl",
+      journal: "data/worlds/#{Aethrion.Worlds.file_name(user_id)}.jsonl",
       expression: [adapter: Aethrion.LLM.Anthropic, timeout: 10_000]]
    end}
 ]

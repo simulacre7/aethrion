@@ -299,7 +299,7 @@ children = [
    name: MyApp.Worlds,
    idle_after: :timer.minutes(30),     # stop unused worlds; needs :journal or :persistence
    world: fn user_id ->                # options of Aethrion.World, except :name
-     [initial_state: MyApp.Cast.state(), journal: "data/worlds/#{user_id}.jsonl"]
+     [initial_state: MyApp.Cast.state(), journal: "data/worlds/#{Aethrion.Worlds.file_name(user_id)}.jsonl"]
    end}
 ]
 
@@ -311,7 +311,7 @@ Aethrion.Worlds.running(MyApp.Worlds)                       # keys of running wo
 :ok = Aethrion.Worlds.stop(MyApp.Worlds, "user-42")
 ```
 
-Worlds start on first use. Subscriptions belong to the key, so they last while its world stops and starts. A world's options are checked when it starts; unknown keys and `:idle_after` without storage are `:invalid_options` errors.
+Worlds start on first use; `peek_state/2` reads one without starting it if it has never been used. Name files after keys with `Aethrion.Worlds.file_name/1`, which keeps every key distinct (also on case-insensitive file systems) and inside the directory. Subscriptions belong to the key, so they last while its world stops and starts. A world's options are checked when it starts; unknown keys and `:idle_after` without storage are `:invalid_options` errors.
 
 ### Conversations
 
@@ -340,13 +340,13 @@ Replies and proactive messages carry the last 12 turns in their request (`Reques
 | --- | --- | --- | --- |
 | `POST` | `/worlds/{key}/say` | `{"to", "text", "from"?, "observed_by"?}` | the step: `event_id`, `lines`, `outputs`, `interpreted` |
 | `POST` | `/worlds/{key}/events` | an event as in a scenario (`{"type": "gift_received", ...}`) | the step |
-| `GET` | `/worlds/{key}/conversation` | `character`, `person` (default `user`), `after` (an event id) | `{"turns": [...]}` |
+| `GET` | `/worlds/{key}/conversation` | `character` (omit for every character), `person` (default `user`), `after` (an event id) | `{"turns": [...]}`, oldest first |
 | `GET` | `/worlds/{key}/characters` | `person` (default `user`) | `{"characters": [{id, name, profile, mood, toward: {id, bond, affinity, trust, tension}}]}` |
 | `GET` | `/worlds/{key}/state` | | `State.to_data/1` |
-| `GET` | `/health` | | `{"ok": true}` |
+| `GET` | `/health` | | `{"ok": true}` (no token needed) |
 | `GET` | `/` | | a chat page for trying worlds in a browser |
 
-`lines` are what characters said or did in the step: `{type, character_id, to, text, rendered, reason | kind | tone}`. When the world renders with a model, the response waits (up to `:render_timeout`, default 15 s) for the model's lines; `rendered: false` means the deterministic text. Errors are `{"error": {"code", "message"}}` with 400 (bad request, unknown character, invalid event, `text_too_long`), 401, 404, 405, 413, or 503 (a world could not start).
+`lines` are what characters said or did in the step: `{type, event_id, character_id, to, text, rendered, reason | kind | tone}` (a reply's `tone` is what it answers: a message tone, `gift`, or `apology`). `last_event_id` is the last event the step processed, cascades included: poll `conversation?after=` from it so nothing comes twice. Reads (`state`, `characters`, `conversation`) of a world never used do not start it or write files. When the world renders with a model, the response waits (up to `:render_timeout`, default 15 s) for the model's lines; `rendered: false` means the deterministic text. Errors are `{"error": {"code", "message"}}` with 400 (bad request, unknown character, invalid event, `text_too_long`), 401, 404, 405, 413 (`body_too_large`), or 503 (a world could not start or store; the reason goes to the server's log, not the client).
 
 Options: `:worlds`, `:port` (0 for a free one; `Aethrion.API.port/1`), `:bind` (default `"127.0.0.1"`), `:token`, `:intent` (adapter for `say`, default the fake adapter), `:render_timeout`, `:max_body` (bytes), `:max_text` (characters of `say` text, default 2,000). World keys are 1-128 characters of letters, digits, and `_ - . : @`, so they are safe in file names.
 

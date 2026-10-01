@@ -16,7 +16,7 @@ defmodule Aethrion.Worlds do
          world: fn user_id ->
            [
              initial_state: MyApp.Cast.starting_state(),
-             journal: "data/worlds/\#{user_id}.jsonl",
+             journal: "data/worlds/\#{Aethrion.Worlds.file_name(user_id)}.jsonl",
              journal_compact_every: 500,
              expression: [adapter: Aethrion.LLM.Anthropic, timeout: 10_000]
            ]
@@ -121,6 +121,24 @@ defmodule Aethrion.Worlds do
   def get_state(manager, key),
     do: with_world(manager, key, &{:ok, RuntimeServer.get_state(&1)})
 
+  @doc """
+  The state of the world for `key` without creating it: a world that has never
+  been used (its `:journal` does not exist yet) is read from its options, so
+  reads alone do not start worlds or write files. Otherwise like `get_state/2`.
+  """
+  @spec peek_state(atom(), key()) :: {:ok, State.t()} | {:error, Error.t()}
+  def peek_state(manager, key) do
+    with nil <- whereis(manager, key),
+         {:ok, opts} <- __MODULE__.Janitor.world_options(manager, key),
+         journal when is_binary(journal) <- Keyword.get(opts, :journal),
+         false <- File.exists?(journal) do
+      {:ok, Keyword.get(opts, :initial_state, Aethrion.Runtime.demo_state())}
+    else
+      {:error, %Error{}} = error -> error
+      _running_or_stored -> get_state(manager, key)
+    end
+  end
+
   @doc "Replaces the state of the world for `key`. See `Aethrion.RuntimeServer.put_state/2`."
   @spec put_state(atom(), key(), State.t()) :: :ok | {:error, Error.t()}
   def put_state(manager, key, %State{} = state),
@@ -160,6 +178,8 @@ defmodule Aethrion.Worlds do
   @doc "Stops the world for `key`, if it is running. Its subscribers stay subscribed."
   @spec stop(atom(), key()) :: :ok
   def stop(manager, key) do
+    __MODULE__.Janitor.forget(manager, key)
+
     case whereis(manager, key) do
       nil -> :ok
       pid -> stop_pid(manager, pid)
@@ -183,13 +203,36 @@ defmodule Aethrion.Worlds do
     Registry.select(registry(manager), [{{{:"$1", :world}, :_, :_}, [], [:"$1"]}])
   end
 
+  @doc """
+  A file name for `key`, safe to put under a directory and distinct for
+  every key: readable characters of the key plus a hash of all of it, so
+  `"alice:1"`, `"alice@1"`, and `"Alice_1"` never share a journal, even on a
+  case-insensitive file system, and nothing a user sends can reach outside
+  the directory.
+
+      journal: Path.join("data/worlds", Aethrion.Worlds.file_name(user_id) <> ".jsonl")
+  """
+  @spec file_name(key()) :: String.t()
+  def file_name(key) do
+    text = if is_binary(key), do: key, else: inspect(key)
+
+    readable =
+      text
+      |> String.downcase()
+      |> String.replace(~r/[^a-z0-9_\-]+/, "_")
+      |> String.slice(0, 40)
+
+    hash = :crypto.hash(:sha256, :erlang.term_to_binary(key)) |> Base.encode16(case: :lower)
+    readable <> "-" <> binary_part(hash, 0, 16)
+  end
+
   @doc false
   def via(manager, key, role), do: {:via, Registry, {registry(manager), {key, role}}}
 
   ## Helpers
 
-  # A world stopped (idle, or by someone else) between finding it and calling
-  # it is started again; the registry may take a moment to forget the old one.
+  # A world stopped (idle, or by someone else) before the call reached it is
+  # started again; the registry may take a moment to forget the old one.
   @attempts 3
 
   defp with_world(manager, key, call, attempt \\ 1) do
@@ -199,8 +242,9 @@ defmodule Aethrion.Worlds do
       try do
         call.(via(manager, key, :runtime))
       catch
-        :exit, {reason, _call}
-        when reason in [:noproc, :normal, :shutdown] and attempt < @attempts ->
+        # Only a call that never reached the world is retried: one cut
+        # short by a stop may already have been applied.
+        :exit, {:noproc, _call} when attempt < @attempts ->
           Process.sleep(10 * attempt)
           with_world(manager, key, call, attempt + 1)
 
@@ -215,23 +259,27 @@ defmodule Aethrion.Worlds do
       spec = {__MODULE__.Instance, manager: manager, key: key, options: opts}
 
       case DynamicSupervisor.start_child(worlds_supervisor(manager), spec) do
-        {:ok, pid} ->
-          {:ok, pid}
-
-        {:error, {:already_started, pid}} ->
-          {:ok, pid}
-
-        {:error, {%Error{} = error, _child}} ->
-          {:error, error}
-
-        {:error, {:shutdown, {:failed_to_start_child, _id, %Error{} = error}}} ->
-          {:error, error}
-
-        {:error, reason} ->
-          {:error,
-           Error.new(:world_failed, "could not start world: #{inspect(reason)}", %{world: key})}
+        {:ok, pid} -> {:ok, pid}
+        {:error, {:already_started, pid}} -> {:ok, pid}
+        {:error, reason} -> {:error, could_not_start(key, reason)}
       end
     end
+  end
+
+  # Why a world could not start (a corrupt or foreign journal, an unreadable
+  # snapshot) is for the operator; the caller learns that it could not.
+  defp could_not_start(key, reason) do
+    cause =
+      case reason do
+        {:shutdown, {:failed_to_start_child, _child, %Error{} = error}} -> error
+        %Error{} = error -> error
+        other -> other
+      end
+
+    Error.new(:world_failed, "the world #{inspect(key)} could not start", %{
+      world: key,
+      reason: cause
+    })
   end
 
   defp stop_pid(manager, pid) do
@@ -349,9 +397,22 @@ defmodule Aethrion.Worlds do
       GenServer.start_link(__MODULE__, opts, name: Module.concat(manager, Janitor))
     end
 
+    # Uses are recorded only when idle worlds are stopped.
     def touch(manager, key) do
       case :persistent_term.get({__MODULE__, manager}, nil) do
-        %{table: table} -> :ets.insert(table, {key, System.monotonic_time(:millisecond)})
+        %{table: table, idle_after: idle} when idle != nil ->
+          :ets.insert(table, {key, System.monotonic_time(:millisecond)})
+
+        _none ->
+          :ok
+      end
+
+      :ok
+    end
+
+    def forget(manager, key) do
+      case :persistent_term.get({__MODULE__, manager}, nil) do
+        %{table: table} -> :ets.delete(table, key)
         nil -> :ok
       end
 
@@ -361,7 +422,14 @@ defmodule Aethrion.Worlds do
     def world_options(manager, key) do
       %{world: factory, idle_after: idle_after} = :persistent_term.get({__MODULE__, manager})
 
-      case factory.(key) do
+      case safe_call(factory, key) do
+        {:raised, exception} ->
+          {:error,
+           Error.new(:world_failed, "the :world function raised for #{inspect(key)}", %{
+             world: key,
+             reason: exception
+           })}
+
         opts when is_list(opts) ->
           check_options(opts, idle_after, key)
 
@@ -372,6 +440,12 @@ defmodule Aethrion.Worlds do
              returned: other
            })}
       end
+    end
+
+    defp safe_call(factory, key) do
+      factory.(key)
+    rescue
+      exception -> {:raised, exception}
     end
 
     defp check_options(opts, idle_after, key) do
@@ -424,16 +498,19 @@ defmodule Aethrion.Worlds do
       now = System.monotonic_time(:millisecond)
 
       for key <- Worlds.running(state.manager) do
+        # A world started without a recorded use (Worlds.start/2, or after
+        # this process restarted) starts its idle time now.
         last =
           case :ets.lookup(state.table, key) do
-            [{^key, at}] -> at
-            [] -> now
+            [{^key, at}] ->
+              at
+
+            [] ->
+              :ets.insert(state.table, {key, now})
+              now
           end
 
-        if now - last >= state.idle_after do
-          Worlds.stop(state.manager, key)
-          :ets.delete(state.table, key)
-        end
+        if now - last >= state.idle_after, do: Worlds.stop(state.manager, key)
       end
 
       {:noreply, schedule(state)}

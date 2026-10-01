@@ -59,6 +59,8 @@ defmodule Aethrion.API do
 
   alias Aethrion.{Conversation, Error, Event, Intent, Output, State, Worlds}
 
+  require Logger
+
   @doc false
   def child_spec(opts) do
     %{id: {__MODULE__, Keyword.get(opts, :port, 4848)}, start: {__MODULE__, :start_link, [opts]}}
@@ -86,7 +88,9 @@ defmodule Aethrion.API do
       server_root: String.to_charlist(root),
       document_root: String.to_charlist(root),
       modules: [__MODULE__.Handler],
-      max_body_size: Keyword.get(opts, :max_body, 65_536),
+      # httpd refuses far larger bodies itself; up to that, the API answers
+      # with a JSON 413.
+      max_body_size: 4 * Keyword.get(opts, :max_body, 65_536),
       keep_alive: true
     ]
 
@@ -96,7 +100,8 @@ defmodule Aethrion.API do
       token: Keyword.get(opts, :token),
       intent: Keyword.get(opts, :intent, []),
       render_timeout: Keyword.get(opts, :render_timeout, 15_000),
-      max_text: Keyword.get(opts, :max_text, 2_000)
+      max_text: Keyword.get(opts, :max_text, 2_000),
+      max_body: Keyword.get(opts, :max_body, 65_536)
     })
 
     with {:ok, pid} <- :inets.start(:httpd, config, :stand_alone) do
@@ -125,18 +130,31 @@ defmodule Aethrion.API do
   # The chat page holds no data, so it loads without a token.
   def handle(_config, "GET", [], _query, _headers, _body), do: {200, :html, @chat_html}
 
+  # Health checks come from load balancers that hold no token.
+  def handle(_config, "GET", ["health"], _query, _headers, _body),
+    do: respond({:ok, 200, %{ok: true}})
+
   def handle(config, method, path, query, headers, body) do
     with :ok <- authorize(config, headers),
+         :ok <- small_enough(body, config),
          {:ok, route} <- route(method, path) do
       run(config, route, query, body)
     end
     |> respond()
   end
 
+  defp small_enough(body, %{max_body: max}) when byte_size(body) > max,
+    do: {:error, 413, Error.new(:body_too_large, "the body is larger than #{max} bytes")}
+
+  defp small_enough(_body, _config), do: :ok
+
   defp authorize(%{token: nil}, _headers), do: :ok
 
   defp authorize(%{token: token}, headers) do
-    if Map.get(headers, "authorization") == "Bearer " <> token,
+    # Compared as digests, so the time taken says nothing about the token.
+    given = Map.get(headers, "authorization", "")
+
+    if :crypto.hash(:sha256, given) == :crypto.hash(:sha256, "Bearer " <> token),
       do: :ok,
       else: {:error, 401, Error.new(:unauthorized, "missing or wrong bearer token")}
   end
@@ -172,13 +190,13 @@ defmodule Aethrion.API do
   defp run(_config, :health, _query, _body), do: {:ok, 200, %{ok: true}}
 
   defp run(config, {:state, key}, _query, _body) do
-    with {:ok, state} <- Worlds.get_state(config.worlds, key) do
+    with {:ok, state} <- Worlds.peek_state(config.worlds, key) do
       {:ok, 200, State.to_data(state)}
     end
   end
 
   defp run(config, {:characters, key}, query, _body) do
-    with {:ok, state} <- Worlds.get_state(config.worlds, key) do
+    with {:ok, state} <- Worlds.peek_state(config.worlds, key) do
       person = Map.get(query, "person", "user")
 
       characters =
@@ -204,18 +222,22 @@ defmodule Aethrion.API do
     end
   end
 
+  # One character's thread with a person, or, without `character`, every
+  # thread of that person, so a client polls once for all of them.
   defp run(config, {:conversation, key}, query, _body) do
-    with {:ok, character} <- required(query, "character"),
-         {:ok, state} <- Worlds.get_state(config.worlds, key) do
-      person = Map.get(query, "person", "user")
-      after_event = event_index(Map.get(query, "after"))
+    person = Map.get(query, "person", "user")
 
+    with {:ok, after_event} <- after_param(query),
+         {:ok, state} <- Worlds.peek_state(config.worlds, key),
+         {:ok, characters} <- conversation_characters(state, query) do
       turns =
-        state
-        |> Conversation.recent(character, person)
+        characters
+        |> Enum.flat_map(&Conversation.recent(state, &1, person))
         |> Enum.filter(&(event_index(&1.event_id) > after_event))
+        |> Enum.sort_by(&event_index(&1.event_id))
 
-      {:ok, 200, %{turns: Conversation.to_data(%{{character, person} => turns}) |> turns_only()}}
+      {:ok, 200,
+       %{turns: Enum.map(turns, &Map.take(&1, [:from, :to, :text, :kind, :tone, :event_id, :at]))}}
     end
   end
 
@@ -245,6 +267,23 @@ defmodule Aethrion.API do
     end
   end
 
+  defp conversation_characters(state, %{"character" => id}) do
+    if State.character?(state, id),
+      do: {:ok, [id]},
+      else: {:error, 400, Error.new(:unknown_character, "unknown character: #{inspect(id)}")}
+  end
+
+  defp conversation_characters(state, _query), do: {:ok, Map.keys(state.characters)}
+
+  defp after_param(%{"after" => value}) do
+    case event_index(value) do
+      -1 -> {:error, 400, Error.new(:invalid_request, "after must be an event id such as e12")}
+      index -> {:ok, index}
+    end
+  end
+
+  defp after_param(_query), do: {:ok, -1}
+
   # Subscribed before dispatching, so no rendered line is missed.
   defp dispatch(config, key, event, extra) do
     manager = config.worlds
@@ -262,6 +301,9 @@ defmodule Aethrion.API do
         {:ok, 200,
          Map.merge(extra, %{
            event_id: step.event.id,
+           # The last event this step processed, cascades included: poll
+           # the conversation after this one.
+           last_event_id: step.events |> List.last() |> Map.get(:id),
            lines: Enum.map(lines, &line/1),
            outputs: Enum.map(step.outputs, &json_safe(Map.delete(&1, :context)))
          })}
@@ -309,6 +351,7 @@ defmodule Aethrion.API do
   defp line(output) do
     %{
       type: output.type,
+      event_id: output.event_id,
       character_id: output.character_id,
       to: output.to,
       text: output.text,
@@ -317,14 +360,18 @@ defmodule Aethrion.API do
     |> Map.merge(Map.take(output, [:reason, :kind, :tone]))
   end
 
-  defp turns_only([%{"turns" => turns}]), do: turns
-  defp turns_only([]), do: []
-
   defp required(map, key) do
     case Map.get(map, key) do
-      value when is_binary(value) and value != "" -> {:ok, value}
-      _missing -> {:error, 400, Error.new(:invalid_request, "#{key} is required", %{field: key})}
+      value when is_binary(value) ->
+        if String.trim(value) == "", do: missing(key), else: {:ok, value}
+
+      _missing ->
+        missing(key)
     end
+  end
+
+  defp missing(key) do
+    {:error, 400, Error.new(:invalid_request, "#{key} is required", %{field: key})}
   end
 
   # "e12" is 12; anything else counts as before every event.
@@ -354,14 +401,20 @@ defmodule Aethrion.API do
 
   defp respond({:error, status, %Error{} = error}), do: {status, error_body(error)}
 
-  defp respond({:error, %Error{} = error}) do
-    status =
-      if error.code in [:world_failed, :world_not_running, :journal_failed, :io_error],
-        do: 503,
-        else: 400
+  # Worlds that cannot start or store are the server's problem: 503, with
+  # what went wrong left to the server's logs.
+  @unavailable [:world_failed, :world_not_running, :journal_failed, :io_error]
 
-    {status, error_body(error)}
+  defp respond({:error, %Error{code: code} = error}) when code in @unavailable do
+    Logger.warning("Aethrion.API: #{Error.format(error)} #{inspect(error.details)}")
+
+    {503,
+     Jason.encode!(%{
+       error: %{code: code, message: "the world is unavailable right now; try again later"}
+     })}
   end
+
+  defp respond({:error, %Error{} = error}), do: {400, error_body(error)}
 
   defp error_body(error),
     do: Jason.encode!(%{error: %{code: error.code, message: Error.format(error)}})

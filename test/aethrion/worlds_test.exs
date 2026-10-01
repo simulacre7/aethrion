@@ -92,6 +92,41 @@ defmodule Aethrion.WorldsTest do
     assert Worlds.running(typo) == []
   end
 
+  test "file names keep every key apart, whatever the file system" do
+    names =
+      Enum.map(["alice:1", "alice@1", "alice_1", "Alice_1", {:room, 1}], &Worlds.file_name/1)
+
+    assert length(Enum.uniq(Enum.map(names, &String.downcase/1))) == 5
+    assert Enum.all?(names, &Regex.match?(~r/^[a-z0-9_\-]+$/, &1))
+    assert Worlds.file_name("../../etc/passwd") =~ ~r/^[a-z0-9_\-]+$/
+  end
+
+  test "a world started without a use is still stopped when idle", %{dir: dir} do
+    worlds =
+      start_worlds(Worlds.Test.IdleStart,
+        idle_after: 100,
+        world: fn key -> [journal: Path.join(dir, Worlds.file_name(key) <> ".jsonl")] end
+      )
+
+    {:ok, _pid} = Worlds.start(worlds, "quiet")
+    assert eventually(fn -> Worlds.running(worlds) == [] end)
+  end
+
+  test "a world that cannot start is an error, not a crash", %{dir: dir} do
+    raising = start_worlds(Worlds.Test.Raising, world: fn _key -> raise "no cast" end)
+    assert {:error, %{code: :world_failed}} = Worlds.get_state(raising, "a")
+
+    File.write!(Path.join(dir, "broken.jsonl"), "not a journal\n")
+
+    broken =
+      start_worlds(Worlds.Test.Broken,
+        world: fn key -> [journal: Path.join(dir, key <> ".jsonl")] end
+      )
+
+    assert {:error, %{code: :world_failed, details: %{reason: %{code: :invalid_journal}}}} =
+             Worlds.get_state(broken, "broken")
+  end
+
   defp eventually(check, tries \\ 50) do
     cond do
       check.() -> true
