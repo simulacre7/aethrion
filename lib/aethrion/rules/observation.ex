@@ -1,0 +1,120 @@
+defmodule Aethrion.Rules.Observation do
+  @moduledoc """
+  Characters who see a gift remember it (inactive or blocked characters see
+  nothing). Observers who care about the giver
+  (affinity >= 30) also become jealous and tense toward the receiver.
+
+  Trait modifiers: `:sensitive` +5 jealousy, `:calm` -5 jealousy.
+
+  Jealousy is about being left out, so it is felt once a day per giver
+  (a second gift the same day is noticed, not felt again), and not at all by
+  someone the giver gave something to in the last day.
+  """
+
+  use Aethrion.Rule,
+    id: :observation,
+    description:
+      "Observers remember the gift; those who care about the giver get jealous (+10, sensitive +5, calm -5) and tense toward the receiver (+8), once a day per giver, unless the giver just gave them something too.",
+    params: [
+      care_threshold: 30,
+      jealousy_delta: 10,
+      sensitive_bonus: 5,
+      calm_reduction: 5,
+      tension_delta: 8,
+      importance: 60
+    ]
+
+  alias Aethrion.{Character, Memory, State, Transition}
+  alias Aethrion.Rules.Gift
+
+  @impl true
+  def apply(%Transition{event: event} = transition) do
+    event
+    |> Map.get(:observed_by, [])
+    |> Enum.uniq()
+    |> Enum.reject(&(&1 in [event.from, event.to]))
+    |> Enum.filter(&(transition.state |> State.character(&1) |> Character.can_act?()))
+    |> Enum.reduce(transition, &observe(&2, &1))
+  end
+
+  defp observe(%Transition{event: event, state: state} = transition, observer_id) do
+    observer = State.character(state, observer_id)
+
+    felt_key = jealous_key(observer_id, event.from)
+
+    cares? =
+      State.get_relationship(state, observer_id, event.from).affinity >=
+        Transition.param(transition, :care_threshold) and
+        State.cooldown_ready?(state, felt_key, 24) and
+        not given_lately?(state, observer_id, event.from)
+
+    transition
+    |> Transition.note(
+      "#{observer.name} noticed the gift to #{Transition.name(transition, event.to)}",
+      subject: observer_id
+    )
+    |> then(fn transition ->
+      if cares? do
+        transition
+        |> Transition.put_cooldown(felt_key)
+        |> Transition.adjust_character(
+          observer_id,
+          :jealousy,
+          jealousy_delta(transition, observer)
+        )
+        |> Transition.adjust_relationship(
+          observer_id,
+          event.to,
+          :tension,
+          Transition.param(transition, :tension_delta)
+        )
+      else
+        transition
+      end
+    end)
+    |> Transition.remember(
+      Memory.new(
+        id: "memory:#{observer_id}:observed:#{event.id}",
+        character_id: observer_id,
+        content: "#{observer_id} saw #{event.from} give #{event.to} a #{event.item}.",
+        importance: Transition.param(transition, :importance),
+        created_at: event.at,
+        related_characters: [event.from, event.to],
+        kind: :observed,
+        topic: Gift.topic(event),
+        data: Gift.data(event)
+      )
+    )
+  end
+
+  @doc false
+  # When `observer` last felt jealous about `giver` giving to someone else.
+  @spec jealous_key(String.t(), String.t()) :: String.t()
+  def jealous_key(observer, giver), do: "jealous:#{observer}:#{giver}"
+
+  # The giver gave the observer something in the last day.
+  defp given_lately?(state, observer_id, giver) do
+    state
+    |> Aethrion.Memories.for_character(observer_id)
+    |> Enum.any?(
+      &(match?(
+          %Memory{kind: :experienced, data: %{"event" => "gift_received", "from" => ^giver}},
+          &1
+        ) and state.clock - &1.created_tick < 24)
+    )
+  end
+
+  defp jealousy_delta(transition, %Character{} = observer) do
+    bonus =
+      if Character.trait?(observer, :sensitive),
+        do: Transition.param(transition, :sensitive_bonus),
+        else: 0
+
+    reduction =
+      if Character.trait?(observer, :calm),
+        do: Transition.param(transition, :calm_reduction),
+        else: 0
+
+    Transition.param(transition, :jealousy_delta) + bonus - reduction
+  end
+end

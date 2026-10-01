@@ -1,0 +1,279 @@
+defmodule Aethrion.PropertyTest do
+  use ExUnit.Case, async: true
+  use ExUnitProperties
+
+  alias Aethrion.{Event, Expression, Memory, Runtime, State}
+  alias Aethrion.Rules.{Bond, Mood}
+
+  @characters ["mina", "yuna", "haru"]
+  @actors ["user" | @characters]
+
+  defp event_gen do
+    one_of([
+      gen all(
+            from <- member_of(@actors),
+            to <- member_of(@characters),
+            item <- member_of(["flower", "book", "tea", "ring"]),
+            observers <- list_of(member_of(@characters), max_length: 3)
+          ) do
+        Event.gift_received(from, to, item, observed_by: observers)
+      end,
+      gen all(
+            from <- member_of(@actors),
+            to <- member_of(@characters),
+            tone <- member_of(Event.tones()),
+            observers <- list_of(member_of(@characters), max_length: 2)
+          ) do
+        Event.message_sent(from, to, "...", tone: tone, observed_by: observers)
+      end,
+      gen all(
+            to <- member_of(@characters),
+            observers <- list_of(member_of(@characters), max_length: 2)
+          ) do
+        Event.apology_offered("user", to, "sorry", observed_by: observers)
+      end,
+      gen all(from <- member_of(@actors), to <- member_of(@characters)) do
+        Event.comfort_offered(from, to)
+      end,
+      gen all(from <- member_of(@characters), to <- member_of(@characters)) do
+        Event.time_spent_together(from, to)
+      end,
+      gen all(hours <- integer(1..30)) do
+        Event.time_tick("prop", hours: hours)
+      end,
+      gen all(hours <- integer(100..900)) do
+        Event.time_tick("prop:long", hours: hours)
+      end
+    ])
+  end
+
+  defp run(events) do
+    Enum.reduce(events, {Runtime.demo_state(), [], 0}, fn event, {state, outputs, processed} ->
+      case Runtime.step(state, event) do
+        {:ok, step} ->
+          {step.state, outputs ++ step.outputs, processed + length(step.events)}
+
+        {:error, %Aethrion.Error{}} ->
+          {state, outputs, processed}
+      end
+    end)
+  end
+
+  property "state stays within bounds and mood matches the numbers" do
+    check all(events <- list_of(event_gen(), max_length: 40)) do
+      {state, _outputs, processed} = run(events)
+
+      assert state.seq == processed
+
+      for character <- Map.values(state.characters),
+          field <- Aethrion.CharacterState.numeric_fields() do
+        assert Map.fetch!(character.state, field) in 0..100
+      end
+
+      for character <- Map.values(state.characters) do
+        assert character.state.mood == Mood.derive(character.state)
+      end
+
+      for relationship <- Map.values(state.relationships),
+          field <- Aethrion.Relationship.fields() do
+        assert Map.fetch!(relationship, field) in -100..100
+      end
+
+      for memory <- state.memories do
+        assert %Memory{} = memory
+        assert memory.strength in 0..memory.importance
+      end
+
+      assert state.memories |> Enum.map(& &1.id) |> Enum.uniq() |> length() ==
+               length(state.memories)
+    end
+  end
+
+  property "bond changes are exact and chain for every relationship" do
+    check all(events <- list_of(event_gen(), max_length: 40)) do
+      initial = Runtime.demo_state()
+      {state, outputs, _processed} = run(events)
+
+      bond = fn state, {from, to} ->
+        Bond.derive(State.get_relationship(state, from, to), state)
+      end
+
+      announced =
+        outputs
+        |> Enum.filter(&(&1.type == :bond_changed))
+        |> Enum.reduce(%{}, fn output, announced ->
+          pair = {output.from, output.to}
+          assert output.before == Map.get_lazy(announced, pair, fn -> bond.(initial, pair) end)
+          refute output.before == output.after
+          Map.put(announced, pair, output.after)
+        end)
+
+      # Every relationship's bond is what was last announced, or unchanged.
+      for pair <- Map.keys(state.relationships) do
+        assert bond.(state, pair) == Map.get_lazy(announced, pair, fn -> bond.(initial, pair) end)
+      end
+    end
+  end
+
+  property "the same events always produce the same result" do
+    check all(events <- list_of(event_gen(), max_length: 30)) do
+      assert run(events) == run(events)
+    end
+  end
+
+  property "invalid events never change state" do
+    check all(
+            events <- list_of(event_gen(), max_length: 20),
+            bad <-
+              member_of([
+                Event.gift_received("user", "ghost", "rock"),
+                Event.message_sent("mina", "mina", "hi"),
+                Event.time_tick("t", hours: -1),
+                %{type: :unknown}
+              ])
+          ) do
+      {state, _outputs, _processed} = run(events)
+      assert {:error, _} = Runtime.dispatch(state, bad)
+    end
+  end
+
+  property "persistence round-trips any reachable state" do
+    check all(events <- list_of(event_gen(), max_length: 30)) do
+      {state, _outputs, _processed} = run(events)
+      data = state |> State.to_data() |> Jason.encode!() |> Jason.decode!()
+
+      assert State.from_data(data) == state
+    end
+  end
+
+  property "follow-up events always point at an earlier event" do
+    check all(events <- list_of(event_gen(), max_length: 30)) do
+      Enum.reduce(events, Runtime.demo_state(), fn event, state ->
+        case Runtime.step(state, event) do
+          {:ok, step} ->
+            ids = Enum.map(step.events, & &1.id)
+
+            for {event, index} <- Enum.with_index(step.events), index > 0 do
+              assert event.cause in Enum.take(ids, index)
+            end
+
+            step.state
+
+          {:error, _error} ->
+            state
+        end
+      end)
+    end
+  end
+
+  property "expression rendering only changes text" do
+    check all(events <- list_of(event_gen(), max_length: 20)) do
+      {_state, outputs, _processed} = run(events)
+      rendered = Expression.render(outputs)
+
+      assert Enum.map(rendered, &Map.delete(&1, :expression)) == outputs
+    end
+  end
+
+  property "a journal always replays to the live world" do
+    check all(events <- list_of(event_gen(), max_length: 25)) do
+      path =
+        Path.join(System.tmp_dir!(), "aethrion-prop-#{System.unique_integer([:positive])}.jsonl")
+
+      try do
+        :ok = Aethrion.Journal.create(path, Runtime.demo_state())
+
+        live =
+          Enum.reduce(events, Runtime.demo_state(), fn event, state ->
+            case Runtime.step(state, event) do
+              {:ok, step} ->
+                :ok = Aethrion.Journal.append(path, step.event)
+                step.state
+
+              {:error, _error} ->
+                state
+            end
+          end)
+
+        assert {:ok, ^live, _steps} = Aethrion.Journal.replay(path)
+      after
+        File.rm(path)
+      end
+    end
+  end
+
+  property "a recorded session replays as a passing scenario" do
+    check all(events <- list_of(event_gen(), max_length: 20)) do
+      {final, steps} =
+        Enum.reduce(events, {Runtime.demo_state(), []}, fn event, {state, steps} ->
+          case Runtime.step(state, event) do
+            {:ok, step} -> {step.state, steps ++ [step]}
+            {:error, _error} -> {state, steps}
+          end
+        end)
+
+      data =
+        "demo"
+        |> Aethrion.Scenario.record(
+          Enum.map(steps, & &1.event),
+          final,
+          Enum.flat_map(steps, & &1.outputs)
+        )
+        |> Jason.encode!()
+        |> Jason.decode!()
+
+      assert {:ok, scenario} = Aethrion.Scenario.from_data(data)
+      assert {:ok, result} = Aethrion.Scenario.run(scenario)
+      assert Aethrion.Scenario.passed?(result)
+      assert result.state == final
+    end
+  end
+
+  defp json_gen do
+    key =
+      member_of([
+        "characters",
+        "relationships",
+        "memories",
+        "id",
+        "name",
+        "state",
+        "from",
+        "to",
+        "type",
+        "events",
+        "expect",
+        "world",
+        "tuning",
+        "hours",
+        "importance"
+      ])
+
+    tree(
+      one_of([
+        constant(nil),
+        boolean(),
+        integer(-200..200),
+        string(:alphanumeric, max_length: 6)
+      ]),
+      fn leaf ->
+        one_of([list_of(leaf, max_length: 3), map_of(key, leaf, max_length: 4)])
+      end
+    )
+  end
+
+  property "untrusted JSON never raises in the parsers" do
+    check all(data <- json_gen(), max_runs: 300) do
+      for parse <- [
+            &Aethrion.State.parse/1,
+            &Aethrion.Scenario.from_data/1,
+            &Aethrion.Event.from_data/1,
+            &Aethrion.Tuning.from_data/1,
+            &Aethrion.Scenario.from_data(%{"world" => &1}),
+            &Aethrion.Scenario.from_data(%{"events" => [&1], "expect" => [&1]})
+          ] do
+        assert match?({:ok, _}, parse.(data)) or match?({:error, %Aethrion.Error{}}, parse.(data))
+      end
+    end
+  end
+end

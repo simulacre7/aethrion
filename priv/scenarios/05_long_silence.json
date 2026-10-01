@@ -1,0 +1,98 @@
+{
+  "$schema": "../scenario.schema.json",
+  "name": "Long silence",
+  "description": "The user says one kind thing to Mina, gives her a scarf, and then disappears for days. Haru seeks out Yuna's company, though Yuna still reaches out once. Mina, who has no close friend in the cast, grows lonely after a quiet day and a half: the kind words have already faded, but the scarf has not, so that is what she mentions. Nobody answers, so she waits three days before trying again, and by then only the silence is left to talk about.",
+  "world": "demo",
+  "events": [
+    {
+      "type": "message_sent",
+      "from": "user",
+      "to": "mina",
+      "text": "You made today better.",
+      "tone": "warm",
+      "at": "day1:20:00"
+    },
+    {
+      "type": "gift_received",
+      "from": "user",
+      "to": "mina",
+      "item": "scarf",
+      "at": "day1:20:00"
+    },
+    {
+      "type": "time_tick",
+      "now": "day2:08:00",
+      "hours": 12
+    },
+    {
+      "type": "time_tick",
+      "now": "day2:20:00",
+      "hours": 12
+    },
+    {
+      "type": "time_tick",
+      "now": "day3:20:00",
+      "hours": 24
+    },
+    {
+      "type": "time_tick",
+      "now": "day4:20:00",
+      "hours": 24
+    },
+    {
+      "type": "time_tick",
+      "now": "day5:20:00",
+      "hours": 24
+    },
+    {
+      "type": "time_tick",
+      "now": "day6:20:00",
+      "hours": 24
+    }
+  ],
+  "expect": [
+    {
+      "output": "character_interaction",
+      "character": "haru",
+      "kind": "together",
+      "to": "yuna",
+      "at_least": 3
+    },
+    {
+      "output": "proactive_message",
+      "character": "yuna",
+      "reason": "lonely",
+      "count": 1
+    },
+    {
+      "output": "proactive_message",
+      "character": "mina",
+      "reason": "lonely",
+      "text": "I still have the scarf you gave me. Do you have a minute to talk?",
+      "count": 1
+    },
+    {
+      "output": "proactive_message",
+      "character": "mina",
+      "reason": "lonely",
+      "text": "We haven't talked in a few days. Do you have a minute?",
+      "count": 1
+    },
+    {
+      "output": "proactive_message",
+      "character": "mina",
+      "count": 2
+    },
+    {
+      "memory": {
+        "character": "mina",
+        "kind": "experienced",
+        "faded": true
+      },
+      "count": 2
+    },
+    {
+      "clock": 120
+    }
+  ]
+}

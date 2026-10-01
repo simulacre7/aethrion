@@ -1,211 +1,421 @@
 defmodule Aethrion.RuntimeTest do
   use ExUnit.Case, async: true
 
+  import Aethrion.TestHelpers
+
   alias Aethrion.{Event, Runtime, State}
   alias Aethrion.LLM.FakeAdapter
 
-  test "gift event changes affinity and creates memory" do
-    state = Runtime.demo_state()
-    event = Event.gift_received("user", "mina", "flower", observed_by: [], at: "demo:test")
-
-    {:ok, state, outputs, _log} = Runtime.dispatch(state, event)
-
-    relationship = State.get_relationship(state, "mina", "user")
-
-    assert relationship.affinity == 50
-    assert [%{character_id: "mina", content: "user gave mina a flower."}] = state.memories
-    assert Enum.any?(outputs, &match?(%{type: :memory_created}, &1))
-  end
-
-  test "observed gift increases jealousy and tension" do
-    state = Runtime.demo_state()
-    event = Event.gift_received("user", "mina", "flower", observed_by: ["yuna"], at: "demo:test")
-
-    {:ok, state, _outputs, _log} = Runtime.dispatch(state, event)
-
-    assert state.characters["yuna"].state.jealousy == 15
-    assert State.get_relationship(state, "yuna", "mina").tension == 8
-  end
-
-  test "time tick changes loneliness" do
-    state = Runtime.demo_state()
-    event = Event.time_tick("demo:t2", hours: 2)
-
-    {:ok, state, _outputs, _log} = Runtime.dispatch(state, event)
-
-    assert state.characters["mina"].state.loneliness == 20
-    assert state.characters["yuna"].state.loneliness == 34
-    assert state.characters["haru"].state.loneliness == 16
-  end
-
-  test "apology reduces social pressure and creates reconciliation memory" do
-    state = Runtime.demo_state()
-
-    {:ok, state, _outputs, _log} =
-      Runtime.dispatch(
-        state,
-        Event.gift_received("user", "mina", "flower", observed_by: ["yuna"], at: "demo:t1")
-      )
-
-    {:ok, state, outputs, _log} =
-      Runtime.dispatch(
-        state,
-        Event.apology_offered("user", "yuna", "I should have checked in with you too.",
-          at: "demo:t2"
+  describe "gifts" do
+    test "gift changes the receiver's affinity, joy, and loneliness and creates a memory" do
+      {state, outputs} =
+        dispatch!(
+          Runtime.demo_state(),
+          Event.gift_received("user", "mina", "flower", at: "test:t1")
         )
-      )
 
-    assert state.characters["yuna"].state.jealousy == 0
-    assert state.characters["yuna"].state.loneliness == 20
-    assert State.get_relationship(state, "yuna", "user").trust == 28
+      assert State.get_relationship(state, "mina", "user").affinity == 50
+      assert character_state(state, "mina").joy == 20
+      assert character_state(state, "mina").loneliness == 2
+      assert character_state(state, "mina").mood == :happy
 
-    assert [%{character_id: "yuna", content: "user apologized to yuna: " <> _}, _gift_memory] =
-             state.memories
+      assert [%{character_id: "mina", content: "user gave mina a flower.", kind: :experienced}] =
+               state.memories
 
-    assert Enum.any?(outputs, &match?(%{type: :memory_created}, &1))
-  end
+      assert [%{memory: %{id: "memory:mina:gift:e1"}}] = of_type(outputs, :memory_created)
 
-  test "jealousy threshold emits a proactive message" do
-    state = Runtime.demo_state()
+      assert [%{character_id: "mina", before: :neutral, after: :happy}] =
+               of_type(outputs, :mood_changed)
+    end
 
-    {:ok, state, _outputs, _log} =
-      Runtime.dispatch(
-        state,
-        Event.gift_received("user", "mina", "flower", observed_by: ["yuna"], at: "demo:t1")
-      )
+    test "an observer who cares about the giver becomes jealous and tense" do
+      {state, _outputs} = dispatch!(Runtime.demo_state(), flower_for_mina())
 
-    {:ok, _state, outputs, _log} = Runtime.dispatch(state, Event.time_tick("demo:t2", hours: 2))
+      assert character_state(state, "yuna").jealousy == 15
+      assert character_state(state, "yuna").mood == :jealous
+      assert State.get_relationship(state, "yuna", "mina").tension == 8
+    end
 
-    assert [
-             %{
-               type: :proactive_message,
-               character_id: "yuna",
-               to: "user",
-               reason: :jealous
-             }
-           ] = Enum.filter(outputs, &(&1.type == :proactive_message))
-  end
+    test "observers remember what they saw, linked to the receiver's memory by topic" do
+      {state, _outputs} = dispatch!(Runtime.demo_state(), flower_for_mina())
 
-  test "scenario produces deterministic final state and structured outputs" do
-    state = Runtime.demo_state()
+      mina_memory = Enum.find(state.memories, &(&1.character_id == "mina"))
+      yuna_memory = Enum.find(state.memories, &(&1.character_id == "yuna"))
 
-    events = [
-      Event.gift_received("user", "mina", "flower", observed_by: ["yuna"], at: "demo:t1"),
-      Event.gift_received("user", "mina", "book", observed_by: ["yuna"], at: "demo:t2"),
-      Event.gift_received("user", "mina", "tea", observed_by: ["yuna"], at: "demo:t3"),
-      Event.time_tick("demo:t4", hours: 2)
-    ]
+      assert yuna_memory.kind == :observed
+      assert yuna_memory.content == "yuna saw user give mina a flower."
+      assert yuna_memory.topic == mina_memory.topic
+      assert yuna_memory.related_characters == ["user", "mina"]
+    end
 
-    {state, outputs} =
-      Enum.reduce(events, {state, []}, fn event, {state, outputs} ->
-        {:ok, state, next_outputs, _log} = Runtime.dispatch(state, event)
-        {state, outputs ++ next_outputs}
-      end)
+    test "observers who do not care about the giver only remember" do
+      event = Event.gift_received("user", "mina", "tea", observed_by: ["haru"])
+      {state, _outputs} = dispatch!(Runtime.demo_state(), event)
 
-    assert State.get_relationship(state, "mina", "user").affinity == 70
-    assert State.get_relationship(state, "yuna", "mina").tension == 24
-    assert state.characters["yuna"].state.jealousy == 45
-    assert state.characters["yuna"].state.loneliness == 34
-    assert length(state.memories) == 3
-    assert Enum.count(outputs, &(&1.type == :proactive_message)) == 1
-  end
+      assert character_state(state, "haru").jealousy == 0
+      assert State.get_relationship(state, "haru", "mina").tension == 0
+      assert Enum.any?(state.memories, &(&1.character_id == "haru" and &1.kind == :observed))
+    end
 
-  test "branched scenario diverges after apology choice" do
-    base_state = Runtime.demo_state()
-
-    {:ok, base_state, _outputs, _log} =
-      Runtime.dispatch(
-        base_state,
-        Event.gift_received("user", "mina", "flower", observed_by: ["yuna"], at: "branch:t1")
-      )
-
-    {:ok, ignored_state, ignored_outputs, _log} =
-      Runtime.dispatch(base_state, Event.time_tick("branch:ignored:t2", hours: 2))
-
-    {:ok, apology_state, _outputs, _log} =
-      Runtime.dispatch(
-        base_state,
-        Event.apology_offered("user", "yuna", "I should have checked in with you too.",
-          at: "branch:apology:t2"
+    test "traits modify jealousy" do
+      state =
+        state(
+          [
+            character("ren"),
+            character("calm", traits: [:calm]),
+            character("soft", traits: [:sensitive])
+          ],
+          [
+            relationship("calm", "user", affinity: 40),
+            relationship("soft", "user", affinity: 40)
+          ]
         )
-      )
 
-    {:ok, apology_state, apology_outputs, _log} =
-      Runtime.dispatch(apology_state, Event.time_tick("branch:apology:t3", hours: 2))
+      event = Event.gift_received("user", "ren", "ring", observed_by: ["calm", "soft"])
+      {state, _outputs} = dispatch!(state, event)
 
-    assert ignored_state.characters["yuna"].state.jealousy == 15
-    assert ignored_state.characters["yuna"].state.loneliness == 34
-    assert Enum.any?(ignored_outputs, &(&1.type == :proactive_message))
+      assert character_state(state, "calm").jealousy == 5
+      assert character_state(state, "soft").jealousy == 15
+    end
 
-    assert apology_state.characters["yuna"].state.jealousy == 0
-    assert apology_state.characters["yuna"].state.loneliness == 28
-    refute Enum.any?(apology_outputs, &(&1.type == :proactive_message))
-  end
+    test "the giver and receiver are never treated as observers" do
+      event = Event.gift_received("yuna", "mina", "pin", observed_by: ["yuna", "mina"])
+      {state, _outputs} = dispatch!(Runtime.demo_state(), event)
 
-  test "relationship values stay clamped" do
-    state = Runtime.demo_state()
-
-    events =
-      for index <- 1..20 do
-        Event.gift_received("user", "mina", "flower-#{index}",
-          observed_by: ["yuna"],
-          at: "demo:#{index}"
-        )
-      end
-
-    {state, _outputs} =
-      Enum.reduce(events, {state, []}, fn event, {state, outputs} ->
-        {:ok, state, next_outputs, _log} = Runtime.dispatch(state, event)
-        {state, outputs ++ next_outputs}
-      end)
-
-    for relationship <- Map.values(state.relationships) do
-      assert relationship.affinity in -100..100
-      assert relationship.trust in -100..100
-      assert relationship.tension in -100..100
+      refute Enum.any?(state.memories, &(&1.kind == :observed))
     end
   end
 
-  test "blocked characters cannot proactively message" do
-    state =
-      Runtime.demo_state()
-      |> State.update_character_state("yuna", fn character_state ->
-        %{character_state | blocked?: true, jealousy: 50}
-      end)
+  describe "time" do
+    test "time tick advances the clock and loneliness" do
+      {state, _outputs} = dispatch!(Runtime.demo_state(), Event.time_tick("test:t2", hours: 2))
 
-    {:ok, _state, outputs, _log} = Runtime.dispatch(state, Event.time_tick("demo:t1", hours: 1))
+      assert state.clock == 2
+      assert character_state(state, "mina").loneliness == 16
+      assert character_state(state, "yuna").loneliness == 30
+      assert character_state(state, "haru").loneliness == 12
+      assert character_state(state, "haru").last_active_at == "test:t2"
+    end
 
-    refute Enum.any?(outputs, &(&1.type == :proactive_message))
+    test "inactive characters do not grow lonely" do
+      state =
+        Runtime.demo_state()
+        |> State.update_character_state("haru", &%{&1 | active?: false})
+
+      {state, _outputs} = dispatch!(state, Event.time_tick("test:t2", hours: 2))
+
+      assert character_state(state, "haru").loneliness == 8
+    end
+
+    test "jealousy fades a little each day, not each hour" do
+      state =
+        Runtime.demo_state()
+        |> State.update_character_state("haru", &%{&1 | blocked?: true})
+
+      {state, _outputs} =
+        run!(state, [flower_for_mina(), Event.time_tick("test:t2", hours: 8)])
+
+      assert character_state(state, "yuna").jealousy == 15
+
+      {state, _outputs} = dispatch!(state, Event.time_tick("test:t3", hours: 16))
+      assert character_state(state, "yuna").jealousy == 10
+    end
+
+    test "loneliness grows only after a quiet stretch" do
+      {state, _outputs} =
+        run!(Runtime.demo_state(), [
+          Event.message_sent("user", "mina", "Morning!", tone: :neutral),
+          Event.time_tick("t1", hours: 16)
+        ])
+
+      # Company at hour 0: no growth for 16 hours.
+      assert character_state(state, "mina").loneliness == 6
+
+      {state, _outputs} = dispatch!(state, Event.time_tick("t2", hours: 3))
+      assert character_state(state, "mina").loneliness == 6 + 3 * 2
+
+      # Splitting time differently gives the same result.
+      {split, _outputs} =
+        run!(Runtime.demo_state(), [
+          Event.message_sent("user", "mina", "Morning!", tone: :neutral),
+          Event.time_tick("t1", hours: 5),
+          Event.time_tick("t2", hours: 14)
+        ])
+
+      assert character_state(split, "mina").loneliness == 6 + 3 * 2
+    end
   end
 
-  test "fake llm output does not mutate authoritative state" do
-    state = Runtime.demo_state()
+  describe "apology" do
+    test "apology reduces social pressure and creates a reconciliation memory" do
+      {state, outputs} =
+        run!(Runtime.demo_state(), [
+          flower_for_mina(),
+          Event.apology_offered("user", "yuna", "I should have checked in with you too.",
+            at: "test:t2"
+          )
+        ])
 
-    assert FakeAdapter.proactive_message("yuna", :jealous) =~ "Mina"
-    assert state == Runtime.demo_state()
+      assert character_state(state, "yuna").jealousy == 0
+      assert character_state(state, "yuna").loneliness == 20
+      assert character_state(state, "yuna").mood == :neutral
+      assert State.get_relationship(state, "yuna", "user").trust == 28
+
+      assert [%{character_id: "yuna", content: "user apologized to yuna: " <> _} | _] =
+               state.memories
+
+      assert Enum.any?(outputs, &match?(%{type: :memory_created}, &1))
+    end
   end
 
-  test "unknown gift receiver returns structured error" do
-    state = Runtime.demo_state()
+  describe "proactive messages" do
+    test "jealousy threshold emits a proactive message grounded in memory" do
+      {state, _outputs} = dispatch!(Runtime.demo_state(), flower_for_mina())
+      {_state, outputs} = dispatch!(state, Event.time_tick("test:t2", hours: 2))
 
-    assert {:error, %{code: :unknown_character, message: message}} =
-             Runtime.dispatch(state, Event.gift_received("user", "unknown", "flower"))
+      assert [message] = proactive(outputs, "yuna")
+      assert message.reason == :jealous
+      assert message.to == "user"
+      assert message.text =~ "Mina"
+      assert "memory:yuna:observed:e1" in message.memory_refs
+      assert message.context.speaker.name == "Yuna"
+    end
 
-    assert message =~ "unknown character"
+    test "a proactive message repeats only after its cooldown" do
+      # Jealous enough to still be jealous after it fades a day's worth.
+      state =
+        Runtime.demo_state()
+        |> State.update_character_state("haru", &%{&1 | blocked?: true})
+        |> State.update_character_state("yuna", &%{&1 | jealousy: 30})
+
+      {state, first} = run!(state, [flower_for_mina(), Event.time_tick("t2", hours: 2)])
+      {state, during} = dispatch!(state, Event.time_tick("t3", hours: 10))
+      {_state, after_cooldown} = dispatch!(state, Event.time_tick("t4", hours: 14))
+
+      assert [%{reason: :jealous}] = proactive(first, "yuna")
+      assert [] = proactive(during, "yuna")
+      assert [%{reason: :jealous}] = proactive(after_cooldown, "yuna")
+    end
+
+    test "lonely characters reach out when nobody has been in touch" do
+      {_state, outputs} = dispatch!(Runtime.demo_state(), Event.time_tick("t1", hours: 24))
+
+      assert [%{reason: :lonely, text: "It's been a while since we talked." <> _}] =
+               proactive(outputs, "mina")
+
+      # Haru and Yuna have each other: an afternoon together instead of a message.
+      assert [] = proactive(outputs, "yuna")
+      assert [] = proactive(outputs, "haru")
+
+      assert [%{kind: :together, character_id: "haru", to: "yuna"}] =
+               of_type(outputs, :character_interaction)
+    end
+
+    test "lonely messages recall the user's last kind words" do
+      events = [
+        Event.message_sent("user", "mina", "You did great today.", tone: :warm),
+        Event.time_tick("t1", hours: 38)
+      ]
+
+      # Already a little lonely, so she misses the kind words before they fade.
+      state = State.update_character_state(Runtime.demo_state(), "mina", &%{&1 | loneliness: 40})
+      {_state, outputs} = run!(state, events)
+
+      assert [%{reason: :lonely, text: text}] = proactive(outputs, "mina")
+      assert text =~ "You did great today."
+    end
+
+    test "blocked characters cannot proactively message" do
+      state =
+        Runtime.demo_state()
+        |> State.update_character_state("yuna", &%{&1 | blocked?: true, jealousy: 50})
+
+      {_state, outputs} = dispatch!(state, Event.time_tick("test:t1", hours: 1))
+
+      assert [] = proactive(outputs, "yuna")
+    end
   end
 
-  test "unknown apology receiver returns structured error" do
-    state = Runtime.demo_state()
+  describe "scenarios" do
+    test "the ignored branch cascades: Yuna messages the user, confides in Haru, and is comforted" do
+      {state, _outputs} = dispatch!(Runtime.demo_state(), flower_for_mina())
+      {:ok, step} = Runtime.step(state, Event.time_tick("branch:ignored:t2", hours: 2))
 
-    assert {:error, %{code: :unknown_character, message: message}} =
-             Runtime.dispatch(state, Event.apology_offered("user", "unknown", "sorry"))
+      assert [
+               %{id: "e2", type: :time_tick},
+               %{id: "e3", type: :gossip_shared, from: "yuna", to: "haru", cause: "e2"},
+               %{id: "e4", type: :comfort_offered, from: "haru", to: "yuna", cause: "e3"}
+             ] = step.events
 
-    assert message =~ "unknown character"
+      assert [%{reason: :jealous}] = proactive(step.outputs, "yuna")
+
+      assert [%{reason: :curious, text: "Yuna told me you gave Mina a flower. Smooth."}] =
+               proactive(step.outputs, "haru")
+
+      assert [%{kind: :gossip}, %{kind: :comfort}] = of_type(step.outputs, :character_interaction)
+
+      yuna = character_state(step.state, "yuna")
+      assert yuna.jealousy == 10
+      assert yuna.loneliness == 14
+      assert yuna.mood == :neutral
+      assert State.get_relationship(step.state, "yuna", "haru").trust == 47
+    end
+
+    test "the apology branch stays calm" do
+      {base, _outputs} = dispatch!(Runtime.demo_state(), flower_for_mina())
+
+      {state, outputs} =
+        run!(base, [
+          Event.apology_offered("user", "yuna", "I should have checked in with you too.",
+            at: "branch:apology:t2"
+          ),
+          Event.time_tick("branch:apology:t3", hours: 2)
+        ])
+
+      assert character_state(state, "yuna").jealousy == 0
+      assert character_state(state, "yuna").loneliness == 20
+      assert [] = of_type(outputs, :proactive_message)
+      assert [] = of_type(outputs, :character_interaction)
+    end
+
+    test "repeated gifts the same day are felt once, and the jealous message fires once" do
+      events = [
+        flower_for_mina("t1"),
+        Event.gift_received("user", "mina", "book", observed_by: ["yuna"], at: "t2"),
+        Event.gift_received("user", "mina", "tea", observed_by: ["yuna"], at: "t3"),
+        Event.time_tick("t4", hours: 2)
+      ]
+
+      {state, outputs} = run!(Runtime.demo_state(), events)
+
+      assert State.get_relationship(state, "mina", "user").affinity == 70
+      assert State.get_relationship(state, "yuna", "mina").tension == 8
+      assert [%{reason: :jealous}] = proactive(outputs, "yuna")
+    end
+
+    test "the same event sequence always produces the same state and outputs" do
+      events = [
+        flower_for_mina(),
+        Event.message_sent("user", "haru", "Thanks for looking out for everyone.", tone: :warm),
+        Event.time_tick("t2", hours: 3),
+        Event.apology_offered("user", "yuna", "Sorry.", at: "t3"),
+        Event.time_tick("t4", hours: 20)
+      ]
+
+      assert run!(Runtime.demo_state(), events) == run!(Runtime.demo_state(), events)
+    end
+
+    test "run/3 returns every step and stops at the first invalid event" do
+      events = [flower_for_mina(), Event.time_tick("t2", hours: 2)]
+
+      assert {:ok, state, [first, second]} = Runtime.run(Runtime.demo_state(), events)
+      assert first.event.id == "e1"
+      assert second.event.id == "e2"
+      assert state == second.state
+
+      assert {:error, %{code: :unknown_character, details: %{index: 1, steps: [_first]}}} =
+               Runtime.run(Runtime.demo_state(), [
+                 flower_for_mina(),
+                 Event.gift_received("user", "nobody", "rock")
+               ])
+    end
+
+    test "relationship and character values stay clamped" do
+      events =
+        for index <- 1..20 do
+          Event.gift_received("user", "mina", "flower-#{index}",
+            observed_by: ["yuna"],
+            at: "test:#{index}"
+          )
+        end
+
+      {state, _outputs} = run!(Runtime.demo_state(), events)
+
+      for relationship <- Map.values(state.relationships),
+          field <- [:affinity, :trust, :tension] do
+        assert Map.fetch!(relationship, field) in -100..100
+      end
+
+      assert State.get_relationship(state, "mina", "user").affinity == 100
+      assert character_state(state, "mina").joy == 100
+    end
   end
 
-  test "unsupported event returns structured error" do
-    state = Runtime.demo_state()
+  describe "expression boundary" do
+    test "fake llm output does not mutate authoritative state" do
+      state = Runtime.demo_state()
 
-    assert {:error, %{code: :unsupported_event}} = Runtime.dispatch(state, %{type: :story_event})
+      assert FakeAdapter.proactive_message("yuna", :jealous) =~ "forgot about me"
+      assert state == Runtime.demo_state()
+    end
+  end
+
+  describe "errors" do
+    test "unknown gift receiver returns structured error" do
+      assert {:error, %{code: :unknown_character, message: message}} =
+               Runtime.dispatch(
+                 Runtime.demo_state(),
+                 Event.gift_received("user", "unknown", "flower")
+               )
+
+      assert message =~ "unknown character"
+    end
+
+    test "unknown observer returns structured error" do
+      assert {:error, %{code: :unknown_character, details: %{field: :observed_by}}} =
+               Runtime.dispatch(
+                 Runtime.demo_state(),
+                 Event.gift_received("user", "mina", "flower", observed_by: ["ghost"])
+               )
+    end
+
+    test "unknown apology receiver returns structured error" do
+      assert {:error, %{code: :unknown_character}} =
+               Runtime.dispatch(
+                 Runtime.demo_state(),
+                 Event.apology_offered("user", "unknown", "sorry")
+               )
+    end
+
+    test "unsupported event returns structured error" do
+      assert {:error, %{code: :unsupported_event}} =
+               Runtime.dispatch(Runtime.demo_state(), %{type: :story_event})
+    end
+
+    test "events without a type and invalid state return structured errors" do
+      assert {:error, %{code: :invalid_event}} = Runtime.dispatch(Runtime.demo_state(), %{})
+      assert {:error, %{code: :invalid_state}} = Runtime.dispatch(%{}, Event.time_tick("t"))
+    end
+
+    test "messages require a known tone and distinct actors" do
+      state = Runtime.demo_state()
+
+      assert {:error, %{code: :invalid_event, details: %{field: :tone}}} =
+               Runtime.dispatch(state, Event.message_sent("user", "mina", "hi", tone: :smug))
+
+      assert {:error, %{code: :invalid_event, details: %{field: :from}}} =
+               Runtime.dispatch(state, Event.message_sent("mina", "mina", "hi"))
+
+      assert {:error, %{code: :invalid_event, details: %{field: :text}}} =
+               Runtime.dispatch(state, Event.message_sent("user", "mina", ""))
+    end
+
+    test "gossip must reference a memory held by the teller" do
+      {state, _outputs} = dispatch!(Runtime.demo_state(), flower_for_mina())
+
+      assert {:error, %{code: :invalid_event, details: %{field: :memory_id}}} =
+               Runtime.dispatch(
+                 state,
+                 Event.gossip_shared("haru", "mina", "memory:yuna:observed:e1")
+               )
+    end
+
+    test "invalid time ticks are rejected" do
+      assert {:error, %{code: :invalid_event}} =
+               Runtime.dispatch(Runtime.demo_state(), Event.time_tick("t", hours: 0))
+
+      assert {:error, %{code: :invalid_event}} =
+               Runtime.dispatch(Runtime.demo_state(), Event.time_tick("t", hours: "2"))
+    end
   end
 end

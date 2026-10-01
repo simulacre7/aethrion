@@ -1,0 +1,636 @@
+defmodule Aethrion.Expression.Templates.Ko do
+  @moduledoc """
+  Korean deterministic templates.
+
+  Used by `Aethrion.LLM.FakeAdapter` with `locale: :ko`. Like the English
+  templates, they only read the `Aethrion.Expression.Request` snapshot, so
+  switching language never changes the simulation:
+
+      Aethrion.Expression.render(outputs,
+        adapter: Aethrion.LLM.FakeAdapter,
+        adapter_opts: [locale: :ko]
+      )
+
+  Particles (이/가, 은/는, 을/를, 이랑/랑, 과/와) are chosen from the final
+  sound of each name, for Hangul and Latin-script names alike.
+  """
+
+  alias Aethrion.Expression.{Choices, Request}
+
+  # Latin words that end in a pronounced e (애니메, 우쿨렐레), unlike Jane or Nicole.
+  @spoken_e ~w(anime sesame penne persephone karaoke ukulele adobe finale chile tamale pele)
+
+  @doc """
+  Renders a request in Korean. With `tense: :past`, scenes between
+  characters are told as having happened ("함께 저녁을 먹고 늦게까지
+  이야기했다."), as a digest tells them.
+  """
+  @spec render(Request.t(), keyword()) :: String.t()
+  def render(%Request{} = request, opts) do
+    text = render(request)
+
+    case {Keyword.get(opts, :tense), request.kind} do
+      {:past, :character_interaction} -> past(text)
+      _present -> text
+    end
+  end
+
+  # Present-tense narration endings and their past forms. The quoted part of a
+  # line (someone's words) is left alone.
+  @past [
+    {"털어놓는다.", "털어놓았다."},
+    {"전한다.", "전했다."},
+    {"자랑한다.", "자랑했다."},
+    {"보낸다.", "보냈다."},
+    {"나눈다.", "나눴다."},
+    {"이야기한다.", "이야기했다."},
+    {"앉아 있다.", "앉아 있었다."},
+    {"있어 준다.", "있어 주었다."},
+    {"가벼워진다.", "가벼워졌다."},
+    {"반응한다.", "반응했다."}
+  ]
+
+  defp past(text) do
+    ~r/"[^"]*"/u
+    |> Regex.split(text, include_captures: true)
+    |> Enum.map_join(fn
+      "\"" <> _quoted = part ->
+        part
+
+      narration ->
+        Enum.reduce(@past, narration, fn {now, then}, acc -> String.replace(acc, now, then) end)
+    end)
+  end
+
+  @doc """
+  A count in native Korean with 번: `times(3)` is "세 번", `times(21)` is
+  "스물한 번". From a hundred, digits.
+  """
+  @spec times(non_neg_integer()) :: String.t()
+  def times(20), do: "스무 번"
+
+  def times(count) when count in 1..99 do
+    tens = Enum.at(["", "열", "스물", "서른", "마흔", "쉰", "예순", "일흔", "여든", "아흔"], div(count, 10))
+    ones = Enum.at(["", "한", "두", "세", "네", "다섯", "여섯", "일곱", "여덟", "아홉"], rem(count, 10))
+    tens <> ones <> " 번"
+  end
+
+  def times(count), do: "#{count}번"
+
+  @doc "Renders a request in Korean."
+  @spec render(Request.t()) :: String.t()
+  def render(%Request{kind: :proactive_message, reason: :jealous} = request) do
+    case Choices.jealous_choice(request) do
+      {:gift, to, when_seen, feeling} ->
+        moment = if when_seen == :earlier, do: "아까", else: "지난번에"
+
+        "#{moment} #{with_particle(name(request, to), :and)} 있을 때 즐거워 보이더라. " <>
+          if feeling == :forgotten, do: "혹시 나는 잊은 거 아니지?", else: "괜히 나만 좀 서운했어."
+
+      :quiet ->
+        "요즘 나한테 좀 조용하네. 혹시 나 잊은 거 아니지?"
+    end
+  end
+
+  def render(%Request{kind: :proactive_message, reason: :lonely} = request) do
+    case Choices.lonely_choice(request) do
+      {:quote, text} -> "네가 했던 말이 계속 생각나. \"#{text}\" 잠깐 얘기할 수 있어?"
+      {:gift, item} -> "네가 준 #{item(item)}, 아직 가지고 있어. 잠깐 얘기할 수 있어?"
+      :kind -> "넌 늘 나한테 다정했잖아. 너랑 얘기하던 게 그리워. 잠깐 시간 돼?"
+      :reunion -> "며칠째 얘기를 못 했네. 잠깐 시간 돼?"
+      :a_while -> "한동안 얘기를 못 했네. 잠깐 시간 돼?"
+      :busy -> "요즘 많이 바쁜가 보네. 얘기하고 싶을 때 언제든 연락해."
+      :today -> "오늘은 좀 조용하네. 잠깐 얘기할 수 있어?"
+    end
+  end
+
+  def render(%Request{kind: :proactive_message, reason: :protective} = request) do
+    calm? = :calm in request.speaker.traits
+
+    case Enum.find(request.memories, &(&1.kind == :observed)) do
+      %{data: %{"to" => to}} ->
+        friend = name(request, to)
+
+        lines =
+          if calm?,
+            do: [
+              "#{friend}한테 한 말은 좀 모질었어. 무슨 일 있어?",
+              "#{friend}한테 그런 말은 좀 아니었어. 괜찮은 거야?",
+              "#{friend}한테 말하는 거 봤어. 요즘 무슨 일 있어?"
+            ],
+            else: [
+              "#{friend}한테 한 말, 좀 심했어. 걔는 그런 말 들을 이유 없었어.",
+              "#{friend}한테 왜 그렇게 말했어? 그건 좀 너무했어.",
+              "#{friend}한테 말하는 거 봤어. 그러면 안 돼."
+            ]
+
+        Choices.pick(request, lines)
+
+      nil ->
+        if calm?,
+          do: "아까 한 말은 좀 모질었어. 무슨 일 있어?",
+          else: "아까 한 말, 좀 심했어. 누구도 그런 말 들을 이유는 없어."
+    end
+  end
+
+  def render(%Request{kind: :proactive_message, reason: :curious} = request) do
+    case Choices.curious_choice(request) do
+      {:other, source, _data} ->
+        "#{name(request, source)}한테 네 얘기 좀 들었어. 네 입장도 듣고 싶은데?"
+
+      {news, source, data} ->
+        # "걔" when the teller told about themselves.
+        to = if data["to"] == source, do: "걔", else: name(request, data["to"])
+        "#{name(request, source)}한테 들었어. #{curious_line(news, to, data, request)}"
+
+      :unknown ->
+        "오늘 네 얘기를 좀 들었어. 네 입장도 듣고 싶은데?"
+    end
+  end
+
+  def render(%Request{kind: :proactive_message} = request) do
+    "#{with_particle(request.speaker.name, :topic)} 할 말이 있는 것 같다."
+  end
+
+  def render(%Request{kind: :reply, tone: :gift, message: item} = request) do
+    case Choices.gift_choice(request) do
+      :wary -> Choices.pick(request, ["...고마워. 뭐라고 해야 할지 모르겠네.", "...또 줬네. 고맙긴 한데."])
+      :reassured -> "나한테 주는 거야? ...나 잊은 줄 알았어."
+      :spoiled -> "또 줘? 이러다 버릇 나빠지겠다."
+      :another -> "또 선물이야? 정말 고마워!"
+      :remembered -> "내 생각 해 준 거야? 정말 고마워."
+      :close -> Choices.pick(request, ["이런 거 안 해도 되는데! 너무 좋다.", "또 챙겨 준 거야? 진짜 고마워."])
+      :thanks when is_binary(item) -> "#{gift_word(item)}? 우와, 고마워!"
+      :thanks -> "나 주는 거야? 고마워!"
+    end
+  end
+
+  def render(%Request{kind: :reply, tone: :apology} = request) do
+    case Choices.apology_choice(request) do
+      :settled -> "알았어, 이제 진짜 괜찮아."
+      :enough -> "이미 사과했잖아. 정말 괜찮아."
+      :keeps_apologizing -> "계속 미안하다고만 하네. 그냥 그런 일이 없었으면 좋겠어."
+      {:others, :seen} -> "고마워. 그런데 네가 다른 사람들한테 어떻게 하는지도 봤어. 시간이 좀 필요해."
+      {:others, :heard} -> "고마워. 그런데 네가 다른 사람들한테 어떻게 하는지도 들었어. 시간이 좀 필요해."
+      :left_out -> "고마워. 나도 좀 챙겨 줬으면 해서 그랬어."
+      :nothing_to_forgive -> "사과할 거 없어. 우리 괜찮아."
+      :once_more -> "알았어... 그래도 자꾸 그러진 말아 줘."
+      :needs_time -> "말해 줘서 고마워. 조금만 시간을 줘."
+      :shaken -> "아직 좀 놀랐지만, 고마워."
+      :accepted -> "그렇게 말해 줘서 고마워. 마음이 좀 풀렸어."
+    end
+  end
+
+  def render(%Request{kind: :reply, tone: tone, speaker: %{mood: mood}} = request)
+      when tone in [:cold, :hostile] do
+    case Choices.harsh_choice(tone, request) do
+      :silent -> "..."
+      :done -> "더는 너랑 이런 얘기 안 할래."
+      :again -> "또? 대체 왜 그러는 거야?"
+      :short -> "요즘 나한테 좀 차갑네."
+      :benefit when tone == :hostile -> "너답지 않은데. 무슨 일 있어?"
+      :benefit -> "아... 그래. 괜찮은 거지?"
+      :hurt when tone == :hostile and mood != :upset -> first_hurt(Choices.temperament(request))
+      :hurt -> reply(tone, mood)
+    end
+  end
+
+  def render(%Request{kind: :reply, tone: :warm} = request) do
+    case Request.harshness_to_others(request) do
+      {:observed, target} ->
+        "고마워... 그런데 네가 #{name(request, target)}한테 한 말, 나도 봤어."
+
+      {:heard, target} ->
+        "고마워... 그런데 네가 #{name(request, target)}한테 한 말, 나도 들었어."
+
+      :reputation ->
+        "...고마워. 그런데 네가 다른 사람들한테 어떻게 하는지 들었어."
+
+      nil ->
+        reply_line(:warm, request)
+    end
+  end
+
+  def render(%Request{kind: :reply, tone: tone} = request), do: reply_line(tone, request)
+
+  def render(%Request{kind: :character_interaction, reason: :gossip} = request) do
+    teller = with_particle(request.speaker.name, :topic)
+    listener = request.listener.name
+
+    case request.memories do
+      [%{data: data} | _] -> "#{teller} #{listener}에게 #{gossip(request, data)}"
+      _ -> "#{teller} #{listener}에게 속마음을 털어놓는다."
+    end
+  end
+
+  def render(%Request{kind: :character_interaction, reason: :together} = request) do
+    pair =
+      "#{with_particle(request.speaker.name, :with)} #{with_particle(request.listener.name, :topic)}"
+
+    case Choices.together_choice(request) do
+      0 -> "#{pair} 함께 조용한 오후를 보낸다."
+      1 -> "#{pair} 한참을 걸으며 이런저런 이야기를 나눈다."
+      2 -> "#{pair} 같이 저녁을 먹고 늦게까지 이야기한다."
+      3 -> "#{pair} 별말 없이 한동안 함께 앉아 있다."
+    end
+  end
+
+  def render(%Request{kind: :character_interaction, reason: :comfort} = request) do
+    "#{with_particle(request.speaker.name, :topic)} 한동안 #{request.listener.name} 곁에 있어 준다. " <>
+      "#{request.listener.name}의 표정이 한결 가벼워진다."
+  end
+
+  def render(%Request{} = request) do
+    "#{with_particle(request.speaker.name, :subject)} 반응한다."
+  end
+
+  # What was told, after "X는 Y에게".
+  defp gossip(request, %{"event" => "gift_received", "to" => to} = data) do
+    if to == request.speaker.id,
+      do: "#{actor(request, data["from"])} 준 #{with_particle(item(data["item"]), :object)} 자랑한다.",
+      else:
+        "#{actor(request, data["from"])} #{name(request, to)}한테 준 #{item(data["item"])} 얘기를 전한다."
+  end
+
+  defp gossip(request, %{"event" => "message_sent", "tone" => tone} = data)
+       when tone in ["hostile", "cold"],
+       do:
+         "#{actor(request, data["from"])} #{target(request, data)}한테 \"#{quoted(data["text"])}\"라고 한 걸 전한다."
+
+  defp gossip(request, %{"event" => event} = data)
+       when event in ["apology_offered", "comfort_offered", "message_sent"] do
+    to = target(request, data)
+
+    what =
+      case event do
+        "apology_offered" -> "#{to}한테 사과했다고"
+        "comfort_offered" -> "#{with_particle(to, :object)} 위로해 줬다고"
+        "message_sent" -> "#{to}한테 다정하게 대해 줬다고"
+      end
+
+    "#{actor(request, data["from"])} #{what} 전한다."
+  end
+
+  defp gossip(_request, _data), do: "속마음을 털어놓는다."
+
+  # Who did it, as a subject: "네가" for the reader.
+  defp actor(request, id), do: if(you?(request, id), do: "네가", else: subject(name(request, id)))
+
+  # To whom: the teller themselves ("자기"), or someone else.
+  defp target(request, %{"to" => to}),
+    do: if(to == request.speaker.id, do: "자기", else: name(request, to))
+
+  defp curious_line(:gift, to, data, request) do
+    heard = "#{to}한테 #{item(data["item"])} 줬다며?"
+
+    cond do
+      :playful in request.speaker.traits -> heard <> " 제법인데."
+      :calm in request.speaker.traits -> heard <> " #{to} 좋아했겠다."
+      true -> heard <> " 나한테 할 말 없어?"
+    end
+  end
+
+  defp curious_line(:harsh, to, _data, _request),
+    do: "네가 #{to}한테 그런 말 했다며? 너답지 않던데, 무슨 일 있어?"
+
+  defp curious_line(:warm, to, _data, _request), do: "#{to}한테 다정하게 대해 줬다며? 좋더라."
+  defp curious_line(:comfort, to, _data, _request), do: "#{to} 곁에 있어 줬다며? 고마워."
+  defp curious_line(:apology, to, _data, _request), do: "#{to}한테 사과했다며? 잘했어."
+
+  defp reply_line(tone, request) do
+    case Choices.reply_choice(tone, request) do
+      {:bond, bond} -> Choices.pick(request, bond_line(tone, bond))
+      :guarded when tone == :warm -> "고마워... 그래도 아직 좀 서운해."
+      :guarded -> "...응, 왜."
+      {:reunion, :missed} -> "연락 왔네... 보고 싶었어."
+      {:reunion, :thanks} -> "오랜만이야! 고마워."
+      {:reunion, :hello} -> "오랜만이네!"
+      :question -> Choices.pick(request, ["음, 글쎄. 생각 좀 해 볼게.", "왜? 궁금해?", "음... 좋은 질문이네."])
+      {:mood, mood} -> Choices.pick(request, reply(tone, mood))
+    end
+  end
+
+  defp bond_line(:warm, :close),
+    do: ["역시 너밖에 없어. 고마워.", "너 진짜 최고야, 알지?", "네 연락이 하루 중에 제일 반가워."]
+
+  defp bond_line(:warm, :strained), do: "...그래, 고마워."
+  defp bond_line(:warm, :estranged), do: "이제 와서 왜 잘해 주는 건데?"
+  defp bond_line(:neutral, :close), do: ["왔어? 무슨 일이야?", "왔구나! 별일 없어?", "안녕! 마침 네 생각 하고 있었어."]
+  defp bond_line(:neutral, :strained), do: "...무슨 일인데?"
+  defp bond_line(:neutral, :estranged), do: "별로 얘기하고 싶지 않아."
+  defp bond_line(_tone, _bond), do: nil
+
+  defp reply(:warm, :happy), do: ["덕분에 기분 좋아졌어. 고마워.", "고마워! 웃음이 나네.", "좋은 하루가 더 좋아졌어."]
+  defp reply(:warm, :jealous), do: "...고마워. 그 말이 듣고 싶었나 봐."
+  defp reply(:warm, :lonely), do: ["오늘 그 말이 정말 필요했어.", "고마워. 좀 외로웠거든.", "네 연락 받으니까 좀 낫다."]
+  defp reply(:warm, :upset), do: "아직 좀 속상하지만, 고마워."
+  defp reply(:warm, _mood), do: ["그 말 들으니까 좋다. 고마워.", "헤헤, 고마워.", "고마워, 진심으로."]
+  defp reply(:neutral, :happy), do: "응! 무슨 일이야?"
+  defp reply(:neutral, :jealous), do: "아, 안녕."
+  defp reply(:neutral, :lonely), do: ["연락 줘서 반가워.", "응, 얘기해 줘. 듣고 있어."]
+  defp reply(:neutral, :upset), do: "...왜?"
+  defp reply(:neutral, _mood), do: ["응, 무슨 일이야?", "응, 왜?", "응.", "응, 계속 말해 봐."]
+  defp reply(:cold, :jealous), do: "그래, 알겠어."
+  defp reply(:cold, _mood), do: "아... 그래."
+  defp reply(:hostile, :upset), do: "그만해 줘."
+  defp reply(:hostile, _mood), do: "왜 그런 말을 해?"
+  defp reply(_tone, _mood), do: "..."
+
+  defp first_hurt(:sensitive), do: "그 말 좀 아프다. 왜 그런 말을 해?"
+  defp first_hurt(:calm), do: "...그건 좀 너무했다."
+  defp first_hurt(:playful), do: "와, 돌려 말하지도 않네?"
+  defp first_hurt(nil), do: "왜 그런 말을 해?"
+
+  # How a Latin word's end is usually read in Korean. Vowels and -r, -w, -h
+  # have no final consonant (flower 플라워, show 쇼, Smith 스미스), nor do
+  # endings Korean reads with an added vowel: -s, -x, -f, -v, -z, -d (Alex
+  # 알렉스, scarf 스카프, postcard 포스트카드), and -t, -k, -p after another
+  # consonant (desk 데스크, gift 기프트). Other consonants do (book 북, Sol 솔),
+  # as do -ck and a silent e after n or m.
+  defp latin_batchim?(word) do
+    letters =
+      word
+      |> String.downcase()
+      |> String.replace(~r/[^a-z]/, "")
+      |> String.reverse()
+      |> String.to_charlist()
+
+    case letters do
+      # -ck (Jack 잭).
+      [?k, ?c | _] -> true
+      # -le reads as ㄹ: Nicole 니콜, candle 캔들, apple 애플.
+      [?e, ?l | _] -> String.downcase(word) not in @spoken_e
+      # -ne or -me with a silent e after a vowel or in -nne (Jane 제인, Jerome
+      # 제롬, Anne 앤), except words that say the e.
+      [?e, before, third | _] when before in ~c"nm" -> silent_e?(word, before, third)
+      [last | _] when last in ~c"aeiouyrwhsxfvzd" -> false
+      [last, before | _] when last in ~c"tkp" -> before in ~c"aeiouy"
+      [_last | _] -> true
+      [] -> false
+    end
+  end
+
+  defp silent_e?(word, before, third) do
+    (third in ~c"aeiouy" or (before == ?n and third == ?n)) and
+      String.downcase(word) not in @spoken_e
+  end
+
+  @doc """
+  One-line Korean description of an event, like `Aethrion.Event.describe/2`.
+  `names` maps ids to display names. Custom event types fall back to the
+  English description.
+  """
+  @spec describe_event(map(), (String.t() -> String.t())) :: String.t()
+  def describe_event(event, names) do
+    name = fn id -> names.(id) end
+    subject = fn id -> subject(name.(id)) end
+
+    case event do
+      %{type: :gift_received} ->
+        "#{subject.(event.from)} #{name.(event.to)}에게 #{with_particle(item(event.item), :object)} 준다" <>
+          seen_by(event, name)
+
+      %{type: :message_sent} ->
+        "#{name.(event.from)} → #{name.(event.to)} (#{adverb(event.tone)}): #{event.text}" <>
+          seen_by(event, name)
+
+      %{type: :apology_offered} ->
+        "#{subject.(event.from)} #{name.(event.to)}에게 사과한다: #{event.reason}" <>
+          seen_by(event, name)
+
+      %{type: :time_tick, hours: hours} ->
+        "#{hours}시간이 흐른다"
+
+      %{type: :gossip_shared} ->
+        "#{with_particle(name.(event.from), :topic)} #{name.(event.to)}에게 이야기를 전한다"
+
+      %{type: :comfort_offered} ->
+        "#{subject.(event.from)} #{with_particle(name.(event.to), :object)} 위로한다"
+
+      %{type: :time_spent_together} ->
+        "#{with_particle(name.(event.from), :with)} #{with_particle(name.(event.to), :topic)} 함께 시간을 보낸다"
+
+      _other ->
+        Aethrion.Event.describe(event, names)
+    end
+  end
+
+  @doc """
+  One-line Korean description of a memory, from its structured data, for
+  Korean reports. `names` maps ids to display names. Memories without
+  recognizable data keep their content.
+  """
+  @spec describe_memory(Aethrion.Memory.t(), (String.t() -> String.t())) :: String.t()
+  def describe_memory(%Aethrion.Memory{} = memory, names) do
+    text =
+      case memory.data do
+        %{"event" => event} = data when event in ["impression", "reputation"] ->
+          Aethrion.Digest.belief_text(data, names.(memory.character_id), :ko, names)
+
+        data ->
+          describe_data(data, names)
+      end
+
+    case {text, memory} do
+      {nil, _memory} ->
+        memory.content
+
+      {text, %{kind: :heard, source: source}} when is_binary(source) ->
+        "#{names.(source)}에게서: #{text}"
+
+      {text, _memory} ->
+        text
+    end
+  end
+
+  defp describe_data(
+         %{"event" => "gift_received", "from" => from, "to" => to, "item" => item},
+         names
+       ),
+       do: "#{subject(names.(from))} #{names.(to)}에게 #{with_particle(item(item), :object)} 줬다."
+
+  defp describe_data(
+         %{"event" => "message_sent", "from" => from, "to" => to, "tone" => tone} = data,
+         names
+       ) do
+    "#{subject(names.(from))} #{names.(to)}에게 #{adverb(tone)} 말했다: \"#{data["text"]}\""
+  end
+
+  defp describe_data(%{"event" => "apology_offered", "from" => from, "to" => to} = data, names),
+    do: "#{subject(names.(from))} #{names.(to)}에게 사과했다: \"#{data["reason"]}\""
+
+  defp describe_data(%{"event" => "comfort_offered", "from" => from, "to" => to}, names),
+    do: "#{subject(names.(from))} #{with_particle(names.(to), :object)} 위로해 줬다."
+
+  defp describe_data(%{"event" => "time_spent_together", "from" => from, "to" => to}, names),
+    do: "#{with_particle(names.(from), :with)} #{with_particle(names.(to), :subject)} 함께 시간을 보냈다."
+
+  defp describe_data(_data, _names), do: nil
+
+  # Words quoted before 라고 lose their final full stop: "그만해"라고.
+  defp quoted(text) when is_binary(text), do: String.replace(text, ~r/\.+$/u, "")
+  defp quoted(text), do: text
+
+  defp seen_by(%{observed_by: [_ | _] = observers}, name),
+    do: " (#{Enum.map_join(observers, ", ", name)} 목격)"
+
+  defp seen_by(_event, _name), do: ""
+
+  @doc """
+  A name as the subject of a sentence: "하나가", "Sol이", and "네가" for "너".
+  """
+  @spec subject(String.t()) :: String.t()
+  def subject("너"), do: "네가"
+  def subject(name), do: with_particle(name, :subject)
+
+  @doc "How something was said, as an adverb: `:warm` (or `\"warm\"`) is \"다정하게\"."
+  @spec adverb(atom() | String.t()) :: String.t()
+  def adverb(tone) when is_atom(tone), do: tone |> Atom.to_string() |> adverb()
+  def adverb("warm"), do: "다정하게"
+  def adverb("neutral"), do: "평소처럼"
+  def adverb("cold"), do: "차갑게"
+  def adverb("hostile"), do: "모질게"
+  def adverb(other), do: other
+
+  @doc "A bond's name in Korean: `:friendly` is \"편한 사이\"."
+  @spec bond_label(atom()) :: String.t()
+  def bond_label(:estranged), do: "틀어진 사이"
+  def bond_label(:strained), do: "서먹한 사이"
+  def bond_label(:neutral), do: "보통 사이"
+  def bond_label(:friendly), do: "편한 사이"
+  def bond_label(:close), do: "아주 가까운 사이"
+  def bond_label(other), do: to_string(other)
+
+  @items %{
+    "book" => "책",
+    "bouquet" => "꽃다발",
+    "bracelet" => "팔찌",
+    "bread" => "빵",
+    "cake" => "케이크",
+    "candle" => "양초",
+    "candy" => "사탕",
+    "card" => "카드",
+    "chocolate" => "초콜릿",
+    "coffee" => "커피",
+    "cookie" => "쿠키",
+    "cookies" => "쿠키",
+    "cup" => "컵",
+    "drawing" => "그림",
+    "earrings" => "귀걸이",
+    "flower" => "꽃",
+    "flowers" => "꽃",
+    "gift" => "선물",
+    "gloves" => "장갑",
+    "hairpin" => "머리핀",
+    "hat" => "모자",
+    "keychain" => "열쇠고리",
+    "kite" => "연",
+    "letter" => "편지",
+    "map" => "지도",
+    "muffin" => "머핀",
+    "mug" => "머그컵",
+    "necklace" => "목걸이",
+    "notebook" => "노트",
+    "orange" => "귤",
+    "painting" => "그림",
+    "pastry box" => "디저트 상자",
+    "perfume" => "향수",
+    "photo" => "사진",
+    "picture" => "사진",
+    "pie" => "파이",
+    "pin" => "배지",
+    "plant" => "화분",
+    "postcard" => "엽서",
+    "ribbon" => "리본",
+    "ring" => "반지",
+    "scarf" => "목도리",
+    "snack" => "간식",
+    "sweater" => "스웨터",
+    "tangerine" => "귤",
+    "tea" => "홍차",
+    "teddy bear" => "곰 인형",
+    "umbrella" => "우산",
+    "wine" => "와인"
+  }
+
+  @doc """
+  A gift's name in Korean: common items are translated ("flower" is "꽃"),
+  anything else is kept as the host wrote it.
+  """
+  @spec item(String.t() | nil) :: String.t() | nil
+  def item(name) when is_binary(name) do
+    key = name |> String.trim() |> String.downcase() |> String.replace(~r/^(a|an|the|some) /, "")
+    Map.get(@items, key, name)
+  end
+
+  def item(name), do: name
+
+  # "꽃? 우와": an untranslated English word is not echoed back.
+  defp gift_word(name) do
+    word = item(name)
+    if String.match?(word, ~r/\p{Hangul}/u), do: word, else: "선물이야"
+  end
+
+  @doc """
+  Appends the Korean particle that fits `word`'s final sound. `kind` is
+  `:subject` (이/가), `:topic` (은/는), `:object` (을/를), `:and` (이랑/랑),
+  or `:with` (과/와).
+  """
+  @spec with_particle(String.t(), :subject | :topic | :object | :and | :with) :: String.t()
+  def with_particle(word, kind) do
+    {with_batchim, without} =
+      case kind do
+        :subject -> {"이", "가"}
+        :topic -> {"은", "는"}
+        :object -> {"을", "를"}
+        :and -> {"이랑", "랑"}
+        :with -> {"과", "와"}
+      end
+
+    word <> if(batchim?(word), do: with_batchim, else: without)
+  end
+
+  defp batchim?(word) do
+    # Compose first (macOS and some inputs use decomposed Hangul), then read the
+    # last letter, skipping trailing emoji, punctuation, and variation selectors.
+    word
+    |> :unicode.characters_to_nfc_binary()
+    |> String.to_charlist()
+    |> Enum.reverse()
+    |> Enum.find_value(false, fn codepoint ->
+      cond do
+        # Hangul syllables: a final consonant exists when (code - 0xAC00) % 28 != 0.
+        codepoint in 0xAC00..0xD7A3 ->
+          {:ok, rem(codepoint - 0xAC00, 28) != 0}
+
+        codepoint in ?a..?z or codepoint in ?A..?Z ->
+          {:ok, latin_batchim?(word)}
+
+        # Digits as read in Korean: 영, 일, 삼, 육, 칠, 팔 end in a consonant.
+        codepoint in ?0..?9 ->
+          {:ok, codepoint in ~c"013678"}
+
+        true ->
+          nil
+      end
+    end)
+    |> case do
+      {:ok, batchim?} -> batchim?
+      false -> false
+    end
+  end
+
+  # The person addressed as 너: the user, or whoever the names say (a digest
+  # for another player maps them to "너").
+  defp you?(request, id), do: name(request, id) == "너"
+
+  # The reader is "you" in whichever language the request was named in.
+  defp name(request, id) do
+    case Map.get(request.names, id) do
+      "you" -> "너"
+      nil when id == "user" -> "너"
+      nil -> id
+      name -> name
+    end
+  end
+end

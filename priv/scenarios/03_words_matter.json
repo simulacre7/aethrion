@@ -1,0 +1,106 @@
+{
+  "$schema": "../scenario.schema.json",
+  "name": "Words matter",
+  "description": "The user snaps at Mina twice, then apologizes and says something kind. Tone is structured data, so the same text with a different tone would play out differently.",
+  "world": "demo",
+  "events": [
+    {
+      "type": "message_sent",
+      "from": "user",
+      "to": "mina",
+      "text": "Can you just leave me alone?",
+      "tone": "hostile",
+      "at": "day2:09:00"
+    },
+    {
+      "type": "message_sent",
+      "from": "user",
+      "to": "mina",
+      "text": "I said go away.",
+      "tone": "hostile",
+      "at": "day2:09:01"
+    },
+    {
+      "type": "time_tick",
+      "now": "day2:12:00",
+      "hours": 3
+    },
+    {
+      "type": "apology_offered",
+      "from": "user",
+      "to": "mina",
+      "reason": "I was stressed and took it out on you.",
+      "at": "day2:12:05"
+    },
+    {
+      "type": "message_sent",
+      "from": "user",
+      "to": "mina",
+      "text": "Thank you for always being kind to me.",
+      "tone": "warm",
+      "at": "day2:12:06"
+    }
+  ],
+  "expect": [
+    {
+      "output": "reply",
+      "character": "mina",
+      "text": "Please stop.",
+      "count": 1
+    },
+    {
+      "output": "mood_changed",
+      "character": "mina",
+      "count": 1,
+      "after": "upset"
+    },
+    {
+      "character": "mina",
+      "field": "stress",
+      "at_most": 30
+    },
+    {
+      "character": "mina",
+      "field": "mood",
+      "equals": "neutral"
+    },
+    {
+      "relationship": [
+        "mina",
+        "user"
+      ],
+      "field": "tension",
+      "equals": 8
+    },
+    {
+      "relationship": [
+        "mina",
+        "user"
+      ],
+      "field": "affinity",
+      "equals": 28
+    },
+    {
+      "memory": {
+        "character": "mina",
+        "kind": "experienced"
+      },
+      "count": 4
+    },
+    {
+      "output": "bond_changed",
+      "from": "mina",
+      "to": "user",
+      "after": "strained",
+      "count": 1
+    },
+    {
+      "relationship": [
+        "mina",
+        "user"
+      ],
+      "field": "bond",
+      "equals": "friendly"
+    }
+  ]
+}

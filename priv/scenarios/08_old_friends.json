@@ -1,0 +1,117 @@
+{
+  "$schema": "../scenario.schema.json",
+  "name": "Old friends",
+  "description": "The user is kind to Mina again and again over a few days, then goes quiet. Every individual conversation eventually fades, but the pattern does not: Mina consolidates them into lasting impressions, and when Mina finally reaches out, the impression is what remains.",
+  "world": "demo",
+  "events": [
+    {
+      "type": "message_sent",
+      "from": "user",
+      "to": "mina",
+      "text": "Good morning! Hope today is gentle with you.",
+      "tone": "warm",
+      "at": "day1"
+    },
+    {
+      "type": "gift_received",
+      "from": "user",
+      "to": "mina",
+      "item": "postcard",
+      "at": "day1"
+    },
+    {
+      "type": "time_tick",
+      "now": "day2",
+      "hours": 24
+    },
+    {
+      "type": "message_sent",
+      "from": "user",
+      "to": "mina",
+      "text": "Thank you for listening yesterday.",
+      "tone": "warm",
+      "at": "day2"
+    },
+    {
+      "type": "time_tick",
+      "now": "day3",
+      "hours": 24
+    },
+    {
+      "type": "message_sent",
+      "from": "user",
+      "to": "mina",
+      "text": "You always make me laugh.",
+      "tone": "warm",
+      "at": "day3"
+    },
+    {
+      "type": "gift_received",
+      "from": "user",
+      "to": "mina",
+      "item": "scarf",
+      "at": "day3"
+    },
+    {
+      "type": "time_tick",
+      "now": "day4",
+      "hours": 24
+    },
+    {
+      "type": "time_tick",
+      "now": "day5",
+      "hours": 24
+    },
+    {
+      "type": "time_tick",
+      "now": "day6",
+      "hours": 24
+    },
+    {
+      "type": "time_tick",
+      "now": "day7",
+      "hours": 24
+    },
+    {
+      "type": "time_tick",
+      "now": "day8",
+      "hours": 24
+    }
+  ],
+  "expect": [
+    {
+      "memory": {
+        "character": "mina",
+        "kind": "impression",
+        "content": "user has been warm to mina 3 times."
+      },
+      "count": 1
+    },
+    {
+      "memory": {
+        "character": "mina",
+        "kind": "impression",
+        "content": "user has given mina 2 gifts."
+      },
+      "count": 1
+    },
+    {
+      "memory": {
+        "character": "mina",
+        "kind": "experienced",
+        "faded": true
+      },
+      "count": 5
+    },
+    {
+      "output": "proactive_message",
+      "character": "mina",
+      "reason": "lonely",
+      "text": "You've always been kind to me. I miss talking with you. Do you have a minute?",
+      "at_least": 1
+    },
+    {
+      "clock": 168
+    }
+  ]
+}

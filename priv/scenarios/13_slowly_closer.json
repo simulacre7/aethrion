@@ -1,0 +1,183 @@
+{
+  "$schema": "../scenario.schema.json",
+  "name": "Slowly closer",
+  "description": "The user is kind to Haru a little every day for a week: a warm word most mornings, a small gift, and some company on two hard days. Nothing dramatic happens, but the bond moves from neutral to friendly to close, and the kind days fold into a lasting impression. After two quiet days Haru writes first, remembering the notebook. Then comes a bad day and a harsh word. Haru takes it at half strength and asks if something is wrong; one harsh word is not enough to undo a close bond.",
+  "world": {
+    "characters": [
+      {
+        "id": "haru",
+        "name": "Haru",
+        "profile": "Calm, lives alone, and slow to open up.",
+        "traits": [
+          "calm"
+        ]
+      }
+    ],
+    "relationships": [
+      {
+        "from": "haru",
+        "to": "user",
+        "affinity": 15,
+        "trust": 10
+      }
+    ]
+  },
+  "events": [
+    {
+      "type": "message_sent",
+      "from": "user",
+      "to": "haru",
+      "text": "Good morning! Thanks for the help yesterday.",
+      "tone": "warm",
+      "at": "day 1"
+    },
+    {
+      "type": "time_tick",
+      "now": "day 2",
+      "hours": 24
+    },
+    {
+      "type": "message_sent",
+      "from": "user",
+      "to": "haru",
+      "text": "That tip you gave me worked. Thank you.",
+      "tone": "warm",
+      "at": "day 2"
+    },
+    {
+      "type": "time_tick",
+      "now": "day 3",
+      "hours": 24
+    },
+    {
+      "type": "gift_received",
+      "from": "user",
+      "to": "haru",
+      "item": "tea",
+      "at": "day 3"
+    },
+    {
+      "type": "time_tick",
+      "now": "day 4",
+      "hours": 24
+    },
+    {
+      "type": "comfort_offered",
+      "from": "user",
+      "to": "haru",
+      "at": "day 4"
+    },
+    {
+      "type": "message_sent",
+      "from": "user",
+      "to": "haru",
+      "text": "I'm glad we work together.",
+      "tone": "warm",
+      "at": "day 4"
+    },
+    {
+      "type": "time_tick",
+      "now": "day 5",
+      "hours": 24
+    },
+    {
+      "type": "message_sent",
+      "from": "user",
+      "to": "haru",
+      "text": "You made today easier. Thanks.",
+      "tone": "warm",
+      "at": "day 5"
+    },
+    {
+      "type": "time_tick",
+      "now": "day 6",
+      "hours": 24
+    },
+    {
+      "type": "comfort_offered",
+      "from": "user",
+      "to": "haru",
+      "at": "day 6"
+    },
+    {
+      "type": "gift_received",
+      "from": "user",
+      "to": "haru",
+      "item": "notebook",
+      "at": "day 6"
+    },
+    {
+      "type": "message_sent",
+      "from": "user",
+      "to": "haru",
+      "text": "Thanks for listening yesterday.",
+      "tone": "warm",
+      "at": "day 6"
+    },
+    {
+      "type": "time_tick",
+      "now": "day 8",
+      "hours": 48
+    },
+    {
+      "type": "message_sent",
+      "from": "user",
+      "to": "haru",
+      "text": "Just leave it, I'll do it myself.",
+      "tone": "hostile",
+      "at": "day 8"
+    }
+  ],
+  "expect": [
+    {
+      "output": "bond_changed",
+      "from": "haru",
+      "to": "user",
+      "before": "neutral",
+      "after": "friendly",
+      "count": 1
+    },
+    {
+      "output": "bond_changed",
+      "from": "haru",
+      "to": "user",
+      "before": "friendly",
+      "after": "close",
+      "count": 1
+    },
+    {
+      "output": "bond_changed",
+      "from": "haru",
+      "to": "user",
+      "count": 2
+    },
+    {
+      "memory": {
+        "character": "haru",
+        "content": "user has been warm to haru 5 times."
+      },
+      "count": 1
+    },
+    {
+      "output": "proactive_message",
+      "character": "haru",
+      "reason": "lonely",
+      "text": "I still have the notebook you gave me. Do you have a minute to talk?",
+      "count": 1
+    },
+    {
+      "output": "reply",
+      "character": "haru",
+      "tone": "hostile",
+      "text": "That's not like you. Is something wrong?"
+    },
+    {
+      "relationship": [
+        "haru",
+        "user"
+      ],
+      "field": "bond",
+      "equals": "close"
+    }
+  ]
+}

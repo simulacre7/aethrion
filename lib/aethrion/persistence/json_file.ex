@@ -1,41 +1,103 @@
 defmodule Aethrion.Persistence.JsonFile do
   @moduledoc """
   JSON file persistence adapter for local experiments.
+
+  Loading validates the file with `Aethrion.State.parse/2`, so a malformed or
+  hand-edited file is reported instead of crashing, and never creates atoms.
+  Saving writes a temporary file and renames it into place, so a crash while
+  saving leaves the previous snapshot intact.
   """
 
   @behaviour Aethrion.Persistence
 
-  alias Aethrion.State
+  alias Aethrion.{Error, State}
 
   @impl true
   def save(%State{} = state, opts \\ []) do
     with {:ok, path} <- fetch_path(opts),
-         :ok <- ensure_parent_dir(path),
-         {:ok, json} <- Jason.encode(State.to_data(state), pretty: true),
-         :ok <- File.write(path, json) do
-      :ok
+         :ok <- io(File.mkdir_p(Path.dirname(path)), path),
+         {:ok, json} <- encode(state) do
+      write_aside(path, json)
+    end
+  end
+
+  # Written next to the target and renamed over it, so a crash or a
+  # concurrent save never leaves a half-written snapshot behind.
+  defp write_aside(path, json) do
+    tmp = "#{path}.#{System.unique_integer([:positive])}.tmp"
+
+    case io(File.write(tmp, json), path) do
+      :ok ->
+        io(File.rename(tmp, path), path)
+
+      error ->
+        File.rm(tmp)
+        error
     end
   end
 
   @impl true
   def load(opts \\ []) do
     with {:ok, path} <- fetch_path(opts),
-         {:ok, json} <- File.read(path),
-         {:ok, data} <- Jason.decode(json) do
-      {:ok, State.from_data(data)}
+         {:ok, json} <- read(path),
+         {:ok, data} <- decode(json, path) do
+      State.parse(data, Keyword.take(opts, [:pipeline]))
     end
   end
 
   defp fetch_path(opts) do
     case Keyword.fetch(opts, :path) do
-      {:ok, path} when is_binary(path) and path != "" -> {:ok, path}
-      _ -> {:error, :missing_path}
+      {:ok, path} when is_binary(path) and path != "" ->
+        {:ok, path}
+
+      _ ->
+        {:error, Error.new(:invalid_options, "the :path option is required", %{field: :path})}
     end
   end
 
-  defp ensure_parent_dir(path) do
-    path
-    |> Path.dirname()
-    |> File.mkdir_p()
+  defp read(path) do
+    case File.read(path) do
+      {:ok, json} ->
+        {:ok, json}
+
+      {:error, :enoent} ->
+        {:error, Error.new(:not_found, "no saved state at #{path}", %{file: path})}
+
+      error ->
+        io(error, path)
+    end
+  end
+
+  defp encode(state) do
+    case Jason.encode(State.to_data(state), pretty: true) do
+      {:ok, json} ->
+        {:ok, json}
+
+      {:error, error} ->
+        {:error,
+         Error.new(:invalid_state, "state cannot be saved as JSON: #{Exception.message(error)}")}
+    end
+  end
+
+  defp decode(json, path) do
+    case Jason.decode(json) do
+      {:ok, data} ->
+        {:ok, data}
+
+      {:error, error} ->
+        {:error,
+         Error.new(:invalid_state, "#{path} is not valid JSON: #{Exception.message(error)}", %{
+           path: []
+         })}
+    end
+  end
+
+  defp io(:ok, _path), do: :ok
+
+  defp io({:error, reason}, path) do
+    {:error,
+     Error.new(:io_error, "could not use #{path}: #{:file.format_error(reason)}", %{
+       reason: reason
+     })}
   end
 end

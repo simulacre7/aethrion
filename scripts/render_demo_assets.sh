@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-node scripts/generate_demo_cast.mjs
+# Records a real `mix demo.interactive` session (requires Elixir).
+mix compile
+node scripts/record_demo_cast.mjs
 
 npx --yes svg-term-cli \
   --in assets/demo/interactive-demo.cast \
   --out assets/demo/interactive-demo-readable.svg \
   --width 112 \
-  --height 32 \
+  --height 34 \
   --window \
   --padding 12
 
@@ -17,7 +19,7 @@ agg \
   --quiet \
   --theme github-dark \
   --cols 112 \
-  --rows 32 \
+  --rows 34 \
   --fps-cap 30 \
   --last-frame-duration 4 \
   assets/demo/interactive-demo.cast \

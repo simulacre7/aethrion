@@ -33,6 +33,41 @@ They should not directly mutate authoritative state.
 
 Aethrion treats characters as persistent social agents. A character can remember an event, change mood, react to another character's relationship, and later initiate an interaction without a direct user prompt.
 
+## A Shared Social Layer
+
+The "shared" in *shared social layer* is concrete. Characters do not only react to the user; they react to each other, and what one character knows can reach another.
+
+- **Observation.** Characters who witness an event remember it firsthand, linked by a `topic` to everyone else's memory of the same event.
+- **Confiding.** A character who is struggling confides in the friend they trust most. The friend gains a secondhand memory, with its source.
+- **Rumor.** Talkative characters retell what they heard. Each retelling carries less weight, so news travels a few hops along lines of trust and then stops.
+- **Empathy.** A friend who cares about someone struggling offers comfort, which changes how both feel.
+- **Companionship.** A lonely character spends time with the friend they like most, and both feel less alone.
+- **Reputation.** How you treat one character reaches the others. A friend who saw it trusts you less on the spot, one who heard about it a little less, and once the details fade, what remains is a reputation that colors how your kindness lands.
+- **Bonds.** Relationships have names that change as the numbers do (friendly, close, strained, estranged), and the change itself is an event a host can show.
+
+None of this is scripted by the host. Rules enqueue follow-up events (`gossip_shared`, `comfort_offered`), and those events pass through the same validation and rules as anything the host sends. Two host events in the demo cascade into four:
+
+```txt
+e1 user gives Mina a flower (seen by Yuna)
+e2 time passes +2h
+   Yuna -> user: "You looked happy with Mina earlier. I wondered if you forgot about me."
+   e3 Yuna confides in Haru                     (caused by e2)
+      Haru -> user: "Yuna told me you gave Mina a flower. Smooth."
+      e4 Haru comforts Yuna                      (caused by e3)
+```
+
+## Explainable By Construction
+
+Rules change state only through `Aethrion.Transition`, which records a trace entry for every change: which rule, in response to which event, from what value to what value. Asking "why is Yuna jealous?" has a precise answer:
+
+```txt
+e1 observation: yuna.jealousy 0 -> 15
+e1 observation: yuna->mina.tension 0 -> 8
+e1 mood: yuna.mood neutral -> jealous
+```
+
+Because rules are pure, the same events always produce the same world. That makes social behavior testable: the bundled scenarios are JSON files with expectations, and they run in the test suite.
+
 The target feeling is closer to:
 
 ```txt
@@ -51,15 +86,17 @@ The long-term runtime model maps naturally to Elixir and BEAM:
 - supervision can recover long-lived runtime components
 - message passing fits event-driven simulation
 
-The v0 implementation starts as a small Elixir library with a deterministic, process-free simulation core. It intentionally avoids Phoenix, distributed Erlang, persistent databases, and real LLM providers until the simulation loop is proven.
+The implementation is a small Elixir library with a deterministic, process-free simulation core. It intentionally avoids Phoenix, distributed Erlang, and databases; real LLM providers sit behind the expression boundary, where they can phrase but not decide.
 
-The alpha also includes a minimal OTP layer:
+The alpha also includes an OTP layer:
 
-- `Aethrion.RuntimeServer` keeps runtime state inside a GenServer
+- `Aethrion.RuntimeServer` keeps runtime state inside a GenServer, with subscriptions, history, snapshot persistence, and journals
 - `Aethrion.Scheduler` emits scheduled `time_tick` events
-- both delegate state transitions back to the deterministic core
+- expression rendering runs in supervised tasks with timeouts, so a slow or crashing model never blocks or breaks the world
+- `Aethrion.World` supervises all of it as one unit
+- all of it delegates state transitions back to the deterministic core
 
-This keeps the BEAM value concrete without making every character a process too early.
+This keeps the BEAM value concrete without making every character a process too early. Characters remain plain data; processes model runtime concerns. The tradeoffs are spelled out in [architecture.md](architecture.md#process-boundaries-and-their-tradeoffs).
 
 ## Related Influence
 

@@ -1,40 +1,147 @@
 defmodule Aethrion.MixProject do
   use Mix.Project
 
+  @version "0.2.0-alpha"
+  @source_url "https://github.com/simulacre7/aethrion"
+
+  @extras ~w(
+    README.md
+    docs/tutorial.md
+    docs/tutorial.ko.md
+    notebooks/tour.livemd
+    docs/concept.md
+    docs/architecture.md
+    docs/rules.md
+    docs/expression.md
+    docs/scenarios.md
+    docs/api.md
+    docs/cookbook.md
+    docs/faq.md
+    docs/roadmap.md
+    CHANGELOG.md
+  )
+
   def project do
     [
       app: :aethrion,
-      version: "0.1.0-alpha",
+      version: @version,
       elixir: "~> 1.19",
       description: "A deterministic social simulation runtime for persistent AI characters.",
       package: package(),
-      source_url: "https://github.com/simulacre7/aethrion",
-      homepage_url: "https://github.com/simulacre7/aethrion",
+      docs: docs(),
+      source_url: @source_url,
+      homepage_url: @source_url,
       start_permanent: Mix.env() == :prod,
+      elixirc_paths: elixirc_paths(Mix.env()),
+      dialyzer: [plt_add_apps: [:mix, :ex_unit, :inets, :ssl, :public_key]],
+      aliases: aliases(),
       deps: deps()
+    ]
+  end
+
+  def cli, do: [preferred_envs: [check: :test]]
+
+  # `mix check` runs what CI runs except Dialyzer (`MIX_ENV=dev mix dialyzer`)
+  # and running each scenario in a fresh VM.
+  defp aliases do
+    [
+      check: [
+        "format --check-formatted",
+        "compile --warnings-as-errors",
+        "test --warnings-as-errors",
+        "aethrion.scenario --all --quiet",
+        "credo"
+      ]
     ]
   end
 
   # Run "mix help compile.app" to learn about applications.
   def application do
     [
-      extra_applications: [:logger]
+      extra_applications: [:logger, :inets, :ssl]
     ]
   end
+
+  # dev/ holds the demo tasks (mix demo.*). They run in this repository but are
+  # not part of the package, so projects depending on Aethrion don't get them.
+  defp elixirc_paths(:test), do: ["lib", "dev", "test/support"]
+  defp elixirc_paths(:dev), do: ["lib", "dev"]
+  defp elixirc_paths(_env), do: ["lib"]
 
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      {:jason, "~> 1.4"}
+      {:jason, "~> 1.4"},
+      {:stream_data, "~> 1.1", only: :test},
+      {:ex_doc, "~> 0.34", only: :dev, runtime: false},
+      {:dialyxir, "~> 1.4", only: :dev, runtime: false},
+      {:credo, "~> 1.7", only: [:dev, :test], runtime: false}
     ]
   end
 
   defp package do
     [
       licenses: ["MIT"],
+      files: ~w(lib priv mix.exs README.ko.md LICENSE) ++ @extras,
       links: %{
-        "GitHub" => "https://github.com/simulacre7/aethrion"
+        "GitHub" => @source_url,
+        "Changelog" => "#{@source_url}/blob/main/CHANGELOG.md"
       }
+    ]
+  end
+
+  defp docs do
+    [
+      main: "readme",
+      source_ref: "main",
+      skip_undefined_reference_warnings_on: ["README.md"],
+      extras: @extras,
+      groups_for_modules: [
+        Runtime: [
+          Aethrion,
+          Aethrion.Runtime,
+          Aethrion.Step,
+          Aethrion.Event,
+          Aethrion.Output,
+          Aethrion.Error
+        ],
+        "World state": [
+          Aethrion.State,
+          Aethrion.Character,
+          Aethrion.CharacterState,
+          Aethrion.Relationship,
+          Aethrion.Memory,
+          Aethrion.Memories
+        ],
+        "Rules & explainability": [
+          Aethrion.Rule,
+          Aethrion.Pipeline,
+          Aethrion.Transition,
+          Aethrion.Trace,
+          Aethrion.Explain,
+          Aethrion.Digest,
+          Aethrion.Tuning,
+          ~r/Aethrion\.Rules\./
+        ],
+        "Expression & LLMs": [
+          Aethrion.Expression,
+          Aethrion.Expression.Request,
+          Aethrion.Expression.Templates,
+          Aethrion.Expression.Templates.Ko,
+          Aethrion.Expression.Prompt,
+          Aethrion.Intent,
+          Aethrion.Intent.Request,
+          ~r/Aethrion\.LLM\./
+        ],
+        "OTP runtime": [Aethrion.World, Aethrion.RuntimeServer, Aethrion.Scheduler],
+        "Scenarios & persistence": [
+          Aethrion.Scenario,
+          Aethrion.Scenario.Result,
+          Aethrion.Report,
+          Aethrion.Journal,
+          ~r/Aethrion\.Persistence/
+        ]
+      ]
     ]
   end
 end

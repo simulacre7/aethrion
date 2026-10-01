@@ -1,0 +1,88 @@
+{
+  "$schema": "../scenario.schema.json",
+  "name": "The flower",
+  "description": "The user gives Mina a flower while Yuna watches, then leaves Yuna alone for two hours. Nobody scripts what happens next: Yuna reaches out, confides in Haru, Haru teases the user, and Haru comforts Yuna.",
+  "world": "demo",
+  "events": [
+    {
+      "type": "gift_received",
+      "from": "user",
+      "to": "mina",
+      "item": "flower",
+      "observed_by": [
+        "yuna"
+      ],
+      "at": "day1:10:00"
+    },
+    {
+      "type": "time_tick",
+      "now": "day1:12:00",
+      "hours": 2
+    }
+  ],
+  "expect": [
+    {
+      "relationship": [
+        "mina",
+        "user"
+      ],
+      "field": "affinity",
+      "equals": 50
+    },
+    {
+      "output": "proactive_message",
+      "character": "yuna",
+      "reason": "jealous",
+      "count": 1
+    },
+    {
+      "output": "character_interaction",
+      "kind": "gossip",
+      "to": "haru",
+      "count": 1,
+      "character": "yuna"
+    },
+    {
+      "output": "proactive_message",
+      "character": "haru",
+      "reason": "curious",
+      "count": 1
+    },
+    {
+      "output": "character_interaction",
+      "kind": "comfort",
+      "to": "yuna",
+      "count": 1,
+      "character": "haru"
+    },
+    {
+      "memory": {
+        "character": "haru",
+        "kind": "heard",
+        "source": "yuna"
+      },
+      "count": 1
+    },
+    {
+      "character": "yuna",
+      "field": "jealousy",
+      "equals": 10
+    },
+    {
+      "character": "yuna",
+      "field": "mood",
+      "equals": "neutral"
+    },
+    {
+      "relationship": [
+        "yuna",
+        "haru"
+      ],
+      "field": "trust",
+      "equals": 47
+    },
+    {
+      "clock": 2
+    }
+  ]
+}

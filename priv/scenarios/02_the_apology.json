@@ -1,0 +1,65 @@
+{
+  "$schema": "../scenario.schema.json",
+  "name": "The apology",
+  "description": "Same flower, but the user apologizes to Yuna before time passes. Jealousy resolves, Yuna has nothing to confide, and the afternoon stays quiet.",
+  "world": "demo",
+  "events": [
+    {
+      "type": "gift_received",
+      "from": "user",
+      "to": "mina",
+      "item": "flower",
+      "observed_by": [
+        "yuna"
+      ],
+      "at": "day1:10:00"
+    },
+    {
+      "type": "apology_offered",
+      "from": "user",
+      "to": "yuna",
+      "reason": "I should have checked in with you too.",
+      "at": "day1:10:05"
+    },
+    {
+      "type": "time_tick",
+      "now": "day1:12:00",
+      "hours": 2
+    }
+  ],
+  "expect": [
+    {
+      "character": "yuna",
+      "field": "jealousy",
+      "equals": 0
+    },
+    {
+      "character": "yuna",
+      "field": "mood",
+      "equals": "neutral"
+    },
+    {
+      "relationship": [
+        "yuna",
+        "user"
+      ],
+      "field": "trust",
+      "equals": 28
+    },
+    {
+      "output": "proactive_message",
+      "count": 0
+    },
+    {
+      "output": "character_interaction",
+      "count": 0
+    },
+    {
+      "memory": {
+        "character": "yuna",
+        "kind": "experienced"
+      },
+      "count": 1
+    }
+  ]
+}

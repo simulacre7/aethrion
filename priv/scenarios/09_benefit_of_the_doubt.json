@@ -1,0 +1,155 @@
+{
+  "$schema": "../scenario.schema.json",
+  "name": "Benefit of the doubt",
+  "description": "Over three days the user is warm to Mina every day and never speaks to Yuna. The details fade into an impression. Then the user has a bad day and snaps. Mina, with a record of kindness to weigh against it, takes half the hurt. Yuna, with no such history, takes all of it.",
+  "tuning": {
+    "time_passage": {
+      "loneliness_per_hour": 1
+    }
+  },
+  "world": "demo",
+  "events": [
+    {
+      "type": "message_sent",
+      "from": "user",
+      "to": "mina",
+      "text": "Morning! Save me a seat at lunch?",
+      "tone": "warm",
+      "at": "day1"
+    },
+    {
+      "type": "time_tick",
+      "now": "day2",
+      "hours": 24
+    },
+    {
+      "type": "message_sent",
+      "from": "user",
+      "to": "mina",
+      "text": "That joke yesterday still gets me.",
+      "tone": "warm",
+      "at": "day2"
+    },
+    {
+      "type": "time_tick",
+      "now": "day3",
+      "hours": 24
+    },
+    {
+      "type": "message_sent",
+      "from": "user",
+      "to": "mina",
+      "text": "Thanks for covering for me.",
+      "tone": "warm",
+      "at": "day3"
+    },
+    {
+      "type": "time_tick",
+      "now": "day6",
+      "hours": 72
+    }
+  ],
+  "expect": [
+    {
+      "memory": {
+        "character": "mina",
+        "kind": "impression",
+        "content": "user has been warm to mina 3 times."
+      },
+      "count": 1
+    }
+  ],
+  "branches": [
+    {
+      "name": "Snap at Mina",
+      "description": "Mina gives the user the benefit of the doubt: every effect of the hostile message is halved.",
+      "events": [
+        {
+          "type": "message_sent",
+          "from": "user",
+          "to": "mina",
+          "text": "Can everyone just leave me alone today?",
+          "tone": "hostile",
+          "at": "day6"
+        }
+      ],
+      "expect": [
+        {
+          "relationship": [
+            "mina",
+            "user"
+          ],
+          "field": "tension",
+          "equals": 5
+        },
+        {
+          "relationship": [
+            "mina",
+            "user"
+          ],
+          "field": "trust",
+          "equals": 28
+        },
+        {
+          "character": "mina",
+          "field": "stress",
+          "equals": 10
+        },
+        {
+          "character": "mina",
+          "field": "mood",
+          "equals": "lonely"
+        },
+        {
+          "output": "reply",
+          "character": "mina",
+          "text": "That's not like you. Is something wrong?",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "name": "Snap at Yuna",
+      "description": "The same words to Yuna, who has no history with the user to weigh against them, land in full, and being sensitive, she takes them harder still.",
+      "events": [
+        {
+          "type": "message_sent",
+          "from": "user",
+          "to": "yuna",
+          "text": "Can everyone just leave me alone today?",
+          "tone": "hostile",
+          "at": "day6"
+        }
+      ],
+      "expect": [
+        {
+          "relationship": [
+            "yuna",
+            "user"
+          ],
+          "field": "tension",
+          "equals": 10
+        },
+        {
+          "relationship": [
+            "yuna",
+            "user"
+          ],
+          "field": "trust",
+          "equals": 14
+        },
+        {
+          "character": "yuna",
+          "field": "stress",
+          "equals": 30
+        },
+        {
+          "output": "reply",
+          "character": "yuna",
+          "text": "That really hurt. Why would you say that?",
+          "count": 1
+        }
+      ]
+    }
+  ]
+}
