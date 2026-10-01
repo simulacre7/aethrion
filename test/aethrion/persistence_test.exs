@@ -75,6 +75,23 @@ defmodule Aethrion.PersistenceTest do
     assert state.cooldowns == %{"proactive:yuna:jealous" => 0}
   end
 
+  test "malformed v1 proactive records are errors, not crashes" do
+    path =
+      Path.join(System.tmp_dir!(), "aethrion-v1-#{System.unique_integer([:positive])}.json")
+
+    on_exit(fn -> File.rm(path) end)
+
+    for emitted <- [[42], [%{"character_id" => 1, "reason" => "jealous"}], [%{}], "yuna"] do
+      data = %{"version" => 1, "emitted_proactive" => emitted}
+
+      assert {:error, %Aethrion.Error{code: :invalid_state, message: message}} = State.parse(data)
+      assert message =~ "emitted_proactive"
+
+      File.write!(path, Jason.encode!(data))
+      assert {:error, %Aethrion.Error{code: :invalid_state}} = JsonFile.load(path: path)
+    end
+  end
+
   test "unknown enumerated values fall back instead of creating atoms" do
     data = %{
       "characters" => [

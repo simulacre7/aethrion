@@ -80,6 +80,9 @@ The social layer release: characters act on each other, every change is explaina
 
 ### Fixed and hardened
 
+- A journal whose complete last line lost only its newline is read as it is, and a server's repair restores the newline, so the next append no longer joins two events on one line.
+- A jealous character writes to the giver whose gift made them jealous, not to whoever gave the last gift they saw.
+- v1 saves with malformed `emitted_proactive` records are rejected with an `:invalid_state` error instead of raising.
 - Untrusted data cannot create atoms: enumerated values are whitelisted and unknown traits stay strings. `Aethrion.State.parse/2` validates shapes, types, and ranges and reports the path of the first problem.
 - A runtime server refuses to start from an unreadable snapshot or journal rather than overwrite it, and a journaling server writes the journal before committing state.
 - Event time labels (`:at`, `:now`) must be strings; hand-built events may omit them. Inactive or blocked characters cannot comfort, gossip, or spend time together (`:unavailable_character`), and characters cannot give themselves gifts.

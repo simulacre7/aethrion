@@ -299,7 +299,8 @@ defmodule Aethrion.Journal do
   Options: `:pipeline`, used to keep tuning for custom rules, and `:repair`:
   a last line cut short by a crash (no newline, not valid JSON) is always
   dropped with a warning, since that event was never committed; with
-  `repair: true` it is also removed from the file.
+  `repair: true` it is also removed from the file. A complete last line that
+  only lost its newline is kept, and `repair: true` restores the newline.
   """
   @spec read(Path.t(), keyword()) :: {:ok, State.t(), [Event.t()]} | {:error, Error.t()}
   def read(path, opts \\ []) do
@@ -328,24 +329,45 @@ defmodule Aethrion.Journal do
     end
   end
 
-  # An append cut short by a crash leaves a last line without its newline
-  # that is not valid JSON. That event was never committed (the server writes
-  # the journal before it commits), so it is dropped; with `repair: true` it
-  # is also cut from the file, so later appends start on a fresh line.
+  # An append cut short by a crash leaves a last line without its newline.
+  # If that line is not valid JSON, the event was never committed (the server
+  # writes the journal before it commits), so it is dropped; with
+  # `repair: true` it is also cut from the file. If the line is complete and
+  # only its newline was lost, it is kept, and `repair: true` restores the
+  # newline. Either way later appends start on a fresh line.
   defp drop_torn_line(path, contents, repair?) do
-    with false <- contents == "" or String.ends_with?(contents, "\n"),
-         [kept, torn] <- split_last_line(contents),
-         {:error, _reason} <- Jason.decode(torn) do
-      Logger.warning(
-        "dropping an incomplete last line of #{path}: #{inspect(String.slice(torn, 0, 60))}"
-      )
-
-      if repair?,
-        do: with(:ok <- write_whole(path, kept), do: {:ok, kept}),
-        else: {:ok, kept}
+    if contents == "" or String.ends_with?(contents, "\n") do
+      {:ok, contents}
     else
-      _complete -> {:ok, contents}
+      case split_last_line(contents) do
+        [kept, torn] -> torn_or_unterminated(path, contents, kept, torn, repair?)
+        [_only_line] -> terminate(path, contents, repair?)
+      end
     end
+  end
+
+  defp torn_or_unterminated(path, contents, kept, torn, repair?) do
+    case Jason.decode(torn) do
+      {:ok, _complete} ->
+        terminate(path, contents, repair?)
+
+      {:error, _reason} ->
+        Logger.warning(
+          "dropping an incomplete last line of #{path}: #{inspect(String.slice(torn, 0, 60))}"
+        )
+
+        if repair?,
+          do: with(:ok <- write_whole(path, kept), do: {:ok, kept}),
+          else: {:ok, kept}
+    end
+  end
+
+  defp terminate(path, contents, repair?) do
+    terminated = contents <> "\n"
+
+    if repair?,
+      do: with(:ok <- write_whole(path, terminated), do: {:ok, terminated}),
+      else: {:ok, terminated}
   end
 
   defp split_last_line(contents) do

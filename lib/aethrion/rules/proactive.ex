@@ -48,7 +48,7 @@ defmodule Aethrion.Rules.Proactive do
     ]
 
   alias Aethrion.{Character, Expression, Memories, Memory, Output, State, Transition}
-  alias Aethrion.Rules.{Companionship, Reply, TimePassage}
+  alias Aethrion.Rules.{Companionship, Observation, Reply, TimePassage}
 
   @default_recipient "user"
 
@@ -149,18 +149,7 @@ defmodule Aethrion.Rules.Proactive do
     if cs.jealousy >= params.jealousy_floor and
          cs.jealousy + cs.loneliness >= params.pressure_threshold and
          State.cooldown_ready?(state, key, params.cooldown_hours) do
-      giver =
-        state
-        |> Memories.for_character(id)
-        |> Enum.find_value(fn
-          %Memory{kind: :observed, data: %{"event" => "gift_received", "from" => from}} ->
-            if from in people, do: from
-
-          _memory ->
-            nil
-        end)
-
-      {:jealous, key, giver || closest, []}
+      {:jealous, key, jealousy_cause(state, id, people) || closest, []}
     end
   end
 
@@ -238,6 +227,45 @@ defmodule Aethrion.Rules.Proactive do
         _ -> nil
       end
     end)
+  end
+
+  # Whose gift made the character jealous: the giver they last felt jealous
+  # about (`Observation` records when), not merely the last gift they saw,
+  # which may be from someone they do not care about. Among givers felt about
+  # in the same hour, and for saves from before that was recorded, the latest
+  # gift seen decides.
+  defp jealousy_cause(state, id, people) do
+    felt =
+      for person <- people,
+          at = Map.get(state.cooldowns, Observation.jealous_key(id, person)),
+          do: {person, at}
+
+    candidates =
+      case felt do
+        [] ->
+          people
+
+        felt ->
+          latest = felt |> Enum.map(&elem(&1, 1)) |> Enum.max()
+          for {person, ^latest} <- felt, do: person
+      end
+
+    seen =
+      state
+      |> Memories.for_character(id)
+      |> Enum.find_value(fn
+        %Memory{kind: :observed, data: %{"event" => "gift_received", "from" => from}} ->
+          if from in candidates, do: from
+
+        _memory ->
+          nil
+      end)
+
+    cond do
+      seen -> seen
+      felt != [] -> hd(candidates)
+      true -> nil
+    end
   end
 
   # A day between lonely messages; three after one went unanswered, and a

@@ -477,6 +477,7 @@ defmodule Aethrion.State do
     with :ok <- each(data, "characters", &validate_character/1),
          :ok <- each(data, "relationships", &validate_relationship/1),
          :ok <- each(data, "memories", &validate_memory/1),
+         :ok <- each(data, "emitted_proactive", &validate_emitted/1),
          :ok <- optional(data, "clock", &non_neg_integer?/1),
          :ok <- optional(data, "seq", &non_neg_integer?/1),
          :ok <- optional(data, "cooldowns", &cooldowns?/1),
@@ -486,6 +487,13 @@ defmodule Aethrion.State do
   end
 
   defp validate_data(_data), do: invalid([], "expected an object")
+
+  # v1 one-shot proactive records, migrated to cooldowns.
+  defp validate_emitted(item) do
+    with :ok <- required(item, "character_id", &non_empty_string?/1) do
+      required(item, "reason", &non_empty_string?/1)
+    end
+  end
 
   defp validate_character(character) do
     with :ok <- required(character, "id", &non_empty_string?/1),

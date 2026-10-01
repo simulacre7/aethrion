@@ -567,6 +567,25 @@ defmodule Aethrion.NarrativeTest do
   end
 
   describe "gifts" do
+    test "jealousy goes to the giver who caused it, not the last gift seen" do
+      state =
+        State.update_relationship(
+          %{Runtime.demo_state() | people: %{"bob" => "Bob"}},
+          "yuna",
+          "bob",
+          &%{&1 | affinity: 5}
+        )
+
+      {_state, outputs} =
+        run!(state, [
+          flower_for_mina(),
+          Event.gift_received("bob", "haru", "pin", observed_by: ["yuna"]),
+          tick(2)
+        ])
+
+      assert [%{to: "user"}] = for(%{reason: :jealous} = o <- proactive(outputs, "yuna"), do: o)
+    end
+
     test "someone heard from lately feels left out rather than forgotten" do
       seen = [flower_for_mina(), tick(2)]
       jealous = &for(%{reason: :jealous} = o <- proactive(&1, "yuna"), do: o)

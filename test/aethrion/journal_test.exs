@@ -74,6 +74,33 @@ defmodule Aethrion.JournalTest do
     assert {:ok, _state, [_gift, _tick]} = Journal.replay(path)
   end
 
+  test "a complete last line that lost only its newline is kept, and repaired by a server",
+       %{path: path} do
+    final = journal_events(path, Runtime.demo_state(), [flower_for_mina()])
+    File.write!(path, path |> File.read!() |> String.trim_trailing("\n"))
+
+    assert {:ok, ^final, [_step]} = Journal.replay(path)
+
+    server = start_supervised!({RuntimeServer, journal: path})
+    assert RuntimeServer.get_state(server) == final
+    {:ok, _step} = RuntimeServer.step(server, Event.time_tick("t", hours: 1))
+    stop_supervised!(RuntimeServer)
+
+    # Without the repair the tick would have joined the gift on one line.
+    assert {:ok, _state, [_gift, _tick]} = Journal.replay(path)
+
+    # The same for a journal that is only a header.
+    File.rm!(path)
+    :ok = Journal.create(path, Runtime.demo_state())
+    File.write!(path, path |> File.read!() |> String.trim_trailing("\n"))
+
+    server = start_supervised!({RuntimeServer, journal: path})
+    {:ok, _step} = RuntimeServer.step(server, Event.time_tick("t", hours: 1))
+    stop_supervised!(RuntimeServer)
+
+    assert {:ok, _state, [_tick]} = Journal.replay(path)
+  end
+
   test "journals cannot be created twice", %{path: path} do
     :ok = Journal.create(path, Runtime.demo_state())
     assert {:error, %{code: :already_exists}} = Journal.create(path, Runtime.demo_state())
