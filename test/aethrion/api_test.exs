@@ -217,6 +217,13 @@ defmodule Aethrion.APITest do
              chat.("fight", "kael", "카엘, 엄호해 줘! 늑대왕의 목을 노려 벤다")
 
     assert {200, %{"interpreted" => %{"as" => "talk"}}} = chat.("fight", "kael", "고마워, 카엘")
+
+    # Said and done in one line: Ria is thanked, then the wolf is struck.
+    assert {200, %{"interpreted" => %{"as" => "combat"}, "lines" => lines}} =
+             chat.("fight", "kael", "리아, 고마워! 늑대왕의 목을 노려 벤다")
+
+    assert [%{"character_id" => "ria", "type" => "reply"} | rest] = lines
+    assert Enum.any?(rest, &(&1["type"] == "combat" and &1["to"] == "wolf"))
   end
 
   test "mistakes are errors with a status", %{base: base} do

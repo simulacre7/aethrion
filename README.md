@@ -334,7 +334,7 @@ Two things AI chat and games keep asking for, decided the same way as everything
 mix aethrion.serve --cast priv/casts/summer.json --locale ko   # then just chat at http://localhost:4848
 ```
 
-**No commands in a chat.** `POST /worlds/{key}/chat` takes a line the way a player types it and reads what it does (`Aethrion.Chat`): a move while a fight is on, a story activity when the player suggests one, a gift when they hand something over, and otherwise talk, whose tone `Aethrion.Intent` reads. The response says how it was read (`interpreted.as`). The same line in the same world always does the same thing:
+**No commands in a chat.** `POST /worlds/{key}/chat` takes a line the way a player types it and reads what it does (`Aethrion.Chat`): a move while a fight is on, a story activity when the player suggests one, a gift when they hand something over, and otherwise talk, whose tone `Aethrion.Intent` reads. A line that both talks and acts in a fight ("리아, 고마워! 늑대왕의 목을 노려 벤다") does both: Ria is thanked, then the wolf is struck. The response says how it was read (`interpreted.as`). The same line in the same world always does the same thing:
 
 ```txt
 You:  서윤아, 오늘은 같이 그림 그리자         -> activity 그림, a day passes (Day 1 of 30)

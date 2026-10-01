@@ -325,17 +325,34 @@ defmodule Aethrion.API do
          :ok <- short_enough(text, config.max_text),
          {:ok, state} <- Worlds.peek_state(config.worlds, key),
          :ok <- known_character(state, to) do
-      case Aethrion.Chat.read(state, Map.get(data, "from", "user"), to, text) do
-        :talk ->
-          talk(config, key, data, to, text)
-
-        {as, event} ->
-          dispatch(config, key, event, %{
-            interpreted: %{as: as, type: event.type, to: Map.get(event, :to)}
-          })
-      end
+      state
+      |> Aethrion.Chat.read_all(Map.get(data, "from", "user"), to, text)
+      |> Enum.reduce_while(nil, fn reading, said ->
+        case chat_step(config, key, data, to, text, reading) do
+          {:ok, status, body} -> {:cont, merge_said(said, {:ok, status, body})}
+          error -> {:halt, error}
+        end
+      end)
     end
   end
+
+  defp chat_step(config, key, data, to, text, :talk), do: talk(config, key, data, to, text)
+
+  defp chat_step(config, key, data, _to, _text, {:talk, to, said}),
+    do: talk(config, key, data, to, said)
+
+  defp chat_step(config, key, _data, _to, _text, {as, event}) do
+    dispatch(config, key, event, %{
+      interpreted: %{as: as, type: event.type, to: Map.get(event, :to)}
+    })
+  end
+
+  # A line that both talks and acts answers with both steps' lines, in
+  # order, and how its last part was read.
+  defp merge_said(nil, result), do: result
+
+  defp merge_said({:ok, _status, first}, {:ok, status, second}),
+    do: {:ok, status, Map.update(second, :lines, [], &(Map.get(first, :lines, []) ++ &1))}
 
   defp talk(config, key, data, to, text) do
     with {:ok, state} <- Worlds.get_state(config.worlds, key),
