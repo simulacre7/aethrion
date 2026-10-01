@@ -56,7 +56,7 @@ defmodule Aethrion.LLM.OpenAICompatible do
   @impl true
   def render(%Request{} = request, opts \\ []) do
     with {:ok, config} <- config(opts),
-         {:ok, text} <- complete(config, Prompt.render_messages(request, opts), []) do
+         {:ok, text} <- chat(config, Prompt.render_messages(request, opts), []) do
       case Prompt.clean_line(text) do
         "" -> {:error, :empty_response}
         line -> {:ok, line}
@@ -68,8 +68,18 @@ defmodule Aethrion.LLM.OpenAICompatible do
   def interpret(%Aethrion.Intent.Request{} = request, opts \\ []) do
     with {:ok, config} <- config(opts),
          {:ok, text} <-
-           complete(config, Prompt.intent_messages(request), temperature: 0, max_tokens: 40) do
+           chat(config, Prompt.intent_messages(request), temperature: 0, max_tokens: 40) do
       Prompt.decode_json_object(text)
+    end
+  end
+
+  @impl true
+  def complete(system, user, opts \\ []) do
+    with {:ok, config} <- config(opts) do
+      chat(config, [%{role: "system", content: system}, %{role: "user", content: user}],
+        temperature: 0,
+        max_tokens: Keyword.get(opts, :max_tokens, 400)
+      )
     end
   end
 
@@ -101,7 +111,7 @@ defmodule Aethrion.LLM.OpenAICompatible do
     end
   end
 
-  defp complete(config, messages, overrides) do
+  defp chat(config, messages, overrides) do
     body = %{
       model: config.model,
       messages: messages,

@@ -26,8 +26,14 @@ defmodule Mix.Tasks.Aethrion.Serve do
   - `--port N` (default 4848), `--bind ADDRESS` (default `127.0.0.1`)
   - `--token TOKEN` - require `Authorization: Bearer TOKEN` (default: the
     `AETHRION_TOKEN` environment variable; none when unset)
-  - `--llm anthropic|openai` - phrase lines and interpret free text with a
-    model (configured as for `mix demo.interactive`)
+  - `--llm NAME` - the model that reads what each chat line does and writes
+    what characters say: `anthropic`, `openai` (any OpenAI-compatible API),
+    `ollama`, `lmstudio`, `llamacpp` (a model served on this machine),
+    `claude` or `codex` (the CLI on this machine, as signed in); see
+    `Aethrion.LLM.Backend`. Without it, keyword rules read the lines and
+    templates write them: an offline fallback for testing, not the way to
+    play
+  - `--model NAME`, `--base-url URL` - for the chosen backend
   - `--locale ko` - lines in Korean: with `--llm` the model writes them,
     otherwise the built-in Korean templates do
   - `--idle MINUTES` - stop worlds unused for this long (default 30)
@@ -41,8 +47,6 @@ defmodule Mix.Tasks.Aethrion.Serve do
 
   use Mix.Task
 
-  alias Aethrion.LLM.{Anthropic, OpenAICompatible}
-
   @switches [
     cast: :string,
     data: :string,
@@ -50,6 +54,8 @@ defmodule Mix.Tasks.Aethrion.Serve do
     bind: :string,
     token: :string,
     llm: :string,
+    model: :string,
+    base_url: :string,
     locale: :string,
     idle: :integer,
     tick_every: :integer
@@ -66,8 +72,8 @@ defmodule Mix.Tasks.Aethrion.Serve do
     cast = cast!(opts[:cast])
     data = opts[:data] || "tmp/worlds"
     File.mkdir_p!(data)
-    adapter = adapter!(opts[:llm])
-    adapter_opts = if opts[:locale] == "ko", do: [language: "Korean"], else: []
+    {adapter, backend_opts, label} = backend!(opts)
+    adapter_opts = backend_opts ++ if(opts[:locale] == "ko", do: [language: "Korean"], else: [])
     expression = expression(adapter, adapter_opts, opts[:locale])
 
     {:ok, _worlds} =
@@ -87,19 +93,19 @@ defmodule Mix.Tasks.Aethrion.Serve do
 
     {:ok, api} =
       Aethrion.API.start_link(
-        worlds: Aethrion.Serve.Worlds,
-        port: Keyword.get(opts, :port, 4848),
-        bind: opts[:bind] || "127.0.0.1",
-        token: token,
-        intent: if(adapter, do: [adapter: adapter, adapter_opts: adapter_opts], else: []),
-        locale: if(opts[:locale] == "ko", do: :ko, else: :en),
-        cast: cast
+        [
+          worlds: Aethrion.Serve.Worlds,
+          port: Keyword.get(opts, :port, 4848),
+          bind: opts[:bind] || "127.0.0.1",
+          token: token,
+          locale: if(opts[:locale] == "ko", do: :ko, else: :en),
+          cast: cast
+        ] ++ reading(adapter, adapter_opts, backend_opts, label)
       )
 
     notes =
       ["#{map_size(cast.characters)} characters", "journals in #{data}"] ++
-        if(token, do: ["bearer token required"], else: []) ++
-        if(adapter, do: ["lines by #{inspect(adapter)}"], else: [])
+        if(token, do: ["bearer token required"], else: []) ++ [model_note(label)]
 
     Mix.shell().info(
       "Aethrion API on http://#{opts[:bind] || "127.0.0.1"}:#{Aethrion.API.port(api)} " <>
@@ -139,23 +145,34 @@ defmodule Mix.Tasks.Aethrion.Serve do
     end
   end
 
-  defp adapter!(nil), do: nil
+  # Who reads chat lines and their tone: the model, or the keyword rules.
+  defp reading(nil, _adapter_opts, _backend_opts, _label),
+    do: [interpreter: Aethrion.Interpreter.Rules]
 
-  defp adapter!(name) do
-    adapter =
-      case name do
-        "anthropic" -> Anthropic
-        "openai" -> OpenAICompatible
-        other -> Mix.raise("unknown --llm #{inspect(other)}; use anthropic or openai")
-      end
+  defp reading(adapter, adapter_opts, backend_opts, label),
+    do: [
+      intent: [adapter: adapter, adapter_opts: adapter_opts],
+      interpreter: Aethrion.Interpreter.LLM,
+      interpreter_opts: [adapter: adapter, adapter_opts: backend_opts],
+      model: label
+    ]
 
-    unless adapter.configured?(),
-      do:
-        Mix.raise(
-          "#{inspect(adapter)} is not configured; see its module docs for environment variables"
-        )
+  defp model_note(nil),
+    do: "no model: keyword rules only (an offline fallback for testing; pass --llm)"
 
-    adapter
+  defp model_note(label), do: "model: #{label}"
+
+  defp backend!(opts) do
+    case opts[:llm] do
+      nil ->
+        {nil, [], nil}
+
+      name ->
+        case Aethrion.LLM.Backend.resolve(name, model: opts[:model], base_url: opts[:base_url]) do
+          {:ok, adapter, adapter_opts, label} -> {adapter, adapter_opts, label}
+          {:error, message} -> Mix.raise(message)
+        end
+    end
   end
 
   # Under `iex -S mix aethrion.serve` the shell keeps the VM up.

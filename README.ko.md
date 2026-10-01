@@ -49,11 +49,17 @@ export ANTHROPIC_API_KEY=...
 mix demo.interactive --llm anthropic
 ```
 
-브라우저에서 캐릭터와 대화해 볼 수도 있습니다. 게임이나 채팅 백엔드가 쓰는 것과 같은 HTTP API를 거칩니다:
+**모델과 함께 캐릭터와 대화하기.** 플레이어가 친 문장이 무엇을 하는지(공격, 하자고 한 활동, 선물, 대화와 그 톤)는 모델이 읽고, 캐릭터의 말도 모델이 씁니다. 무엇이 바뀌는지는 전부 규칙이 정하므로 재생하면 같은 결과가 나옵니다. 서버의 모델이든 이 컴퓨터의 모델이든 하나를 고르세요:
 
 ```bash
-mix aethrion.serve --locale ko   # 그다음 http://localhost:4848 열기
+mix aethrion.serve --cast priv/casts/academy.json --locale ko --llm claude   # 이 컴퓨터의 Claude Code (로그인된 계정, 키 불필요)
+mix aethrion.serve --llm codex                                              # 이 컴퓨터의 Codex CLI
+mix aethrion.serve --llm ollama --model qwen3                               # Ollama가 로컬에서 띄운 모델 (lmstudio, llamacpp도 가능)
+ANTHROPIC_API_KEY=... mix aethrion.serve --llm anthropic                    # Claude API
+mix aethrion.serve --llm openai --base-url https://api.openai.com/v1 --model gpt-5-mini   # OpenAI 호환 API
 ```
+
+그다음 http://localhost:4848 에서 대화하고, http://localhost:4848/editor 에서 캐스트를 편집합니다. `--tick-every 10`을 주면 10초마다 한 시간이 지나 캐릭터가 먼저 말을 걸어옵니다. `--llm` 없이 띄우면 키워드 규칙과 템플릿이 대신합니다. 테스트와 개발용 오프라인 대체 경로일 뿐 실제 플레이 모습은 아니며, 채팅 페이지에도 그렇게 표시됩니다.
 
 ## 이벤트 두 개가 이야기가 되기까지
 
@@ -321,10 +327,10 @@ AI 채팅과 게임에서 자주 필요한 두 가지를 다른 모든 것과 �
 `Aethrion.Story.progress/1`은 각 엔딩에 얼마나 가까운지와 무엇이 부족한지("mina art 55 (needs at least 70)")를 알려 주므로, 게임이 루트 힌트를 줄 수 있습니다. `examples/endings.exs`는 30일을 네 가지 방식으로 보내 네 가지 엔딩에 이릅니다. `priv/casts/summer.json`은 채팅에서 바로 해 볼 수 있는 한국어 육성 시뮬레이션입니다. 미대 입시를 30일 앞둔 서윤을 돌보며, 하루하루 무엇을 하자고 하는지("오늘은 같이 그림 그리자", "내일은 좀 쉬자")와 어떻게 말을 거는지에 따라 여섯 엔딩(곁에 남은 사람, 지쳐 버린 여름, 화가의 길, 합격 통지서, 닫힌 방문, 평범한 여름) 중 하나로 정해집니다. 몰아붙이면 스트레스가 100에 닿는 순간 마감 전에 끝나고, 엔딩이 정해진 뒤에는 더 이상 하루를 보낼 수 없습니다. 채팅 페이지의 Story 버튼은 엔딩별 진행도와 부족한 것을 보여 줍니다.
 
 ```bash
-mix aethrion.serve --cast priv/casts/summer.json --locale ko   # http://localhost:4848 에서 그냥 대화하면 됩니다
+mix aethrion.serve --cast priv/casts/summer.json --locale ko --llm claude   # http://localhost:4848 에서 그냥 대화하면 됩니다
 ```
 
-**채팅에 명령어는 없습니다.** `POST /worlds/{key}/chat`은 플레이어가 친 문장을 그대로 받아 무엇을 하는 말인지 읽습니다(`Aethrion.Chat`). 싸움 중이면 전투 행동, 스토리의 활동을 하자고 하면 활동, 무언가를 건네면 선물, 나머지는 대화(어조는 `Aethrion.Intent`가 읽음)입니다. 싸움 중에 말과 행동이 한 줄에 섞이면("리아, 고마워! 늑대왕의 목을 노려 벤다") 둘 다 합니다. 리아에게 고맙다고 말한 뒤 늑대왕을 벱니다. 응답의 `interpreted.as`가 어떻게 읽었는지 알려 주고, 같은 세계에서 같은 문장은 언제나 같은 일을 합니다:
+**채팅에 명령어는 없습니다.** `POST /worlds/{key}/chat`은 플레이어가 친 문장을 그대로 받고, 무엇을 하는 말인지는 모델이 읽습니다([채팅 문장 읽기](#채팅-문장-읽기) 참고). 싸움 중이면 전투 행동, 스토리의 활동을 하자고 하면 활동, 무언가를 건네면 선물, 나머지는 대화와 그 톤입니다. 싸움 중에 말과 행동이 한 줄에 섞이면("리아, 고마워! 늑대왕의 목을 노려 벤다") 둘 다 합니다. 리아에게 고맙다고 말한 뒤 늑대왕을 벱니다. 응답의 `interpreted.as`가 어떻게 읽었는지 알려 주고, 한 번 읽힌 이벤트는 그대로 재생됩니다. 아래 대사는 모델 없이 내장 템플릿이 쓴 것이고, `--llm`을 주면 모델이 캐릭터의 말투로 씁니다:
 
 ```txt
 나:  서윤아, 오늘은 같이 그림 그리자         -> 활동 그림, 하루가 지남 (Day 1 of 30)
@@ -337,10 +343,10 @@ mix aethrion.serve --cast priv/casts/summer.json --locale ko   # http://localhos
 
 ```bash
 mix run examples/combat.exs                                   # 같은 퀘스트, 다섯 가지 방식으로 다섯 엔딩
-mix aethrion.serve --cast priv/casts/quest.json --locale ko   # http://localhost:4848 에서 그냥 대화하면 됩니다
+mix aethrion.serve --cast priv/casts/quest.json --locale ko --llm claude   # http://localhost:4848 에서 그냥 대화하면 됩니다
 ```
 
-**메신저형 채팅.** 캐릭터 게임의 메신저 기능이 동작하는 방식을 본떴습니다. 학생이 선생님에게 먼저 메시지를 보내고, 답장은 몇 개의 선택지에서 고르며, 인연이 깊어지면 다음 인연 스토리가 열립니다. 캐릭터와 대사는 모두 새로 썼습니다. 스토리의 `milestones`는 조건이 처음 충족될 때 한 번 열리고, 캐릭터가 먼저 보내는 메시지를 함께 남기며, 엔딩과 달리 이야기는 계속됩니다(`Aethrion.Rules.Milestone`, `:milestone_reached`). `GET /worlds/{key}/replies?character=hana`는 톤이 붙은 답장 선택지 세 개를 주고(`Aethrion.Replies`), 많은 게임과 달리 고른 답장이 실제로 관계를 움직입니다. `polite` 성향의 캐릭터는 모델 없이도 선생님에게 존댓말로 씁니다. `priv/casts/academy.json`에는 학생 셋(하나, 유키, 미오)과 인연 스토리 여섯 개가 있습니다:
+**메신저형 채팅.** 캐릭터 게임의 메신저 기능이 동작하는 방식을 본떴습니다. 학생이 선생님에게 먼저 메시지를 보내고, 답장은 몇 개의 선택지에서 고르며, 인연이 깊어지면 다음 인연 스토리가 열립니다. 캐릭터와 대사는 모두 새로 썼습니다. 스토리의 `milestones`는 조건이 처음 충족될 때 한 번 열리고, 캐릭터가 먼저 보내는 메시지를 함께 남기며, 엔딩과 달리 이야기는 계속됩니다(`Aethrion.Rules.Milestone`, `:milestone_reached`). `GET /worlds/{key}/replies?character=hana`는 톤이 붙은 답장 선택지 세 개를 주고(`Aethrion.Replies`), 많은 게임과 달리 고른 답장이 실제로 관계를 움직입니다. `polite` 성향의 캐릭터는 모델 없이도 선생님에게 존댓말로 씁니다. `priv/casts/academy.json`에는 학생 셋(하나, 유키, 미오)과 인연 스토리 여섯 개가 있습니다(아래 답장은 내장 템플릿이 쓴 것이고, `--llm`을 주면 모델이 씁니다):
 
 ```txt
 나:  하나야, 어제 만든 거 정말 대단하더라!    하나: 에이, 갑자기 왜 이래요? 기분은 좋네요.
@@ -350,14 +356,14 @@ mix aethrion.serve --cast priv/casts/quest.json --locale ko   # http://localhost
 ```
 
 ```bash
-mix aethrion.serve --cast priv/casts/academy.json --locale ko --tick-every 30
+mix aethrion.serve --cast priv/casts/academy.json --locale ko --llm claude --tick-every 30
 ```
 
 **테이블탑 규칙 (D&D 5e SRD).** 전투원에게 `attack_bonus`와 `ac`(그리고 피해 주사위 `damage_dice`, `damage_die`, `damage_bonus`)를 주면 공격이 시스템 레퍼런스 문서 5.1(SRD 5.1)의 d20 규칙을 따릅니다. d20 + 보너스로 방어도(AC)를 넘으면 명중하고, 자연 20은 무조건 명중하며 피해 주사위를 두 번 굴리고, 자연 1은 무조건 빗나갑니다. 방어(회피) 중인 대상은 불리하게(d20 두 개 중 낮은 것) 공격받고, 치유사는 주사위로 치료하며(`heal_dice` 1, `heal_die` 8, `heal_bonus` 3이면 상처 치료 주문), 포션은 SRD의 치유 포션(2d4+2)으로 둘 수 있습니다. 주사위는 전투 자체에서 나오므로 그대로 재생되고, 모든 줄이 테이블에서 읽어 주듯 주사위를 보여 줍니다: `[d20 13+5=18 vs AC 14, 명중. 1d8+3 (3)] 네가 다이어 울프에게 6의 피해를 입혔다.` `priv/casts/den.json`은 SRD의 다이어 울프와 늑대들에 맞서는 파이터(너), 클레릭, 로그의 늑대굴이고, `examples/den.exs`는 이를 한국어 문장만으로 세 가지 방식으로 플레이해 세 엔딩에 이릅니다. SRD 자료는 CC-BY-4.0으로 사용합니다(`priv/casts/SRD-NOTICE.md`). 회피는 한 라운드가 아니라 다음 한 번의 공격까지 유지되고, 늑대가 넘어뜨리는 내성 굴림 같은 효과는 아직 다루지 않습니다.
 
 ```bash
 mix run examples/den.exs
-mix aethrion.serve --cast priv/casts/den.json --locale ko   # http://localhost:4848 에서 그냥 대화하면 됩니다
+mix aethrion.serve --cast priv/casts/den.json --locale ko --llm claude   # http://localhost:4848 에서 그냥 대화하면 됩니다
 ```
 
 ## 세계 만들기

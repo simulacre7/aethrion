@@ -52,7 +52,8 @@ defmodule Aethrion.Interpreter.Eval do
       score: if(results == [], do: 0.0, else: Float.round(passed / length(results), 3)),
       by_cast: tally(results, & &1.case["cast"]),
       by_as: tally(results, &(&1.case["expect"] |> List.wrap() |> List.last() |> Map.get("as"))),
-      failures: Enum.reject(results, & &1.pass)
+      failures: Enum.reject(results, & &1.pass),
+      results: results
     }
   end
 

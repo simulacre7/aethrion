@@ -40,6 +40,7 @@ form input{flex:1;min-width:0}
     <label>Token <input id="token" type="password" size="8" aria-label="Bearer token"></label>
     <button id="later" type="button" title="Let a few hours pass in the world">Time passes</button>
     <button id="story" type="button" title="How close each ending is, and what is missing">Story</button>
+    <span id="model" class="hint"></span>
   </header>
   <div id="log" aria-live="polite"></div>
   <div id="choices" class="choices" aria-label="Reply choices"></div>
@@ -208,6 +209,12 @@ async function choices() {
     }
   } catch {}
 }
+
+// Which model reads the lines and writes the replies.
+fetch("/health").then((r) => r.json()).then((h) => {
+  $("model").textContent = h.model ? "Model: " + h.model : "No model: keyword rules (testing fallback). Start the server with --llm.";
+  $("model").style.color = h.model ? "" : "var(--bad)";
+}).catch(() => {});
 
 $("story").addEventListener("click", () => story().catch((e) => add("error", e.message)));
 

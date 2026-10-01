@@ -111,6 +111,7 @@ defmodule Aethrion.API do
       interpreter: Keyword.get(opts, :interpreter, Aethrion.Interpreter.Rules),
       interpreter_opts: Keyword.get(opts, :interpreter_opts, []),
       cast: Keyword.get(opts, :cast),
+      model: Keyword.get(opts, :model),
       render_timeout: Keyword.get(opts, :render_timeout, 15_000),
       max_text: Keyword.get(opts, :max_text, 2_000),
       locale: Keyword.get(opts, :locale, :en),
@@ -148,8 +149,8 @@ defmodule Aethrion.API do
   def handle(_config, "GET", ["editor"], _query, _headers, _body), do: {200, :html, @editor_html}
 
   # Health checks come from load balancers that hold no token.
-  def handle(_config, "GET", ["health"], _query, _headers, _body),
-    do: respond({:ok, 200, %{ok: true}})
+  def handle(config, "GET", ["health"], _query, _headers, _body),
+    do: respond({:ok, 200, %{ok: true, model: config.model}})
 
   def handle(config, method, path, query, headers, body) do
     with :ok <- authorize(config, headers),

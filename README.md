@@ -49,13 +49,17 @@ export ANTHROPIC_API_KEY=...
 mix demo.interactive --llm anthropic
 ```
 
-Or chat with the characters in a browser, through the HTTP API a game or chat backend would use:
+**Chat with the characters through a model.** A model reads what each line a player types does (a blow, a suggested activity, a gift, or talk and its tone) and writes what the characters say; the rules decide everything that changes, so it replays the same. Pick one, on a server or on this machine:
 
 ```bash
-mix aethrion.serve              # then open http://localhost:4848
-mix aethrion.serve --locale ko  # characters answer in Korean
-mix aethrion.serve --tick-every 10   # an hour passes every 10 seconds: characters reach out on their own
+mix aethrion.serve --cast priv/casts/academy.json --locale ko --llm claude   # Claude Code on this machine, as signed in; no key
+mix aethrion.serve --llm codex                                              # the Codex CLI on this machine
+mix aethrion.serve --llm ollama --model qwen3                               # a model Ollama serves locally (also lmstudio, llamacpp)
+ANTHROPIC_API_KEY=... mix aethrion.serve --llm anthropic                    # the Claude API
+mix aethrion.serve --llm openai --base-url https://api.openai.com/v1 --model gpt-5-mini   # any OpenAI-compatible API
 ```
+
+Then open http://localhost:4848 to chat, and http://localhost:4848/editor to edit the cast. `--tick-every 10` lets an hour pass every 10 seconds, so characters reach out on their own. Without `--llm`, keyword rules and templates stand in: an offline fallback for tests and development, not what play looks like (the page says so).
 
 ## Two Events In, A Story Out
 
@@ -331,10 +335,10 @@ Two things AI chat and games keep asking for, decided the same way as everything
 `Aethrion.Story.progress/1` says how close each ending is and what is missing ("mina art 55 (needs at least 70)"), so a game can hint at a route; `examples/endings.exs` plays thirty days four ways to four endings. `priv/casts/summer.json` is a Korean raising sim to play in the chat page: thirty days with Seoyun before her art school exam, where what you suggest she spend each day on ("오늘은 같이 그림 그리자", "내일은 좀 쉬자") and how you talk to her decide one of six endings; push her to 100 stress and it ends before the deadline, and once an ending is decided no more days can be spent. The page's Story button shows how close each ending is and what is missing.
 
 ```bash
-mix aethrion.serve --cast priv/casts/summer.json --locale ko   # then just chat at http://localhost:4848
+mix aethrion.serve --cast priv/casts/summer.json --locale ko --llm claude   # then just chat at http://localhost:4848
 ```
 
-**No commands in a chat.** `POST /worlds/{key}/chat` takes a line the way a player types it and reads what it does (`Aethrion.Chat`): a move while a fight is on, a story activity when the player suggests one, a gift when they hand something over, and otherwise talk, whose tone `Aethrion.Intent` reads. A line that both talks and acts in a fight ("리아, 고마워! 늑대왕의 목을 노려 벤다") does both: Ria is thanked, then the wolf is struck. The response says how it was read (`interpreted.as`). The same line in the same world always does the same thing:
+**No commands in a chat.** `POST /worlds/{key}/chat` takes a line the way a player types it, and the model reads what it does (see [Reading Chat Lines](#reading-chat-lines)): a move while a fight is on, a story activity when the player suggests one, a gift when they hand something over, and otherwise talk and its tone. A line that both talks and acts in a fight ("리아, 고마워! 늑대왕의 목을 노려 벤다") does both: Ria is thanked, then the wolf is struck. The response says how it was read (`interpreted.as`). Once read, the events replay exactly. The lines below are the built-in templates' (no model); with `--llm`, the model writes them in each character's voice:
 
 ```txt
 You:  서윤아, 오늘은 같이 그림 그리자         -> activity 그림, a day passes (Day 1 of 30)
@@ -347,10 +351,10 @@ You:  내일은 좀 쉬자. 요즘 너무 무리했어      -> activity 휴식, 
 
 ```bash
 mix run examples/combat.exs                                   # the quest, five ways to five endings
-mix aethrion.serve --cast priv/casts/quest.json --locale ko   # then just chat at http://localhost:4848
+mix aethrion.serve --cast priv/casts/quest.json --locale ko --llm claude   # then just chat at http://localhost:4848
 ```
 
-**Messenger-style chats.** Modeled on how messenger features in character games work (a student messages their teacher first, replies are picked from a few choices, and the next bond story unlocks as the bond grows), with original characters and text: a story's `milestones` unlock once when their conditions hold, with the line the character sends first, and the story goes on (`Aethrion.Rules.Milestone`, `:milestone_reached`); `GET /worlds/{key}/replies?character=hana` offers three replies with their tones (`Aethrion.Replies`), and unlike in many games the choice moves the relationship; characters with the `polite` trait write in 존댓말 to 선생님 even without a model. `priv/casts/academy.json` has three students (하나, 유키, 미오) and six bond stories:
+**Messenger-style chats.** Modeled on how messenger features in character games work (a student messages their teacher first, replies are picked from a few choices, and the next bond story unlocks as the bond grows), with original characters and text: a story's `milestones` unlock once when their conditions hold, with the line the character sends first, and the story goes on (`Aethrion.Rules.Milestone`, `:milestone_reached`); `GET /worlds/{key}/replies?character=hana` offers three replies with their tones (`Aethrion.Replies`), and unlike in many games the choice moves the relationship; characters with the `polite` trait write in 존댓말 to 선생님 even without a model. `priv/casts/academy.json` has three students (하나, 유키, 미오) and six bond stories (the replies below are the built-in templates'; with `--llm` the model writes them):
 
 ```txt
 You:  하나야, 어제 만든 거 정말 대단하더라!    하나: 에이, 갑자기 왜 이래요? 기분은 좋네요.
@@ -360,14 +364,14 @@ You:  고마워, 덕분에 수업 준비가 금방 끝났어.  하나: 헤헤, �
 ```
 
 ```bash
-mix aethrion.serve --cast priv/casts/academy.json --locale ko --tick-every 30
+mix aethrion.serve --cast priv/casts/academy.json --locale ko --llm claude --tick-every 30
 ```
 
 **Tabletop rules (D&D 5e SRD).** Give fighters an `attack_bonus` and an `ac` (and damage dice: `damage_dice`, `damage_die`, `damage_bonus`) and attacks follow the d20 rules of the System Reference Document 5.1: d20 + bonus against armor class, a natural 20 hits and rolls the damage dice twice, a natural 1 misses, a guarding (dodging) target is attacked with disadvantage, healers roll their dice (`heal_dice` 1, `heal_die` 8, `heal_bonus` 3 is a Cure Wounds), and a potion can be the SRD's Potion of Healing (2d4+2). The dice come from the fight itself, so they replay exactly, and every line shows them the way a table reads them out: `[d20 13+5=18 vs AC 14, 명중. 1d8+3 (3)] 네가 다이어 울프에게 6의 피해를 입혔다.` `priv/casts/den.json` is a wolf den with the SRD's Dire Wolf and Wolves against a fighter (you), a cleric, and a rogue; `examples/den.exs` plays it in plain Korean three ways to three endings. SRD material is used under CC-BY-4.0 (`priv/casts/SRD-NOTICE.md`). A Dodge lasts until the next blow rather than a full round, and save effects such as a wolf knocking someone prone are not modeled.
 
 ```bash
 mix run examples/den.exs
-mix aethrion.serve --cast priv/casts/den.json --locale ko   # then just chat at http://localhost:4848
+mix aethrion.serve --cast priv/casts/den.json --locale ko --llm claude   # then just chat at http://localhost:4848
 ```
 
 ## Authoring Worlds

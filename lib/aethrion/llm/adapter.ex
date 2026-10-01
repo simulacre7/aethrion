@@ -29,5 +29,12 @@ defmodule Aethrion.LLM.Adapter do
   @callback interpret(Aethrion.Intent.Request.t(), keyword()) ::
               {:ok, proposal()} | {:error, term()}
 
-  @optional_callbacks interpret: 2
+  @doc """
+  A plain completion: a system prompt and a user message in, the model's
+  text out. `Aethrion.Interpreter.LLM` uses it to read what a chat line does.
+  """
+  @callback complete(system :: String.t(), user :: String.t(), keyword()) ::
+              {:ok, String.t()} | {:error, term()}
+
+  @optional_callbacks interpret: 2, complete: 3
 end

@@ -80,6 +80,11 @@ defmodule Aethrion.LLM.Anthropic do
     end
   end
 
+  @impl true
+  def complete(system, user, opts \\ []) do
+    with {:ok, config} <- config(opts), do: create_message(config, system, user)
+  end
+
   @doc "Returns true when an API key can be resolved."
   def configured?(opts \\ []), do: match?({:ok, _config}, config(opts))
 

@@ -65,6 +65,10 @@ defmodule Aethrion.Simulator do
     to = Map.get(route, :to)
     days = route |> Map.get(:days, 30) |> min(@max_days) |> max(1)
 
+    # A model reads each distinct line once; the readings are reused on
+    # later days (and asked again only if they no longer apply).
+    Process.put(:aethrion_simulator_readings, %{})
+
     {final, log, problems, day} =
       Enum.reduce_while(1..days, {state, [], [], 0}, fn day, {state, log, problems, _} ->
         clock = state.clock
@@ -113,10 +117,30 @@ defmodule Aethrion.Simulator do
   defp today?({:on, n}, day), do: n == day
 
   defp say({state, log, problems}, to, line, day, opts) do
-    {:ok, readings, _meta} = Interpreter.read(state, "user", to, line, opts)
+    cache = Process.get(:aethrion_simulator_readings, %{})
 
-    Enum.reduce(readings, {state, log, problems}, fn %{as: as, event: event},
-                                                     {state, log, problems} ->
+    case Map.fetch(cache, {to, line}) do
+      {:ok, readings} ->
+        case apply_readings(readings, {state, log, []}, line, day) do
+          {state, log, []} -> {state, log, problems}
+          _stale -> fresh({state, log, problems}, to, line, day, opts)
+        end
+
+      :error ->
+        fresh({state, log, problems}, to, line, day, opts)
+    end
+  end
+
+  defp fresh({state, log, problems}, to, line, day, opts) do
+    {:ok, readings, _meta} = Interpreter.read(state, "user", to, line, opts)
+    cache = Process.get(:aethrion_simulator_readings, %{})
+    Process.put(:aethrion_simulator_readings, Map.put(cache, {to, line}, readings))
+    {state, log, new_problems} = apply_readings(readings, {state, log, []}, line, day)
+    {state, log, problems ++ new_problems}
+  end
+
+  defp apply_readings(readings, acc, line, day) do
+    Enum.reduce(readings, acc, fn %{as: as, event: event}, {state, log, problems} ->
       case Runtime.step(state, event) do
         {:ok, step} ->
           {step.state, log ++ ["#{day}일째 · #{line} → #{as}" <> outcome(step)], problems}

@@ -198,7 +198,8 @@ defmodule Aethrion.Interpreter do
   Readings from answers to `questions/1`: `%{"does" => "attack", "target"
   => "wolf"}`, `%{"does" => "talk", "tone" => "warm"}`, `%{"does" =>
   "heal", "helper" => "ria", "target" => "user"}`. `"confidence"` (0..1)
-  is carried over. A gift's item is named from the words. Answers outside
+  is carried over. A gift's `"item"` is taken as given, or named from the
+  words. Answers outside
   the schema are an error.
   """
   @spec from_answers(Request.t(), map()) :: {:ok, [reading()]} | {:error, term()}
@@ -253,8 +254,15 @@ defmodule Aethrion.Interpreter do
     end
   end
 
-  defp event(%Request{from: from, to: to, text: text}, :gift, _answers, target),
-    do: {:ok, :gift, Event.gift_received(from, target || to, Aethrion.Chat.item(text))}
+  defp event(%Request{from: from, to: to, text: text}, :gift, answers, target) do
+    item =
+      case Map.get(answers, "item") do
+        item when is_binary(item) and item != "" -> String.slice(item, 0, 40)
+        _none -> Aethrion.Chat.item(text)
+      end
+
+    {:ok, :gift, Event.gift_received(from, target || to, item)}
+  end
 
   defp event(%Request{from: from, to: to, text: text}, :apology, _answers, target),
     do: {:ok, :talk, Event.apology_offered(from, target || to, text)}
