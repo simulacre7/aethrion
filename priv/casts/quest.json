@@ -83,8 +83,8 @@
       "party": 1
     },
     "wolf": {
-      "hp": 42,
-      "max_hp": 42,
+      "hp": 60,
+      "max_hp": 60,
       "attack": 7,
       "defense": 2,
       "speed": 4,

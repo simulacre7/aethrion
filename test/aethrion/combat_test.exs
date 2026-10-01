@@ -219,6 +219,23 @@ defmodule Aethrion.CombatTest do
              combat(outputs)
 
     refute Map.has_key?(state.cooldowns, Combat.guard_key("user"))
+
+    # The companions still act on that turn, before the enemy: a healer
+    # tends a player who is badly hurt.
+    hurt =
+      arena()
+      |> put_in([Access.key(:stats), "goblin", "enemy"], 1)
+      |> put_in([Access.key(:stats), "mina", "party"], 1)
+      |> put_in([Access.key(:stats), "user", "hp"], 8)
+
+    {_after, outputs, _steps} = run(hurt, [Event.defend("user")])
+
+    assert [
+             %{kind: :guarded},
+             %{kind: :healed, character_id: "mina", to: "user"},
+             %{character_id: "goblin"}
+           ] =
+             combat(outputs)
   end
 
   test "an ally is never a target for the party, and a cascade does not strike the fallen" do
@@ -282,6 +299,17 @@ defmodule Aethrion.CombatTest do
     assert %{type: :heal, to: "mina"} = Combat.action(state, "user", "mina", "붕대를 감아 준다")
     assert %{type: :heal, to: "user"} = Combat.action(state, "user", "goblin", "potion, now")
     assert %{type: :defend} = Combat.action(state, "user", nil, "숨을 고른다")
+
+    # The words name the target, whoever the player was talking to; a
+    # potion they drink is their own.
+    assert %{type: :attack, to: "goblin"} = Combat.action(state, "user", "mina", "Goblin을 벤다")
+    assert %{type: :heal, to: "user"} = Combat.action(state, "user", "mina", "포션을 마신다")
+
+    assert %{type: :attack, to: "goblin"} =
+             Combat.action(state, "user", nil, "Mina를 지키며 Goblin을 벤다")
+
+    assert %{type: :heal, to: "mina"} =
+             Combat.action(state, "user", nil, "Goblin에게 맞은 Mina를 치료한다")
   end
 
   test "told in Korean, with the right particles and tense" do

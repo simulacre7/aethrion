@@ -70,8 +70,9 @@ defmodule Aethrion.Combat do
   @flee ~r/(도망친다|도망쳐|도망가|도망간다|도망치자|후퇴|달아난다|달아나|피신)|\b(flee|escape|retreat|run away)\b/u
 
   @doc """
-  The combat event a player's words mean. An attack on `target` when they
-  strike; a guard; a heal (themselves, or an ally named as `target`; never an
+  The combat event a player's words mean, aimed at whoever the words name
+  (a character's name or id), else `target`, else the first enemy standing
+  (`foe/1`). An attack when they strike; a guard; a heal (themselves, or an ally named as `target`; never an
   enemy); an escape from `target`; and a guard when nothing is clear.
 
       action(state, "user", "wolf", "I swing my sword!")       # attack
@@ -81,7 +82,7 @@ defmodule Aethrion.Combat do
   @spec action(State.t(), String.t(), String.t() | nil, String.t()) :: Event.t()
   def action(%State{} = state, from, target, text) when is_binary(text) do
     words = String.downcase(text)
-    target = target || foe(state)
+    target = named(state, words, "enemy") || target || foe(state)
 
     cond do
       Regex.match?(@attack, words) and target != nil ->
@@ -91,7 +92,8 @@ defmodule Aethrion.Combat do
         )
 
       Regex.match?(@heal, words) ->
-        Event.heal(from, heal_target(state, from, target), item: item(words))
+        target = named(state, words, "party") || target
+        Event.heal(from, heal_target(state, from, target, words), item: item(words))
 
       Regex.match?(@defend, words) ->
         Event.defend(from)
@@ -128,11 +130,31 @@ defmodule Aethrion.Combat do
         do: id
   end
 
+  # Who the words name ("늑대왕을 벤다", "heal Ria"), by name or id. With
+  # several named, one with the `prefer` stat (an enemy to strike, a
+  # companion to heal) wins, then the longest name ("Mina" is not "Minami").
+  defp named(state, words, prefer) do
+    state
+    |> State.sorted_characters()
+    |> Enum.flat_map(fn c -> [{String.downcase(c.name), c.id}, {String.downcase(c.id), c.id}] end)
+    |> Enum.filter(fn {name, _id} -> name != "" and String.contains?(words, name) end)
+    |> Enum.max_by(
+      fn {name, id} -> {State.stat(state, id, prefer) > 0, String.length(name)} end,
+      fn -> {nil, nil} end
+    )
+    |> elem(1)
+  end
+
   # An ally (a party member) can be healed; anyone else gets the potion
   # drunk by the one holding it.
-  defp heal_target(state, from, target) do
-    if target != nil and State.stat(state, target, "party") > 0, do: target, else: from
+  defp heal_target(state, from, target, words) do
+    if target != nil and State.stat(state, target, "party") > 0 and not drinks?(words),
+      do: target,
+      else: from
   end
+
+  # Drinking a potion is for oneself, whoever was being talked to.
+  defp drinks?(words), do: Regex.match?(~r/(마신|마셔|들이켜|들이킨)|\b(drink|drinks|quaff|gulp)\b/u, words)
 
   defp item(words) do
     cond do

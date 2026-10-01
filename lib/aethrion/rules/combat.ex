@@ -172,10 +172,35 @@ defmodule Aethrion.Rules.Combat do
     end
   end
 
-  # While a player guards or heals, the enemies (characters with an "enemy"
-  # stat) still strike them: guarding costs a turn.
+  # While a player guards or heals, the companions still act (a healer
+  # tends them, the others strike the first enemy standing), then the
+  # enemies (characters with an "enemy" stat) strike: guarding costs a turn.
   defp enemies_turn(%Transition{state: state} = transition, player, event) do
     if player?(state, player) do
+      transition
+      |> companions_turn(player, event)
+      |> enemies_strike(player, event)
+    else
+      transition
+    end
+  end
+
+  defp companions_turn(%Transition{state: state} = transition, player, event) do
+    case Combat.foe(state) do
+      nil ->
+        transition
+
+      foe ->
+        party(
+          transition,
+          %{id: event.id, type: :attack, from: player, to: foe, at: event.at},
+          State.stat(state, foe, "hp")
+        )
+    end
+  end
+
+  defp enemies_strike(%Transition{state: state} = transition, player, event) do
+    if State.stat(state, player, "hp") > 0 do
       state
       |> State.sorted_characters()
       |> Enum.filter(

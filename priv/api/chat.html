@@ -140,7 +140,8 @@ $("form").addEventListener("submit", async (event) => {
   if (!text) return;
   $("text").value = "";
   const to = $("character").value;
-  // "/gift tea" gives a gift, "/sorry ..." apologizes, "/act ..." fights;
+  // "/gift tea" gives a gift, "/sorry ..." apologizes, "/act ..." fights
+  // (whoever the words name, else the first enemy standing);
   // anything else is said.
   const [, command, rest] = text.match(/^\/(gift|sorry|act)\s*(.*)$/) || [];
   add("me", command === "gift" ? "(gives " + (rest || "a gift") + ")" : command === "sorry" ? "(apologizes) " + rest : command === "act" ? "(" + rest + ")" : text, "You");
@@ -149,7 +150,7 @@ $("form").addEventListener("submit", async (event) => {
     : command === "sorry"
       ? ["/events", {type: "apology_offered", from: "user", to, reason: rest || "I'm sorry."}]
       : command === "act"
-        ? ["/act", {to, text: rest || "attack"}]
+        ? ["/act", {text: rest || "attack"}]
         : ["/say", {to, text}];
   try {
     const data = await call("POST", worldPath(request[0]), request[1]);
