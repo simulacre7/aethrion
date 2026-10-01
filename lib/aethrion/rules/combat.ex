@@ -235,7 +235,16 @@ defmodule Aethrion.Rules.Combat do
       foe ->
         party(
           transition,
-          %{id: event.id, type: :attack, from: player, to: foe, at: event.at, guarding: true},
+          %{
+            id: event.id,
+            type: :attack,
+            from: player,
+            to: foe,
+            at: event.at,
+            guarding: true,
+            # A companion who already acted this turn (asked to heal) rests.
+            acted: if(Map.has_key?(event, :asked_by), do: event.from)
+          },
           State.stat(state, foe, "hp")
         )
     end
@@ -317,6 +326,7 @@ defmodule Aethrion.Rules.Combat do
   defp party_member?(state, id, event),
     do:
       State.stat(state, id, "party") > 0 and id not in [event.from, event.to] and
+        id != Map.get(event, :acted) and
         State.stat(state, id, "hp") > 0
 
   # A healer tends a hurt leader and otherwise strikes too. Someone holding
