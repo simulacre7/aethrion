@@ -223,6 +223,109 @@ defmodule Aethrion.BridgeReviewTest do
     end
   end
 
+  describe "checkpoints, third pass" do
+    defp user(line), do: %{"role" => "user", "content" => line}
+
+    defp reply(cast, messages, to \\ "sera") do
+      {_before, now, turn} = play(cast, messages, to)
+      %{"role" => "assistant", "content" => "…\n\n" <> Bridge.status(now, turn)}
+    end
+
+    defp fresh(lines, to \\ "sera") do
+      {_before, now, _turn} =
+        Bridge.replay(
+          den(),
+          Enum.map(lines, &user/1),
+          Bridge.reader(to, [interpreter: Aethrion.Interpreter.Rules], no_cache()),
+          to: to
+        )
+
+      now
+    end
+
+    # a; then b and c in a row; then e; each answered with a status block.
+    defp in_a_row(b, c) do
+      m1 = [user(@u1)]
+      m1 = m1 ++ [reply(den(), m1)]
+      m2 = m1 ++ [user("방패를 들어 막는다"), user(@u2)]
+      m2 = m2 ++ [reply(den(), m2)]
+      m3 = m2 ++ [user(@u3)]
+      m3 = m3 ++ [reply(den(), m3)]
+      [_a, _r1, _b, _c, r2, e, r3] = m3
+      [user(b), user(c), r2, e, r3, user("안녕")]
+    end
+
+    test "a trimmed chat whose first turn had two lines, one edited, goes on from before them" do
+      for {b, c} <- [{"세라에게 웃어 보인다", @u2}, {"방패를 들어 막는다", "세라에게 웃어 보인다"}] do
+        {_before, now, _turn} = play(den(), in_a_row(b, c))
+        expected = fresh([@u1, b, c, @u3, "안녕"])
+
+        assert {hp(now, "dire_wolf"), hp(now, "user")} ==
+                 {hp(expected, "dire_wolf"), hp(expected, "user")}
+      end
+    end
+
+    test "a chat without status blocks finds its checkpoints past lines sent in a row" do
+      history = [user("안녕"), user("고마워")]
+      play(den(), history)
+      history = history ++ [%{"role" => "assistant", "content" => "…"}]
+
+      history =
+        Enum.reduce(["오늘 날씨 좋다", "같이 가자"], history, fn line, history ->
+          history = history ++ [user(line)]
+          play(den(), history)
+          history ++ [%{"role" => "assistant", "content" => "…"}]
+        end)
+
+      {_all, chat} = Bridge.transcript(history ++ [user("잘 자")])
+      read = Bridge.reader("sera", [interpreter: Aethrion.Interpreter.Rules], no_cache())
+
+      assert {_before, _now, %{line: "잘 자"}} =
+               Bridge.replay(den(), chat, read,
+                 to: "sera",
+                 checkpoints: checkpoints(),
+                 max_lines: 1
+               )
+    end
+
+    test "a reroll in a chat without status blocks is this turn again, not a continue" do
+      history = [user(@u1)]
+      {_before, first, _turn} = play(den(), history)
+      {before, again, turn} = play(den(), history)
+      assert turn.line == @u1 and turn.readings != []
+      assert hp(before, "dire_wolf") == 37 and hp(again, "dire_wolf") == hp(first, "dire_wolf")
+    end
+
+    test "a chat without status blocks keeps who each line was said to" do
+      plain = fn messages, to ->
+        play(den(), messages, to)
+        messages ++ [%{"role" => "assistant", "content" => "…"}]
+      end
+
+      history =
+        [{"고마워", "sera"}, {"든든하다", "sera"}, {"너 최고야", "doyun"}]
+        |> Enum.reduce([], fn {line, to}, history -> plain.(history ++ [user(line)], to) end)
+
+      {_before, now, _turn} = play(den(), history ++ [user("잘 자")], "doyun")
+
+      marked =
+        [{"고마워", "sera"}, {"든든하다", "sera"}, {"너 최고야", "doyun"}]
+        |> Enum.reduce([], fn {line, to}, history ->
+          history = history ++ [user(line)]
+          history ++ [reply(den(), history, to)]
+        end)
+
+      {_before, expected, _turn} = play(den(), marked ++ [user("잘 자")], "doyun")
+
+      for who <- ["sera", "doyun"],
+          do:
+            assert(
+              State.get_relationship(now, who, "user") ==
+                State.get_relationship(expected, who, "user")
+            )
+    end
+  end
+
   describe "readings" do
     test "are kept per world, not per line, and a stand-in reading is not kept" do
       cache = Store.cache(Aethrion.Bridge.Readings)
@@ -347,6 +450,33 @@ defmodule Aethrion.BridgeReviewTest do
                request(open, "/v1/chat/completions", body, [
                  {~c"origin", String.to_charlist("http://" <> host)}
                ])
+    end
+
+    # httpc sets Host itself; a raw request can say anything.
+    defp raw(base, request) do
+      %URI{host: host, port: port} = URI.parse(base)
+      {:ok, socket} = :gen_tcp.connect(String.to_charlist(host), port, [:binary, active: false])
+      :ok = :gen_tcp.send(socket, request)
+      {:ok, response} = :gen_tcp.recv(socket, 0, 5_000)
+      :gen_tcp.close(socket)
+      [_, status] = Regex.run(~r/^HTTP\/1\.1 (\d+)/, response)
+      String.to_integer(status)
+    end
+
+    test "without a token, only this machine's names reach the server", %{open: open} do
+      get = fn host, origin ->
+        raw(
+          open,
+          "GET /v1/models HTTP/1.1\r\nHost: #{host}\r\n#{origin}Connection: close\r\n\r\n"
+        )
+      end
+
+      # A page whose name was rebound to 127.0.0.1 sends its own name both ways.
+      assert get.("evil.example:4848", "Origin: http://evil.example:4848\r\n") == 403
+      assert get.("evil.example:4848", "") == 403
+      assert get.("localhost:4848", "") == 200
+      # RisuAI in Docker calls the host by this name.
+      assert get.("host.docker.internal:4848", "") == 200
     end
 
     test "a card added with a story of null, or an id the cast cannot have, is not a 500", %{

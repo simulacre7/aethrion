@@ -110,6 +110,7 @@ defmodule Aethrion.API do
     # The handler finds its settings by port, so they are in place first.
     :persistent_term.put({__MODULE__, port}, %{
       worlds: worlds,
+      bind: bind,
       token: Keyword.get(opts, :token),
       intent: Keyword.get(opts, :intent, []),
       interpreter: Keyword.get(opts, :interpreter, Aethrion.Interpreter.Rules),
@@ -198,20 +199,31 @@ defmodule Aethrion.API do
 
   defp small_enough(_body, _config, _route), do: :ok
 
-  # Without a token, a page from another site must not drive the server
-  # (browsers send its Origin, even where CORS lets nothing back); with one,
-  # the token keeps it out.
-  defp authorize(%{token: nil}, %{"origin" => origin} = headers) do
-    host = Map.get(headers, "host", "")
+  # Without a token, only this machine reaches the server: the request must
+  # name it (a site whose name was rebound to 127.0.0.1 names itself), and
+  # a page from another site must not drive it (browsers send its Origin,
+  # even where CORS lets nothing back). With a token, the token keeps them
+  # out.
+  defp authorize(%{token: nil} = config, headers) do
+    origin = Map.get(headers, "origin")
+    host = Map.get(headers, "host")
 
-    if origin in ["http://" <> host, "https://" <> host],
-      do: :ok,
-      else:
+    cond do
+      host != nil and not local_name?(host, config) ->
+        {:error, 403,
+         Error.new(
+           :forbidden_host,
+           "without a token, the server answers only to this machine's names"
+         )}
+
+      origin != nil and origin not in ["http://#{host}", "https://#{host}"] ->
         {:error, 403,
          Error.new(:forbidden_origin, "requests from other sites need the server to have a token")}
-  end
 
-  defp authorize(%{token: nil}, _headers), do: :ok
+      true ->
+        :ok
+    end
+  end
 
   defp authorize(%{token: token}, headers) do
     # Compared as digests, so the time taken says nothing about the token.
@@ -223,6 +235,18 @@ defmodule Aethrion.API do
   end
 
   @key ~r/^[A-Za-z0-9_\-.:@]{1,128}$/
+
+  @local_names ["localhost", "127.0.0.1", "::1", "host.docker.internal"]
+
+  defp address(ip) when is_tuple(ip), do: ip |> :inet.ntoa() |> to_string()
+  defp address(ip), do: to_string(ip)
+
+  defp local_name?(host, config) do
+    name = URI.parse("http://" <> host).host || ""
+
+    name in @local_names or String.ends_with?(name, ".localhost") or
+      String.starts_with?(name, "127.") or name == address(Map.get(config, :bind))
+  end
 
   defp route("GET", ["health"]), do: {:ok, :health}
   defp route("GET", ["casts", "current"]), do: {:ok, :cast_current}
