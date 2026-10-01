@@ -42,6 +42,32 @@
       "type": "object",
       "required": ["characters"],
       "properties": {
+        "stats": {
+          "description": "Free-form numbers per actor (characters and players): {\"mina\": {\"charm\": 12}, \"user\": {\"hp\": 30}}.",
+          "type": "object",
+          "additionalProperties": {"type": "object", "additionalProperties": {"type": "integer"}}
+        },
+        "story": {
+          "description": "Activities, endings, and the hour endings are decided at. See Aethrion.Story.",
+          "type": "object",
+          "properties": {
+            "deadline": {"type": "integer", "minimum": 1},
+            "activities": {"type": "object", "additionalProperties": {"type": "object", "additionalProperties": {"type": "integer"}}},
+            "endings": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["id"],
+                "properties": {
+                  "id": {"type": "string"},
+                  "title": {"type": "string"},
+                  "description": {"type": "string"},
+                  "when": {"type": "array", "items": {"type": "object"}}
+                }
+              }
+            }
+          }
+        },
         "people": {
           "description": "Display names for actors who are not characters (players): {\"player:alex\": \"Alex\"}.",
           "type": "object",
@@ -158,6 +184,15 @@
             "at": {"type": "string"}
           },
           "required": ["type", "from", "to"]
+        },
+        {
+          "properties": {
+            "type": {"const": "activity"},
+            "character": {"$ref": "#/definitions/id"},
+            "activity": {"type": "string", "description": "One of the story's activities."},
+            "at": {"type": "string"}
+          },
+          "required": ["type", "character", "activity"]
         },
         {
           "properties": {

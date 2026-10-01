@@ -21,6 +21,7 @@ defmodule Aethrion.Event do
   | `:gossip_shared`   | rules (or host)         | a character tells another about a memory  |
   | `:comfort_offered` | rules (or host)         | someone comforts a character              |
   | `:time_spent_together` | rules (or host)     | two characters spend time together        |
+  | `:activity`        | host                    | a character spends time on a story activity (`Aethrion.Story`) |
   """
 
   @tones [:warm, :neutral, :cold, :hostile]
@@ -32,7 +33,8 @@ defmodule Aethrion.Event do
     :time_tick,
     :gossip_shared,
     :comfort_offered,
-    :time_spent_together
+    :time_spent_together,
+    :activity
   ]
 
   @type t :: %{required(:type) => atom(), optional(atom()) => term()}
@@ -143,6 +145,20 @@ defmodule Aethrion.Event do
   end
 
   @doc """
+  `character` spends time on `activity`, one of the world's story activities
+  (`Aethrion.Story`): its effects change their stats and feelings.
+  """
+  @spec activity(String.t(), String.t(), keyword()) :: t()
+  def activity(character, activity, opts \\ []) do
+    %{
+      type: :activity,
+      character: character,
+      activity: activity,
+      at: Keyword.get(opts, :at, @unspecified)
+    }
+  end
+
+  @doc """
   Fills optional fields that hosts may omit when building event maps by hand:
   `:at` (and `:now` for ticks) default to `"unspecified"`, `:observed_by` to
   `[]`, and `:tone` to `:neutral`. Unknown types pass through unchanged.
@@ -202,6 +218,9 @@ defmodule Aethrion.Event do
   def describe(%{type: :time_spent_together} = event, names) do
     "#{names.(event.from)} spends time with #{names.(event.to)}"
   end
+
+  def describe(%{type: :activity} = event, names),
+    do: "#{names.(event.character)} spends time on #{event.activity}"
 
   def describe(%{type: type}, _names), do: to_string(type)
 
@@ -322,6 +341,10 @@ defmodule Aethrion.Event do
 
   defp build(:comfort_offered, data) do
     comfort_offered(data["from"], data["to"], at: Map.get(data, "at", @unspecified))
+  end
+
+  defp build(:activity, data) do
+    activity(data["character"], data["activity"], at: Map.get(data, "at", @unspecified))
   end
 
   defp build(:time_spent_together, data) do

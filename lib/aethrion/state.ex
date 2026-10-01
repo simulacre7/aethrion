@@ -26,7 +26,9 @@ defmodule Aethrion.State do
           cooldowns: %{optional(String.t()) => non_neg_integer()},
           tuning: Aethrion.Tuning.t(),
           people: %{optional(String.t()) => String.t()},
-          conversations: %{optional({String.t(), String.t()}) => [Aethrion.Conversation.turn()]}
+          conversations: %{optional({String.t(), String.t()}) => [Aethrion.Conversation.turn()]},
+          stats: %{optional(String.t()) => %{optional(String.t()) => integer()}},
+          story: map()
         }
 
   @data_version 2
@@ -39,7 +41,9 @@ defmodule Aethrion.State do
             cooldowns: %{},
             tuning: %{},
             people: %{},
-            conversations: %{}
+            conversations: %{},
+            stats: %{},
+            story: %{}
 
   @doc """
   Builds a runtime state from explicit characters and relationships.
@@ -47,7 +51,9 @@ defmodule Aethrion.State do
   Options: `:characters`, `:relationships`, `:memories`, `:clock`, `:seq`,
   `:cooldowns`, `:tuning`, `:people` (display names for players: a map of id
   to name; a character's own name always wins), `:conversations` (see
-  `Aethrion.Conversation`).
+  `Aethrion.Conversation`), `:stats` (free-form numbers per actor, such as
+  `%{"user" => %{"hp" => 30}, "mina" => %{"charm" => 12}}`), `:story`
+  (activities and endings, see `Aethrion.Story`).
   """
   @spec new(keyword()) :: t()
   def new(opts \\ []) do
@@ -65,7 +71,9 @@ defmodule Aethrion.State do
       tuning: Map.new(Keyword.get(opts, :tuning, %{})),
       people:
         Map.new(Keyword.get(opts, :people, %{}), fn {id, name} -> {to_string(id), name} end),
-      conversations: Map.new(Keyword.get(opts, :conversations, %{}))
+      conversations: Map.new(Keyword.get(opts, :conversations, %{})),
+      stats: Map.new(Keyword.get(opts, :stats, %{})),
+      story: Map.new(Keyword.get(opts, :story, %{}))
     }
   end
 
@@ -288,6 +296,14 @@ defmodule Aethrion.State do
         do: data,
         else: Map.put(data, "conversations", Aethrion.Conversation.to_data(state.conversations))
     end)
+    |> then(fn data ->
+      if state.stats == %{}, do: data, else: Map.put(data, "stats", state.stats)
+    end)
+    |> then(fn data ->
+      if state.story == %{},
+        do: data,
+        else: Map.put(data, "story", Aethrion.Story.to_data(state.story))
+    end)
   end
 
   @doc """
@@ -336,7 +352,9 @@ defmodule Aethrion.State do
       cooldowns: cooldowns_from_data(data),
       tuning: tuning_from_data(data, Keyword.get(opts, :pipeline, Aethrion.Pipeline.default())),
       people: Map.get(data, "people", %{}),
-      conversations: Aethrion.Conversation.from_data(Map.get(data, "conversations"))
+      conversations: Aethrion.Conversation.from_data(Map.get(data, "conversations")),
+      stats: Map.get(data, "stats", %{}),
+      story: Aethrion.Story.from_data!(Map.get(data, "story"))
     )
   end
 
@@ -501,7 +519,9 @@ defmodule Aethrion.State do
          :ok <- optional(data, "cooldowns", &cooldowns?/1),
          :ok <- optional(data, "people", &names?/1),
          :ok <- optional(data, "conversations", &Aethrion.Conversation.valid_data?/1),
-         :ok <- optional(data, "tuning", &is_map/1) do
+         :ok <- optional(data, "tuning", &is_map/1),
+         :ok <- optional(data, "stats", &stats?/1),
+         :ok <- validate_story(data) do
       validate_cast(data)
     end
   end
@@ -678,6 +698,33 @@ defmodule Aethrion.State do
 
   defp non_empty_string?(value), do: is_binary(value) and value != ""
   defp non_neg_integer?(value), do: is_integer(value) and value >= 0
+
+  defp stats?(value),
+    do:
+      is_map(value) and
+        Enum.all?(value, fn {id, stats} ->
+          is_binary(id) and is_map(stats) and
+            Enum.all?(stats, fn {k, v} -> is_binary(k) and k != "" and is_integer(v) end)
+        end)
+
+  defp validate_story(%{"story" => story}) do
+    case Aethrion.Story.parse(story) do
+      {:ok, _story} -> :ok
+      {:error, message, path} -> invalid(["story" | path], message)
+    end
+  end
+
+  defp validate_story(_data), do: :ok
+
+  @doc "An actor's stat (default 0)."
+  @spec stat(t(), String.t(), String.t()) :: integer()
+  def stat(%__MODULE__{stats: stats}, id, name), do: stats |> Map.get(id, %{}) |> Map.get(name, 0)
+
+  @doc "Whether an actor has a stat at all."
+  @spec stat?(t(), String.t(), String.t()) :: boolean()
+  def stat?(%__MODULE__{stats: stats}, id, name),
+    do: stats |> Map.get(id, %{}) |> Map.has_key?(name)
+
   defp in_range?(value, min, max), do: is_integer(value) and value >= min and value <= max
   defp string_list?(value), do: is_list(value) and Enum.all?(value, &is_binary/1)
 

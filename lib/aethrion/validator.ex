@@ -80,6 +80,19 @@ defmodule Aethrion.Validator do
     end
   end
 
+  defp validate_event(state, %{type: :activity} = event) do
+    with :ok <- require_character(state, event, :character),
+         :ok <- require_name(event, :activity) do
+      if Map.has_key?(Map.get(state.story, :activities, %{}), event.activity),
+        do: :ok,
+        else:
+          {:error,
+           error(:invalid_event, "the story has no activity #{inspect(event.activity)}", %{
+             field: :activity
+           })}
+    end
+  end
+
   defp validate_event(state, %{type: :comfort_offered} = event) do
     with :ok <- require_name(event, :from),
          :ok <- require_character(state, event, :to),

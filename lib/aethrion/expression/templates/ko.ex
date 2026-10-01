@@ -410,6 +410,9 @@ defmodule Aethrion.Expression.Templates.Ko do
       %{type: :time_spent_together} ->
         "#{with_particle(name.(event.from), :with)} #{with_particle(name.(event.to), :topic)} 함께 시간을 보낸다"
 
+      %{type: :activity} ->
+        "#{with_particle(name.(event.character), :topic)} #{event.activity}에 시간을 쓴다"
+
       _other ->
         Aethrion.Event.describe(event, names)
     end
