@@ -67,7 +67,7 @@ Aethrion.Digest.of(outputs_since_last_visit, state, locale: :ko)
 |> Enum.map(& &1.text)
 ```
 
-`examples/companion_week.exs` plays ten days of this with the demo cast (five days of mornings with a harsh word and an apology, then five days away) and prints the digest on return, in English and Korean.
+`examples/chat_app.exs` runs this shape end to end (two users, a stand-in model that sees the thread, a restart that keeps it). `examples/companion_week.exs` plays ten days of this with the demo cast (five days of mornings with a harsh word and an apology, then five days away) and prints the digest on return, in English and Korean.
 
 To load a save into a running world, `Aethrion.Worlds.put_state(MyApp.Worlds, user_id, state)` (a journaled world starts its journal over from it). The cast only applies when no journal exists yet.
 
