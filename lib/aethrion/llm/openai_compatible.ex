@@ -20,6 +20,10 @@ defmodule Aethrion.LLM.OpenAICompatible do
   | `:timeout`     | `:timeout`               | -                         |
   | `:temperature` | `:temperature`           | -                         |
   | `:max_tokens`  | `:max_tokens`            | -                         |
+  | `:retries`     | `:retries`               | -                         |
+
+  Rate limits, overload, server errors, and failed connections are retried
+  `:retries` times (default 2) with backoff, honoring `retry-after`.
 
   `:base_url` and `:model` are required. `:api_key` is optional for local
   servers.
@@ -41,7 +45,8 @@ defmodule Aethrion.LLM.OpenAICompatible do
   alias Aethrion.Expression.{Prompt, Request}
   alias Aethrion.LLM.HTTP
 
-  @defaults [timeout: 15_000, temperature: 0.7, max_tokens: 120]
+  # A reply may run to three sentences, in any language.
+  @defaults [timeout: 15_000, temperature: 0.7, max_tokens: 200, retries: 2]
   @env %{
     base_url: "AETHRION_LLM_BASE_URL",
     api_key: "AETHRION_LLM_API_KEY",
@@ -78,13 +83,16 @@ defmodule Aethrion.LLM.OpenAICompatible do
     app = Application.get_env(:aethrion, __MODULE__, [])
 
     config =
-      Map.new([:base_url, :api_key, :model, :timeout, :temperature, :max_tokens], fn key ->
-        value =
-          Keyword.get(opts, key) || Keyword.get(app, key) || env(key) ||
-            Keyword.get(@defaults, key)
+      Map.new(
+        [:base_url, :api_key, :model, :timeout, :temperature, :max_tokens, :retries],
+        fn key ->
+          value =
+            Keyword.get(opts, key) || Keyword.get(app, key) || env(key) ||
+              Keyword.get(@defaults, key)
 
-        {key, value}
-      end)
+          {key, value}
+        end
+      )
 
     cond do
       blank?(config.base_url) -> {:error, :missing_base_url}
@@ -106,7 +114,8 @@ defmodule Aethrion.LLM.OpenAICompatible do
     headers =
       if blank?(config.api_key), do: [], else: [{"authorization", "Bearer " <> config.api_key}]
 
-    with {:ok, response} <- HTTP.post_json(url, headers, body, config.timeout) do
+    with {:ok, response} <-
+           HTTP.post_json(url, headers, body, config.timeout, retries: config.retries) do
       case response do
         %{"choices" => [%{"message" => %{"content" => content}} | _]} when is_binary(content) ->
           {:ok, content}

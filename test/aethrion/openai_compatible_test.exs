@@ -107,7 +107,7 @@ defmodule Aethrion.LLM.OpenAICompatibleTest do
     rendered =
       Expression.render(outputs,
         adapter: OpenAICompatible,
-        adapter_opts: [base_url: base_url, model: "m"]
+        adapter_opts: [base_url: base_url, model: "m", retries: 0]
       )
 
     for {before, output} <- Enum.zip(outputs, rendered), Aethrion.Output.expressive?(before) do

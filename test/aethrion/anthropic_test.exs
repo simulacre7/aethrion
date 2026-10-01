@@ -29,6 +29,40 @@ defmodule Aethrion.LLM.AnthropicTest do
     [base_url: base_url, api_key: "sk-ant-test"]
   end
 
+  test "overload and rate limits are retried, other errors are not" do
+    {:ok, calls} = Agent.start_link(fn -> 0 end)
+
+    {:ok, base_url, _pid} =
+      StubHTTPServer.start(fn _request ->
+        case Agent.get_and_update(calls, &{&1, &1 + 1}) do
+          0 ->
+            {529, ~s({"type":"error","error":{"type":"overloaded_error"}}),
+             [{"retry-after", "0"}]}
+
+          _ ->
+            {200, message([%{"type" => "text", "text" => "Hello!"}])}
+        end
+      end)
+
+    assert {:ok, "Hello!"} =
+             Anthropic.render(@request, base_url: base_url, api_key: "sk-ant-test")
+
+    assert Agent.get(calls, & &1) == 2
+
+    {:ok, bad_request, _pid} =
+      StubHTTPServer.start(fn _request ->
+        {400, ~s({"type":"error","error":{"type":"invalid_request_error","message":"no"}})}
+      end)
+
+    assert {:error, {:api_error, 400, "invalid_request_error", "no"}} =
+             Anthropic.render(@request, base_url: bad_request, api_key: "sk-ant-test")
+
+    assert_received {:stub_request, _first}
+    assert_received {:stub_request, _second}
+    assert_received {:stub_request, _bad}
+    refute_received {:stub_request, _retried}
+  end
+
   test "sends a Messages API request and returns only the text blocks" do
     opts =
       stub(
@@ -111,7 +145,7 @@ defmodule Aethrion.LLM.AnthropicTest do
       })
 
     assert {:error, {:api_error, 529, "overloaded_error", "Overloaded"}} =
-             Anthropic.render(@request, stub(error, 529))
+             Anthropic.render(@request, stub(error, 529) ++ [retries: 0])
   end
 
   test "interprets intents from JSON text" do
