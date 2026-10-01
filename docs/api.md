@@ -342,7 +342,7 @@ Aethrion.Rules.Ending.reached(state)  # the ending decided, or nil
 
 Conditions: `{"stat": [actor, name]}`, `{"character": id, "field": f}`, `{"relationship": [from, to], "field": f}` with `at_least`/`at_most`/`equals`; `{"bond": [from, to], "is" | "at_least" | "at_most": bond}`; `{"memories": {"character": id, ...data filters}}` counts; `{"clock": true}`; `{"any": [...]}`; `{"not": c}`.
 
-Fights (`Aethrion.Combat`, `Aethrion.Rules.Combat`) are between actors with an `"hp"` stat (`"max_hp"`, `"attack"`, `"defense"`, `"speed"`, `"heal"` optional): `Event.attack/3`, `defend/2`, `heal/3`, `flee/3`. Outputs are `:combat` maps (`kind`: `:hit`, `:critical`, `:defeated`, `:guarded`, `:healed`, `:fled`, `:caught`, `:holds_back`; `character_id`, `to`, `subject`, `amount`, `hp`, `max_hp`, `text`). `Combat.describe(output, state, :ko)` tells one in Korean; `Combat.action(state, from, target, text)` reads a player's words (a nil target means `Combat.foe/1`, the first enemy standing, and an attack is watched by `Combat.party/1`). Damage rolls come from who acts on whom and both fighters' hp, not from the event id, so a fight replays exactly. Heals need a standing healer and a hurt, standing target; once the story's ending is decided (`decide_when`), combat events are rejected.
+Fights (`Aethrion.Combat`, `Aethrion.Rules.Combat`) are between actors with an `"hp"` stat (`"max_hp"`, `"attack"`, `"defense"`, `"speed"`, `"heal"` optional): `Event.attack/3`, `defend/2`, `heal/3`, `flee/3`. Outputs are `:combat` maps (`kind`: `:hit`, `:critical`, `:defeated`, `:guarded`, `:healed`, `:fled`, `:caught`, `:holds_back`; `character_id`, `to`, `subject`, `amount`, `hp`, `max_hp`, `text`). `Combat.describe(output, state, :ko)` tells one in Korean; `Combat.action(state, from, target, text)` reads a player's words (a nil target means `Combat.foe/1`, the first enemy standing, and an attack is watched by `Combat.party/1`). Damage rolls come from who acts on whom and both fighters' hp, not from the event id, so a fight replays exactly. Heals need a healer's `"heal"` stat or an item (a potion uses one of `"potions"`, a bandage one of `"bandages"`), a standing healer, and a hurt, standing target; one flees only from an enemy; a character at 0 hp neither talks nor listens; once the story's ending is decided (`decide_when`), combat events are rejected.
 
 ## HTTP API
 
@@ -356,7 +356,7 @@ Fights (`Aethrion.Combat`, `Aethrion.Rules.Combat`) are between actors with an `
 | --- | --- | --- | --- |
 | `POST` | `/worlds/{key}/say` | `{"to", "text", "from"?, "observed_by"?}` | the step: `event_id`, `lines`, `outputs`, `interpreted` |
 | `POST` | `/worlds/{key}/events` | an event as in a scenario (`{"type": "gift_received", ...}`) | the step |
-| `POST` | `/worlds/{key}/act` | `{"text", "to", "from"?}`: a combat action in words | the step |
+| `POST` | `/worlds/{key}/act` | `{"text", "to"?, "from"?}`: a combat action in words, aimed at whoever the words name (an enemy for a blow), else `to`, else the first enemy standing; `400 unclear_action` when the words do not say what happens | the step |
 | `GET` | `/worlds/{key}/story` | | `{"reached": ending \| null, "endings": progress}` |
 | `GET` | `/worlds/{key}/conversation` | `character` (omit for every character), `person` (default `user`), `after` (an event id) | `{"turns": [...]}`, oldest first |
 | `GET` | `/worlds/{key}/characters` | `person` (default `user`) | `{"characters": [{id, name, profile, mood, toward: {id, bond, affinity, trust, tension}}]}` |

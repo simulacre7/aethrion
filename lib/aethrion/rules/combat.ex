@@ -5,8 +5,9 @@ defmodule Aethrion.Rules.Combat do
   `"heal"` are read when present.
 
   - **attack**: damage is `attack + roll - defense`, at least 1, where the
-    roll (0..5) comes from who acts on whom and both fighters' hp, so a
-    fight replays exactly. A roll of 5 is a critical hit (half again as
+    roll (0..5) comes from who acts on whom, both fighters' hp, and how
+    many turns the actor has taken (their `"turns"` stat), so a fight
+    replays exactly and talking in between does not change the dice. A roll of 5 is a critical hit (half again as
     much). A raised guard halves the blow and is spent. At 0 hp a fighter is
     defeated. A character still standing hits back once (counterattacks and
     a companion's assisting blows are not answered).
@@ -22,7 +23,9 @@ defmodule Aethrion.Rules.Combat do
   - **party**: when a player attacks, characters with a `"party"` stat
     move before the enemy answers, if they trust the player (trust >=
     `party_trust`): healers tend a player below 60% hp, the others strike
-    the same target (never an ally). Those who do not trust the player hold
+    the same target (never an ally). They act on guard and heal turns too,
+    but trust grows only from fighting side by side. Turning on someone who
+    is not an enemy still gives the enemies their turn. Those who do not trust the player hold
     back (`:holds_back`, said once until they join in again).
   - Once the story's ending is decided, no one fights; a blow queued in a
     cascade is dropped if its fighter or target has fallen.
@@ -41,6 +44,7 @@ defmodule Aethrion.Rules.Combat do
       "Attacks, guards, heals, and flight change hp by the numbers; fighters hit back; being attacked or healed changes how characters feel about each other.",
     params: [
       party_trust: 10,
+      flee_margin: 3,
       attacked_affinity: -20,
       attacked_trust: -15,
       attacked_tension: 20,
@@ -61,8 +65,11 @@ defmodule Aethrion.Rules.Combat do
   # blow in a cascade may land after its target has fallen.
   def apply(%Transition{event: %{type: type} = event} = transition) when type in @actions do
     case problem(transition.state, event) do
-      nil -> act(transition, event)
-      reason -> Transition.note(transition, reason)
+      nil ->
+        transition |> Transition.adjust_stat(event.from, "turns", 1, log: false) |> act(event)
+
+      reason ->
+        Transition.note(transition, reason)
     end
   end
 
@@ -129,6 +136,7 @@ defmodule Aethrion.Rules.Combat do
     # The companions move before the enemy answers.
     |> party(event, hp)
     |> then(&if(hp > 0, do: counter(&1, event), else: &1))
+    |> others_strike(event)
   end
 
   defp act(transition, %{type: :defend} = event) do
@@ -161,7 +169,8 @@ defmodule Aethrion.Rules.Combat do
     state = transition.state
     roll = Combat.roll(event, state)
 
-    if State.stat(state, event.from, "speed") + roll >= State.stat(state, event.to, "speed") + 3 do
+    if State.stat(state, event.from, "speed") + roll >=
+         State.stat(state, event.to, "speed") + Transition.param(transition, :flee_margin) do
       transition
       |> Transition.adjust_stat(event.from, "fled", 1, log: false)
       |> combat_output(event, event.from, :fled, 0)
@@ -170,6 +179,15 @@ defmodule Aethrion.Rules.Combat do
       |> combat_output(event, event.from, :caught, 0)
       |> Transition.enqueue(Event.attack(event.to, event.from, counter: true, at: event.at))
     end
+  end
+
+  # A player's blow is answered by its target; the other enemies standing
+  # take their turn as well (all of them, if the player turned on someone
+  # who is not an enemy).
+  defp others_strike(%Transition{state: state} = transition, event) do
+    if player?(state, event.from) and not Map.get(event, :counter, false),
+      do: enemies_strike(transition, event.from, event, except: event.to),
+      else: transition
   end
 
   # While a player guards or heals, the companions still act (a healer
@@ -193,23 +211,21 @@ defmodule Aethrion.Rules.Combat do
       foe ->
         party(
           transition,
-          %{id: event.id, type: :attack, from: player, to: foe, at: event.at},
+          %{id: event.id, type: :attack, from: player, to: foe, at: event.at, guarding: true},
           State.stat(state, foe, "hp")
         )
     end
   end
 
-  defp enemies_strike(%Transition{state: state} = transition, player, event) do
+  defp enemies_strike(%Transition{state: state} = transition, player, event, opts \\ []) do
     if State.stat(state, player, "hp") > 0 do
       state
-      |> State.sorted_characters()
-      |> Enum.filter(
-        &(State.stat(state, &1.id, "enemy") > 0 and State.stat(state, &1.id, "hp") > 0)
-      )
+      |> enemies()
+      |> Enum.reject(&(&1 == Keyword.get(opts, :except)))
       |> Enum.reduce(transition, fn enemy, transition ->
         Transition.enqueue(
           transition,
-          Event.attack(enemy.id, player, counter: true, at: event.at)
+          Event.attack(enemy, player, counter: true, at: event.at)
         )
       end)
     else
@@ -217,13 +233,23 @@ defmodule Aethrion.Rules.Combat do
     end
   end
 
+  # Enemies are actors with an "enemy" stat, characters or not, still standing.
+  defp enemies(state) do
+    for id <- Enum.sort(Map.keys(state.stats)),
+        State.stat(state, id, "enemy") > 0 and State.stat(state, id, "hp") > 0,
+        do: id
+  end
+
   # Players are people: "user", or someone the world names in people.
   defp player?(state, id),
     do: not State.character?(state, id) and (id == "user" or Map.has_key?(state.people, id))
 
-  defp use_potion(%Transition{state: state} = transition, %{item: "potion", from: from}) do
-    if State.stat?(state, from, "potions"),
-      do: Transition.adjust_stat(transition, from, "potions", -1, min: 0),
+  defp use_potion(%Transition{state: state} = transition, %{item: item, from: from})
+       when is_binary(item) do
+    count = item <> "s"
+
+    if State.stat?(state, from, count),
+      do: Transition.adjust_stat(transition, from, count, -1, min: 0),
       else: transition
   end
 
@@ -269,11 +295,12 @@ defmodule Aethrion.Rules.Combat do
         |> Transition.put_cooldown(held)
         |> combat_output(%{event | from: id, to: event.from}, id, :holds_back, 0)
 
-      State.stat(state, id, "heal") > 0 and hurt? and leader_hp > 0 ->
+      State.stat(state, id, "heal") > 0 and hurt? and leader_hp > 0 and
+          (target_hp > 0 or Combat.foe(state) != nil) ->
         transition
         |> Transition.clear_cooldown(held)
         |> Transition.enqueue(Event.heal(id, event.from, at: event.at))
-        |> fought_beside(id, event.from)
+        |> fought_beside(id, event)
 
       target_hp > 0 ->
         transition
@@ -283,12 +310,16 @@ defmodule Aethrion.Rules.Combat do
           |> then(&Event.attack(id, &1, at: event.at))
           |> Map.put(:assist, true)
         )
-        |> fought_beside(id, event.from)
+        |> fought_beside(id, event)
 
       true ->
         transition
     end
   end
+
+  # Trust is earned fighting side by side, not by standing behind them.
+  defp fought_beside(transition, _id, %{guarding: true}), do: transition
+  defp fought_beside(transition, id, %{from: leader}), do: fought_beside(transition, id, leader)
 
   defp fought_beside(transition, id, leader),
     do:
@@ -302,7 +333,8 @@ defmodule Aethrion.Rules.Combat do
 
   # A character still standing answers a blow, once.
   defp counter(%Transition{state: state} = transition, event) do
-    if State.character?(state, event.to) and not Map.get(event, :counter, false) and
+    if (State.character?(state, event.to) or State.stat(state, event.to, "enemy") > 0) and
+         not Map.get(event, :counter, false) and
          not Map.get(event, :assist, false) and State.stat(state, event.from, "hp") > 0 do
       Transition.enqueue(
         transition,

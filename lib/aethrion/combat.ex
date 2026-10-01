@@ -32,15 +32,16 @@ defmodule Aethrion.Combat do
   alias Aethrion.Expression.Templates.Ko
 
   @doc false
-  # A roll from 0 to 5 that depends only on who acts on whom and where the
-  # fight stands (their hp), so a replayed fight goes the same way, and
-  # saying something in between does not change the dice.
+  # A roll from 0 to 5 that depends only on who acts on whom, where the
+  # fight stands (their hp), and the actor's turn count, so a replayed
+  # fight goes the same way, saying something in between does not change
+  # the dice, and the same standoff does not repeat the same blow.
   def roll(event, %State{} = state) do
     to = Map.get(event, :to)
 
     :erlang.phash2(
       {event.type, event.from, to, State.stat(state, event.from, "hp"),
-       State.stat(state, to, "hp")},
+       State.stat(state, to, "hp"), State.stat(state, event.from, "turns")},
       6
     )
   end
@@ -52,57 +53,118 @@ defmodule Aethrion.Combat do
   def held_key(id), do: "combat:held:#{id}"
 
   @doc """
-  Whether a fight story is over: its ending was decided by one of its
-  `decide_when` conditions (`Aethrion.Story`), after which no one fights.
+  Whether the story is over: its ending was decided (`Aethrion.Story`),
+  after which no one fights.
   """
   @spec over?(State.t()) :: boolean()
-  def over?(%State{story: story} = state),
-    do: Map.get(story, :decide_when, []) != [] and Aethrion.Rules.Ending.reached?(state)
+  def over?(%State{} = state), do: Aethrion.Rules.Ending.reached?(state)
 
   ## Reading what a player typed
 
-  # Verbs, not just words: "막걸리병으로 내려친다" strikes, "도망치지 않고
-  # 벤다" does not flee, "I strike past its guard" attacks. Attacks are read
-  # first, since a blow often mentions a shield or a guard.
-  @attack ~r/(벤다|베어|베고|벤 |찌른|찌르|찔러|(?<!도망)(?:친다|치고|쳐서)|때린|때려|휘두른|휘둘|공격|내려친|후려친|일격|날린|날려|쏜다|쏘아|쏴|베기|돌진|달려든)|\b(attack|attacks|strike|strikes|hit|hits|slash|stab|swing|swings|bash|smash|shoot|cut|charge|charges|punch|kick|thrust|lunge)\b/u
-  @defend ~r/(막는|막아|막았|막자|막고|방어 ?자세|방어한|방어를 한|방패를 (들|세|올)|웅크)|\b(defend|guard up|raise (my|the) guard|block|parry|brace)\b/u
+  # Verbs, not just words: "막걸리병으로 내려친다" strikes, "늑대왕에게
+  # 소리친다" does not, "I strike past its guard" attacks. Attacks are read
+  # before guards, since a blow often mentions a shield; potions before
+  # attacks, since a potion can be thrown.
+  @attack ~r/(벤다|베어|베고|벤 |벰|찌른|찌르|찔러|(?<!도망|소리|외)(?:친다|치고|쳐서)|(?<!도망)쳐(?=$|[\s!.~?])|때린|때려|휘두른|휘둘|공격|반격|내려친|후려친|일격|날린|날려|쏜다|쏘아|쏴|베기|돌진|달려든|처치|따버|던진|던져|물어뜯|마법|주문을|파이어볼|화염구)|\b(attack|attacks|strike|strikes|hit|hits|slash|stab|swing|swings|bash|smash|shoot|cut|charge|charges|punch|kick|thrust|lunge|throw|fireball|spell|magic)\b/u
+  @defend ~r/(막는|막아|막았|막자|막고|막으|방어|방패를 (들|세|올)|방패를 든|웅크|감싸|지킨|지켜|버틴|버텨|숨을 고르|숨을 고른|숨을 돌|기다린|버티|맞선)|\b(defend|guard|block|parry|brace|protect|cover|wait|stand)\b/u
   @heal ~r/(치료|회복|포션|물약|붕대|상처를 (감|싸))|\b(heal|potion|bandage|cure|patch)\b/u
-  @flee ~r/(도망친다|도망쳐|도망가|도망간다|도망치자|후퇴|달아난다|달아나|피신)|\b(flee|escape|retreat|run away)\b/u
+  @items ~r/(포션|물약|붕대)|\b(potion|bandage)\b/u
+  @flee ~r/(도망|후퇴|달아나|달아난|피신|튀자|튀어|튄다|빠져나)|\b(flee|escape|retreat|run away|run)\b/u
+  # Asking someone else: "리아, 나 좀 치료해줘", "heal me, Ria".
+  @asks ~r/(해\s?줘|해\s?주세요|해\s?줄래|부탁)|\b(heal me|patch me up|help me)\b/u
+  # What is ruled out: "늑대왕 말고 카엘을", "공격하지 말고 기다린다",
+  # "도망치지 않고 벤다", "절대 후퇴하지 않는다", "I won't run away".
+  @ruled_out ~r/\S+\s*(?:말고|않고)|\S+지\s*(?:않|말)\S*|\b(?:not|never|won't|don't|can't)\s+(?:\w+\s+)?\w+(?:\s+away)?/u
 
   @doc """
-  The combat event a player's words mean, aimed at whoever the words name
-  (a character's name or id), else `target`, else the first enemy standing
-  (`foe/1`). An attack when they strike; a guard; a heal (themselves, or an ally named as `target`; never an
-  enemy); an escape from `target`; and a guard when nothing is clear.
+  The combat event a player's words mean, or `nil` when they do not say
+  (a chat can ask again rather than lose the player's turn).
+
+  A blow, a throw, or a spell attacks whoever the words name (an enemy
+  first), else `target`, else the first enemy standing (`foe/1`). A guard
+  ("막는다", "리아를 감싼다", "기다린다") defends. A heal tends whoever the
+  words name (a companion first) or a companion given as `target`, else
+  the player; a potion someone drinks is their own, and asking a
+  companion who heals ("리아, 치료해줘") has them heal the player. Fleeing
+  runs from an enemy. "X 말고" and "X하지 말고" rule X out.
 
       action(state, "user", "wolf", "I swing my sword!")       # attack
-      action(state, "user", "wolf", "방패를 들어 막는다")       # defend
-      action(state, "user", "wolf", "포션을 마신다")            # heal, themselves
+      action(state, "user", nil, "방패를 들어 막는다")          # defend
+      action(state, "user", nil, "포션을 마신다")               # heal, themselves
+      action(state, "user", nil, "리아, 나 좀 치료해줘")        # Ria heals the player
   """
-  @spec action(State.t(), String.t(), String.t() | nil, String.t()) :: Event.t()
+  @spec action(State.t(), String.t(), String.t() | nil, String.t()) :: Event.t() | nil
   def action(%State{} = state, from, target, text) when is_binary(text) do
-    words = String.downcase(text)
-    target = named(state, words, "enemy") || target || foe(state)
+    words = text |> String.downcase() |> then(&Regex.replace(@ruled_out, &1, " "))
+    # With enemies in the world, a blow or an escape is aimed at one of them
+    # unless the host names someone else as the target.
+    only? = foe(state) != nil
+    foe = named(state, words, "enemy", only: only?) || target || foe(state)
 
+    case reading(state, words, from, foe) do
+      :asked ->
+        Event.heal(healer(state, words, from), from)
+
+      :heal ->
+        heal(state, from, target, words)
+
+      :attack ->
+        Event.attack(from, foe, skill: skill(text), observed_by: party(state) -- [from, foe])
+
+      :defend ->
+        Event.defend(from)
+
+      :flee ->
+        Event.flee(from, foe)
+
+      nil ->
+        nil
+    end
+  end
+
+  defp reading(state, words, from, foe) do
     cond do
-      Regex.match?(@attack, words) and target != nil ->
-        Event.attack(from, target,
-          skill: skill(text),
-          observed_by: party(state) -- [from, target]
-        )
+      Regex.match?(@heal, words) and Regex.match?(@asks, words) and healer(state, words, from) ->
+        :asked
+
+      Regex.match?(@items, words) ->
+        :heal
+
+      Regex.match?(@attack, words) and foe != nil ->
+        :attack
 
       Regex.match?(@heal, words) ->
-        target = named(state, words, "party") || target
-        Event.heal(from, heal_target(state, from, target, words), item: item(words))
+        :heal
 
       Regex.match?(@defend, words) ->
-        Event.defend(from)
+        :defend
 
-      Regex.match?(@flee, words) and target != nil ->
-        Event.flee(from, target)
+      Regex.match?(@flee, words) and foe != nil ->
+        :flee
 
       true ->
-        Event.defend(from)
+        nil
+    end
+  end
+
+  defp heal(state, from, target, words) do
+    to =
+      cond do
+        drinks?(words) -> from
+        named = named(state, words, "party") -> named
+        target != nil and State.stat(state, target, "party") > 0 -> target
+        true -> from
+      end
+
+    Event.heal(from, to, item: item(state, from, words))
+  end
+
+  # A companion named in a request who can heal.
+  defp healer(state, words, from) do
+    case named(state, words, "heal") do
+      nil -> nil
+      ^from -> nil
+      id -> if State.stat(state, id, "heal") > 0, do: id
     end
   end
 
@@ -130,14 +192,18 @@ defmodule Aethrion.Combat do
         do: id
   end
 
-  # Who the words name ("늑대왕을 벤다", "heal Ria"), by name or id. With
-  # several named, one with the `prefer` stat (an enemy to strike, a
-  # companion to heal) wins, then the longest name ("Mina" is not "Minami").
-  defp named(state, words, prefer) do
+  # Who the words name ("늑대왕을 벤다", "heal Ria"), by name or id, as a
+  # word ("aerial" does not name Ria; "리아를" does). With several named,
+  # one with the `prefer` stat (an enemy to strike, a companion to heal)
+  # wins, then the longest name. `only: true` takes only those with it.
+  defp named(state, words, prefer, opts \\ []) do
     state
     |> State.sorted_characters()
     |> Enum.flat_map(fn c -> [{String.downcase(c.name), c.id}, {String.downcase(c.id), c.id}] end)
-    |> Enum.filter(fn {name, _id} -> name != "" and String.contains?(words, name) end)
+    |> Enum.filter(fn {name, id} ->
+      name != "" and says?(words, name) and
+        (not Keyword.get(opts, :only, false) or State.stat(state, id, prefer) > 0)
+    end)
     |> Enum.max_by(
       fn {name, id} -> {State.stat(state, id, prefer) > 0, String.length(name)} end,
       fn -> {nil, nil} end
@@ -145,21 +211,27 @@ defmodule Aethrion.Combat do
     |> elem(1)
   end
 
-  # An ally (a party member) can be healed; anyone else gets the potion
-  # drunk by the one holding it.
-  defp heal_target(state, from, target, words) do
-    if target != nil and State.stat(state, target, "party") > 0 and not drinks?(words),
-      do: target,
-      else: from
+  # Not inside another word: nothing letter-like before it, and for a
+  # Latin name nothing Latin after it (Korean particles may follow).
+  defp says?(words, name) do
+    after_name = if name =~ ~r/[a-z0-9]$/u, do: "(?![a-z0-9])", else: ""
+
+    Regex.match?(
+      Regex.compile!("(?<![\\p{L}\\p{N}])" <> Regex.escape(name) <> after_name, "u"),
+      words
+    )
   end
 
   # Drinking a potion is for oneself, whoever was being talked to.
   defp drinks?(words), do: Regex.match?(~r/(마신|마셔|들이켜|들이킨)|\b(drink|drinks|quaff|gulp)\b/u, words)
 
-  defp item(words) do
+  # A potion or a bandage when they say so; someone with no healing of
+  # their own reaches for a potion if they have one.
+  defp item(state, from, words) do
     cond do
       String.contains?(words, ["potion", "포션", "물약"]) -> "potion"
       String.contains?(words, ["bandage", "붕대"]) -> "bandage"
+      State.stat(state, from, "heal") == 0 and State.stat(state, from, "potions") > 0 -> "potion"
       true -> nil
     end
   end
@@ -229,7 +301,7 @@ defmodule Aethrion.Combat do
     critical = if kind == :critical, do: "치명타! ", else: ""
 
     "#{critical}#{Ko.subject(name.(output.character_id))} #{name.(output.to)}에게 " <>
-      "#{output.amount}의 피해를 입혔다#{guarded(output, :ko)}.#{hp}"
+      "#{output.amount}의 피해를 입혔다.#{guarded(output, :ko)}#{hp}"
   end
 
   defp told(:ko, :defeated, %{character_id: by}, name, _hp), do: "#{Ko.subject(name.(by))} 쓰러졌다."
@@ -247,7 +319,7 @@ defmodule Aethrion.Combat do
 
   defp told(:ko, :holds_back, %{character_id: by} = output, name, _hp) do
     if :sensitive in Map.get(output, :traits, []),
-      do: "#{Ko.with_particle(name.(by), :topic)} 겁에 질려 뒤로 물러섰다.",
+      do: "#{Ko.with_particle(name.(by), :topic)} 머뭇거리다 한 발 물러섰다.",
       else: "#{Ko.with_particle(name.(by), :topic)} 팔짱을 낀 채 지켜보기만 했다."
   end
 
@@ -272,7 +344,7 @@ defmodule Aethrion.Combat do
   defp hp_suffix(_output, _name, _locale), do: ""
 
   defp guarded(%{guarded: true}, :en), do: ", through a raised guard"
-  defp guarded(%{guarded: true}, :ko), do: " (방어로 절반)"
+  defp guarded(%{guarded: true}, :ko), do: " 방어 덕에 절반만 들어갔다."
   defp guarded(_output, _locale), do: ""
 
   defp name(_state, "user", :en), do: "you"

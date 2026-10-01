@@ -287,8 +287,20 @@ defmodule Aethrion.API do
          {:ok, text} <- required(data, "text"),
          :ok <- short_enough(text, config.max_text),
          {:ok, state} <- Worlds.peek_state(config.worlds, key) do
-      event = Aethrion.Combat.action(state, Map.get(data, "from", "user"), data["to"], text)
-      dispatch(config, key, event, %{interpreted: %{type: event.type}})
+      case Aethrion.Combat.action(state, Map.get(data, "from", "user"), data["to"], text) do
+        nil ->
+          {:error,
+           Error.new(
+             :unclear_action,
+             "could not tell what that does in a fight: say how you attack, guard, heal, or flee",
+             %{text: text}
+           )}
+
+        event ->
+          dispatch(config, key, event, %{
+            interpreted: %{type: event.type, to: Map.get(event, :to)}
+          })
+      end
     end
   end
 

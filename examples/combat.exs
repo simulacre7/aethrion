@@ -1,6 +1,6 @@
 # mix run examples/combat.exs
 #
-# A fight with the wolf king (priv/casts/quest.json), played four ways.
+# A fight with the wolf king (priv/casts/quest.json), played six ways.
 # Hp, damage, and who falls are decided by the numbers and replay exactly;
 # so is how the companions come to feel about you, and the ending the
 # story reaches the moment the fight is settled.
@@ -23,7 +23,16 @@ playthroughs = %{
       do: [Event.message_sent("user", "ria", "Thank you, Ria. Stay behind me.", tone: :warm), strike],
       else: [strike]
   end,
-  "alone" => fn _state, round -> if round == 1, do: [insult.("kael"), strike], else: [strike] end,
+  "kael insulted" => fn _state, round -> if round == 1, do: [insult.("kael"), strike], else: [strike] end,
+  "lone wolf" => fn state, round ->
+    hurt? = State.stat(state, "user", "hp") < 14 and State.stat(state, "user", "potions") > 0
+
+    cond do
+      round == 1 -> [insult.("kael"), insult.("ria"), strike]
+      hurt? -> [Combat.action(state, "user", nil, "물약을 들이켠다")]
+      true -> [strike]
+    end
+  end,
   "retreat" => fn state, round ->
     if round < 2,
       do: [strike],

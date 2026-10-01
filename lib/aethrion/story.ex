@@ -48,7 +48,7 @@ defmodule Aethrion.Story do
   | `{"bond": [from, to]}` | the relationship's bond |
   | `{"memories": {"character": id, "event": "gift_received", "from": "user"}}` | how many such memories the character holds (faded ones included) |
   | `{"clock": true}` | the simulated hour |
-  | `{"any": [conditions]}`, `{"not": condition}` | either of, or the opposite of |
+  | `{"any": [conditions]}`, `{"all": [conditions]}`, `{"not": condition}` | either of, all of (inside `any`), or the opposite of |
 
   `ending/1` says which ending the world would reach now, `progress/1` how
   close every ending is and what is missing, so a game can hint at a route.
@@ -149,6 +149,7 @@ defmodule Aethrion.Story do
   @doc "Whether a parsed condition holds in `state`."
   @spec holds?(State.t(), tuple()) :: boolean()
   def holds?(state, {:any, conditions}), do: Enum.any?(conditions, &holds?(state, &1))
+  def holds?(state, {:all, conditions}), do: Enum.all?(conditions, &holds?(state, &1))
   def holds?(state, {:not, condition}), do: not holds?(state, condition)
 
   def holds?(state, {:bond, from, to, op, wanted}) do
@@ -205,6 +206,9 @@ defmodule Aethrion.Story do
   @spec describe(State.t(), tuple()) :: String.t()
   def describe(state, {:any, conditions}),
     do: "any of: " <> Enum.map_join(conditions, "; ", &describe(state, &1))
+
+  def describe(state, {:all, conditions}),
+    do: "(" <> Enum.map_join(conditions, " and ", &describe(state, &1)) <> ")"
 
   def describe(state, {:not, condition}), do: "not (" <> describe(state, condition) <> ")"
 
@@ -277,6 +281,7 @@ defmodule Aethrion.Story do
   end
 
   defp named({:any, list}), do: Enum.flat_map(list, &named/1)
+  defp named({:all, list}), do: Enum.flat_map(list, &named/1)
   defp named({:not, condition}), do: named(condition)
   defp named({:bond, from, to, _op, _bond}), do: [{from, :character}, {to, :actor}]
   defp named({:stat, {actor, _name}, _op, _want}), do: [{actor, :actor}]
@@ -391,7 +396,7 @@ defmodule Aethrion.Story do
 
   defp parse_conditions(_list, path), do: {:error, "must be a list of conditions", path}
 
-  @subjects ~w(any not bond stat character relationship memories clock)
+  @subjects ~w(any all not bond stat character relationship memories clock)
   @operators ~w(is at_least at_most equals)
 
   defp parse_condition(data) when is_map(data) do
@@ -418,6 +423,10 @@ defmodule Aethrion.Story do
 
   defp parse_one(%{"any" => list}) do
     with {:ok, conditions} <- parse_conditions(list, ["any"]), do: {:ok, {:any, conditions}}
+  end
+
+  defp parse_one(%{"all" => list}) do
+    with {:ok, conditions} <- parse_conditions(list, ["all"]), do: {:ok, {:all, conditions}}
   end
 
   defp parse_one(%{"not" => condition}) do
@@ -452,7 +461,7 @@ defmodule Aethrion.Story do
   defp parse_one(_data),
     do:
       {:error,
-       "a condition is one of stat, character (with field), relationship (with field), bond, memories, clock, any, or not",
+       "a condition is one of stat, character (with field), relationship (with field), bond, memories, clock, any, all, or not",
        []}
 
   defp with_op(data, {subject, what}) do
@@ -489,6 +498,7 @@ defmodule Aethrion.Story do
   end
 
   defp condition_to_data({:any, list}), do: %{"any" => Enum.map(list, &condition_to_data/1)}
+  defp condition_to_data({:all, list}), do: %{"all" => Enum.map(list, &condition_to_data/1)}
   defp condition_to_data({:not, c}), do: %{"not" => condition_to_data(c)}
 
   defp condition_to_data({:bond, from, to, op, bond}),

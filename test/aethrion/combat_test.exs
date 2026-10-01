@@ -103,8 +103,10 @@ defmodule Aethrion.CombatTest do
   end
 
   test "being attacked, seen attacking a friend, fighting beside, and being healed change how characters feel" do
+    hurt = put_in(arena().stats["mina"]["hp"], 10)
+
     {state, _outputs, _steps} =
-      run(put_in(arena().stats["mina"]["hp"], 10), [
+      run(put_in(hurt.stats["user"]["heal"], 6), [
         Event.attack("user", "yuna", observed_by: ["haru"]),
         Event.attack("user", "goblin", observed_by: ["mina"]),
         Event.heal("user", "mina", amount: 1)
@@ -348,8 +350,74 @@ defmodule Aethrion.CombatTest do
              max_hp: 30,
              guarded: true
            }) =~
-             "3의 피해를 입혔다 (방어로 절반)."
+             "3의 피해를 입혔다. 방어 덕에 절반만 들어갔다."
 
     assert ko.(%{kind: :holds_back, character_id: "haru", to: "user"}) =~ "지켜보기만 했다"
+  end
+
+  test "healing takes a healer or an item, running needs an enemy, and the fallen do not talk" do
+    state = arena() |> put_in([Access.key(:stats), "goblin", "enemy"], 1)
+    hurt = put_in(state.stats["user"]["hp"], 10)
+
+    assert {:error, %{message: "user cannot heal without a potion or a healer's skill"}} =
+             Runtime.step(hurt, Event.heal("user", "user"))
+
+    no_bandages = put_in(hurt.stats["user"]["bandages"], 0)
+
+    assert {:error, %{message: "user has no bandages left"}} =
+             Runtime.step(no_bandages, Event.heal("user", "user", item: "bandage"))
+
+    assert {:error, %{message: "mina is not an enemy to flee from"}} =
+             Runtime.step(state, Event.flee("user", "mina"))
+
+    assert {:error, %{code: :unknown_character}} =
+             Runtime.step(state, Event.attack("user", "nobody"))
+
+    down = put_in(state.stats["yuna"]["hp"], 0)
+
+    assert {:error, %{code: :unavailable_character, message: "yuna is down"}} =
+             Runtime.step(down, Event.message_sent("user", "yuna", "Are you okay?", tone: :warm))
+  end
+
+  test "turning on someone who is not an enemy still gives the enemies their turn" do
+    state = put_in(arena().stats["goblin"]["enemy"], 1)
+    {_after, outputs, _steps} = run(state, [Event.attack("user", "yuna")])
+    assert Enum.any?(combat(outputs), &(&1.character_id == "goblin" and &1.to == "user"))
+  end
+
+  test "the same standoff does not repeat the same blow" do
+    state = arena() |> put_in([Access.key(:stats), "goblin", "hp"], 500)
+    {_after, outputs, _steps} = run(state, List.duplicate(Event.defend("user"), 1))
+    assert outputs != []
+
+    rolls =
+      for turns <- 0..11 do
+        Combat.roll(Event.attack("goblin", "user"), put_in(state.stats["goblin"]["turns"], turns))
+      end
+
+    assert length(Enum.uniq(rolls)) > 1
+  end
+
+  test "names are words, what is ruled out is ruled out, and unclear words are nil" do
+    state =
+      arena()
+      |> put_in([Access.key(:stats), "goblin", "enemy"], 1)
+      |> put_in([Access.key(:stats), "mina", "party"], 1)
+
+    assert %{type: :attack, to: "goblin"} =
+             Combat.action(state, "user", nil, "I strike with a minacious leap!")
+
+    assert %{type: :attack, to: "goblin"} = Combat.action(state, "user", nil, "Mina, 같이 공격하자!")
+    assert %{type: :flee, to: "goblin"} = Combat.action(state, "user", nil, "Mina, 도망치자!")
+    assert Combat.action(state, "user", nil, "절대 후퇴하지 않는다") == nil
+
+    assert %{type: :defend} =
+             Combat.action(state, "user", nil, "I won't run away, I stand my ground")
+
+    assert %{type: :defend} = Combat.action(state, "user", nil, "공격하지 말고 기다린다")
+    assert Combat.action(state, "user", nil, "Goblin에게 소리친다") == nil
+
+    assert %{type: :heal, from: "mina", to: "user"} =
+             Combat.action(state, "user", nil, "Mina, 나 좀 치료해줘")
   end
 end

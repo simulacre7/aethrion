@@ -64,7 +64,8 @@
       "attack": 7,
       "defense": 2,
       "speed": 3,
-      "potions": 2
+      "potions": 3,
+      "bandages": 0
     },
     "ria": {
       "hp": 18,
@@ -83,8 +84,8 @@
       "party": 1
     },
     "wolf": {
-      "hp": 60,
-      "max_hp": 60,
+      "hp": 52,
+      "max_hp": 52,
       "attack": 7,
       "defense": 2,
       "speed": 4,
@@ -127,6 +128,35 @@
               "hp"
             ],
             "at_most": 0
+          },
+          {
+            "stat": [
+              "ria",
+              "hp"
+            ],
+            "at_least": 1
+          },
+          {
+            "relationship": [
+              "ria",
+              "user"
+            ],
+            "field": "trust",
+            "at_least": 15
+          }
+        ]
+      },
+      {
+        "id": "fallen_alone",
+        "title": "아무도 오지 않은 숲",
+        "description": "늑대왕의 울음소리가 숲을 덮는다. 너를 찾으러 오는 발소리는 없었다.",
+        "when": [
+          {
+            "stat": [
+              "user",
+              "hp"
+            ],
+            "at_most": 0
           }
         ]
       },
@@ -148,7 +178,14 @@
               "user"
             ],
             "field": "trust",
-            "at_least": 15
+            "at_least": 24
+          },
+          {
+            "stat": [
+              "kael",
+              "hp"
+            ],
+            "at_least": 1
           },
           {
             "relationship": [
@@ -156,7 +193,70 @@
               "user"
             ],
             "field": "trust",
-            "at_least": 15
+            "at_least": 26
+          },
+          {
+            "stat": [
+              "ria",
+              "hp"
+            ],
+            "at_least": 1
+          }
+        ]
+      },
+      {
+        "id": "one_beside",
+        "title": "곁에 남은 한 사람",
+        "description": "늑대왕이 쓰러진다. 돌아보니 곁에 남아 있는 건 한 사람뿐이다.",
+        "when": [
+          {
+            "stat": [
+              "wolf",
+              "hp"
+            ],
+            "at_most": 0
+          },
+          {
+            "any": [
+              {
+                "all": [
+                  {
+                    "relationship": [
+                      "kael",
+                      "user"
+                    ],
+                    "field": "trust",
+                    "at_least": 24
+                  },
+                  {
+                    "stat": [
+                      "kael",
+                      "hp"
+                    ],
+                    "at_least": 1
+                  }
+                ]
+              },
+              {
+                "all": [
+                  {
+                    "relationship": [
+                      "ria",
+                      "user"
+                    ],
+                    "field": "trust",
+                    "at_least": 26
+                  },
+                  {
+                    "stat": [
+                      "ria",
+                      "hp"
+                    ],
+                    "at_least": 1
+                  }
+                ]
+              }
+            ]
           }
         ]
       },
@@ -177,6 +277,7 @@
       {
         "id": "night",
         "title": "끝나지 않은 밤",
+        "description": "늑대왕의 울음이 등 뒤에서 멀어진다. 살아남았지만, 숲은 아직 그의 것이다.",
         "when": [
           {
             "stat": [
@@ -185,14 +286,14 @@
             ],
             "at_least": 1
           }
-        ],
-        "description": "늑대왕의 울음이 등 뒤에서 멀어진다. 살아남았지만, 숲은 아직 그의 것이다."
+        ]
       }
     ]
   },
   "tuning": {
     "combat": {
-      "party_trust": 15
+      "party_trust": 15,
+      "default_heal": 15
     }
   }
 }

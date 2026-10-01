@@ -40,6 +40,7 @@ defmodule Aethrion.Validator do
   defp validate_event(state, %{type: :gift_received} = event) do
     with :ok <- require_name(event, :from),
          :ok <- require_character(state, event, :to),
+         :ok <- require_conscious(state, event),
          :ok <- require_distinct(event),
          :ok <- require_name(event, :item) do
       require_observers(state, Map.get(event, :observed_by, []))
@@ -64,6 +65,7 @@ defmodule Aethrion.Validator do
   defp validate_event(state, %{type: :apology_offered} = event) do
     with :ok <- require_name(event, :from),
          :ok <- require_character(state, event, :to),
+         :ok <- require_conscious(state, event),
          :ok <- require_distinct(event),
          :ok <- require_string(event, :reason) do
       require_observers(state, Map.get(event, :observed_by, []))
@@ -73,6 +75,7 @@ defmodule Aethrion.Validator do
   defp validate_event(state, %{type: :message_sent} = event) do
     with :ok <- require_name(event, :from),
          :ok <- require_character(state, event, :to),
+         :ok <- require_conscious(state, event),
          :ok <- require_distinct(event),
          :ok <- require_string(event, :text),
          :ok <- require_tone(event) do
@@ -81,7 +84,7 @@ defmodule Aethrion.Validator do
   end
 
   defp validate_event(state, %{type: type} = event)
-       when type in [:attack, :defend, :heal, :flee] and is_map_key(event, :from) do
+       when type in [:attack, :defend, :heal, :flee] do
     if Aethrion.Combat.over?(state),
       do:
         {:error,
@@ -113,6 +116,7 @@ defmodule Aethrion.Validator do
   defp validate_event(state, %{type: :comfort_offered} = event) do
     with :ok <- require_name(event, :from),
          :ok <- require_character(state, event, :to),
+         :ok <- require_conscious(state, event),
          :ok <- require_distinct(event) do
       require_available(state, event.from, :from)
     end
@@ -121,6 +125,7 @@ defmodule Aethrion.Validator do
   defp validate_event(state, %{type: :time_spent_together} = event) do
     with :ok <- require_character(state, event, :from),
          :ok <- require_character(state, event, :to),
+         :ok <- require_conscious(state, event),
          :ok <- require_distinct(event),
          :ok <- require_available(state, event.from, :from) do
       require_available(state, event.to, :to)
@@ -130,6 +135,7 @@ defmodule Aethrion.Validator do
   defp validate_event(state, %{type: :gossip_shared} = event) do
     with :ok <- require_character(state, event, :from),
          :ok <- require_character(state, event, :to),
+         :ok <- require_conscious(state, event),
          :ok <- require_distinct(event),
          :ok <- require_available(state, event.from, :from),
          :ok <- require_available(state, event.to, :to) do
@@ -159,7 +165,7 @@ defmodule Aethrion.Validator do
          :ok <- require_fighter(state, event, :to),
          :ok <- require_hurt(state, event.to),
          :ok <- optional_name(event, :item),
-         :ok <- require_potion(state, event) do
+         :ok <- require_means(state, event) do
       case Map.get(event, :amount) do
         nil ->
           :ok
@@ -176,8 +182,29 @@ defmodule Aethrion.Validator do
 
   defp validate_combat(state, %{type: :flee} = event) do
     with :ok <- require_fighter(state, event, :from),
-         :ok <- require_fighter(state, event, :to) do
-      require_distinct(event)
+         :ok <- require_fighter(state, event, :to),
+         :ok <- require_distinct(event) do
+      require_enemy(state, event.to)
+    end
+  end
+
+  # With enemies in the world, one runs from them, not from a companion.
+  defp require_enemy(state, id) do
+    enemies? = Enum.any?(Map.keys(state.stats), &(State.stat(state, &1, "enemy") > 0))
+
+    if enemies? and State.stat(state, id, "enemy") == 0,
+      do: {:error, error(:invalid_event, "#{id} is not an enemy to flee from", %{field: :to})},
+      else: :ok
+  end
+
+  # Someone knocked out in a fight (0 hp) neither talks nor listens.
+  defp require_conscious(state, event) do
+    case Enum.find(
+           [event.from, event.to],
+           &(State.stat?(state, &1, "hp") and State.stat(state, &1, "hp") <= 0)
+         ) do
+      nil -> :ok
+      id -> {:error, error(:unavailable_character, "#{id} is down", %{character_id: id})}
     end
   end
 
@@ -209,6 +236,14 @@ defmodule Aethrion.Validator do
       id = Map.fetch!(event, field)
 
       cond do
+        not State.stat?(state, id, "hp") and not State.character?(state, id) and id != "user" and
+            not Map.has_key?(state.people, id) ->
+          {:error,
+           error(:unknown_character, "unknown character: #{inspect(id)}", %{
+             field: field,
+             character_id: id
+           })}
+
         not State.stat?(state, id, "hp") ->
           {:error,
            error(:invalid_event, "#{id} cannot fight: no hp stat", %{field: field, actor: id})}
@@ -243,14 +278,26 @@ defmodule Aethrion.Validator do
        else: :ok
   end
 
-  # Counted potions run out; without a "potions" stat they do not.
-  defp require_potion(state, %{item: "potion", from: from}) do
-    if State.stat?(state, from, "potions") and State.stat(state, from, "potions") <= 0,
-      do: {:error, error(:invalid_event, "#{from} has no potions left", %{field: :item})},
+  # Healing takes a healer (a "heal" stat) or an item. Counted items run
+  # out: a potion uses one of "potions", a bandage one of "bandages";
+  # without that stat, the item is the host's to count.
+  defp require_means(state, %{item: item, from: from}) when is_binary(item) do
+    count = item <> "s"
+
+    if State.stat?(state, from, count) and State.stat(state, from, count) <= 0,
+      do: {:error, error(:invalid_event, "#{from} has no #{count} left", %{field: :item})},
       else: :ok
   end
 
-  defp require_potion(_state, _event), do: :ok
+  defp require_means(state, %{from: from}) do
+    if State.stat(state, from, "heal") > 0,
+      do: :ok,
+      else:
+        {:error,
+         error(:invalid_event, "#{from} cannot heal without a potion or a healer's skill", %{
+           field: :item
+         })}
+  end
 
   defp optional_name(event, field) do
     case Map.get(event, field) do
