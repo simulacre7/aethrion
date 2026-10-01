@@ -93,7 +93,7 @@ for line in JSON.parse_string(body.get_string_from_utf8())["lines"]:
   show_bubble(line["character_id"], line["text"])
 ```
 
-Witnesses come from the game's own world (`"observed_by": ["yuna"]`), time from its clock (`POST /worlds/slot-1/events` with `{"type": "time_tick", "hours": 6}`), and gifts or apologies are events too (`{"type": "gift_received", "from": "user", "to": "mina", "item": "flower"}`). Lines characters say on their own appear in the response of whatever event caused them, and in `GET /worlds/slot-1/conversation?character=mina&after=e12`.
+Witnesses come from the game's own world (`"observed_by": ["yuna"]`), time from its clock (`POST /worlds/slot-1/events` with `{"type": "time_tick", "hours": 6}`), and gifts or apologies are events too (`{"type": "gift_received", "from": "user", "to": "mina", "item": "flower"}`). `examples/http_client.py` does the same from Python with the standard library alone. Lines characters say on their own appear in the response of whatever event caused them, and in `GET /worlds/slot-1/conversation?character=mina&after=e12`.
 
 ## Game NPCs: witnesses and bonds
 

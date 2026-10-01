@@ -305,7 +305,7 @@ curl -s localhost:4848/worlds/alice/events -H 'content-type: application/json' \
   -d '{"type": "time_tick", "hours": 6}'      # time passes: characters reach out, gossip, keep each other company
 ```
 
-`say` takes free text (interpreted into an event), `events` takes any event a scenario can hold, and `GET /worlds/{key}/conversation?character=mina&after=e12` polls for new lines. A bearer token, localhost binding, and size limits are on by default or one option away. See [docs/api.md](docs/api.md#http-api) and the [cookbook](docs/cookbook.md).
+`say` takes free text (interpreted into an event), `events` takes any event a scenario can hold, and `GET /worlds/{key}/conversation?character=mina&after=e12` polls for new lines. A bearer token, localhost binding, and size limits are on by default or one option away. See [docs/api.md](docs/api.md#http-api), the [cookbook](docs/cookbook.md), and [examples/http_client.py](examples/http_client.py) (a chat backend's side, Python standard library only).
 
 ## Runtime vs LLM Server
 
