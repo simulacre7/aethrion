@@ -38,10 +38,10 @@ defmodule Aethrion.Validator do
   end
 
   defp validate_event(state, %{type: :gift_received} = event) do
-    with :ok <- require_string(event, :from),
+    with :ok <- require_name(event, :from),
          :ok <- require_character(state, event, :to),
          :ok <- require_distinct(event),
-         :ok <- require_string(event, :item) do
+         :ok <- require_name(event, :item) do
       require_observers(state, Map.get(event, :observed_by, []))
     end
   end
@@ -62,7 +62,7 @@ defmodule Aethrion.Validator do
   end
 
   defp validate_event(state, %{type: :apology_offered} = event) do
-    with :ok <- require_string(event, :from),
+    with :ok <- require_name(event, :from),
          :ok <- require_character(state, event, :to),
          :ok <- require_distinct(event),
          :ok <- require_string(event, :reason) do
@@ -71,7 +71,7 @@ defmodule Aethrion.Validator do
   end
 
   defp validate_event(state, %{type: :message_sent} = event) do
-    with :ok <- require_string(event, :from),
+    with :ok <- require_name(event, :from),
          :ok <- require_character(state, event, :to),
          :ok <- require_distinct(event),
          :ok <- require_string(event, :text),
@@ -81,7 +81,7 @@ defmodule Aethrion.Validator do
   end
 
   defp validate_event(state, %{type: :comfort_offered} = event) do
-    with :ok <- require_string(event, :from),
+    with :ok <- require_name(event, :from),
          :ok <- require_character(state, event, :to),
          :ok <- require_distinct(event) do
       require_available(state, event.from, :from)
@@ -117,6 +117,18 @@ defmodule Aethrion.Validator do
       :ok
     else
       {:error, error(:invalid_event, "#{field} must be a non-empty string", %{field: field})}
+    end
+  end
+
+  # Ids and items are names, not text: no line breaks or other control
+  # characters, which could also pass for structure in a model's prompt.
+  defp require_name(event, field) do
+    with :ok <- require_string(event, field) do
+      if String.match?(Map.get(event, field), ~r/\p{Cc}/u),
+        do:
+          {:error,
+           error(:invalid_event, "#{field} must not contain control characters", %{field: field})},
+        else: :ok
     end
   end
 

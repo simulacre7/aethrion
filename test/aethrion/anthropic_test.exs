@@ -86,7 +86,7 @@ defmodule Aethrion.LLM.AnthropicTest do
     assert body["fallbacks"] == "default"
     assert body["system"] =~ "Your job is to phrase it."
     assert [%{"role" => "user", "content" => content}] = body["messages"]
-    assert content =~ "Draft line: That's sweet of you."
+    assert content =~ ~s(Draft line: "That's sweet of you.)
     refute Map.has_key?(body, "temperature")
   end
 

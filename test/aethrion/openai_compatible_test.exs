@@ -39,7 +39,7 @@ defmodule Aethrion.LLM.OpenAICompatibleTest do
     body = Jason.decode!(request.body)
     assert body["model"] == "test-model"
     assert [%{"role" => "system"}, %{"role" => "user", "content" => context}] = body["messages"]
-    assert context =~ "Draft line: You looked happy with Mina earlier."
+    assert context =~ ~s(Draft line: "You looked happy with Mina earlier.)
     assert context =~ "yuna saw user give mina a flower."
     assert context =~ "mood: jealous"
   end

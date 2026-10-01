@@ -13,10 +13,13 @@ defmodule Aethrion.LLM.HTTP do
   `{:error, {:http_status, status, decoded_or_raw}}` otherwise, or
   `{:error, {:http_error, reason}}` for transport failures and timeouts.
 
-  Options: `:retries` (default 2) retries rate limits, overload, server
-  errors, and failed connections, waiting `:backoff_ms` (default 500)
-  doubled each time with jitter, or what a `retry-after` header asks (at
-  most #{@max_wait_ms} ms).
+  `timeout` bounds the whole call, retries included. Options: `:retries`
+  (default 2) retries rate limits, overload, server errors, and failed
+  connections, waiting `:backoff_ms` (default 500) doubled each time with
+  jitter, or what a `retry-after` header asks (at most #{@max_wait_ms} ms),
+  as long as at least a second would be left for the next attempt. A 500,
+  502, 504, or 408 may follow a generation the provider completed, so a
+  retry can be billed twice; 429, 529, and 503 are refused before any work.
   """
   def post_json(url, headers, body, timeout, opts \\ []) do
     {:ok, _apps} = Application.ensure_all_started([:inets, :ssl])
@@ -28,22 +31,33 @@ defmodule Aethrion.LLM.HTTP do
         end)
 
     request = {String.to_charlist(url), headers, ~c"application/json", Jason.encode!(body)}
-    http_options = [timeout: timeout, connect_timeout: timeout] ++ ssl_options(url)
 
-    attempt(
-      request,
-      http_options,
-      Keyword.get(opts, :retries, 2),
-      Keyword.get(opts, :backoff_ms, 500),
-      0
-    )
+    retry = %{
+      retries: Keyword.get(opts, :retries, 2),
+      backoff: Keyword.get(opts, :backoff_ms, 500),
+      deadline: now() + timeout,
+      ssl: ssl_options(url)
+    }
+
+    attempt(request, retry, 0)
   end
 
-  defp attempt(request, http_options, retries, backoff, tried) do
+  @least_attempt_ms 1_000
+
+  defp attempt(request, retry, tried) do
+    remaining = max(retry.deadline - now(), 1)
+    http_options = [timeout: remaining, connect_timeout: remaining] ++ retry.ssl
+
     case send_request(request, http_options) do
-      {:retry, wait, _error} when tried < retries ->
-        Process.sleep(wait || jittered(backoff * Integer.pow(2, tried)))
-        attempt(request, http_options, retries, backoff, tried + 1)
+      {:retry, wait, error} when tried < retry.retries ->
+        wait = wait || jittered(retry.backoff * Integer.pow(2, tried))
+
+        if retry.deadline - now() - wait >= @least_attempt_ms do
+          Process.sleep(wait)
+          attempt(request, retry, tried + 1)
+        else
+          error
+        end
 
       {:retry, _wait, error} ->
         error
@@ -52,6 +66,8 @@ defmodule Aethrion.LLM.HTTP do
         result
     end
   end
+
+  defp now, do: System.monotonic_time(:millisecond)
 
   defp send_request(request, http_options) do
     case :httpc.request(:post, request, http_options, body_format: :binary) do

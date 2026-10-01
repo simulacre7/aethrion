@@ -228,7 +228,7 @@ user> context yuna
   Recent conversation (oldest first):
   - you: (apologizes) "sorry I forgot about you"
   - Yuna: "Thanks. I just wanted to feel remembered too."
-  Draft line: It's been quiet today. Do you have a minute to talk?
+  Draft line: "It's been quiet today. Do you have a minute to talk?"
 ```
 
 Commands include `say`, `message`, `gift`, `apologize`, `comfort`, `tick`, `here` (who else is in the room, witnessing what you say), `opinion` (how one character sees another), `digest` (what changed while you weren't looking), `status`, `memories`, `why`, `context`, `timeline`, `rules`, `undo`, `save`, `load`, `record` (turn a play session into a replayable scenario), and `report` (the session as an HTML report).

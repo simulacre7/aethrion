@@ -21,8 +21,8 @@ Ready for chat apps and games: a world per user, conversations a model can follo
 
 ### Changed
 
-- Prompts: a reply to a message answers it. The prompt states the stance the rules chose and shows the draft as example wording; real-world knowledge is fine, inventing things in the world is not; time gaps and unanswered messages show in the thread; off-script requests are met in character. What a user typed reaches the model as quoted, single-line data, so it cannot forge prompt fields.
-- LLM adapters retry 408, 429, 5xx, 529, and failed connections (`:retries`, default 2) with backoff and `retry-after`. The OpenAI-compatible default `max_tokens` is 200.
+- Prompts: a reply to a message answers it. The prompt states the stance the rules chose and shows the draft as example wording; real-world knowledge is fine, inventing things in the world is not; time gaps and unanswered messages show in the thread; off-script requests are met in character. What a user typed reaches the model as quoted, single-line data (messages, the thread, memories, the draft line, the intent prompt), and ids and gift items may not contain control characters, so nothing a user sends can forge prompt fields.
+- LLM adapters retry 408, 429, 5xx, 529, and failed connections (`:retries`, default 2) with backoff and `retry-after`, within the adapter's `:timeout`, which now bounds the whole call. The OpenAI-compatible default `max_tokens` is 200.
 
 ## v0.2.0-alpha
 

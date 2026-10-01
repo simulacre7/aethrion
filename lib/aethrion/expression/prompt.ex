@@ -138,8 +138,8 @@ defmodule Aethrion.Expression.Prompt do
   @doc false
   def intent_context(%Intent.Request{} = request) do
     """
-    Character: #{request.listener.name} (#{request.listener.profile})
-    Message from #{request.from}: #{request.text}
+    Character: #{one_line(request.listener.name)} (#{one_line(request.listener.profile)})
+    Message from #{one_line(request.from)}: #{quoted(request.text)}
     """
     |> String.trim()
   end
@@ -170,6 +170,8 @@ defmodule Aethrion.Expression.Prompt do
   end
 
   defp describe_actor(%{name: name} = actor) do
+    name = one_line(name)
+
     details =
       [
         actor[:profile] && String.trim_trailing(actor.profile, "."),
@@ -258,7 +260,9 @@ defmodule Aethrion.Expression.Prompt do
 
   defp people_line(%Request{names: names}) when map_size(names) > 0 do
     "People: " <>
-      (names |> Enum.sort() |> Enum.map_join(", ", fn {id, name} -> "#{id} = #{name}" end))
+      (names
+       |> Enum.sort()
+       |> Enum.map_join(", ", fn {id, name} -> "#{one_line(id)} = #{one_line(name)}" end))
   end
 
   defp people_line(_request), do: nil
@@ -272,7 +276,7 @@ defmodule Aethrion.Expression.Prompt do
       |> Enum.flat_map(fn {turn, index} ->
         previous = if index > 0, do: Enum.at(turns, index - 1)
         following = Enum.at(turns, index + 1)
-        name = Map.get(request.names, turn.from, turn.from)
+        name = one_line(Map.get(request.names, turn.from, turn.from))
 
         said =
           case turn.kind do
@@ -319,8 +323,8 @@ defmodule Aethrion.Expression.Prompt do
   # line to phrase.
   defp draft_lines(request) do
     if answers?(request),
-      do: ["Stance: #{stance(request)}", "Example wording: #{request.fallback_text}"],
-      else: "Draft line: #{request.fallback_text}"
+      do: ["Stance: #{stance(request)}", "Example wording: #{quoted(request.fallback_text)}"],
+      else: "Draft line: #{quoted(request.fallback_text)}"
   end
 
   @doc false
