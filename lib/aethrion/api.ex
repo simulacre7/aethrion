@@ -24,6 +24,7 @@ defmodule Aethrion.API do
   | `GET` | `/worlds/{key}/conversation?character=mina&person=user&after=e12` | the recent turns between them (after an event, for polling: proactive messages land here too) |
   | `GET` | `/worlds/{key}/state` | the whole state, as `Aethrion.State.to_data/1` |
   | `GET` | `/health` | `{"ok": true}` |
+  | `GET` | `/` | a small chat page for trying a world in a browser (no token needed to load it; its requests send one) |
 
   `say` and `events` answer with what happened:
 
@@ -115,7 +116,14 @@ defmodule Aethrion.API do
 
   ## Requests, as plain data: the handler turns httpd's records into these.
 
+  @chat_path Path.expand("../../priv/api/chat.html", __DIR__)
+  @external_resource @chat_path
+  @chat_html File.read!(@chat_path)
+
   @doc false
+  # The chat page holds no data, so it loads without a token.
+  def handle(_config, "GET", [], _query, _headers, _body), do: {200, :html, @chat_html}
+
   def handle(config, method, path, query, headers, body) do
     with :ok <- authorize(config, headers),
          {:ok, route} <- route(method, path) do
@@ -370,9 +378,12 @@ defmodule Aethrion.API do
 
       method = request |> mod(:method) |> to_string()
 
-      {status, json} =
+      {status, content_type, json} =
         try do
-          Aethrion.API.handle(config, method, segments, query, headers, body)
+          case Aethrion.API.handle(config, method, segments, query, headers, body) do
+            {status, :html, html} -> {status, ~c"text/html; charset=utf-8", html}
+            {status, json} -> {status, ~c"application/json", json}
+          end
         rescue
           exception ->
             require Logger
@@ -382,7 +393,8 @@ defmodule Aethrion.API do
                 Exception.format(:error, exception, __STACKTRACE__)
             )
 
-            {500, ~s({"error":{"code":"internal","message":"internal error"}})}
+            {500, ~c"application/json",
+             ~s({"error":{"code":"internal","message":"internal error"}})}
         end
 
       {:break,
@@ -391,7 +403,7 @@ defmodule Aethrion.API do
            {:response,
             [
               code: status,
-              content_type: ~c"application/json",
+              content_type: content_type,
               content_length: Integer.to_charlist(byte_size(json))
             ], :erlang.binary_to_list(json)}
        ]}

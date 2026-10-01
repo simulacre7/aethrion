@@ -54,6 +54,13 @@ defmodule Aethrion.APITest do
              request(:get, base <> "/health", nil, nil)
 
     assert {401, _body} = request(:get, base <> "/health", nil, "wrong")
+
+    # The chat page holds no data and loads without a token.
+    {:ok, {{_version, 200, _reason}, headers, html}} =
+      :httpc.request(:get, {String.to_charlist(base <> "/"), []}, [], body_format: :binary)
+
+    assert {~c"content-type", ~c"text/html; charset=utf-8"} in headers
+    assert html =~ "<title>Aethrion Chat</title>"
   end
 
   test "free text in, what characters say out, in any language", %{base: base} do
