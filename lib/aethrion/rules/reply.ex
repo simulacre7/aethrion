@@ -31,7 +31,9 @@ defmodule Aethrion.Rules.Reply do
 
     receiver = State.character(state, event.to)
 
-    if Character.can_act?(receiver) and not State.character?(state, event.from) do
+    # An enemy in a fight (an "enemy" stat) does not chat back.
+    if Character.can_act?(receiver) and not State.character?(state, event.from) and
+         State.stat(state, event.to, "enemy") == 0 do
       key = contact_key(event.to, event.from)
 
       since_contact = State.hours_since(state, key)

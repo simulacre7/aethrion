@@ -54,4 +54,19 @@ defmodule Aethrion.ChatTest do
 
     assert :talk = Chat.read(step.state, "user", "kael", "늑대왕을 벤다")
   end
+
+  test "talk goes to whoever it calls by name, and enemies do not chat back" do
+    den = cast("priv/casts/den.json")
+
+    assert [{:talk, "sera", _text}] =
+             Chat.read_all(den, "user", "dire_wolf", "세라, 도윤, 고마워. 너희가 있어서 든든해.")
+
+    {:ok, step} =
+      Aethrion.Runtime.step(
+        den,
+        Aethrion.Event.message_sent("user", "dire_wolf", "착하지?", tone: :warm)
+      )
+
+    refute Enum.any?(step.outputs, &(&1.type == :reply))
+  end
 end

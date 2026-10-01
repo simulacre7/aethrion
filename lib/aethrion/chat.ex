@@ -87,6 +87,11 @@ defmodule Aethrion.Chat do
           said -> [{:talk, to, Enum.join(said, " ")}, activity]
         end
 
+      :talk ->
+        # Talk goes to whoever it starts by calling ("세라, 도윤, 고마워"),
+        # else to `to`.
+        [{:talk, addressee(state, text) || to, text}]
+
       reading ->
         [reading]
     end
