@@ -101,6 +101,21 @@ defmodule Aethrion.JournalTest do
     assert {:ok, _state, [_tick]} = Journal.replay(path)
   end
 
+  test "text in any language survives the journal and a restart", %{path: path} do
+    :ok = Journal.create(path, Runtime.demo_state())
+    server = start_supervised!({RuntimeServer, journal: path}, id: :korean)
+
+    {:ok, _step} =
+      RuntimeServer.step(server, Event.message_sent("user", "mina", "안녕 😊 잘 지냈어?", tone: :warm))
+
+    live = RuntimeServer.get_state(server)
+    stop_supervised!(:korean)
+
+    assert {:ok, ^live, [step]} = Journal.replay(path)
+    assert step.event.text == "안녕 😊 잘 지냈어?"
+    assert File.read!(path) =~ "안녕 😊"
+  end
+
   test "journals cannot be created twice", %{path: path} do
     :ok = Journal.create(path, Runtime.demo_state())
     assert {:error, %{code: :already_exists}} = Journal.create(path, Runtime.demo_state())

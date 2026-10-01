@@ -249,7 +249,7 @@ defmodule Aethrion.Journal do
         :ok
 
       data ->
-        case File.write(path, Jason.encode!(%{"rendered" => data}) <> "\n", [:append, :utf8]) do
+        case File.write(path, Jason.encode!(%{"rendered" => data}) <> "\n", [:append]) do
           :ok -> :ok
           {:error, reason} -> {:error, io_error(path, reason)}
         end
@@ -260,7 +260,7 @@ defmodule Aethrion.Journal do
   @spec append(Path.t(), Event.t(), keyword()) :: :ok | {:error, Error.t()}
   def append(path, %{type: _type} = event, opts \\ []) do
     with {:ok, line} <- encode(event, opts) do
-      case File.write(path, line <> "\n", [:append, :utf8]) do
+      case File.write(path, line <> "\n", [:append]) do
         :ok -> :ok
         {:error, reason} -> {:error, io_error(path, reason)}
       end

@@ -14,6 +14,10 @@ Ready for chat apps and games: a world per user, conversations a model can follo
 - `mix aethrion.serve`: the API over a world per key from a cast file, with a journal per world, `--llm`, `--locale ko` (Korean templates without a model), and `--idle`.
 - Characters have a `voice` (how they talk), saved, validated, and given to the model; the demo cast has one each.
 
+### Fixed
+
+- Journals stored non-ASCII text (Korean, emoji) double-encoded: lines were appended in `:utf8` mode, which re-encodes UTF-8 bytes, so a world rebuilt from its journal had garbled messages and memories. Lines are now written as the UTF-8 bytes they are. Journals written before this fix replay with garbled text; compact them from a running world to keep the live text.
+
 ### Changed
 
 - Prompts: a reply to a message answers it. The prompt states the stance the rules chose and shows the draft as example wording; real-world knowledge is fine, inventing things in the world is not; time gaps and unanswered messages show in the thread; off-script requests are met in character. What a user typed reaches the model as quoted, single-line data, so it cannot forge prompt fields.
