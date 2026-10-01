@@ -151,6 +151,8 @@ defmodule Mix.Tasks.Aethrion.Serve do
 
   defp reading(adapter, adapter_opts, backend_opts, label),
     do: [
+      # A CLI takes seconds a call; wait longer for its lines.
+      render_timeout: if(adapter == Aethrion.LLM.CLI, do: 60_000, else: 15_000),
       intent: [adapter: adapter, adapter_opts: adapter_opts],
       interpreter: Aethrion.Interpreter.LLM,
       interpreter_opts: [adapter: adapter, adapter_opts: backend_opts],

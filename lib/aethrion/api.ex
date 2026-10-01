@@ -582,6 +582,20 @@ defmodule Aethrion.API do
   defp localize(%{type: :combat} = output, state, locale),
     do: %{output | text: Aethrion.Combat.describe(output, state, locale)}
 
+  # A line the model did not phrase in time keeps the built-in wording, in
+  # the server's language.
+  defp localize(%{context: %Aethrion.Expression.Request{} = request} = output, _state, :ko) do
+    if match?(%{expression: %{status: :ok}}, output),
+      do: output,
+      else: %{
+        output
+        | text:
+            request
+            |> Aethrion.Expression.Templates.Ko.render()
+            |> Aethrion.Expression.Templates.Ko.polite(request)
+      }
+  end
+
   defp localize(output, _state, _locale), do: output
 
   defp renders?(manager, key) do
