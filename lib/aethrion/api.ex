@@ -245,7 +245,7 @@ defmodule Aethrion.API do
           {:ok, 200, %{ok: true, summary: cast_summary(state)}}
 
         {:error, error} ->
-          {:ok, 200, %{ok: false, error: %{message: error.message, path: path(error)}}}
+          {:ok, 200, %{ok: false, error: %{message: reason(error), path: path(error)}}}
       end
     end
   end
@@ -461,6 +461,10 @@ defmodule Aethrion.API do
 
   defp path(%Error{details: %{path: path}}) when is_list(path), do: Enum.map(path, &to_string/1)
   defp path(_error), do: []
+
+  # The problem itself; the path is given apart.
+  defp reason(%Error{details: %{reason: reason}}) when is_binary(reason), do: reason
+  defp reason(%Error{message: message}), do: message
 
   defp cast_state(data) do
     case State.parse(Map.get(data, "cast")) do

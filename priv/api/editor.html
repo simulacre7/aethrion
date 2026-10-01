@@ -18,7 +18,7 @@ button{cursor:pointer}
 button.primary{background:var(--accent);color:var(--accent-text);border-color:transparent}
 button.small{padding:2px 8px;font-size:12px}
 button.remove{color:var(--bad)}
-#status{padding:8px 12px;border-radius:10px;background:var(--surface);border:1px solid var(--border);margin-bottom:10px;font-size:13px}
+#status{position:sticky;top:0;z-index:5;padding:8px 12px;border-radius:10px;background:var(--surface);border:1px solid var(--border);margin-bottom:10px;font-size:13px}
 #status.ok{border-color:var(--good);color:var(--good)}
 #status.bad{border-color:var(--bad);color:var(--bad)}
 nav{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:10px}
@@ -213,7 +213,8 @@ function renderStats() {
 }
 
 function jsonArea(get, set, rows = 4) {
-  const node = el("textarea", {rows, spellcheck: "false"}, JSON.stringify(get(), null, 1));
+  // Small fields hold one line of JSON; bigger ones are indented.
+  const node = el("textarea", {rows, spellcheck: "false"}, rows > 2 ? JSON.stringify(get(), null, 1) : JSON.stringify(get()));
   node.addEventListener("input", () => {
     try { set(JSON.parse(node.value || "{}")); node.style.borderColor = ""; changed(); }
     catch { node.style.borderColor = "var(--bad)"; }
