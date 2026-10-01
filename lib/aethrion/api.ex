@@ -31,7 +31,7 @@ defmodule Aethrion.API do
   | `GET` | `/editor` | a cast editor: characters, relationships, endings, and bond stories in forms, checked as you type, with a route simulator |
   | `GET` | `/casts/current` | the cast this server was started with (`mix aethrion.serve --cast`) |
   | `POST` | `/casts/check` | `{"cast": {...}}`: `{"ok": true, "summary": ...}` or `{"ok": false, "error": {"message", "path"}}` |
-  | `POST` | `/casts/simulate` | `{"cast": {...}, "routes": [{"name", "to", "days", "script"}]}`: where each route ends (`Aethrion.Simulator`) |
+  | `POST` | `/casts/simulate` | `{"cast": {...}, "routes": [{"name", "to", "days", "script"}]}`: where each route ends (`Aethrion.Simulator`); 1 to 8 routes of 1 to 120 days, `to` a character in the cast; at most 2 run at once (429 otherwise), for at most 10 s (503 otherwise) |
   | `GET` | `/health` | `{"ok": true}` |
   | `GET` | `/` | a small chat page for trying a world in a browser (no token needed to load it; its requests send one) |
 
