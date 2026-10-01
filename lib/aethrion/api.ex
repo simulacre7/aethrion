@@ -291,7 +291,7 @@ defmodule Aethrion.API do
   defp run(config, :openai_models, _query, _body) do
     ids =
       for model <- ["aethrion", "aethrion-plain"],
-          character <- [nil | Enum.map(State.sorted_characters(config.cast || %State{}), & &1.id)],
+          character <- [nil | Enum.map(talkers(config.cast || %State{}), & &1.id)],
           do: if(character, do: model <> ":" <> character, else: model)
 
     {:ok, 200,
@@ -315,10 +315,15 @@ defmodule Aethrion.API do
             interpreter_opts: config.interpreter_opts,
             intent: config.intent
           ],
-          Aethrion.Bridge.Readings.cache()
+          Aethrion.Bridge.Store.cache(Aethrion.Bridge.Readings)
         )
 
-      {before, now, turn} = Aethrion.Bridge.replay(cast, chat, read)
+      {before, now, turn} =
+        Aethrion.Bridge.replay(cast, chat, read,
+          to: to,
+          checkpoints: Aethrion.Bridge.Store.cache(Aethrion.Bridge.Checkpoints)
+        )
+
       note = %{"role" => "system", "content" => Aethrion.Bridge.note(before, now, turn, locale)}
       opts = adapter_opts ++ generation_opts(data)
 
@@ -617,8 +622,13 @@ defmodule Aethrion.API do
     end
   end
 
+  # The characters one talks to: not the foes.
+  defp talkers(cast),
+    do: Enum.filter(State.sorted_characters(cast), &(State.stat(cast, &1.id, "enemy") == 0))
+
   # "aethrion" or "aethrion-plain" (no status block), optionally
-  # ":character" for whom the player talks to; by default the first character.
+  # ":character" for whom the player talks to; by default the first one
+  # who is not a foe.
   defp bridge_model(cast, model) do
     {base, character} =
       case String.split(to_string(model || "aethrion"), ":", parts: 2) do
@@ -626,7 +636,7 @@ defmodule Aethrion.API do
         [base] -> {base, nil}
       end
 
-    to = character || cast |> State.sorted_characters() |> List.first() |> then(&(&1 && &1.id))
+    to = character || cast |> talkers() |> List.first() |> then(&(&1 && &1.id))
 
     if to == nil or not State.character?(cast, to) do
       {:error, 400,

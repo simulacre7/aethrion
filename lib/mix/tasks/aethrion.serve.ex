@@ -89,9 +89,14 @@ defmodule Mix.Tasks.Aethrion.Serve do
         end
       )
 
-    # What chat lines were read as, for the OpenAI-compatible route.
-    {:ok, _readings} =
-      Aethrion.Bridge.Readings.start_link(path: Path.join(data, "bridge-readings.jsonl"))
+    # For the OpenAI-compatible route: what chat lines were read as, and the
+    # world after each turn.
+    for {name, file} <- [
+          {Aethrion.Bridge.Readings, "bridge-readings.jsonl"},
+          {Aethrion.Bridge.Checkpoints, "bridge-checkpoints.jsonl"}
+        ] do
+      {:ok, _store} = Aethrion.Bridge.Store.start_link(name: name, path: Path.join(data, file))
+    end
 
     token = opts[:token] || System.get_env("AETHRION_TOKEN")
 

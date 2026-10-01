@@ -39,7 +39,8 @@ defmodule Aethrion.BridgeTest do
       start: {Agent, :start_link, [fn -> [] end, [name: Narrator]]}
     })
 
-    start_supervised!(Aethrion.Bridge.Readings)
+    start_supervised!({Aethrion.Bridge.Store, name: Aethrion.Bridge.Readings})
+    start_supervised!({Aethrion.Bridge.Store, name: Aethrion.Bridge.Checkpoints})
     start_supervised!({Worlds, name: Worlds.Test.Bridge, world: fn _key -> [] end})
 
     pid =
@@ -78,7 +79,7 @@ defmodule Aethrion.BridgeTest do
   end
 
   defp status_line(content, who) do
-    [_, block] = Regex.run(~r/<aethrion-status>(.*)<\/aethrion-status>/s, content)
+    [_, block] = Regex.run(~r/<aethrion-status[^>]*>(.*)<\/aethrion-status>/s, content)
     block |> String.split("\n") |> Enum.find(&String.starts_with?(&1, who))
   end
 
@@ -123,7 +124,7 @@ defmodule Aethrion.BridgeTest do
           %{"role" => "user", "content" => "방패를 들어 막는다"}
         ]
 
-    assert reply(base, history) =~ "<aethrion-status>"
+    assert reply(base, history) =~ "<aethrion-status id="
 
     edited =
       attack ++
@@ -133,6 +134,54 @@ defmodule Aethrion.BridgeTest do
         ]
 
     assert status_line(reply(base, edited), "다이어 울프") != wolf
+  end
+
+  defp status_block(content) do
+    [block] = Regex.run(~r/<aethrion-status[^>]*>.*<\/aethrion-status>/s, content)
+    block
+  end
+
+  defp strip_status(history),
+    do:
+      Enum.map(history, fn m ->
+        Map.update!(
+          m,
+          "content",
+          &String.replace(&1, ~r/<aethrion-status.*<\/aethrion-status>/s, "")
+        )
+      end)
+
+  # Three turns played in full; returns the history so far and each reply.
+  defp three_turns(base, lines) do
+    Enum.reduce(lines, {[], []}, fn line, {history, replies} ->
+      history = history ++ [%{"role" => "user", "content" => line}]
+      content = reply(base, history)
+      {history ++ [%{"role" => "assistant", "content" => content}], replies ++ [content]}
+    end)
+  end
+
+  test "a chat the app trimmed to fit its context goes on from where it was", %{base: base} do
+    lines = ["다이어 울프에게 롱소드를 휘두른다", "다이어 울프를 다시 벤다", "방패를 들어 막는다"]
+    {history, _replies} = three_turns(base, lines)
+    next = [%{"role" => "user", "content" => "세라, 고마워"}]
+    full = reply(base, history ++ next)
+
+    # RisuAI drops the oldest messages when a chat outgrows the context.
+    trimmed = reply(base, Enum.drop(history, 2) ++ next)
+    assert status_block(trimmed) == status_block(full)
+  end
+
+  test "an earlier line edited after later replies still changes the state", %{base: base} do
+    {history, _replies} =
+      three_turns(base, ["다이어 울프에게 롱소드를 휘두른다", "방패를 들어 막는다", "세라, 고마워"])
+
+    edited = List.replace_at(history, 0, %{"role" => "user", "content" => "세라에게 웃어 보인다"})
+    next = [%{"role" => "user", "content" => "다이어 울프를 벤다"}]
+
+    with_checkpoints = reply(base, edited ++ next)
+    replayed = reply(base, strip_status(edited) ++ next)
+    assert status_block(with_checkpoints) == status_block(replayed)
+    refute status_block(with_checkpoints) == status_block(reply(base, history ++ next))
   end
 
   test "plain model names leave the status out; streams are server-sent events", %{base: base} do
@@ -156,6 +205,8 @@ defmodule Aethrion.BridgeTest do
     {:ok, {{_v, 200, _r}, _h, models}} = :httpc.request(String.to_charlist(base <> "/v1/models"))
     assert %{"data" => [%{"id" => "aethrion"} | _] = list} = Jason.decode!(models)
     assert Enum.any?(list, &(&1["id"] == "aethrion:sera"))
+    # The foes are fought, not talked to.
+    refute Enum.any?(list, &(&1["id"] == "aethrion:dire_wolf"))
 
     {:ok, {{_v, 204, _r}, headers, _}} =
       :httpc.request(:options, {String.to_charlist(base <> "/v1/chat/completions"), []}, [], [])

@@ -8,24 +8,29 @@ defmodule Aethrion.Bridge do
 
   Such apps send the whole conversation each time, with no chat id; a
   reroll sends it again without the last reply, an edit sends the edited
-  text. So the state is not kept between requests: it is rebuilt from the
-  transcript every time, by replaying the player's lines from the cast
-  (`replay/3`), and what each line was read as is cached
-  (`Aethrion.Bridge.Readings`), so only a new line costs a model call. A
-  reroll cannot apply a move twice, and an edit changes the state the way
-  the edited line would have.
+  text. So the state follows the transcript: it is rebuilt every time by
+  replaying the player's lines (`replay/4`), and what each line was read as
+  is cached (`Aethrion.Bridge.Readings`), so only a new line costs a model
+  call. A reroll cannot apply a move twice, and an edit changes the state
+  the way the edited line would have. Each reply's status block carries a
+  checkpoint id; the world after that turn is kept under it
+  (`Aethrion.Bridge.Checkpoints`), and a replay starts from the latest
+  checkpoint whose turns still match the transcript, so a chat the app has
+  trimmed to fit its context goes on from where it was, and a long one is
+  not replayed from the start.
 
   For the reply, the app's own prompt (its character card, lorebook, and
   history) goes to the model with a note at the end: what the rules just
   decided and where things stand (`note/3`), as facts not to change. The
-  reply carries a status block (`status/2`), `<aethrion-status>...
+  reply carries a status block (`status/3`), `<aethrion-status id="...">...
   </aethrion-status>`, which a display script renders (`priv/risu/`) and
   which is taken out of the history the app sends back.
   """
 
   alias Aethrion.{Combat, Interpreter, Runtime, State}
 
-  @status ~r/\s*<aethrion-status>.*?<\/aethrion-status>\s*/s
+  @status ~r/\s*<aethrion-status[^>]*>.*?<\/aethrion-status>\s*/s
+  @checkpoint ~r/<aethrion-status id="([0-9a-f]{8,64})"/
   @start ~r/\[Start a new chat\]/i
 
   @doc "The text of a message's content (a string, or a list of parts)."
@@ -41,57 +46,165 @@ defmodule Aethrion.Bridge do
   @doc """
   The messages with our status blocks taken out, and the chat proper: what
   comes after the app's `[Start a new chat]` marker (example dialogues come
-  before it), or after the leading system messages.
+  before it), or after the leading system messages. In the chat proper, a
+  reply that carried a status block keeps its checkpoint id as
+  `"checkpoint"`.
   """
   @spec transcript([map()]) :: {[map()], [map()]}
   def transcript(messages) do
-    messages =
+    chat =
       Enum.map(messages, fn m ->
+        content = text(m["content"])
+
         %{
           "role" => to_string(m["role"]),
-          "content" => m["content"] |> text() |> String.replace(@status, "\n") |> String.trim()
+          "content" => content |> String.replace(@status, "\n") |> String.trim(),
+          "checkpoint" =>
+            case Regex.run(@checkpoint, content) do
+              [_, id] -> id
+              nil -> nil
+            end
         }
       end)
 
     start =
       case Enum.find_index(
-             Enum.reverse(messages),
+             Enum.reverse(chat),
              &(&1["role"] == "system" and Regex.match?(@start, &1["content"]))
            ) do
-        nil -> Enum.find_index(messages, &(&1["role"] != "system")) || length(messages)
-        from_end -> length(messages) - from_end
+        nil -> Enum.find_index(chat, &(&1["role"] != "system")) || length(chat)
+        from_end -> length(chat) - from_end
       end
 
-    {messages, Enum.drop(messages, start)}
+    {Enum.map(chat, &Map.delete(&1, "checkpoint")), Enum.drop(chat, start)}
   end
 
   @doc """
   The world after the player's lines in `chat` (user messages, in order),
   replayed from `state`; returns `{before, after, turn}`, where `turn` holds
-  the last line's readings and outputs. `read` turns a line into readings
-  (`fn state, text -> [reading] end`).
+  the last line's readings, outputs, and checkpoint `id`. `read` turns a
+  line into readings (`fn state, text -> [reading] end`).
+
+  Options: `:to`, the character the player talks to, and `:checkpoints`
+  (`%{get: fun, put: fun}`, see `Aethrion.Bridge.Store`), which keeps the
+  world after each line under an id chaining the cast, `:to`, and every
+  line so far. The replay starts after the latest reply whose checkpoint is
+  known and whose chain matches the lines still in the chat, so an edited
+  line is replayed with everything after it, and lines the app left out
+  are not lost. The last line is always replayed.
   """
-  @spec replay(State.t(), [map()], (State.t(), String.t() -> [map()])) ::
+  @spec replay(State.t(), [map()], (State.t(), String.t() -> [map()]), keyword()) ::
           {State.t(), State.t(), map()}
-  def replay(%State{} = state, chat, read) do
-    lines = for %{"role" => "user", "content" => text} <- chat, String.trim(text) != "", do: text
+  def replay(%State{} = state, chat, read, opts \\ []) do
+    to = Keyword.get(opts, :to, "")
+    checkpoints = Keyword.get(opts, :checkpoints)
+    turns = turns(chat)
 
-    Enum.reduce(lines, {state, state, %{line: nil, readings: [], outputs: []}}, fn line,
-                                                                                   {_before,
-                                                                                    state, _turn} ->
-      readings = read.(state, line)
+    {start, from, id} =
+      case base(turns, to, checkpoints) do
+        {index, id, %{state: saved}} -> {index + 1, saved, id}
+        nil -> {0, state, root(state)}
+      end
 
-      {after_line, outputs} =
-        Enum.reduce(readings, {state, []}, fn %{event: event}, {state, outputs} ->
-          case Runtime.step(state, event) do
-            {:ok, step} -> {step.state, outputs ++ step.outputs}
-            {:error, _rejected} -> {state, outputs}
-          end
-        end)
+    turns
+    |> Enum.drop(start)
+    |> Enum.reduce({from, from, %{line: nil, readings: [], outputs: [], id: id}}, fn {line, _seen},
+                                                                                     {_before,
+                                                                                      state, turn} ->
+      {after_line, readings, outputs} = play(state, line, read)
+      id = checkpoint_id(turn.id, to, line)
 
-      {state, after_line, %{line: line, readings: readings, outputs: outputs}}
+      if checkpoints,
+        do: checkpoints.put.(id, %{prev: turn.id, line: digest(line), to: to, state: after_line})
+
+      {state, after_line, %{line: line, readings: readings, outputs: outputs, id: id}}
     end)
   end
+
+  defp play(state, line, read) do
+    readings = read.(state, line)
+
+    {after_line, outputs} =
+      Enum.reduce(readings, {state, []}, fn %{event: event}, {state, outputs} ->
+        case Runtime.step(state, event) do
+          {:ok, step} -> {step.state, outputs ++ step.outputs}
+          {:error, _rejected} -> {state, outputs}
+        end
+      end)
+
+    {after_line, readings, outputs}
+  end
+
+  # The player's lines, each with the checkpoint id of the reply after it.
+  defp turns(chat) do
+    chat
+    |> Enum.reduce([], fn
+      %{"role" => "user", "content" => text}, turns ->
+        if String.trim(text) == "", do: turns, else: [{text, nil} | turns]
+
+      %{"role" => "assistant"} = reply, [{line, nil} | turns] ->
+        [{line, reply["checkpoint"]} | turns]
+
+      _other, turns ->
+        turns
+    end)
+    |> Enum.reverse()
+  end
+
+  # The latest turn but the last whose checkpoint chain matches the lines up
+  # to it: `{index, id, checkpoint}`.
+  defp base(_turns, _to, nil), do: nil
+
+  defp base(turns, to, checkpoints) do
+    turns
+    |> Enum.with_index()
+    |> Enum.drop(-1)
+    |> Enum.reverse()
+    |> Enum.find_value(fn
+      {{_line, nil}, _index} ->
+        nil
+
+      {{_line, id}, index} ->
+        saved = checkpoints.get.(id)
+
+        if saved && chain?(Enum.take(turns, index + 1), id, to, checkpoints),
+          do: {index, id, saved}
+    end)
+  end
+
+  # Walks the chain back from `id` over the lines still in the chat (the
+  # earliest may have been trimmed away): each line must be the one kept,
+  # and each reply's id the one the chain gives.
+  defp chain?(turns, id, to, checkpoints) do
+    turns
+    |> Enum.reverse()
+    |> Enum.reduce_while(id, fn {line, seen}, id ->
+      case checkpoints.get.(id) do
+        %{line: kept, to: ^to, prev: prev} when seen in [nil, id] ->
+          if kept == digest(line), do: {:cont, prev}, else: {:halt, false}
+
+        _other ->
+          {:halt, false}
+      end
+    end)
+    |> is_binary()
+  end
+
+  defp checkpoint_id(prev, to, line),
+    do: [prev, 0, to, 0, line] |> sha() |> binary_part(0, 24)
+
+  defp digest(line), do: :crypto.hash(:sha256, line)
+
+  # The chain starts from the cast, so another cast's checkpoints never match.
+  defp root(state),
+    do:
+      state
+      |> State.to_data()
+      |> :erlang.term_to_binary([:deterministic])
+      |> sha()
+      |> binary_part(0, 24)
+
+  defp sha(data), do: :crypto.hash(:sha256, data) |> Base.encode16(case: :lower)
 
   @doc """
   The note for the model: what the rules decided this turn, and where things
@@ -190,7 +303,8 @@ defmodule Aethrion.Bridge do
 
   @doc """
   The status block for the reply: short lines a display script turns into a
-  status window (`priv/risu/aethrion-status.json`).
+  status window (`priv/risu/aethrion-status.json`), opened with the turn's
+  checkpoint id.
   """
   @spec status(State.t(), map(), :ko | :en) :: String.t()
   def status(%State{} = state, turn, locale \\ :ko) do
@@ -221,8 +335,8 @@ defmodule Aethrion.Bridge do
 
     lines = player ++ people ++ foes ++ events
 
-    "<aethrion-status>" <>
-      Enum.map_join(lines, "\n", &escape/1) <> "</aethrion-status>"
+    open = if turn[:id], do: ~s(<aethrion-status id="#{turn.id}">), else: "<aethrion-status>"
+    open <> Enum.map_join(lines, "\n", &escape/1) <> "</aethrion-status>"
   end
 
   defp hp_short(state, id) do
