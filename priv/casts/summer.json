@@ -53,6 +53,10 @@
   },
   "story": {
     "deadline": 720,
+    "labels": {
+      "art": "그림 실력",
+      "intelligence": "성적"
+    },
     "activity_hours": 24,
     "activities": {
       "공부": {

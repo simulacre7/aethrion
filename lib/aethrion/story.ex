@@ -14,6 +14,7 @@ defmodule Aethrion.Story do
   - `phrases` - how a player says each activity in a chat (`"그림": ["그림
     그리자", "스케치하자"]`), so `Aethrion.Chat` can tell "let's paint" from
     "your painting is lovely".
+  - `labels` - what stats are called in hints (`"art": "그림 실력"`).
   - `activity_hours` - how long an activity takes: with `24`, each one is a
     day, and the clock moves on by itself, the way a raising sim counts days.
   - `deadline` - the simulated hour at which the ending is decided (say
@@ -108,8 +109,8 @@ defmodule Aethrion.Story do
   progress (54 affinity toward a needed 80 is two thirds of the way):
   `[%{id, title, met, total, closeness, missing}]`, in order.
   """
-  @spec progress(State.t()) :: [map()]
-  def progress(%State{story: story} = state) do
+  @spec progress(State.t(), :en | :ko) :: [map()]
+  def progress(%State{story: story} = state, locale \\ :en) do
     for ending <- Map.get(story, :endings, []) do
       {met, missing} = Enum.split_with(ending.when, &holds?(state, &1))
 
@@ -119,7 +120,7 @@ defmodule Aethrion.Story do
         met: length(met),
         total: length(ending.when),
         closeness: closeness(state, ending.when),
-        missing: Enum.map(missing, &describe(state, &1))
+        missing: Enum.map(missing, &describe(state, &1, locale))
       }
     end
   end
@@ -207,20 +208,28 @@ defmodule Aethrion.Story do
 
   defp rank(bond), do: Enum.find_index(@bonds, &(&1 == bond))
 
-  @doc "A condition in words, with where things stand: `mina -> user affinity 54 (needs at least 70)`."
-  @spec describe(State.t(), tuple()) :: String.t()
-  def describe(state, {:any, conditions}),
+  @doc """
+  A condition in words, with where things stand: `mina -> user affinity 54
+  (needs at least 70)`, or in Korean with names (`:ko`): `미나 → 너 호감 54
+  (70 이상 필요)`.
+  """
+  @spec describe(State.t(), tuple(), :en | :ko) :: String.t()
+  def describe(state, condition, locale \\ :en)
+
+  def describe(state, condition, :ko), do: ko(state, condition)
+
+  def describe(state, {:any, conditions}, :en),
     do: "any of: " <> Enum.map_join(conditions, "; ", &describe(state, &1))
 
-  def describe(state, {:all, conditions}),
+  def describe(state, {:all, conditions}, :en),
     do: "(" <> Enum.map_join(conditions, " and ", &describe(state, &1)) <> ")"
 
-  def describe(state, {:not, condition}), do: "not (" <> describe(state, condition) <> ")"
+  def describe(state, {:not, condition}, :en), do: "not (" <> describe(state, condition) <> ")"
 
-  def describe(state, {:bond, from, to, op, wanted}),
+  def describe(state, {:bond, from, to, op, wanted}, :en),
     do: "#{from} -> #{to} bond #{bond(state, from, to)} (needs #{words(op)} #{wanted})"
 
-  def describe(state, {subject, what, op, wanted} = condition) do
+  def describe(state, {subject, what, op, wanted} = condition, :en) do
     label =
       case {subject, what} do
         {:stat, {actor, name}} -> "#{actor} #{name}"
@@ -232,6 +241,68 @@ defmodule Aethrion.Story do
 
     "#{label} #{value(state, condition)} (needs #{words(op)} #{wanted})"
   end
+
+  @ko_fields %{
+    "affinity" => "호감",
+    "trust" => "신뢰",
+    "tension" => "긴장",
+    "energy" => "기력",
+    "loneliness" => "외로움",
+    "jealousy" => "질투",
+    "joy" => "기쁨",
+    "stress" => "스트레스"
+  }
+  @ko_bonds %{
+    estranged: "멀어진 사이",
+    strained: "서먹한 사이",
+    neutral: "보통 사이",
+    friendly: "친한 사이",
+    close: "가까운 사이"
+  }
+
+  defp ko(state, {:any, conditions}),
+    do: "다음 중 하나: " <> Enum.map_join(conditions, " / ", &ko(state, &1))
+
+  defp ko(state, {:all, conditions}), do: Enum.map_join(conditions, ", ", &ko(state, &1))
+  defp ko(state, {:not, condition}), do: "아닐 것: " <> ko(state, condition)
+
+  defp ko(state, {:bond, from, to, op, wanted}),
+    do:
+      "#{who(state, from)} → #{who(state, to)} #{@ko_bonds[bond(state, from, to)]} " <>
+        "(#{@ko_bonds[wanted]}#{ko_words(op, :bond)})"
+
+  defp ko(state, {subject, what, op, wanted} = condition) do
+    label =
+      case {subject, what} do
+        {:stat, {actor, name}} ->
+          "#{who(state, actor)} #{stat_label(state, name)}"
+
+        {:character, {id, field}} ->
+          "#{who(state, id)} #{Map.get(@ko_fields, field, field)}"
+
+        {:relationship, {from, to, field}} ->
+          "#{who(state, from)} → #{who(state, to)} #{@ko_fields[field]}"
+
+        {:memories, filter} ->
+          "#{who(state, filter["character"])}의 기억"
+
+        {:clock, _} ->
+          "시간"
+      end
+
+    "#{label} #{value(state, condition)} (#{wanted}#{ko_words(op, subject)})"
+  end
+
+  defp stat_label(%State{story: story}, name),
+    do: story |> Map.get(:labels, %{}) |> Map.get(name, name)
+
+  defp who(_state, "user"), do: "너"
+  defp who(state, id), do: State.name(state, id)
+
+  defp ko_words(:at_least, _subject), do: " 이상 필요"
+  defp ko_words(:at_most, _subject), do: " 이하 필요"
+  defp ko_words(:equals, :bond), do: "여야 함"
+  defp ko_words(:equals, _subject), do: " 필요"
 
   defp words(:at_least), do: "at least"
   defp words(:at_most), do: "at most"
@@ -247,12 +318,13 @@ defmodule Aethrion.Story do
     with :ok <-
            known_keys(
              data,
-             ~w(activities phrases activity_hours endings deadline decide_when),
+             ~w(activities phrases activity_hours labels endings deadline decide_when),
              []
            ),
          {:ok, activities} <- parse_activities(Map.get(data, "activities", %{})),
          {:ok, phrases} <- parse_phrases(Map.get(data, "phrases", %{}), activities),
          {:ok, hours} <- parse_hours(Map.get(data, "activity_hours")),
+         {:ok, labels} <- parse_labels(Map.get(data, "labels", %{})),
          {:ok, endings} <- parse_endings(Map.get(data, "endings", [])),
          {:ok, deadline} <- parse_deadline(Map.get(data, "deadline")),
          {:ok, decide} <- parse_conditions(Map.get(data, "decide_when", []), ["decide_when"]),
@@ -262,6 +334,7 @@ defmodule Aethrion.Story do
          activities: activities,
          phrases: phrases,
          activity_hours: hours,
+         labels: labels,
          endings: endings,
          deadline: deadline,
          decide_when: decide
@@ -324,6 +397,7 @@ defmodule Aethrion.Story do
     |> put_if("activities", story[:activities])
     |> put_if("phrases", story[:phrases])
     |> put_if("activity_hours", story[:activity_hours])
+    |> put_if("labels", story[:labels])
     |> put_if("endings", story[:endings] && Enum.map(story.endings, &ending_to_data/1))
     |> put_if("deadline", story[:deadline])
     |> put_if(
@@ -368,6 +442,15 @@ defmodule Aethrion.Story do
   end
 
   defp parse_phrases(_phrases, _activities), do: {:error, "must be an object", ["phrases"]}
+
+  # What a stat is called in words ("art": "그림 실력"), for hints.
+  defp parse_labels(labels) when is_map(labels) do
+    if Enum.all?(labels, fn {k, v} -> is_binary(k) and is_binary(v) and v != "" end),
+      do: {:ok, labels},
+      else: {:error, "labels map stat names to words", ["labels"]}
+  end
+
+  defp parse_labels(_labels), do: {:error, "must be an object", ["labels"]}
 
   defp parse_hours(nil), do: {:ok, nil}
   defp parse_hours(hours) when is_integer(hours) and hours > 0, do: {:ok, hours}

@@ -223,7 +223,7 @@ defmodule Aethrion.API do
       {:ok, 200,
        %{
          reached: reached,
-         endings: Aethrion.Story.progress(state),
+         endings: Aethrion.Story.progress(state, if(config.locale == :ko, do: :ko, else: :en)),
          activities: state.story |> Map.get(:activities, %{}) |> Map.keys() |> Enum.sort(),
          hour: state.clock,
          deadline: Map.get(state.story, :deadline)

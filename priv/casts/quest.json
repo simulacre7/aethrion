@@ -116,6 +116,10 @@
         "at_least": 1
       }
     ],
+    "labels": {
+      "hp": "체력",
+      "fled": "도망친 횟수"
+    },
     "endings": [
       {
         "id": "fallen",
