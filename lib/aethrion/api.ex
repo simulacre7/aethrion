@@ -22,6 +22,7 @@ defmodule Aethrion.API do
   | `POST` | `/worlds/{key}/say` | `{"to": "mina", "text": "...", "from": "user", "observed_by": [...]}`: free text, interpreted (`Aethrion.Intent`) and dispatched |
   | `POST` | `/worlds/{key}/events` | an event, as in a scenario or journal: `{"type": "gift_received", "from": "user", "to": "mina", "item": "tea"}` |
   | `GET` | `/worlds/{key}/conversation?character=mina&person=user&after=e12` | the recent turns between them (after an event, for polling: proactive messages land here too) |
+  | `GET` | `/worlds/{key}/characters?person=user` | each character with their mood and how they feel about that person (bond, affinity, trust, tension), for a game's UI |
   | `GET` | `/worlds/{key}/state` | the whole state, as `Aethrion.State.to_data/1` |
   | `GET` | `/health` | `{"ok": true}` |
   | `GET` | `/` | a small chat page for trying a world in a browser (no token needed to load it; its requests send one) |
@@ -158,9 +159,10 @@ defmodule Aethrion.API do
   defp world_route("POST", ["events"], key), do: {:ok, {:event, key}}
   defp world_route("GET", ["conversation"], key), do: {:ok, {:conversation, key}}
   defp world_route("GET", ["state"], key), do: {:ok, {:state, key}}
+  defp world_route("GET", ["characters"], key), do: {:ok, {:characters, key}}
 
   defp world_route(_method, route, _key)
-       when route in [["say"], ["events"], ["conversation"], ["state"]],
+       when route in [["say"], ["events"], ["conversation"], ["state"], ["characters"]],
        do: {:error, 405, Error.new(:method_not_allowed, "method not allowed")}
 
   defp world_route(_method, _route, _key), do: not_found()
@@ -172,6 +174,33 @@ defmodule Aethrion.API do
   defp run(config, {:state, key}, _query, _body) do
     with {:ok, state} <- Worlds.get_state(config.worlds, key) do
       {:ok, 200, State.to_data(state)}
+    end
+  end
+
+  defp run(config, {:characters, key}, query, _body) do
+    with {:ok, state} <- Worlds.get_state(config.worlds, key) do
+      person = Map.get(query, "person", "user")
+
+      characters =
+        for character <- State.sorted_characters(state) do
+          relationship = State.get_relationship(state, character.id, person)
+
+          %{
+            id: character.id,
+            name: character.name,
+            profile: character.profile,
+            mood: Aethrion.Rules.Mood.derive(character.state, state),
+            toward: %{
+              id: person,
+              bond: Aethrion.Rules.Bond.derive(relationship, state),
+              affinity: relationship.affinity,
+              trust: relationship.trust,
+              tension: relationship.tension
+            }
+          }
+        end
+
+      {:ok, 200, %{characters: characters}}
     end
   end
 

@@ -341,6 +341,7 @@ Replies and proactive messages carry the last 12 turns in their request (`Reques
 | `POST` | `/worlds/{key}/say` | `{"to", "text", "from"?, "observed_by"?}` | the step: `event_id`, `lines`, `outputs`, `interpreted` |
 | `POST` | `/worlds/{key}/events` | an event as in a scenario (`{"type": "gift_received", ...}`) | the step |
 | `GET` | `/worlds/{key}/conversation` | `character`, `person` (default `user`), `after` (an event id) | `{"turns": [...]}` |
+| `GET` | `/worlds/{key}/characters` | `person` (default `user`) | `{"characters": [{id, name, profile, mood, toward: {id, bond, affinity, trust, tension}}]}` |
 | `GET` | `/worlds/{key}/state` | | `State.to_data/1` |
 | `GET` | `/health` | | `{"ok": true}` |
 | `GET` | `/` | | a chat page for trying worlds in a browser |

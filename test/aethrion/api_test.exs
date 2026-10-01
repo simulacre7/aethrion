@@ -110,6 +110,15 @@ defmodule Aethrion.APITest do
     assert Enum.any?(lines, &(&1["character_id"] == "yuna" and &1["type"] == "proactive_message"))
 
     assert {200, %{"clock" => 2}} = request(:get, base <> "/worlds/bob/state")
+
+    assert {200, %{"characters" => characters}} = request(:get, base <> "/worlds/bob/characters")
+    mina = Enum.find(characters, &(&1["id"] == "mina"))
+
+    assert %{
+             "name" => "Mina",
+             "mood" => _,
+             "toward" => %{"id" => "user", "bond" => _, "affinity" => _}
+           } = mina
   end
 
   test "a world that renders with a model answers with the model's lines", %{base: base} do
