@@ -24,6 +24,7 @@ defmodule Aethrion.API do
   | `POST` | `/worlds/{key}/events` | an event, as in a scenario or journal: `{"type": "gift_received", "from": "user", "to": "mina", "item": "tea"}` |
   | `GET` | `/worlds/{key}/conversation?character=mina&person=user&after=e12` | the recent turns between them (after an event, for polling: proactive messages land here too) |
   | `GET` | `/worlds/{key}/characters?person=user` | each character with their mood and how they feel about that person (bond, affinity, trust, tension), for a game's UI |
+  | `GET` | `/worlds/{key}/story` | the ending reached (or `null`) and how close every ending is, with what is missing (`Aethrion.Story`) |
   | `GET` | `/worlds/{key}/state` | the whole state, as `Aethrion.State.to_data/1` |
   | `GET` | `/health` | `{"ok": true}` |
   | `GET` | `/` | a small chat page for trying a world in a browser (no token needed to load it; its requests send one) |
@@ -182,9 +183,18 @@ defmodule Aethrion.API do
   defp world_route("GET", ["conversation"], key), do: {:ok, {:conversation, key}}
   defp world_route("GET", ["state"], key), do: {:ok, {:state, key}}
   defp world_route("GET", ["characters"], key), do: {:ok, {:characters, key}}
+  defp world_route("GET", ["story"], key), do: {:ok, {:story, key}}
 
   defp world_route(_method, route, _key)
-       when route in [["say"], ["events"], ["act"], ["conversation"], ["state"], ["characters"]],
+       when route in [
+              ["say"],
+              ["events"],
+              ["act"],
+              ["conversation"],
+              ["state"],
+              ["characters"],
+              ["story"]
+            ],
        do: {:error, 405, Error.new(:method_not_allowed, "method not allowed")}
 
   defp world_route(_method, _route, _key), do: not_found()
@@ -196,6 +206,18 @@ defmodule Aethrion.API do
   defp run(config, {:state, key}, _query, _body) do
     with {:ok, state} <- Worlds.peek_state(config.worlds, key) do
       {:ok, 200, State.to_data(state)}
+    end
+  end
+
+  defp run(config, {:story, key}, _query, _body) do
+    with {:ok, state} <- Worlds.peek_state(config.worlds, key) do
+      reached =
+        case Aethrion.Rules.Ending.reached(state) do
+          nil -> nil
+          ending -> Map.take(ending, [:id, :title, :description])
+        end
+
+      {:ok, 200, %{reached: reached, endings: Aethrion.Story.progress(state)}}
     end
   end
 

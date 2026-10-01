@@ -46,6 +46,7 @@ defmodule Aethrion.Rules.Ending do
   defp decide(transition, {:ok, ending}) do
     transition
     |> Transition.put_cooldown(@key)
+    |> Transition.put_cooldown(@key <> ":" <> ending.id)
     |> Transition.emit(%{
       type: :ending_reached,
       ending: ending.id,
@@ -58,4 +59,19 @@ defmodule Aethrion.Rules.Ending do
 
   @doc false
   def reached?(%State{cooldowns: cooldowns}), do: Map.has_key?(cooldowns, @key)
+
+  @doc """
+  The ending the story reached, as decided at the time (later changes to the
+  numbers do not change it), or `nil`.
+  """
+  @spec reached(State.t()) :: map() | nil
+  def reached(%State{cooldowns: cooldowns, story: story}) do
+    prefix = @key <> ":"
+
+    with key when is_binary(key) <-
+           Enum.find(Map.keys(cooldowns), &String.starts_with?(&1, prefix)) do
+      id = String.replace_prefix(key, prefix, "")
+      Enum.find(Map.get(story, :endings, []), &(&1.id == id))
+    end
+  end
 end

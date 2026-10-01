@@ -186,6 +186,9 @@ defmodule Aethrion.APITest do
     assert [%{"type" => "combat", "kind" => _hit, "to" => "wolf"} | _] = lines
     assert Enum.any?(lines, &(&1["type"] == "combat" and &1["kind"] == "defeated"))
     assert %{"type" => "ending_reached", "title" => _title} = List.last(lines)
+
+    assert {200, %{"reached" => %{"id" => _id}, "endings" => [%{"closeness" => _} | _]}} =
+             request(:get, base <> "/worlds/quest/story")
   end
 
   test "mistakes are errors with a status", %{base: base} do
