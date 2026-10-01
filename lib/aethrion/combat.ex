@@ -16,7 +16,8 @@ defmodule Aethrion.Combat do
   Events: `Aethrion.Event.attack/3`, `defend/2`, `heal/3`, `flee/3` (or
   `{"type": "attack", "from": "user", "to": "goblin"}` in JSON). Outputs are
   `:combat` maps: `kind` (`:hit`, `:critical`, `:defeated`, `:guarded`,
-  `:healed`, `:fled`, `:caught`), `character_id` (who acted), `to`,
+  `:healed`, `:fled`, `:caught`, `:holds_back`), `character_id` (who acted),
+  `to`,
   `subject` (whose hp is reported), `amount`, `hp`, `max_hp`, and an English
   `text`; `describe/3` tells it in Korean. A model can narrate the scene from
   these numbers; the numbers stay the rules'. See `Aethrion.Rules.Combat` for
@@ -130,6 +131,9 @@ defmodule Aethrion.Combat do
         "#{name.(by)} #{verb(by, "heal")} #{name.(output.to)} for #{output.amount}.#{hp}"
       )
 
+  defp told(:en, :holds_back, %{character_id: by}, name, _hp),
+    do: capitalize("#{name.(by)} #{verb(by, "hold")} back and #{verb(by, "watch", "watches")}.")
+
   defp told(:en, :fled, %{character_id: by, to: to}, name, _hp),
     do: capitalize("#{name.(by)} #{verb(by, "get")} away from #{name.(to)}.")
 
@@ -158,6 +162,9 @@ defmodule Aethrion.Combat do
 
   defp told(:ko, :healed, %{character_id: by} = output, name, hp),
     do: "#{Ko.subject(name.(by))} #{name.(output.to)}의 상처를 #{output.amount}만큼 치료했다.#{hp}"
+
+  defp told(:ko, :holds_back, %{character_id: by}, name, _hp),
+    do: "#{Ko.with_particle(name.(by), :topic)} 팔짱을 낀 채 지켜볼 뿐이다."
 
   defp told(:ko, :fled, %{character_id: by, to: to}, name, _hp),
     do: "#{Ko.with_particle(name.(by), :topic)} #{name.(to)}에게서 무사히 도망쳤다."

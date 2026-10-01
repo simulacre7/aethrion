@@ -15,6 +15,10 @@ defmodule Aethrion.Rules.Combat do
     that stat; with none left, it cannot be used.
   - **flee**: gets away when `speed + roll >= the other's speed + 3`;
     otherwise the other gets a free blow.
+  - **party**: when a player attacks, characters with a `"party"` stat
+    join in if they trust the player (trust >= 10): healers (a `"heal"`
+    stat) tend the player below 60% hp, the others strike the same target.
+    Those who do not trust the player hold back (`:holds_back`).
 
   Fighting is social too. A character who is attacked loses affinity and
   trust toward the attacker, gains tension, and remembers it; witnesses who
@@ -29,6 +33,7 @@ defmodule Aethrion.Rules.Combat do
     description:
       "Attacks, guards, heals, and flight change hp by the numbers; fighters hit back; being attacked or healed changes how characters feel about each other.",
     params: [
+      party_trust: 10,
       attacked_affinity: -20,
       attacked_trust: -15,
       attacked_tension: 20,
@@ -84,6 +89,7 @@ defmodule Aethrion.Rules.Combat do
           ),
         else: counter(transition, event)
     end)
+    |> party(event, hp)
   end
 
   def apply(%Transition{event: %{type: :defend} = event} = transition) do
@@ -135,6 +141,61 @@ defmodule Aethrion.Rules.Combat do
 
   defp stat_or(state, id, stat, default),
     do: if(State.stat?(state, id, stat), do: State.stat(state, id, stat), else: default)
+
+  # When a person (a player) attacks, the party members who trust them join
+  # in: a healer tends them when they are hurt, the others strike the same
+  # target. Those who do not trust them hold back, and it shows.
+  defp party(%Transition{state: state} = transition, event, target_hp) do
+    if State.character?(state, event.from) or Map.get(event, :counter, false) do
+      transition
+    else
+      state
+      |> State.sorted_characters()
+      |> Enum.filter(&party_member?(state, &1.id, event))
+      |> Enum.reduce(transition, &join(&2, &1.id, event, target_hp))
+    end
+  end
+
+  defp party_member?(state, id, event),
+    do:
+      State.stat(state, id, "party") > 0 and id not in [event.from, event.to] and
+        State.stat(state, id, "hp") > 0
+
+  defp join(%Transition{state: state} = transition, id, event, target_hp) do
+    trust = State.get_relationship(state, id, event.from).trust
+    leader_hp = State.stat(state, event.from, "hp")
+    hurt? = leader_hp * 100 < stat_or(state, event.from, "max_hp", leader_hp) * 60
+
+    cond do
+      trust < Transition.param(transition, :party_trust) ->
+        combat_output(transition, %{event | from: id, to: event.from}, id, :holds_back, 0)
+
+      State.stat(state, id, "heal") > 0 and hurt? and leader_hp > 0 ->
+        transition
+        |> Transition.enqueue(Event.heal(id, event.from, at: event.at))
+        |> fought_beside(id, event.from)
+
+      State.stat(state, id, "heal") == 0 and target_hp > 0 ->
+        transition
+        |> Transition.enqueue(
+          Event.attack(id, event.to, counter: true, observed_by: [], at: event.at)
+        )
+        |> fought_beside(id, event.from)
+
+      true ->
+        transition
+    end
+  end
+
+  defp fought_beside(transition, id, leader),
+    do:
+      Transition.adjust_relationship(
+        transition,
+        id,
+        leader,
+        :trust,
+        Transition.param(transition, :fought_beside_trust)
+      )
 
   # A character still standing answers a blow, once.
   defp counter(%Transition{state: state} = transition, event) do

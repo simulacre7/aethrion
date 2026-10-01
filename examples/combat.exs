@@ -11,32 +11,24 @@ alias Aethrion.{Combat, Event, Runtime, State}
   "priv/casts/quest.json" |> File.read!() |> Jason.decode!() |> State.parse()
 
 party = ["ria", "kael"]
-hp = fn state, id -> State.stat(state, id, "hp") end
 
-# Each round: what the player does, then what the companions do.
+# Each round, what the player does. The companions (party members) fight
+# beside a player they trust, and hold back from one they do not.
+insult = fn who -> Event.message_sent("user", who, "Stay out of my way.", tone: :hostile) end
+strike = Event.attack("user", "wolf", skill: "sword")
+
 playthroughs = %{
-  "together" => fn state, round ->
-    player =
-      if rem(round, 4) == 0,
-        do: Event.message_sent("user", "ria", "Thank you, Ria. Stay behind me.", tone: :warm),
-        else: Event.attack("user", "wolf", skill: "sword", observed_by: party)
-
-    companions =
-      [Event.attack("kael", "wolf", observed_by: ["ria"])] ++
-        if hp.(state, "user") < 18, do: [Event.heal("ria", "user")], else: []
-
-    [player | companions]
+  "together" => fn _state, round ->
+    if round == 2,
+      do: [Event.message_sent("user", "ria", "Thank you, Ria. Stay behind me.", tone: :warm), strike],
+      else: [strike]
   end,
-  "alone" => fn _state, round ->
-    insult =
-      if round == 1,
-        do: [Event.message_sent("user", "kael", "Stay out of my way.", tone: :hostile, observed_by: ["ria"])],
-        else: []
-
-    # Kael fights anyway; he is paid to.
-    insult ++ [Event.attack("user", "wolf"), Event.attack("kael", "wolf")]
-  end,
-  "reckless" => fn _state, _round -> [Combat.action(quest, "user", "wolf", "I charge at the wolf king!")] end
+  "alone" => fn _state, round -> if round == 1, do: [insult.("kael"), strike], else: [strike] end,
+  "reckless" => fn _state, round ->
+    if round == 1,
+      do: [insult.("kael"), insult.("ria"), Combat.action(quest, "user", "wolf", "I charge at the wolf king!")],
+      else: [Combat.action(quest, "user", "wolf", "I charge at the wolf king!")]
+  end
 }
 
 play = fn routine ->

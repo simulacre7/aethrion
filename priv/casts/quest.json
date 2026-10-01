@@ -36,7 +36,7 @@
       "from": "kael",
       "to": "user",
       "affinity": 20,
-      "trust": 10
+      "trust": 18
     },
     {
       "from": "ria",
@@ -71,14 +71,16 @@
       "max_hp": 18,
       "attack": 2,
       "defense": 1,
-      "heal": 9
+      "heal": 9,
+      "party": 1
     },
     "kael": {
       "hp": 28,
       "max_hp": 28,
       "attack": 7,
       "defense": 3,
-      "speed": 2
+      "speed": 2,
+      "party": 1
     },
     "wolf": {
       "hp": 42,
@@ -138,7 +140,7 @@
               "user"
             ],
             "field": "trust",
-            "at_least": 15
+            "at_least": 20
           },
           {
             "relationship": [
@@ -146,7 +148,7 @@
               "user"
             ],
             "field": "trust",
-            "at_least": 25
+            "at_least": 24
           }
         ]
       },
@@ -170,5 +172,10 @@
         "when": []
       }
     ]
+  },
+  "tuning": {
+    "combat": {
+      "party_trust": 15
+    }
   }
 }

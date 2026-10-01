@@ -127,6 +127,31 @@ defmodule Aethrion.CombatTest do
     assert rel.(state, "mina").affinity > rel.(before, "mina").affinity
   end
 
+  test "companions who trust the player fight beside them; the others hold back" do
+    state =
+      arena()
+      |> put_in([Access.key(:stats), "mina", "party"], 1)
+      |> put_in([Access.key(:stats), "haru", "party"], 1)
+      |> put_in([Access.key(:stats), "user", "hp"], 10)
+
+    # Mina trusts the user (25) and heals them; Haru (trust 15) strikes too.
+    {_after, outputs, _steps} = run(state, [Event.attack("user", "goblin")])
+    acted = for %{character_id: who, kind: kind} <- combat(outputs), do: {who, kind}
+    assert {"mina", :healed} in acted
+    assert Enum.any?(acted, &match?({"haru", k} when k in [:hit, :critical, :defeated], &1))
+
+    # After an insult, Haru no longer trusts them enough, and it shows.
+    {state, _outputs, _steps} =
+      run(state, [Event.message_sent("user", "haru", "Useless.", tone: :hostile)])
+
+    {_after, outputs, _steps} = run(state, [Event.attack("user", "goblin")])
+
+    assert {"haru", :holds_back} in for(
+             %{character_id: who, kind: kind} <- combat(outputs),
+             do: {who, kind}
+           )
+  end
+
   test "a player's words become a combat action" do
     state = arena()
 

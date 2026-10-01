@@ -17,7 +17,7 @@ Ready for chat apps and games: a world per user, conversations a model can follo
 - Characters have a `voice` (how they talk), saved, validated, and given to the model; the demo cast has one each.
 - Stats: free-form numbers per actor in the state, changed through `Transition.adjust_stat/5` with a trace and explained by `Explain.stat/3`.
 - Stories (`Aethrion.Story`): activities (`Event.activity/3`), ordered endings with conditions on stats, feelings, relationships, bonds, memories, and the clock, decided once at a deadline or by `decide_when` (`:ending_reached` outputs; `Rules.Ending`), with `Story.progress/1` for route hints. `examples/endings.exs`.
-- Combat (`Aethrion.Combat`, `Rules.Combat`): `attack`, `defend`, `heal`, and `flee` events between actors with hp, deterministic damage with rolls derived from the event, counterattacks, guards, criticals, and social consequences; `:combat` outputs in English and Korean; `POST /worlds/{key}/act` reads combat from free text. `priv/casts/quest.json`, `examples/combat.exs`.
+- Combat (`Aethrion.Combat`, `Rules.Combat`): `attack`, `defend`, `heal`, and `flee` events between actors with hp, deterministic damage with rolls derived from the event, counterattacks, guards, criticals, counted potions, party members who fight beside a player they trust and hold back from one they do not, and social consequences; `:combat` outputs in English and Korean; `POST /worlds/{key}/act` reads combat from free text. `priv/casts/quest.json`, `examples/combat.exs`.
 - API: `GET /worlds/{key}/story`; step lines include combat and endings.
 
 ### Fixed
