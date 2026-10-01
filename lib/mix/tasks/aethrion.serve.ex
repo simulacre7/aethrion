@@ -18,9 +18,10 @@ defmodule Mix.Tasks.Aethrion.Serve do
 
   Options:
 
-  - `--cast FILE` - the starting world, as state data (`characters`,
-    `relationships`, `people`; the format `Aethrion.State.to_data/1` writes);
-    default: the demo cast
+  - `--cast FILE` - the starting world, as state data (`characters` with
+    `profile` and `voice`, `relationships`, `people`; the format
+    `Aethrion.State.to_data/1` writes); default: the demo cast.
+    `priv/casts/cafe.json` is a Korean café cast to start from
   - `--data DIR` - where each world's journal is kept (default `tmp/worlds`)
   - `--port N` (default 4848), `--bind ADDRESS` (default `127.0.0.1`)
   - `--token TOKEN` - require `Authorization: Bearer TOKEN` (default: the

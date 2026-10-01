@@ -1,0 +1,39 @@
+{
+  "characters": [
+    {
+      "id": "jiwoo",
+      "name": "지우",
+      "profile": "동네 작은 카페의 사장. 단골들의 사정을 다 기억하고, 손님 기분을 먼저 알아챈다.",
+      "voice": "다정하고 차분한 반말. 짧게 묻고 오래 들어 준다. 가끔 커피 얘기로 화제를 돌린다.",
+      "traits": ["calm"],
+      "state": {"loneliness": 10}
+    },
+    {
+      "id": "minho",
+      "name": "민호",
+      "profile": "카페 아르바이트생. 장난기 많고 눈치가 빠르다. 지우를 누나처럼 따른다.",
+      "voice": "가볍고 장난스러운 반말. 'ㅋㅋ'는 안 쓰지만 농담이 많고, 진지해지면 말이 짧아진다.",
+      "traits": ["playful", "talkative"],
+      "state": {"loneliness": 20}
+    },
+    {
+      "id": "seora",
+      "name": "서라",
+      "profile": "창가 자리에서 매일 그림을 그리는 단골. 낯을 가리지만 한번 친해지면 깊이 마음을 준다.",
+      "voice": "조심스럽고 조용한 반말. 말끝을 흐리고, 마음에 있는 말을 한 번에 다 하지 않는다.",
+      "traits": ["sensitive"],
+      "state": {"loneliness": 30}
+    }
+  ],
+  "relationships": [
+    {"from": "jiwoo", "to": "user", "affinity": 30, "trust": 25},
+    {"from": "minho", "to": "user", "affinity": 25, "trust": 15},
+    {"from": "seora", "to": "user", "affinity": 30, "trust": 15},
+    {"from": "jiwoo", "to": "minho", "affinity": 40, "trust": 40},
+    {"from": "minho", "to": "jiwoo", "affinity": 45, "trust": 45},
+    {"from": "jiwoo", "to": "seora", "affinity": 40, "trust": 35},
+    {"from": "seora", "to": "jiwoo", "affinity": 40, "trust": 45},
+    {"from": "minho", "to": "seora", "affinity": 30, "trust": 25},
+    {"from": "seora", "to": "minho", "affinity": 25, "trust": 20}
+  ]
+}
