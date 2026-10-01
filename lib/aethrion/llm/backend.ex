@@ -30,17 +30,14 @@ defmodule Aethrion.LLM.Backend do
     model = Keyword.get(opts, :model)
     base_url = Keyword.get(opts, :base_url)
 
-    {adapter, adapter_opts, label} = preset(name, model, base_url)
-
-    cond do
-      adapter == nil ->
+    case preset(name, model, base_url) do
+      :unknown ->
         {:error, "unknown --llm #{inspect(name)}; use one of #{Enum.join(@names, ", ")}"}
 
-      not adapter.configured?(adapter_opts) ->
-        {:error, "#{label} is not ready: #{needs(name)}"}
-
-      true ->
-        {:ok, adapter, adapter_opts, label <> if(model, do: " (#{model})", else: "")}
+      {adapter, adapter_opts, label} ->
+        if adapter.configured?(adapter_opts),
+          do: {:ok, adapter, adapter_opts, label <> if(model, do: " (#{model})", else: "")},
+          else: {:error, "#{label} is not ready: #{needs(name)}"}
     end
   end
 
@@ -55,7 +52,7 @@ defmodule Aethrion.LLM.Backend do
       "llamacpp" -> {OpenAICompatible, local(8080, base_url, model || "local"), "llama.cpp"}
       "claude" -> {CLI, [command: "claude"] ++ model_opt, "Claude Code CLI"}
       "codex" -> {CLI, [command: "codex"] ++ model_opt, "Codex CLI"}
-      other -> {nil, [], other}
+      _other -> :unknown
     end
   end
 
