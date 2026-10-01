@@ -283,4 +283,45 @@ defmodule Aethrion.CombatTest do
     assert %{type: :heal, to: "user"} = Combat.action(state, "user", "goblin", "potion, now")
     assert %{type: :defend} = Combat.action(state, "user", nil, "숨을 고른다")
   end
+
+  test "told in Korean, with the right particles and tense" do
+    state = arena()
+    ko = &Combat.describe(&1, state, :ko)
+
+    assert ko.(%{
+             kind: :healed,
+             character_id: "user",
+             to: "user",
+             subject: "user",
+             amount: 5,
+             hp: 20,
+             max_hp: 30
+           }) ==
+             "너는 체력을 5 회복했다. (너 20/30)"
+
+    assert ko.(%{
+             kind: :healed,
+             character_id: "mina",
+             to: "user",
+             subject: "user",
+             amount: 8,
+             hp: 28,
+             max_hp: 30
+           }) ==
+             "Mina가 네 상처를 8만큼 치료했다. (너 28/30)"
+
+    assert ko.(%{
+             kind: :hit,
+             character_id: "goblin",
+             to: "user",
+             subject: "user",
+             amount: 3,
+             hp: 27,
+             max_hp: 30,
+             guarded: true
+           }) =~
+             "3의 피해를 입혔다 (방어로 절반)."
+
+    assert ko.(%{kind: :holds_back, character_id: "haru", to: "user"}) =~ "지켜보기만 했다"
+  end
 end

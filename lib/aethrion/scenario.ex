@@ -458,7 +458,7 @@ defmodule Aethrion.Scenario do
   # catch misspelled output types, keys, and values when the scenario loads.
   @output_types ~w(relationship_changed memory_created mood_changed bond_changed proactive_message reply character_interaction ending_reached combat)
   @comparisons ~w(count equals at_least at_most)
-  @output_filters ~w(character to from reason kind tone text before after delta rule event_id ending amount)
+  @output_filters ~w(character to from reason kind tone text before after delta rule event_id ending amount subject)
   @memory_filters ~w(id character kind topic source content data faded importance strength created_at created_tick related_characters consolidated_into)
   @values %{
     "tone" => ~w(warm neutral cold hostile gift apology),
@@ -500,11 +500,15 @@ defmodule Aethrion.Scenario do
 
   defp filter_problem(_expectation, _custom?), do: nil
 
+  defp kinds("combat"), do: ~w(hit critical defeated guarded healed fled caught holds_back)
+  defp kinds(_type), do: @values["kind"]
+
   defp value_problem(filters, type) do
     allowed =
       Map.merge(@values, %{
         "before" => before_after(type),
-        "after" => before_after(type)
+        "after" => before_after(type),
+        "kind" => kinds(type)
       })
 
     Enum.find_value(filters, fn {key, value} ->

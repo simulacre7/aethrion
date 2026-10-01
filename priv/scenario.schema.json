@@ -50,6 +50,7 @@
         "story": {
           "description": "Activities, endings, and the hour endings are decided at. See Aethrion.Story.",
           "type": "object",
+          "additionalProperties": false,
           "properties": {
             "deadline": {"type": "integer", "minimum": 1},
             "decide_when": {"type": "array", "items": {"type": "object"}},
@@ -59,6 +60,7 @@
               "items": {
                 "type": "object",
                 "required": ["id"],
+                "additionalProperties": false,
                 "properties": {
                   "id": {"type": "string"},
                   "title": {"type": "string"},
@@ -193,7 +195,6 @@
             "to": {"$ref": "#/definitions/id"},
             "skill": {"type": "string"},
             "observed_by": {"type": "array", "items": {"$ref": "#/definitions/id"}},
-            "counter": {"type": "boolean"},
             "at": {"type": "string"}
           },
           "required": ["type", "from", "to"]
@@ -272,7 +273,7 @@
           "required": ["output"],
           "properties": {
             "output": {
-              "enum": ["proactive_message", "reply", "character_interaction", "mood_changed", "bond_changed", "relationship_changed", "memory_created"]
+              "enum": ["proactive_message", "reply", "character_interaction", "mood_changed", "bond_changed", "relationship_changed", "memory_created", "ending_reached", "combat"]
             }
           }
         },
@@ -283,6 +284,10 @@
         {
           "required": ["clock"],
           "properties": {"clock": {"type": "integer", "minimum": 0}}
+        },
+        {
+          "required": ["stat"],
+          "properties": {"stat": {"type": "array", "items": {"type": "string"}, "minItems": 2, "maxItems": 2}}
         }
       ]
     }

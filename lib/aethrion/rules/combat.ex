@@ -5,27 +5,34 @@ defmodule Aethrion.Rules.Combat do
   `"heal"` are read when present.
 
   - **attack**: damage is `attack + roll - defense`, at least 1, where the
-    roll (0..5) comes from the event itself, so a fight replays exactly. A
-    roll of 5 is a critical hit (half again as much). A raised guard halves
-    the blow and is spent. At 0 hp a fighter is defeated. A character still
-    standing hits back once (`counter: true` events are not answered).
-  - **defend**: the next blow taken is halved.
+    roll (0..5) comes from who acts on whom and both fighters' hp, so a
+    fight replays exactly. A roll of 5 is a critical hit (half again as
+    much). A raised guard halves the blow and is spent. At 0 hp a fighter is
+    defeated. A character still standing hits back once (counterattacks and
+    a companion's assisting blows are not answered).
+  - **defend**: the next blow taken is halved; the enemies (characters with
+    an `"enemy"` stat) take their turn.
   - **heal**: restores `amount` (or the healer's `"heal"` stat, or 10), up
-    to `"max_hp"`. A potion uses one of the healer's `"potions"` if they have
-    that stat; with none left, it cannot be used.
-  - **flee**: gets away when `speed + roll >= the other's speed + 3`;
-    otherwise the other gets a free blow.
+    to `"max_hp"`. The healer must be standing and the target hurt and
+    standing: the fallen are not revived. A potion uses one of the healer's
+    `"potions"` if they have that stat. The enemies take their turn.
+  - **flee**: gets away when `speed + roll >= the other's speed + 3` (adding
+    1 to the runner's `"fled"` stat, which a story can end on); otherwise
+    the other gets a free blow.
   - **party**: when a player attacks, characters with a `"party"` stat
-    join in if they trust the player (trust >= 10): healers (a `"heal"`
-    stat) tend the player below 60% hp, the others strike the same target.
-    Those who do not trust the player hold back (`:holds_back`).
+    move before the enemy answers, if they trust the player (trust >=
+    `party_trust`): healers tend a player below 60% hp, the others strike
+    the same target (never an ally). Those who do not trust the player hold
+    back (`:holds_back`, said once until they join in again).
+  - Once the story's ending is decided, no one fights; a blow queued in a
+    cascade is dropped if its fighter or target has fallen.
 
   Fighting is social too. A character who is attacked loses affinity and
   trust toward the attacker, gains tension, and remembers it; witnesses who
-  care about them (affinity >= 30) trust the attacker less, and the others,
-  unless they hold something against the attacker, trust someone who fights
-  beside them a little more. A character healed by
-  someone grows fonder of them and trusts them more.
+  care about them (affinity >= 30) trust the attacker less, and the others
+  (not companions, who earn it by joining in), unless they hold something
+  against the attacker, trust someone who fights beside them a little more.
+  A character healed by someone grows fonder of them and trusts them more.
   """
 
   use Aethrion.Rule,

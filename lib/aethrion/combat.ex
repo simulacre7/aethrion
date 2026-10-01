@@ -157,6 +157,7 @@ defmodule Aethrion.Combat do
   @spec describe(map(), State.t(), :en | :ko) :: String.t()
   def describe(output, %State{} = state, locale) do
     name = &name(state, &1, locale)
+    output = with_traits(output, state)
     told(locale, output.kind, output, name, hp_suffix(output, name, locale))
   end
 
@@ -215,13 +216,18 @@ defmodule Aethrion.Combat do
     do: "#{Ko.with_particle(name.(by), :topic)} 방어 자세를 취했다."
 
   defp told(:ko, :healed, %{character_id: by, to: by} = output, name, hp),
-    do: "#{Ko.with_particle(name.(by), :topic)} 상처를 #{output.amount}만큼 치료했다.#{hp}"
+    do: "#{Ko.with_particle(name.(by), :topic)} 체력을 #{output.amount} 회복했다.#{hp}"
 
-  defp told(:ko, :healed, %{character_id: by} = output, name, hp),
-    do: "#{Ko.subject(name.(by))} #{name.(output.to)}의 상처를 #{output.amount}만큼 치료했다.#{hp}"
+  defp told(:ko, :healed, %{character_id: by, to: to} = output, name, hp) do
+    whose = if to == "user", do: "네", else: "#{name.(to)}의"
+    "#{Ko.subject(name.(by))} #{whose} 상처를 #{output.amount}만큼 치료했다.#{hp}"
+  end
 
-  defp told(:ko, :holds_back, %{character_id: by}, name, _hp),
-    do: "#{Ko.with_particle(name.(by), :topic)} 팔짱을 낀 채 지켜볼 뿐이다."
+  defp told(:ko, :holds_back, %{character_id: by} = output, name, _hp) do
+    if :sensitive in Map.get(output, :traits, []),
+      do: "#{Ko.with_particle(name.(by), :topic)} 겁에 질려 뒤로 물러섰다.",
+      else: "#{Ko.with_particle(name.(by), :topic)} 팔짱을 낀 채 지켜보기만 했다."
+  end
 
   defp told(:ko, :fled, %{character_id: by, to: to}, name, _hp),
     do: "#{Ko.with_particle(name.(by), :topic)} #{name.(to)}에게서 무사히 도망쳤다."
@@ -229,13 +235,22 @@ defmodule Aethrion.Combat do
   defp told(:ko, :caught, %{character_id: by, to: to}, name, _hp),
     do: "#{Ko.with_particle(name.(by), :topic)} 도망치려 했지만 #{Ko.subject(name.(to))} 막아섰다."
 
+  defp with_traits(%{kind: :holds_back, character_id: id} = output, state) do
+    case State.character(state, id) do
+      nil -> output
+      character -> Map.put(output, :traits, character.traits)
+    end
+  end
+
+  defp with_traits(output, _state), do: output
+
   defp hp_suffix(%{max_hp: max, hp: hp, subject: subject}, name, _locale) when is_integer(max),
     do: " (#{name.(subject)} #{hp}/#{max})"
 
   defp hp_suffix(_output, _name, _locale), do: ""
 
   defp guarded(%{guarded: true}, :en), do: ", through a raised guard"
-  defp guarded(%{guarded: true}, :ko), do: "(방어로 절반)"
+  defp guarded(%{guarded: true}, :ko), do: " (방어로 절반)"
   defp guarded(_output, _locale), do: ""
 
   defp name(_state, "user", :en), do: "you"
