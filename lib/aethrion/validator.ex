@@ -80,41 +80,15 @@ defmodule Aethrion.Validator do
     end
   end
 
-  defp validate_event(state, %{type: :attack} = event) do
-    with :ok <- require_fighter(state, event, :from),
-         :ok <- require_fighter(state, event, :to),
-         :ok <- require_distinct(event),
-         :ok <- optional_name(event, :skill) do
-      require_observers(state, Map.get(event, :observed_by, []))
-    end
-  end
-
-  defp validate_event(state, %{type: :defend} = event), do: require_fighter(state, event, :from)
-
-  defp validate_event(state, %{type: :heal} = event) do
-    with :ok <- require_name(event, :from),
-         :ok <- require_fighter(state, event, :to, alive: false),
-         :ok <- optional_name(event, :item),
-         :ok <- require_potion(state, event) do
-      case Map.get(event, :amount) do
-        nil ->
-          :ok
-
-        amount when is_integer(amount) and amount > 0 ->
-          :ok
-
-        _other ->
-          {:error,
-           error(:invalid_event, "amount must be a positive whole number", %{field: :amount})}
-      end
-    end
-  end
-
-  defp validate_event(state, %{type: :flee} = event) do
-    with :ok <- require_fighter(state, event, :from),
-         :ok <- require_fighter(state, event, :to) do
-      require_distinct(event)
-    end
+  defp validate_event(state, %{type: type} = event)
+       when type in [:attack, :defend, :heal, :flee] and is_map_key(event, :from) do
+    if Aethrion.Combat.over?(state),
+      do:
+        {:error,
+         error(:invalid_event, "the fight is over: the story has reached its ending", %{
+           field: :type
+         })},
+      else: validate_combat(state, event)
   end
 
   defp validate_event(state, %{type: :activity} = event) do
@@ -160,6 +134,47 @@ defmodule Aethrion.Validator do
   # Custom event types registered in a custom pipeline are validated by their rules.
   defp validate_event(_state, _event), do: :ok
 
+  defp validate_combat(state, %{type: :attack} = event) do
+    with :ok <- require_fighter(state, event, :from),
+         :ok <- require_fighter(state, event, :to),
+         :ok <- require_distinct(event),
+         :ok <- optional_name(event, :skill) do
+      require_observers(state, Map.get(event, :observed_by, []))
+    end
+  end
+
+  defp validate_combat(state, %{type: :defend} = event), do: require_fighter(state, event, :from)
+
+  # The fallen are not revived, a healer must be standing, and someone at
+  # full health is not healed (no potion is wasted on them).
+  defp validate_combat(state, %{type: :heal} = event) do
+    with :ok <- require_name(event, :from),
+         :ok <- require_healer(state, event.from),
+         :ok <- require_fighter(state, event, :to),
+         :ok <- require_hurt(state, event.to),
+         :ok <- optional_name(event, :item),
+         :ok <- require_potion(state, event) do
+      case Map.get(event, :amount) do
+        nil ->
+          :ok
+
+        amount when is_integer(amount) and amount > 0 ->
+          :ok
+
+        _other ->
+          {:error,
+           error(:invalid_event, "amount must be a positive whole number", %{field: :amount})}
+      end
+    end
+  end
+
+  defp validate_combat(state, %{type: :flee} = event) do
+    with :ok <- require_fighter(state, event, :from),
+         :ok <- require_fighter(state, event, :to) do
+      require_distinct(event)
+    end
+  end
+
   defp require_string(event, field) do
     value = Map.get(event, field)
 
@@ -199,6 +214,27 @@ defmodule Aethrion.Validator do
           :ok
       end
     end
+  end
+
+  defp require_healer(state, from) do
+    cond do
+      State.stat?(state, from, "hp") and State.stat(state, from, "hp") <= 0 ->
+        {:error, error(:invalid_event, "#{from} is down and cannot heal", %{field: :from})}
+
+      State.character?(state, from) or State.stat?(state, from, "hp") or from == "user" or
+          Map.has_key?(state.people, from) ->
+        :ok
+
+      true ->
+        {:error, error(:unknown_character, "unknown healer: #{inspect(from)}", %{field: :from})}
+    end
+  end
+
+  defp require_hurt(state, id) do
+    if State.stat?(state, id, "max_hp") and
+         State.stat(state, id, "hp") >= State.stat(state, id, "max_hp"),
+       do: {:error, error(:invalid_event, "#{id} is not hurt", %{field: :to})},
+       else: :ok
   end
 
   # Counted potions run out; without a "potions" stat they do not.

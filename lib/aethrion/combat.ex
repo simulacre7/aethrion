@@ -32,50 +32,107 @@ defmodule Aethrion.Combat do
   alias Aethrion.Expression.Templates.Ko
 
   @doc false
-  # A roll from 0 to 5 that depends only on the event and the world, so a
-  # replayed fight goes the same way.
-  def roll(event, %State{} = state),
-    do: :erlang.phash2({state.seq, event.type, event.from, Map.get(event, :to)}, 6)
+  # A roll from 0 to 5 that depends only on who acts on whom and where the
+  # fight stands (their hp), so a replayed fight goes the same way, and
+  # saying something in between does not change the dice.
+  def roll(event, %State{} = state) do
+    to = Map.get(event, :to)
+
+    :erlang.phash2(
+      {event.type, event.from, to, State.stat(state, event.from, "hp"),
+       State.stat(state, to, "hp")},
+      6
+    )
+  end
 
   @doc false
   def guard_key(id), do: "combat:guard:#{id}"
 
-  ## Reading what a player typed
-
-  @defend ~w(defend guard block parry shield 막 방어 방패 막아 막는)
-  @heal ~w(heal potion bandage cure 치료 회복 포션 물약 붕대)
-  @flee ~w(flee run escape retreat 도망 후퇴 달아 피신)
+  @doc false
+  def held_key(id), do: "combat:held:#{id}"
 
   @doc """
-  The combat event a player's words mean: a heal (on themselves unless
-  `target` is given), a guard, an escape from `target`, or else an attack on
-  `target`.
+  Whether a fight story is over: its ending was decided by one of its
+  `decide_when` conditions (`Aethrion.Story`), after which no one fights.
+  """
+  @spec over?(State.t()) :: boolean()
+  def over?(%State{story: story} = state),
+    do: Map.get(story, :decide_when, []) != [] and Aethrion.Rules.Ending.reached?(state)
 
-      action(state, "user", "goblin", "I swing my sword!")  # attack
-      action(state, "user", "goblin", "방패를 들어 막는다")  # defend
+  ## Reading what a player typed
+
+  # Verbs, not just words: "막걸리병으로 내려친다" strikes, "도망치지 않고
+  # 벤다" does not flee, "I strike past its guard" attacks. Attacks are read
+  # first, since a blow often mentions a shield or a guard.
+  @attack ~r/(벤다|베어|베고|벤 |찌른|찌르|찔러|(?<!도망)(?:친다|치고|쳐서)|때린|때려|휘두른|휘둘|공격|내려친|후려친|일격|날린|날려|쏜다|쏘아|쏴|베기|돌진|달려든)|\b(attack|attacks|strike|strikes|hit|hits|slash|stab|swing|swings|bash|smash|shoot|cut|charge|charges|punch|kick|thrust|lunge)\b/u
+  @defend ~r/(막는|막아|막았|막자|막고|방어 ?자세|방어한|방어를 한|방패를 (들|세|올)|웅크)|\b(defend|guard up|raise (my|the) guard|block|parry|brace)\b/u
+  @heal ~r/(치료|회복|포션|물약|붕대|상처를 (감|싸))|\b(heal|potion|bandage|cure|patch)\b/u
+  @flee ~r/(도망친다|도망쳐|도망가|도망간다|도망치자|후퇴|달아난다|달아나|피신)|\b(flee|escape|retreat|run away)\b/u
+
+  @doc """
+  The combat event a player's words mean. An attack on `target` when they
+  strike; a guard; a heal (themselves, or an ally named as `target`; never an
+  enemy); an escape from `target`; and a guard when nothing is clear.
+
+      action(state, "user", "wolf", "I swing my sword!")       # attack
+      action(state, "user", "wolf", "방패를 들어 막는다")       # defend
+      action(state, "user", "wolf", "포션을 마신다")            # heal, themselves
   """
   @spec action(State.t(), String.t(), String.t() | nil, String.t()) :: Event.t()
-  def action(%State{}, from, target, text) when is_binary(text) do
+  def action(%State{} = state, from, target, text) when is_binary(text) do
     words = String.downcase(text)
+    target = target || foe(state)
 
     cond do
-      # A potion one drinks heals oneself; otherwise the target, if any.
-      mentions?(words, @heal) ->
-        drinks? = String.contains?(words, ["drink", "마시", "마신"])
-        Event.heal(from, if(drinks?, do: from, else: target || from), item: item(words))
+      Regex.match?(@attack, words) and target != nil ->
+        Event.attack(from, target,
+          skill: skill(text),
+          observed_by: party(state) -- [from, target]
+        )
 
-      mentions?(words, @defend) ->
+      Regex.match?(@heal, words) ->
+        Event.heal(from, heal_target(state, from, target), item: item(words))
+
+      Regex.match?(@defend, words) ->
         Event.defend(from)
 
-      mentions?(words, @flee) and target != nil ->
+      Regex.match?(@flee, words) and target != nil ->
         Event.flee(from, target)
 
       true ->
-        Event.attack(from, target, skill: skill(text))
+        Event.defend(from)
     end
   end
 
-  defp mentions?(text, words), do: Enum.any?(words, &String.contains?(text, &1))
+  @doc """
+  The first enemy still standing (an actor with an `"enemy"` stat and hp
+  left), or nil: who a player means when they just say "I attack".
+  """
+  @spec foe(State.t()) :: String.t() | nil
+  def foe(%State{stats: stats} = state) do
+    stats
+    |> Map.keys()
+    |> Enum.sort()
+    |> Enum.find(&(State.stat(state, &1, "enemy") > 0 and State.stat(state, &1, "hp") > 0))
+  end
+
+  @doc """
+  The companions: characters with a `"party"` stat, who see what the player
+  does in a fight.
+  """
+  @spec party(State.t()) :: [String.t()]
+  def party(%State{stats: stats} = state) do
+    for id <- Enum.sort(Map.keys(stats)),
+        State.character?(state, id),
+        State.stat(state, id, "party") > 0,
+        do: id
+  end
+
+  # An ally (a party member) can be healed; anyone else gets the potion
+  # drunk by the one holding it.
+  defp heal_target(state, from, target) do
+    if target != nil and State.stat(state, target, "party") > 0, do: target, else: from
+  end
 
   defp item(words) do
     cond do

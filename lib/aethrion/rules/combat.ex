@@ -48,7 +48,37 @@ defmodule Aethrion.Rules.Combat do
   alias Aethrion.{Combat, Event, Memory, State, Transition}
 
   @impl true
-  def apply(%Transition{event: %{type: :attack} = event} = transition) do
+  @actions [:attack, :defend, :heal, :flee]
+
+  # Checked again when the action happens, not only when it was queued: a
+  # blow in a cascade may land after its target has fallen.
+  def apply(%Transition{event: %{type: type} = event} = transition) when type in @actions do
+    case problem(transition.state, event) do
+      nil -> act(transition, event)
+      reason -> Transition.note(transition, reason)
+    end
+  end
+
+  def apply(transition), do: transition
+
+  defp problem(state, event) do
+    down =
+      Enum.find(
+        actors(event),
+        &(State.stat?(state, &1, "hp") and State.stat(state, &1, "hp") <= 0)
+      )
+
+    cond do
+      Combat.over?(state) -> "The fight is over"
+      down -> "#{down} is down"
+      true -> nil
+    end
+  end
+
+  defp actors(%{type: :defend, from: from}), do: [from]
+  defp actors(%{from: from, to: to}), do: [from, to]
+
+  defp act(transition, %{type: :attack} = event) do
     state = transition.state
     roll = Combat.roll(event, state)
     guard = Combat.guard_key(event.to)
@@ -87,18 +117,21 @@ defmodule Aethrion.Rules.Combat do
             :defeated,
             0
           ),
-        else: counter(transition, event)
+        else: transition
     end)
+    # The companions move before the enemy answers.
     |> party(event, hp)
+    |> then(&if(hp > 0, do: counter(&1, event), else: &1))
   end
 
-  def apply(%Transition{event: %{type: :defend} = event} = transition) do
+  defp act(transition, %{type: :defend} = event) do
     transition
     |> Transition.put_cooldown(Combat.guard_key(event.from))
     |> combat_output(Map.put(event, :to, nil), event.from, :guarded, 0)
+    |> enemies_turn(event.from, event)
   end
 
-  def apply(%Transition{event: %{type: :heal} = event} = transition) do
+  defp act(transition, %{type: :heal} = event) do
     state = transition.state
 
     amount =
@@ -113,15 +146,18 @@ defmodule Aethrion.Rules.Combat do
     |> Transition.adjust_stat(event.to, "hp", healed, log: false)
     |> use_potion(event)
     |> combat_output(event, event.to, :healed, healed)
-    |> grateful(event)
+    |> grateful(event, healed)
+    |> enemies_turn(event.from, event)
   end
 
-  def apply(%Transition{event: %{type: :flee} = event} = transition) do
+  defp act(transition, %{type: :flee} = event) do
     state = transition.state
     roll = Combat.roll(event, state)
 
     if State.stat(state, event.from, "speed") + roll >= State.stat(state, event.to, "speed") + 3 do
-      combat_output(transition, event, event.from, :fled, 0)
+      transition
+      |> Transition.adjust_stat(event.from, "fled", 1, log: false)
+      |> combat_output(event, event.from, :fled, 0)
     else
       transition
       |> combat_output(event, event.from, :caught, 0)
@@ -129,7 +165,29 @@ defmodule Aethrion.Rules.Combat do
     end
   end
 
-  def apply(transition), do: transition
+  # While a player guards or heals, the enemies (characters with an "enemy"
+  # stat) still strike them: guarding costs a turn.
+  defp enemies_turn(%Transition{state: state} = transition, player, event) do
+    if player?(state, player) do
+      state
+      |> State.sorted_characters()
+      |> Enum.filter(
+        &(State.stat(state, &1.id, "enemy") > 0 and State.stat(state, &1.id, "hp") > 0)
+      )
+      |> Enum.reduce(transition, fn enemy, transition ->
+        Transition.enqueue(
+          transition,
+          Event.attack(enemy.id, player, counter: true, at: event.at)
+        )
+      end)
+    else
+      transition
+    end
+  end
+
+  # Players are people: "user", or someone the world names in people.
+  defp player?(state, id),
+    do: not State.character?(state, id) and (id == "user" or Map.has_key?(state.people, id))
 
   defp use_potion(%Transition{state: state} = transition, %{item: "potion", from: from}) do
     if State.stat?(state, from, "potions"),
@@ -146,13 +204,14 @@ defmodule Aethrion.Rules.Combat do
   # in: a healer tends them when they are hurt, the others strike the same
   # target. Those who do not trust them hold back, and it shows.
   defp party(%Transition{state: state} = transition, event, target_hp) do
-    if State.character?(state, event.from) or Map.get(event, :counter, false) do
-      transition
-    else
+    if player?(state, event.from) and not Map.get(event, :counter, false) and
+         State.stat(state, event.to, "party") == 0 do
       state
       |> State.sorted_characters()
       |> Enum.filter(&party_member?(state, &1.id, event))
       |> Enum.reduce(transition, &join(&2, &1.id, event, target_hp))
+    else
+      transition
     end
   end
 
@@ -161,24 +220,36 @@ defmodule Aethrion.Rules.Combat do
       State.stat(state, id, "party") > 0 and id not in [event.from, event.to] and
         State.stat(state, id, "hp") > 0
 
+  # A healer tends a hurt leader and otherwise strikes too. Someone holding
+  # back says so once, until they fight beside the player again.
   defp join(%Transition{state: state} = transition, id, event, target_hp) do
     trust = State.get_relationship(state, id, event.from).trust
     leader_hp = State.stat(state, event.from, "hp")
     hurt? = leader_hp * 100 < stat_or(state, event.from, "max_hp", leader_hp) * 60
+    held = Combat.held_key(id)
 
     cond do
+      trust < Transition.param(transition, :party_trust) and Map.has_key?(state.cooldowns, held) ->
+        transition
+
       trust < Transition.param(transition, :party_trust) ->
-        combat_output(transition, %{event | from: id, to: event.from}, id, :holds_back, 0)
+        transition
+        |> Transition.put_cooldown(held)
+        |> combat_output(%{event | from: id, to: event.from}, id, :holds_back, 0)
 
       State.stat(state, id, "heal") > 0 and hurt? and leader_hp > 0 ->
         transition
+        |> Transition.clear_cooldown(held)
         |> Transition.enqueue(Event.heal(id, event.from, at: event.at))
         |> fought_beside(id, event.from)
 
-      State.stat(state, id, "heal") == 0 and target_hp > 0 ->
+      target_hp > 0 ->
         transition
+        |> Transition.clear_cooldown(held)
         |> Transition.enqueue(
-          Event.attack(id, event.to, counter: true, observed_by: [], at: event.at)
+          event.to
+          |> then(&Event.attack(id, &1, at: event.at))
+          |> Map.put(:assist, true)
         )
         |> fought_beside(id, event.from)
 
@@ -200,7 +271,7 @@ defmodule Aethrion.Rules.Combat do
   # A character still standing answers a blow, once.
   defp counter(%Transition{state: state} = transition, event) do
     if State.character?(state, event.to) and not Map.get(event, :counter, false) and
-         State.stat(state, event.from, "hp") > 0 do
+         not Map.get(event, :assist, false) and State.stat(state, event.from, "hp") > 0 do
       Transition.enqueue(
         transition,
         Event.attack(event.to, event.from, counter: true, at: event.at)
@@ -260,8 +331,10 @@ defmodule Aethrion.Rules.Combat do
           |> Transition.remember(memory(event, witness, :observed, 55))
 
         # Not on the target's side, and not against the attacker: they saw
-        # someone fight beside them.
-        State.get_relationship(state, witness, event.from).affinity >= 0 ->
+        # someone fight beside them. (Companions earn it by joining in, not
+        # by watching: see join/4.)
+        State.stat(state, witness, "party") == 0 and
+            State.get_relationship(state, witness, event.from).affinity >= 0 ->
           Transition.adjust_relationship(
             transition,
             witness,
@@ -276,8 +349,8 @@ defmodule Aethrion.Rules.Combat do
     end)
   end
 
-  defp grateful(%Transition{state: state} = transition, event) do
-    if State.character?(state, event.to) and event.from != event.to do
+  defp grateful(%Transition{state: state} = transition, event, healed) do
+    if State.character?(state, event.to) and event.from != event.to and healed > 0 do
       transition
       |> Transition.adjust_relationship(
         event.to,

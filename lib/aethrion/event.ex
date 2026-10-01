@@ -411,7 +411,6 @@ defmodule Aethrion.Event do
     attack(data["from"], data["to"],
       skill: data["skill"],
       observed_by: Map.get(data, "observed_by", []),
-      counter: data["counter"] == true,
       at: Map.get(data, "at", @unspecified)
     )
   end

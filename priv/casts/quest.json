@@ -87,7 +87,8 @@
       "max_hp": 42,
       "attack": 7,
       "defense": 2,
-      "speed": 4
+      "speed": 4,
+      "enemy": 1
     }
   },
   "story": {
@@ -105,6 +106,13 @@
           "hp"
         ],
         "at_most": 0
+      },
+      {
+        "stat": [
+          "user",
+          "fled"
+        ],
+        "at_least": 1
       }
     ],
     "endings": [
@@ -140,7 +148,7 @@
               "user"
             ],
             "field": "trust",
-            "at_least": 20
+            "at_least": 15
           },
           {
             "relationship": [
@@ -148,7 +156,7 @@
               "user"
             ],
             "field": "trust",
-            "at_least": 24
+            "at_least": 15
           }
         ]
       },
@@ -169,7 +177,16 @@
       {
         "id": "night",
         "title": "끝나지 않은 밤",
-        "when": []
+        "when": [
+          {
+            "stat": [
+              "user",
+              "fled"
+            ],
+            "at_least": 1
+          }
+        ],
+        "description": "늑대왕의 울음이 등 뒤에서 멀어진다. 살아남았지만, 숲은 아직 그의 것이다."
       }
     ]
   },

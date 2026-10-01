@@ -83,7 +83,8 @@ defmodule Aethrion.CombatTest do
   end
 
   test "counted potions run out" do
-    state = put_in(arena().stats["user"]["potions"], 1)
+    state = arena() |> put_in([Access.key(:stats), "user", "potions"], 1)
+    state = put_in(state.stats["user"]["hp"], 5)
     {state, _outputs, _steps} = run(state, [Event.heal("user", "user", item: "potion")])
     assert State.stat(state, "user", "potions") == 0
 
@@ -103,10 +104,10 @@ defmodule Aethrion.CombatTest do
 
   test "being attacked, seen attacking a friend, fighting beside, and being healed change how characters feel" do
     {state, _outputs, _steps} =
-      run(arena(), [
+      run(put_in(arena().stats["mina"]["hp"], 10), [
         Event.attack("user", "yuna", observed_by: ["haru"]),
         Event.attack("user", "goblin", observed_by: ["mina"]),
-        Event.heal("user", "mina")
+        Event.heal("user", "mina", amount: 1)
       ])
 
     before = arena()
@@ -185,5 +186,101 @@ defmodule Aethrion.CombatTest do
     assert replayed == step.state
 
     assert Combat.describe(hd(combat(step.outputs)), step.state, :ko) =~ "늑대왕에게"
+  end
+
+  test "the fallen are not revived, the unhurt are not healed, and nobody fights once it is decided" do
+    down = put_in(arena().stats["yuna"]["hp"], 0)
+
+    assert {:error, %{message: "yuna is already down"}} =
+             Runtime.step(down, Event.heal("mina", "yuna"))
+
+    assert {:error, %{message: "mina is not hurt"}} =
+             Runtime.step(arena(), Event.heal("user", "mina"))
+
+    fallen_healer = put_in(arena().stats["mina"]["hp"], 0)
+    fallen_healer = put_in(fallen_healer.stats["user"]["hp"], 10)
+
+    assert {:error, %{message: "mina is down and cannot heal"}} =
+             Runtime.step(fallen_healer, Event.heal("mina", "user"))
+
+    {:ok, quest} = "priv/casts/quest.json" |> File.read!() |> Jason.decode!() |> State.parse()
+    {:ok, step} = Runtime.step(put_in(quest.stats["wolf"]["hp"], 1), Event.attack("user", "wolf"))
+    assert Combat.over?(step.state)
+
+    assert {:error, %{message: "the fight is over: the story has reached its ending"}} =
+             Runtime.step(step.state, Event.defend("user"))
+  end
+
+  test "guarding or healing costs a turn: the enemies strike" do
+    state = put_in(arena().stats["goblin"]["enemy"], 1)
+    {state, outputs, _steps} = run(state, [Event.defend("user")])
+
+    assert [%{kind: :guarded}, %{character_id: "goblin", to: "user", guarded: true}] =
+             combat(outputs)
+
+    refute Map.has_key?(state.cooldowns, Combat.guard_key("user"))
+  end
+
+  test "an ally is never a target for the party, and a cascade does not strike the fallen" do
+    state =
+      arena()
+      |> put_in([Access.key(:stats), "haru", "party"], 1)
+      |> put_in([Access.key(:stats), "mina", "party"], 1)
+
+    {_after, outputs, _steps} = run(state, [Event.attack("user", "mina")])
+    refute Enum.any?(combat(outputs), &(&1.character_id == "haru"))
+
+    weak = put_in(state.stats["goblin"]["hp"], 1)
+    {_after, outputs, _steps} = run(weak, [Event.attack("user", "goblin")])
+    assert [%{kind: _hit}, %{kind: :defeated}] = combat(outputs)
+  end
+
+  test "someone who does not trust the player says so once, not every round" do
+    state =
+      arena()
+      |> put_in([Access.key(:stats), "haru", "party"], 1)
+      |> put_in([Access.key(:stats), "goblin", "hp"], 200)
+      |> put_in([Access.key(:stats), "goblin", "max_hp"], 200)
+
+    {state, _outputs, _steps} =
+      run(state, [Event.message_sent("user", "haru", "Useless.", tone: :hostile)])
+
+    {_after, outputs, _steps} =
+      run(state, [Event.attack("user", "goblin"), Event.attack("user", "goblin")])
+
+    assert [_once] = for(%{kind: :holds_back} = o <- combat(outputs), do: o)
+  end
+
+  test "a forged counter flag from a client is ignored" do
+    {:ok, event} =
+      Event.from_data(%{
+        "type" => "attack",
+        "from" => "user",
+        "to" => "goblin",
+        "counter" => true
+      })
+
+    refute Map.get(event, :counter, false)
+  end
+
+  test "words are read as verbs, and who is meant comes from the cast" do
+    state =
+      arena()
+      |> put_in([Access.key(:stats), "goblin", "enemy"], 1)
+      |> put_in([Access.key(:stats), "mina", "party"], 1)
+
+    assert Combat.foe(state) == "goblin"
+    assert Combat.party(state) == ["mina"]
+
+    assert %{type: :attack, to: "goblin", observed_by: ["mina"]} =
+             Combat.action(state, "user", nil, "방패로 후려친다")
+
+    assert %{type: :attack} = Combat.action(state, "user", nil, "도망치지 않고 벤다")
+    assert %{type: :flee, to: "goblin"} = Combat.action(state, "user", nil, "뒤로 후퇴한다")
+    assert %{type: :flee} = Combat.action(state, "user", nil, "등을 돌려 도망친다!")
+    assert %{type: :attack} = Combat.action(state, "user", nil, "몽둥이로 머리를 친다")
+    assert %{type: :heal, to: "mina"} = Combat.action(state, "user", "mina", "붕대를 감아 준다")
+    assert %{type: :heal, to: "user"} = Combat.action(state, "user", "goblin", "potion, now")
+    assert %{type: :defend} = Combat.action(state, "user", nil, "숨을 고른다")
   end
 end
