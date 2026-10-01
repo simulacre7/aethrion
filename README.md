@@ -13,7 +13,7 @@ Aethrion is a persistent social simulation runtime for AI characters that rememb
 
 > LLMs generate expression; deterministic rules drive the simulation.
 
-[Try it](#try-it) · [Two events in, a story out](#two-events-in-a-story-out) · [Word gets around](#word-gets-around) · [How it works](#how-it-works) · [The LLM boundary](#the-llm-boundary) · [Scenarios](#scenarios-and-reports) · [Embedding](#embedding-aethrion) · [Docs](#documentation)
+[Try it](#try-it) · [Two events in, a story out](#two-events-in-a-story-out) · [Word gets around](#word-gets-around) · [How it works](#how-it-works) · [The LLM boundary](#the-llm-boundary) · [Scenarios](#scenarios-and-reports) · [Embedding](#embedding-aethrion) · [Chat apps and games](#chat-apps-and-games) · [Docs](#documentation)
 
 Inspired by the ancient idea of aether, Aethrion treats memory, relationships, and autonomous interaction as a shared social layer where persistent agents can live, change, and respond to each other.
 

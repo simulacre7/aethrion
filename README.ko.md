@@ -13,7 +13,7 @@ Aethrion은 기억하고, 관계를 맺고, 시간에 따라 스스로 행동하
 
 > LLM은 표현을 생성하고, 결정론적 규칙이 시뮬레이션을 구동합니다.
 
-[바로 실행해보기](#바로-실행해보기) · [이벤트 두 개가 이야기가 되기까지](#이벤트-두-개가-이야기가-되기까지) · [소문은 퍼진다](#소문은-퍼진다) · [동작 방식](#동작-방식) · [LLM 경계](#llm-경계) · [시나리오](#시나리오와-리포트) · [Elixir 앱에서 사용하기](#elixir-앱에서-사용하기) · [문서](#문서)
+[바로 실행해보기](#바로-실행해보기) · [이벤트 두 개가 이야기가 되기까지](#이벤트-두-개가-이야기가-되기까지) · [소문은 퍼진다](#소문은-퍼진다) · [동작 방식](#동작-방식) · [LLM 경계](#llm-경계) · [시나리오](#시나리오와-리포트) · [Elixir 앱에서 사용하기](#elixir-앱에서-사용하기) · [채팅 앱과 게임](#채팅-앱과-게임에서-쓰기) · [문서](#문서)
 
 이름은 고대의 "aether" 개념에서 영감을 받았습니다. 하늘을 채우고 서로를 연결한다고 여겨졌던 보이지 않는 매질처럼, Aethrion은 기억, 관계, 자율 상호작용을 하나의 공유 소셜 레이어로 다룹니다.
 
@@ -47,6 +47,12 @@ interactive demo를 녹화한 세션입니다(실제 출력, [plain-text transcr
 ```bash
 export ANTHROPIC_API_KEY=...
 mix demo.interactive --llm anthropic
+```
+
+브라우저에서 캐릭터와 대화해 볼 수도 있습니다. 게임이나 채팅 백엔드가 쓰는 것과 같은 HTTP API를 거칩니다:
+
+```bash
+mix aethrion.serve --locale ko   # 그다음 http://localhost:4848 열기
 ```
 
 ## 이벤트 두 개가 이야기가 되기까지
@@ -254,6 +260,42 @@ Aethrion.World.subscribe(:garden)   # {:aethrion, :garden, {:dispatched, step}},
 `persistence:` 대신 `journal: "tmp/garden.jsonl"`을 쓰면 추가 전용 이벤트 로그가 남습니다. 세계는 로그를 재생해 그대로 복원되고, `mix aethrion.journal`로 어떤 저널이든 리포트로 만들 수 있습니다.
 
 더 많은 예시는 [examples/](examples)와 [docs/api.md](docs/api.md)에 있습니다.
+
+## 채팅 앱과 게임에서 쓰기
+
+위의 예시는 프로세스 하나에 세계 하나입니다. 채팅 앱이나 게임 서버에는 사용자(또는 세이브 슬롯, 방)마다 세계가 하나씩 필요하고, 대화가 이어져야 하며, 어떤 언어에서든 붙일 수 있어야 합니다.
+
+**사용자마다 세계 하나.** `Aethrion.Worlds`는 키(사용자 id 문자열 같은 아무 값)마다 세계를 하나씩 둡니다. 처음 쓸 때 키로부터 시작하고, 한동안 안 쓰면 멈추며, 저널에 남아 있어 다시 켜면 그대로 돌아옵니다. 키를 atom으로 바꾸지 않으므로 사용자 수가 VM의 atom 한도에 묶이지 않습니다.
+
+```elixir
+children = [
+  {Aethrion.Worlds,
+   name: MyApp.Worlds,
+   idle_after: :timer.minutes(30),
+   world: fn user_id ->
+     [initial_state: MyApp.Cast.state(),
+      journal: "data/worlds/#{user_id}.jsonl",
+      expression: [adapter: Aethrion.LLM.Anthropic, timeout: 10_000, adapter_opts: [language: "Korean"]]]
+   end}
+]
+
+Aethrion.Worlds.subscribe(MyApp.Worlds, user_id)     # {:aethrion, {MyApp.Worlds, user_id}, payload}
+Aethrion.Worlds.dispatch(MyApp.Worlds, user_id, event)
+```
+
+**대화.** 캐릭터는 사람마다 최근 대화를 기억합니다(`Aethrion.Conversation`). 답장을 쓰는 모델은 대화의 흐름과 각 말이 얼마나 전에 오갔는지, 그리고 규칙이 정한 태도("아직 최근 일로 서운함")를 봅니다. 그래서 실제로 한 말에 답하고, 캐릭터의 말투(`voice`)를 따르되 일어나지 않은 일을 지어내지 않습니다. 무엇이 일어나는지는 규칙이, 어떻게 들리는지만 모델이 정합니다. 모델이 한 말은 저널에 남으므로 다시 켠 세계는 사실뿐 아니라 그때 한 말까지 기억합니다. 사용자가 입력한 글은 인용된 데이터로 모델에 전달되어 프롬프트를 바꿀 수 없습니다.
+
+**어떤 언어에서든.** `mix aethrion.serve`(또는 슈퍼비전 트리의 `Aethrion.API`)는 Erlang 내장 서버로 세계들을 JSON over HTTP로 제공합니다:
+
+```bash
+curl -s localhost:4848/worlds/alice/say -H 'content-type: application/json' \
+  -d '{"to": "mina", "text": "좋은 아침!"}'
+
+curl -s localhost:4848/worlds/alice/events -H 'content-type: application/json' \
+  -d '{"type": "time_tick", "hours": 6}'      # 시간이 흐르면 캐릭터가 먼저 연락하고, 소문을 나누고, 서로 곁을 지킵니다
+```
+
+`say`는 자유 입력(이벤트로 해석)을, `events`는 시나리오에 쓸 수 있는 모든 이벤트를 받고, `GET /worlds/{key}/conversation?character=mina&after=e12`로 새 대사를 가져올 수 있습니다. bearer 토큰, localhost 바인딩, 크기 제한은 기본으로 켜져 있거나 옵션 하나로 켤 수 있습니다. [docs/api.md](docs/api.md#http-api)와 [cookbook](docs/cookbook.md)을 참고하세요.
 
 ## Runtime vs LLM Server
 
