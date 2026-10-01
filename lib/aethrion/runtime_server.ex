@@ -259,7 +259,8 @@ defmodule Aethrion.RuntimeServer do
     {{_output, timer, _pid}, pending} = Map.pop(server.pending, ref)
     Process.cancel_timer(timer)
 
-    {:noreply, broadcast(%{server | pending: pending}, {:expressed, rendered})}
+    server = %{server | pending: pending} |> remember_rendered(rendered)
+    {:noreply, broadcast(server, {:expressed, rendered})}
   end
 
   # A rendering task crashed or was killed.
@@ -450,6 +451,26 @@ defmodule Aethrion.RuntimeServer do
 
   defp record_history(server, event) do
     %{server | history: Enum.take([event | server.history], server.history_limit)}
+  end
+
+  # What a model said goes into the world's conversation, so the next line
+  # it phrases sees it, and into the journal, so replay restores it.
+  defp remember_rendered(server, rendered) do
+    world = Aethrion.Conversation.put_rendered(server.world, rendered)
+
+    if world == server.world do
+      server
+    else
+      if server.journal do
+        with {:error, error} <- Aethrion.Journal.append_rendered(server.journal, rendered) do
+          Logger.warning(
+            "Aethrion.RuntimeServer could not journal a rendered line: #{error.message}"
+          )
+        end
+      end
+
+      persist(%{server | world: world})
+    end
   end
 
   defp persist(%{persistence: nil} = server), do: server

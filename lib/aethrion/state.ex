@@ -25,7 +25,8 @@ defmodule Aethrion.State do
           seq: non_neg_integer(),
           cooldowns: %{optional(String.t()) => non_neg_integer()},
           tuning: Aethrion.Tuning.t(),
-          people: %{optional(String.t()) => String.t()}
+          people: %{optional(String.t()) => String.t()},
+          conversations: %{optional({String.t(), String.t()}) => [Aethrion.Conversation.turn()]}
         }
 
   @data_version 2
@@ -37,14 +38,16 @@ defmodule Aethrion.State do
             seq: 0,
             cooldowns: %{},
             tuning: %{},
-            people: %{}
+            people: %{},
+            conversations: %{}
 
   @doc """
   Builds a runtime state from explicit characters and relationships.
 
   Options: `:characters`, `:relationships`, `:memories`, `:clock`, `:seq`,
   `:cooldowns`, `:tuning`, `:people` (display names for players: a map of id
-  to name; a character's own name always wins).
+  to name; a character's own name always wins), `:conversations` (see
+  `Aethrion.Conversation`).
   """
   @spec new(keyword()) :: t()
   def new(opts \\ []) do
@@ -60,7 +63,9 @@ defmodule Aethrion.State do
       seq: Keyword.get(opts, :seq, 0),
       cooldowns: Map.new(Keyword.get(opts, :cooldowns, %{})),
       tuning: Map.new(Keyword.get(opts, :tuning, %{})),
-      people: Map.new(Keyword.get(opts, :people, %{}), fn {id, name} -> {to_string(id), name} end)
+      people:
+        Map.new(Keyword.get(opts, :people, %{}), fn {id, name} -> {to_string(id), name} end),
+      conversations: Map.new(Keyword.get(opts, :conversations, %{}))
     }
   end
 
@@ -275,6 +280,11 @@ defmodule Aethrion.State do
     |> then(fn data ->
       if state.people == %{}, do: data, else: Map.put(data, "people", state.people)
     end)
+    |> then(fn data ->
+      if state.conversations == %{},
+        do: data,
+        else: Map.put(data, "conversations", Aethrion.Conversation.to_data(state.conversations))
+    end)
   end
 
   @doc """
@@ -322,7 +332,8 @@ defmodule Aethrion.State do
       seq: Map.get(data, "seq", 0),
       cooldowns: cooldowns_from_data(data),
       tuning: tuning_from_data(data, Keyword.get(opts, :pipeline, Aethrion.Pipeline.default())),
-      people: Map.get(data, "people", %{})
+      people: Map.get(data, "people", %{}),
+      conversations: Aethrion.Conversation.from_data(Map.get(data, "conversations"))
     )
   end
 
@@ -358,6 +369,9 @@ defmodule Aethrion.State do
       "traits" => Enum.map(character.traits, &atom_to_string/1),
       "state" => character_state_to_data(character.state)
     }
+    |> then(fn data ->
+      if character.voice in [nil, ""], do: data, else: Map.put(data, "voice", character.voice)
+    end)
   end
 
   @doc false
@@ -366,6 +380,7 @@ defmodule Aethrion.State do
       id: Map.fetch!(data, "id"),
       name: Map.fetch!(data, "name"),
       profile: Map.get(data, "profile", ""),
+      voice: Map.get(data, "voice", ""),
       traits: data |> Map.get("traits", []) |> Enum.map(&trait_from_data/1),
       state: data |> Map.get("state", %{}) |> character_state_from_data()
     }
@@ -481,7 +496,8 @@ defmodule Aethrion.State do
          :ok <- optional(data, "clock", &non_neg_integer?/1),
          :ok <- optional(data, "seq", &non_neg_integer?/1),
          :ok <- optional(data, "cooldowns", &cooldowns?/1),
-         :ok <- optional(data, "people", &names?/1) do
+         :ok <- optional(data, "people", &names?/1),
+         :ok <- optional(data, "conversations", &Aethrion.Conversation.valid_data?/1) do
       optional(data, "tuning", &is_map/1)
     end
   end
@@ -499,6 +515,7 @@ defmodule Aethrion.State do
     with :ok <- required(character, "id", &non_empty_string?/1),
          :ok <- required(character, "name", &is_binary/1),
          :ok <- optional(character, "profile", &is_binary/1),
+         :ok <- optional(character, "voice", &is_binary/1),
          :ok <- optional(character, "traits", &string_list?/1),
          :ok <- optional(character, "state", &is_map/1) do
       validate_character_state(Map.get(character, "state", %{}))

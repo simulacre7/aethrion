@@ -50,7 +50,7 @@ defmodule Aethrion.LLM.AnthropicTest do
     assert body["model"] == "claude-opus-5-5"
     assert body["output_config"] == %{"effort" => "low"}
     assert body["fallbacks"] == "default"
-    assert body["system"] =~ "Your job is only to phrase it."
+    assert body["system"] =~ "Your job is to phrase it."
     assert [%{"role" => "user", "content" => content}] = body["messages"]
     assert content =~ "Draft line: That's sweet of you."
     refute Map.has_key?(body, "temperature")

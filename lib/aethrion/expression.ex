@@ -60,7 +60,8 @@ defmodule Aethrion.Expression do
       repeats: Keyword.get(opts, :repeats),
       goodwill: Keyword.get(opts, :goodwill),
       now: state.clock,
-      sequence: state.seq
+      sequence: state.seq,
+      conversation: conversation(state, kind, speaker_id, listener_id)
     }
 
     %{request | fallback_text: Templates.render(request)}
@@ -170,12 +171,13 @@ defmodule Aethrion.Expression do
           id: id,
           name: character.name,
           profile: character.profile,
+          voice: character.voice,
           traits: character.traits,
           mood: Aethrion.Rules.Mood.derive(character.state, state)
         }
 
       nil ->
-        %{id: id, name: display_name(state, id), profile: nil, traits: [], mood: nil}
+        %{id: id, name: display_name(state, id), profile: nil, voice: nil, traits: [], mood: nil}
     end
   end
 
@@ -209,6 +211,19 @@ defmodule Aethrion.Expression do
   # told to the user, the user.
   defp addressee(kind, listener_id) when kind in [:reply, :proactive_message], do: listener_id
   defp addressee(_kind, _listener_id), do: "user"
+
+  # The thread so far, for lines said to someone. A dozen turns is enough
+  # to keep the thread without crowding out the rest of the context.
+  @conversation_turns 12
+
+  defp conversation(state, kind, speaker_id, listener_id)
+       when kind in [:reply, :proactive_message] do
+    state
+    |> Aethrion.Conversation.recent(speaker_id, listener_id, @conversation_turns)
+    |> Enum.map(&Map.take(&1, [:from, :to, :text, :kind, :tone, :at]))
+  end
+
+  defp conversation(_state, _kind, _speaker_id, _listener_id), do: []
 
   defp names(state, ids, memories, you) do
     memory_ids =

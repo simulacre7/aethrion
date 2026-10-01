@@ -189,10 +189,14 @@ defmodule Aethrion.Runtime do
   defp add_log(acc, lines), do: %{acc | log: Enum.reverse(lines, acc.log)}
 
   defp finish(%Step{} = acc) do
+    events = Enum.reverse(acc.events)
+    outputs = Enum.reverse(acc.outputs)
+
     %{
       acc
-      | events: Enum.reverse(acc.events),
-        outputs: Enum.reverse(acc.outputs),
+      | state: Aethrion.Conversation.record_step(acc.state, events, outputs),
+        events: events,
+        outputs: outputs,
         log: Enum.reverse(acc.log),
         trace: Enum.reverse(acc.trace)
     }

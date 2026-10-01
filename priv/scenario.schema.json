@@ -56,6 +56,7 @@
               "id": {"$ref": "#/definitions/id"},
               "name": {"type": "string"},
               "profile": {"type": "string"},
+              "voice": {"type": "string", "description": "How the character talks, for models that phrase their lines."},
               "traits": {
                 "type": "array",
                 "items": {"type": "string"},

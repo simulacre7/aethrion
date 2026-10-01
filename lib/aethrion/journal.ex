@@ -19,6 +19,13 @@ defmodule Aethrion.Journal do
   {"id": "e2", "type": "time_tick", "hours": 2, "now": "..."}
   ```
 
+  A server that renders lines with a model also records what was said, so a
+  replayed conversation (`Aethrion.Conversation`) holds the same words:
+
+  ```json
+  {"rendered": {"event_id": "e1", "from": "mina", "to": "user", "draft": "...", "text": "..."}}
+  ```
+
   `Aethrion.RuntimeServer` (and `Aethrion.World`) keep a journal with the
   `:journal` option and rebuild from it on start. Custom event types can be
   replayed when the same pipeline is passed (`pipeline:`).
@@ -230,6 +237,25 @@ defmodule Aethrion.Journal do
     end
   end
 
+  @doc """
+  Appends what a model said for a character's line (a rendered output), so
+  that replay restores it in the conversation. Outputs that were not rendered
+  by a model are ignored.
+  """
+  @spec append_rendered(Path.t(), map()) :: :ok | {:error, Error.t()}
+  def append_rendered(path, output) do
+    case Aethrion.Conversation.rendered_data(output) do
+      nil ->
+        :ok
+
+      data ->
+        case File.write(path, Jason.encode!(%{"rendered" => data}) <> "\n", [:append, :utf8]) do
+          :ok -> :ok
+          {:error, reason} -> {:error, io_error(path, reason)}
+        end
+    end
+  end
+
   @doc "Appends one processed host event (with its assigned `:id`)."
   @spec append(Path.t(), Event.t(), keyword()) :: :ok | {:error, Error.t()}
   def append(path, %{type: _type} = event, opts \\ []) do
@@ -304,6 +330,13 @@ defmodule Aethrion.Journal do
   """
   @spec read(Path.t(), keyword()) :: {:ok, State.t(), [Event.t()]} | {:error, Error.t()}
   def read(path, opts \\ []) do
+    with {:ok, state, entries} <- read_entries(path, opts) do
+      {:ok, state, Enum.reject(entries, &match?({:rendered, _line}, &1))}
+    end
+  end
+
+  # Events and rendered lines, in the order they were written.
+  defp read_entries(path, opts) do
     with {:ok, contents} <- read_file(path),
          :ok <- not_a_scenario(contents),
          {:ok, contents} <- drop_torn_line(path, contents, Keyword.get(opts, :repair, false)) do
@@ -423,8 +456,8 @@ defmodule Aethrion.Journal do
   @spec replay(Path.t(), keyword()) ::
           {:ok, State.t(), [Aethrion.Step.t()]} | {:error, Error.t()}
   def replay(path, opts \\ []) do
-    with {:ok, state, events} <- read(path, opts) do
-      replay_events(state, events, opts)
+    with {:ok, state, entries} <- read_entries(path, opts) do
+      replay_events(state, entries, opts)
     end
   end
 
@@ -444,34 +477,45 @@ defmodule Aethrion.Journal do
     end
   end
 
-  defp replay_events(state, events, opts) do
+  # Rendered lines restore what a model said in the conversation; they are
+  # not events, so they produce no step and do not count as one.
+  defp replay_events(state, entries, opts) do
     runtime_opts = Keyword.take(opts, [:pipeline, :max_depth, :max_events])
 
-    events
-    |> Enum.with_index()
-    |> Enum.reduce_while({:ok, state, []}, fn {event, index}, {:ok, state, steps} ->
-      recorded_id = Map.get(event, :id)
+    entries
+    |> Enum.reduce_while({:ok, state, [], 0}, fn
+      {:rendered, line}, {:ok, state, steps, index} ->
+        {:cont, {:ok, Aethrion.Conversation.put_rendered(state, line), steps, index}}
 
-      case Runtime.step(state, Map.delete(event, :id), runtime_opts) do
-        {:ok, step} when is_nil(recorded_id) or step.event.id == recorded_id ->
-          {:cont, {:ok, step.state, [step | steps]}}
-
-        {:ok, step} ->
-          {:halt,
-           {:error,
-            Error.new(
-              :journal_mismatch,
-              "replayed event #{index} got id #{step.event.id}, but the journal recorded #{recorded_id}",
-              %{index: index, expected: recorded_id, replayed: step.event.id}
-            )}}
-
-        {:error, error} ->
-          {:halt, {:error, Error.add_details(error, %{index: index})}}
-      end
+      event, {:ok, state, steps, index} ->
+        case replay_event(state, event, index, runtime_opts) do
+          {:ok, step} -> {:cont, {:ok, step.state, [step | steps], index + 1}}
+          error -> {:halt, error}
+        end
     end)
     |> case do
-      {:ok, state, steps} -> {:ok, state, Enum.reverse(steps)}
+      {:ok, state, steps, _count} -> {:ok, state, Enum.reverse(steps)}
       error -> error
+    end
+  end
+
+  defp replay_event(state, event, index, runtime_opts) do
+    recorded_id = Map.get(event, :id)
+
+    case Runtime.step(state, Map.delete(event, :id), runtime_opts) do
+      {:ok, step} when is_nil(recorded_id) or step.event.id == recorded_id ->
+        {:ok, step}
+
+      {:ok, step} ->
+        {:error,
+         Error.new(
+           :journal_mismatch,
+           "replayed event #{index} got id #{step.event.id}, but the journal recorded #{recorded_id}",
+           %{index: index, expected: recorded_id, replayed: step.event.id}
+         )}
+
+      {:error, error} ->
+        {:error, Error.add_details(error, %{index: index})}
     end
   end
 
@@ -514,24 +558,37 @@ defmodule Aethrion.Journal do
 
   defp parse_events(lines, pipeline) do
     lines
-    |> Enum.reduce_while({:ok, []}, fn {line, number}, {:ok, events} ->
-      with {:ok, data} <- Jason.decode(line),
-           {:ok, event} <- Event.from_data(data, pipeline: pipeline) do
-        event =
-          case Map.get(data, "id") do
-            id when is_binary(id) -> Map.put(event, :id, id)
-            _ -> event
-          end
-
-        {:cont, {:ok, [event | events]}}
-      else
+    |> Enum.reduce_while({:ok, []}, fn {line, number}, {:ok, entries} ->
+      case parse_entry(line, pipeline) do
+        {:ok, entry} -> {:cont, {:ok, [entry | entries]}}
         {:error, %Error{} = error} -> {:halt, {:error, invalid_journal(number, error.message)}}
         {:error, reason} -> {:halt, {:error, invalid_journal(number, reason)}}
       end
     end)
     |> case do
-      {:ok, events} -> {:ok, Enum.reverse(events)}
+      {:ok, entries} -> {:ok, Enum.reverse(entries)}
       error -> error
+    end
+  end
+
+  defp parse_entry(line, pipeline) do
+    case Jason.decode(line) do
+      {:ok, %{"rendered" => rendered}} ->
+        case Aethrion.Conversation.rendered_from_data(rendered) do
+          {:ok, line} -> {:ok, {:rendered, line}}
+          :error -> {:error, :invalid_rendered_line}
+        end
+
+      {:ok, data} ->
+        with {:ok, event} <- Event.from_data(data, pipeline: pipeline) do
+          case Map.get(data, "id") do
+            id when is_binary(id) -> {:ok, Map.put(event, :id, id)}
+            _ -> {:ok, event}
+          end
+        end
+
+      error ->
+        error
     end
   end
 end
