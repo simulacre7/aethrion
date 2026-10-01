@@ -212,6 +212,7 @@ defmodule Aethrion.BridgeTest do
       :httpc.request(:options, {String.to_charlist(base <> "/v1/chat/completions"), []}, [], [])
 
     assert {~c"access-control-allow-origin", ~c"*"} in headers
+    assert {~c"access-control-allow-private-network", ~c"true"} in headers
 
     assert {400, _h, body} = post(base, %{"model" => "aethrion:ghost", "messages" => risu([])})
     assert body =~ "ghost"

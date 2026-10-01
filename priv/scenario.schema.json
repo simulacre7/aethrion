@@ -120,6 +120,7 @@
               "name": {"type": "string"},
               "profile": {"type": "string"},
               "voice": {"type": "string", "description": "How the character talks, for models that phrase their lines."},
+              "greeting": {"type": "string", "description": "The character's first message when a chat opens (a character card's first message)."},
               "traits": {
                 "type": "array",
                 "items": {"type": "string"},

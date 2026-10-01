@@ -42,6 +42,10 @@ defmodule Mix.Tasks.Aethrion.Serve do
     show up when a client polls `conversation`); by default time passes
     only when a client sends a `time_tick`
 
+  With `--llm`, the server is also an OpenAI-compatible model at
+  `/v1/chat/completions` for chat apps such as RisuAI (`Aethrion.Bridge`,
+  docs/risuai.md); what it remembers for that is kept under `--data`.
+
   See `Aethrion.API` for the endpoints.
   """
 

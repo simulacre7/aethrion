@@ -1092,7 +1092,9 @@ defmodule Aethrion.API do
       do: [
         "access-control-allow-origin": ~c"*",
         "access-control-allow-headers": ~c"authorization, content-type",
-        "access-control-allow-methods": ~c"GET, POST, OPTIONS"
+        "access-control-allow-methods": ~c"GET, POST, OPTIONS",
+        # A web app on a public site reaching this server on the user's machine.
+        "access-control-allow-private-network": ~c"true"
       ]
 
     defp cors(_segments), do: []

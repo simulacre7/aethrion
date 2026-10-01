@@ -141,4 +141,22 @@ defmodule Aethrion.CardTest do
     assert "char_" <> _ = id = Card.id_for("서윤")
     assert Card.id_for("서윤") == id
   end
+
+  test "a cast goes out as a narrator card that brings the status window into RisuAI" do
+    {:ok, den} =
+      "priv/casts/den.json" |> File.read!() |> Jason.decode!() |> Aethrion.State.parse()
+
+    card = Card.from_cast(den, name: "늑대굴")
+
+    assert %{"spec" => "chara_card_v3", "data" => %{"name" => "늑대굴"} = data} = card
+    assert data["description"] =~ "세라"
+    # The greeting is the first one from a character who is not a foe.
+    assert data["first_mes"] =~ "늑대들 영역"
+
+    module = "priv/risu/aethrion-status.json" |> File.read!() |> Jason.decode!()
+    assert data["extensions"]["risuai"]["customScripts"] == module["regex"]
+
+    # It reads back as a card.
+    assert {:ok, _card} = Card.normalize(card)
+  end
 end

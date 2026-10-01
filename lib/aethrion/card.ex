@@ -22,6 +22,12 @@ defmodule Aethrion.Card do
   under `extensions.risuai`) are not run; `to_cast/2` lists what it left out.
   """
 
+  # RisuAI takes a card's regex scripts with it, so the narrator card draws
+  # the status window without the module.
+  @status_module Path.expand("../../priv/risu/aethrion-status.json", __DIR__)
+  @external_resource @status_module
+  @status_scripts @status_module |> File.read!() |> Jason.decode!() |> Map.fetch!("regex")
+
   @png <<137, 80, 78, 71, 13, 10, 26, 10>>
   @max_text 20_000
 
@@ -244,7 +250,7 @@ defmodule Aethrion.Card do
         "tags" => ["aethrion"],
         "creator" => "aethrion",
         "character_version" => "1",
-        "extensions" => %{},
+        "extensions" => %{"risuai" => %{"customScripts" => @status_scripts}},
         "group_only_greetings" => [],
         "character_book" => %{"entries" => lore, "extensions" => %{}}
       }
