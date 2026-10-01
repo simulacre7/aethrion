@@ -91,7 +91,8 @@ defmodule Mix.Tasks.Aethrion.Serve do
         port: Keyword.get(opts, :port, 4848),
         bind: opts[:bind] || "127.0.0.1",
         token: token,
-        intent: if(adapter, do: [adapter: adapter, adapter_opts: adapter_opts], else: [])
+        intent: if(adapter, do: [adapter: adapter, adapter_opts: adapter_opts], else: []),
+        locale: if(opts[:locale] == "ko", do: :ko, else: :en)
       )
 
     notes =

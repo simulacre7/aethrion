@@ -1,0 +1,173 @@
+{
+  "characters": [
+    {
+      "id": "ria",
+      "name": "리아",
+      "profile": "떠돌이 치유사. 겁이 많지만 동료가 다치는 건 못 본다.",
+      "voice": "부드럽고 걱정 많은 반말. 상대가 다치면 말이 빨라진다.",
+      "traits": [
+        "sensitive"
+      ]
+    },
+    {
+      "id": "kael",
+      "name": "카엘",
+      "profile": "용병 출신 검사. 말수가 적고, 등을 맡길 사람을 오래 지켜본다.",
+      "voice": "짧고 무뚝뚝한 반말. 칭찬은 한 마디로 끝낸다.",
+      "traits": [
+        "calm"
+      ]
+    },
+    {
+      "id": "wolf",
+      "name": "늑대왕",
+      "profile": "숲을 지배하는 거대한 늑대. 겁먹은 자를 먼저 노린다.",
+      "voice": "낮게 으르렁거리는 말투. 인간을 비웃는다."
+    }
+  ],
+  "relationships": [
+    {
+      "from": "ria",
+      "to": "user",
+      "affinity": 30,
+      "trust": 20
+    },
+    {
+      "from": "kael",
+      "to": "user",
+      "affinity": 20,
+      "trust": 10
+    },
+    {
+      "from": "ria",
+      "to": "kael",
+      "affinity": 35,
+      "trust": 30
+    },
+    {
+      "from": "kael",
+      "to": "ria",
+      "affinity": 40,
+      "trust": 35
+    },
+    {
+      "from": "wolf",
+      "to": "user",
+      "affinity": -40,
+      "trust": -40
+    }
+  ],
+  "stats": {
+    "user": {
+      "hp": 32,
+      "max_hp": 32,
+      "attack": 7,
+      "defense": 2,
+      "speed": 3
+    },
+    "ria": {
+      "hp": 18,
+      "max_hp": 18,
+      "attack": 2,
+      "defense": 1,
+      "heal": 9
+    },
+    "kael": {
+      "hp": 28,
+      "max_hp": 28,
+      "attack": 7,
+      "defense": 3,
+      "speed": 2
+    },
+    "wolf": {
+      "hp": 42,
+      "max_hp": 42,
+      "attack": 7,
+      "defense": 2,
+      "speed": 4
+    }
+  },
+  "story": {
+    "decide_when": [
+      {
+        "stat": [
+          "wolf",
+          "hp"
+        ],
+        "at_most": 0
+      },
+      {
+        "stat": [
+          "user",
+          "hp"
+        ],
+        "at_most": 0
+      }
+    ],
+    "endings": [
+      {
+        "id": "fallen",
+        "title": "쓰러진 영웅",
+        "description": "늑대왕의 울음소리가 숲을 덮는다. 눈을 떴을 때, 리아가 울고 있었다.",
+        "when": [
+          {
+            "stat": [
+              "user",
+              "hp"
+            ],
+            "at_most": 0
+          }
+        ]
+      },
+      {
+        "id": "companions",
+        "title": "함께 돌아오는 길",
+        "description": "늑대왕이 쓰러진다. 카엘이 말없이 네 어깨를 두드리고, 리아는 웃으며 붕대를 감아 준다.",
+        "when": [
+          {
+            "stat": [
+              "wolf",
+              "hp"
+            ],
+            "at_most": 0
+          },
+          {
+            "relationship": [
+              "kael",
+              "user"
+            ],
+            "field": "trust",
+            "at_least": 15
+          },
+          {
+            "relationship": [
+              "ria",
+              "user"
+            ],
+            "field": "trust",
+            "at_least": 25
+          }
+        ]
+      },
+      {
+        "id": "alone",
+        "title": "혼자만의 승리",
+        "description": "늑대왕은 쓰러졌지만, 돌아보니 아무도 곁에 없다.",
+        "when": [
+          {
+            "stat": [
+              "wolf",
+              "hp"
+            ],
+            "at_most": 0
+          }
+        ]
+      },
+      {
+        "id": "night",
+        "title": "끝나지 않은 밤",
+        "when": []
+      }
+    ]
+  }
+}

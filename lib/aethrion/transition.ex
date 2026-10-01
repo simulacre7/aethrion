@@ -382,6 +382,15 @@ defmodule Aethrion.Transition do
     %{transition | state: State.put_cooldown(transition.state, key)}
   end
 
+  @doc "Forgets a cooldown key (a one-off mark, such as a raised guard)."
+  @spec clear_cooldown(t(), String.t()) :: t()
+  def clear_cooldown(%__MODULE__{} = transition, key) do
+    %{
+      transition
+      | state: %{transition.state | cooldowns: Map.delete(transition.state.cooldowns, key)}
+    }
+  end
+
   @doc "Replaces the state directly. Prefer the tracked helpers."
   @spec put_state(t(), State.t()) :: t()
   def put_state(%__MODULE__{} = transition, %State{} = state), do: %{transition | state: state}

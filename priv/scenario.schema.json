@@ -52,6 +52,7 @@
           "type": "object",
           "properties": {
             "deadline": {"type": "integer", "minimum": 1},
+            "decide_when": {"type": "array", "items": {"type": "object"}},
             "activities": {"type": "object", "additionalProperties": {"type": "object", "additionalProperties": {"type": "integer"}}},
             "endings": {
               "type": "array",
@@ -179,6 +180,42 @@
         {
           "properties": {
             "type": {"const": "time_spent_together"},
+            "from": {"$ref": "#/definitions/id"},
+            "to": {"$ref": "#/definitions/id"},
+            "at": {"type": "string"}
+          },
+          "required": ["type", "from", "to"]
+        },
+        {
+          "properties": {
+            "type": {"const": "attack"},
+            "from": {"$ref": "#/definitions/id"},
+            "to": {"$ref": "#/definitions/id"},
+            "skill": {"type": "string"},
+            "observed_by": {"type": "array", "items": {"$ref": "#/definitions/id"}},
+            "counter": {"type": "boolean"},
+            "at": {"type": "string"}
+          },
+          "required": ["type", "from", "to"]
+        },
+        {
+          "properties": {"type": {"const": "defend"}, "from": {"$ref": "#/definitions/id"}, "at": {"type": "string"}},
+          "required": ["type", "from"]
+        },
+        {
+          "properties": {
+            "type": {"const": "heal"},
+            "from": {"$ref": "#/definitions/id"},
+            "to": {"$ref": "#/definitions/id"},
+            "amount": {"type": "integer", "minimum": 1},
+            "item": {"type": "string"},
+            "at": {"type": "string"}
+          },
+          "required": ["type", "from", "to"]
+        },
+        {
+          "properties": {
+            "type": {"const": "flee"},
             "from": {"$ref": "#/definitions/id"},
             "to": {"$ref": "#/definitions/id"},
             "at": {"type": "string"}

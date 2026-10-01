@@ -20,6 +20,7 @@ defmodule Aethrion.API do
   | method | path | does |
   | ------ | ---- | ---- |
   | `POST` | `/worlds/{key}/say` | `{"to": "mina", "text": "...", "from": "user", "observed_by": [...]}`: free text, interpreted (`Aethrion.Intent`) and dispatched |
+  | `POST` | `/worlds/{key}/act` | `{"text": "I swing at the goblin", "to": "goblin", "from": "user"}`: a combat action in free words (`Aethrion.Combat.action/4`): attack, guard, heal, or flee |
   | `POST` | `/worlds/{key}/events` | an event, as in a scenario or journal: `{"type": "gift_received", "from": "user", "to": "mina", "item": "tea"}` |
   | `GET` | `/worlds/{key}/conversation?character=mina&person=user&after=e12` | the recent turns between them (after an event, for polling: proactive messages land here too) |
   | `GET` | `/worlds/{key}/characters?person=user` | each character with their mood and how they feel about that person (bond, affinity, trust, tension), for a game's UI |
@@ -55,6 +56,7 @@ defmodule Aethrion.API do
   - `:max_body` (bytes, default 65_536)
   - `:max_text` (characters, default 2_000) - the longest `say` text; each
     one may become a model call
+  - `:locale` (`:en` or `:ko`) - the language of combat lines
   """
 
   alias Aethrion.{Conversation, Error, Event, Intent, Output, State, Worlds}
@@ -101,6 +103,7 @@ defmodule Aethrion.API do
       intent: Keyword.get(opts, :intent, []),
       render_timeout: Keyword.get(opts, :render_timeout, 15_000),
       max_text: Keyword.get(opts, :max_text, 2_000),
+      locale: Keyword.get(opts, :locale, :en),
       max_body: Keyword.get(opts, :max_body, 65_536)
     })
 
@@ -175,12 +178,13 @@ defmodule Aethrion.API do
 
   defp world_route("POST", ["say"], key), do: {:ok, {:say, key}}
   defp world_route("POST", ["events"], key), do: {:ok, {:event, key}}
+  defp world_route("POST", ["act"], key), do: {:ok, {:act, key}}
   defp world_route("GET", ["conversation"], key), do: {:ok, {:conversation, key}}
   defp world_route("GET", ["state"], key), do: {:ok, {:state, key}}
   defp world_route("GET", ["characters"], key), do: {:ok, {:characters, key}}
 
   defp world_route(_method, route, _key)
-       when route in [["say"], ["events"], ["conversation"], ["state"], ["characters"]],
+       when route in [["say"], ["events"], ["act"], ["conversation"], ["state"], ["characters"]],
        do: {:error, 405, Error.new(:method_not_allowed, "method not allowed")}
 
   defp world_route(_method, _route, _key), do: not_found()
@@ -249,6 +253,16 @@ defmodule Aethrion.API do
     end
   end
 
+  defp run(config, {:act, key}, _query, body) do
+    with {:ok, data} <- decode(body),
+         {:ok, text} <- required(data, "text"),
+         :ok <- short_enough(text, config.max_text),
+         {:ok, state} <- Worlds.peek_state(config.worlds, key) do
+      event = Aethrion.Combat.action(state, Map.get(data, "from", "user"), data["to"], text)
+      dispatch(config, key, event, %{interpreted: %{type: event.type}})
+    end
+  end
+
   defp run(config, {:say, key}, _query, body) do
     with {:ok, data} <- decode(body),
          {:ok, to} <- required(data, "to"),
@@ -295,10 +309,23 @@ defmodule Aethrion.API do
       with {:ok, step} <- Worlds.step(manager, key, event) do
         expressive = Enum.filter(step.outputs, &Output.expressive?/1)
 
-        lines =
+        rendered =
           if renders?(manager, key),
             do: await_rendered(manager, key, expressive, config.render_timeout),
             else: expressive
+
+        # Lines in the order things happened: what was said, and blows.
+        lines =
+          step.outputs
+          |> Enum.filter(&(Output.expressive?(&1) or &1.type in [:combat, :ending_reached]))
+          |> Enum.map(fn output ->
+            Enum.find(
+              rendered,
+              output,
+              &(&1.event_id == output.event_id and same_line?(&1, output))
+            )
+          end)
+          |> Enum.map(&localize(&1, step.state, config.locale))
 
         {:ok, 200,
          Map.merge(extra, %{
@@ -315,6 +342,16 @@ defmodule Aethrion.API do
       flush(manager, key)
     end
   end
+
+  defp same_line?(a, b),
+    do:
+      a.type == b.type and Map.get(a, :character_id) == Map.get(b, :character_id) and
+        Map.get(a, :to) == Map.get(b, :to)
+
+  defp localize(%{type: :combat} = output, state, locale),
+    do: %{output | text: Aethrion.Combat.describe(output, state, locale)}
+
+  defp localize(output, _state, _locale), do: output
 
   defp renders?(manager, key) do
     case Worlds.Janitor.world_options(manager, key) do
@@ -350,6 +387,34 @@ defmodule Aethrion.API do
 
   # Why a proactive message was sent, which kind of scene, or the tone a
   # reply answers; whichever the line has.
+  defp line(%{type: :ending_reached} = output) do
+    %{
+      type: :ending_reached,
+      event_id: output.event_id,
+      ending: output.ending,
+      title: output.title,
+      text: output.description,
+      because: output.because
+    }
+  end
+
+  defp line(%{type: :combat} = output) do
+    output
+    |> Map.take([
+      :type,
+      :event_id,
+      :kind,
+      :character_id,
+      :to,
+      :subject,
+      :amount,
+      :hp,
+      :max_hp,
+      :text
+    ])
+    |> Map.put(:rendered, false)
+  end
+
   defp line(output) do
     %{
       type: output.type,

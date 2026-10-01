@@ -410,13 +410,30 @@ defmodule Aethrion.Expression.Templates.Ko do
       %{type: :time_spent_together} ->
         "#{with_particle(name.(event.from), :with)} #{with_particle(name.(event.to), :topic)} 함께 시간을 보낸다"
 
-      %{type: :activity} ->
-        "#{with_particle(name.(event.character), :topic)} #{event.activity}에 시간을 쓴다"
-
       _other ->
-        Aethrion.Event.describe(event, names)
+        describe_action(event, name, subject, names)
     end
   end
+
+  # Activities and fights.
+  defp describe_action(%{type: :attack} = event, name, subject, _names),
+    do:
+      "#{subject.(event.from)} #{with_particle(name.(event.to), :object)} 공격한다" <>
+        seen_by(event, name)
+
+  defp describe_action(%{type: :defend} = event, name, _subject, _names),
+    do: "#{with_particle(name.(event.from), :topic)} 방어 자세를 취한다"
+
+  defp describe_action(%{type: :heal} = event, name, subject, _names),
+    do: "#{subject.(event.from)} #{with_particle(name.(event.to), :object)} 치료한다"
+
+  defp describe_action(%{type: :flee} = event, name, _subject, _names),
+    do: "#{with_particle(name.(event.from), :topic)} #{name.(event.to)}에게서 도망치려 한다"
+
+  defp describe_action(%{type: :activity} = event, name, _subject, _names),
+    do: "#{with_particle(name.(event.character), :topic)} #{event.activity}에 시간을 쓴다"
+
+  defp describe_action(event, _name, _subject, names), do: Aethrion.Event.describe(event, names)
 
   @doc """
   One-line Korean description of a memory, from its structured data, for

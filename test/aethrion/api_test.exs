@@ -170,6 +170,24 @@ defmodule Aethrion.APITest do
     refute message =~ "journal"
   end
 
+  test "a fight from words, with the ending it settles", %{base: base, dir: dir} do
+    {:ok, quest} =
+      "priv/casts/quest.json" |> File.read!() |> Jason.decode!() |> Aethrion.State.parse()
+
+    quest = put_in(quest.stats["wolf"]["hp"], 1)
+    :ok = Aethrion.Journal.create(Path.join(dir, Worlds.file_name("quest") <> ".jsonl"), quest)
+
+    assert {200, %{"interpreted" => %{"type" => "attack"}, "lines" => lines}} =
+             request(:post, base <> "/worlds/quest/act", %{
+               "to" => "wolf",
+               "text" => "I swing my sword!"
+             })
+
+    assert [%{"type" => "combat", "kind" => _hit, "to" => "wolf"} | _] = lines
+    assert Enum.any?(lines, &(&1["type"] == "combat" and &1["kind"] == "defeated"))
+    assert %{"type" => "ending_reached", "title" => _title} = List.last(lines)
+  end
+
   test "mistakes are errors with a status", %{base: base} do
     assert {400, %{"error" => %{"code" => "invalid_key"}}} =
              request(:post, base <> "/worlds/..%2Fetc/say", %{"to" => "mina", "text" => "hi"})

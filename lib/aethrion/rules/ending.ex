@@ -1,7 +1,8 @@
 defmodule Aethrion.Rules.Ending do
   @moduledoc """
-  When the world's clock reaches the story's `deadline`
-  (`Aethrion.Story`), the ending is decided, once: the first ending whose
+  When the world's clock reaches the story's `deadline`, or any of its
+  `decide_when` conditions holds (`Aethrion.Story`), the ending is decided,
+  once: the first ending whose
   conditions all hold. It is an `:ending_reached` output with the ending's
   `id`, `title`, `description`, and `because` (its conditions, as they
   stood).
@@ -21,13 +22,19 @@ defmodule Aethrion.Rules.Ending do
 
   @impl true
   def apply(%Transition{state: state} = transition) do
-    deadline = Map.get(state.story, :deadline)
-
     cond do
-      deadline == nil or state.clock < deadline -> transition
       Map.has_key?(state.cooldowns, @key) -> transition
-      true -> decide(transition, Story.ending(state))
+      due?(state) -> decide(transition, Story.ending(state))
+      true -> transition
     end
+  end
+
+  # The deadline has come, or something that settles the story happened.
+  defp due?(%State{story: story} = state) do
+    deadline = Map.get(story, :deadline)
+
+    (deadline != nil and state.clock >= deadline) or
+      Enum.any?(Map.get(story, :decide_when, []), &Story.holds?(state, &1))
   end
 
   defp decide(transition, :none) do

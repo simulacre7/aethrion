@@ -12,8 +12,11 @@ defmodule Aethrion.Story do
     is the one reached; an ending with no conditions is the one everybody
     else gets.
   - `deadline` - the simulated hour at which the ending is decided (say
-    `720` for thirty days). With `Aethrion.Story.pipeline/1`, the world emits
-    an `:ending_reached` output once, the first time its clock reaches it.
+    `720` for thirty days). The world emits an `:ending_reached` output
+    once, the first time its clock reaches it.
+  - `decide_when` - conditions that decide the ending as soon as any of them
+    holds, deadline or not: the boss falls (`{"stat": ["wolf", "hp"],
+    "at_most": 0}`), or the hero does.
 
   ```json
   "story": {
@@ -234,9 +237,10 @@ defmodule Aethrion.Story do
   def parse(data) when is_map(data) do
     with {:ok, activities} <- parse_activities(Map.get(data, "activities", %{})),
          {:ok, endings} <- parse_endings(Map.get(data, "endings", [])),
-         {:ok, deadline} <- parse_deadline(Map.get(data, "deadline")) do
+         {:ok, deadline} <- parse_deadline(Map.get(data, "deadline")),
+         {:ok, decide} <- parse_conditions(Map.get(data, "decide_when", []), ["decide_when"]) do
       {:ok,
-       %{activities: activities, endings: endings, deadline: deadline}
+       %{activities: activities, endings: endings, deadline: deadline, decide_when: decide}
        |> Map.reject(fn {_k, v} -> v in [nil, %{}, []] end)}
     end
   end
@@ -255,6 +259,10 @@ defmodule Aethrion.Story do
     |> put_if("activities", story[:activities])
     |> put_if("endings", story[:endings] && Enum.map(story.endings, &ending_to_data/1))
     |> put_if("deadline", story[:deadline])
+    |> put_if(
+      "decide_when",
+      story[:decide_when] && Enum.map(story.decide_when, &condition_to_data/1)
+    )
   end
 
   defp put_if(map, _key, nil), do: map

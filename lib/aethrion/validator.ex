@@ -80,6 +80,42 @@ defmodule Aethrion.Validator do
     end
   end
 
+  defp validate_event(state, %{type: :attack} = event) do
+    with :ok <- require_fighter(state, event, :from),
+         :ok <- require_fighter(state, event, :to),
+         :ok <- require_distinct(event),
+         :ok <- optional_name(event, :skill) do
+      require_observers(state, Map.get(event, :observed_by, []))
+    end
+  end
+
+  defp validate_event(state, %{type: :defend} = event), do: require_fighter(state, event, :from)
+
+  defp validate_event(state, %{type: :heal} = event) do
+    with :ok <- require_name(event, :from),
+         :ok <- require_fighter(state, event, :to, alive: false),
+         :ok <- optional_name(event, :item) do
+      case Map.get(event, :amount) do
+        nil ->
+          :ok
+
+        amount when is_integer(amount) and amount > 0 ->
+          :ok
+
+        _other ->
+          {:error,
+           error(:invalid_event, "amount must be a positive whole number", %{field: :amount})}
+      end
+    end
+  end
+
+  defp validate_event(state, %{type: :flee} = event) do
+    with :ok <- require_fighter(state, event, :from),
+         :ok <- require_fighter(state, event, :to) do
+      require_distinct(event)
+    end
+  end
+
   defp validate_event(state, %{type: :activity} = event) do
     with :ok <- require_character(state, event, :character),
          :ok <- require_name(event, :activity) do
@@ -142,6 +178,32 @@ defmodule Aethrion.Validator do
           {:error,
            error(:invalid_event, "#{field} must not contain control characters", %{field: field})},
         else: :ok
+    end
+  end
+
+  # Fighters are actors with an hp stat; most actions need them standing.
+  defp require_fighter(state, event, field, opts \\ []) do
+    with :ok <- require_name(event, field) do
+      id = Map.fetch!(event, field)
+
+      cond do
+        not State.stat?(state, id, "hp") ->
+          {:error,
+           error(:invalid_event, "#{id} cannot fight: no hp stat", %{field: field, actor: id})}
+
+        Keyword.get(opts, :alive, true) and State.stat(state, id, "hp") <= 0 ->
+          {:error, error(:invalid_event, "#{id} is already down", %{field: field, actor: id})}
+
+        true ->
+          :ok
+      end
+    end
+  end
+
+  defp optional_name(event, field) do
+    case Map.get(event, field) do
+      nil -> :ok
+      _value -> require_name(event, field)
     end
   end
 
