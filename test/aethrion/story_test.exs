@@ -102,11 +102,69 @@ defmodule Aethrion.StoryTest do
              ]
            }, "bond name"},
           {%{"deadline" => -1}, "positive"},
-          {%{"activities" => %{"study" => %{"iq" => "high"}}}, "whole numbers"}
+          {%{"activities" => %{"study" => %{"iq" => "high"}}}, "whole numbers"},
+          {%{"endings" => [%{"id" => "a"}], "decide_whne" => []}, "unknown key \"decide_whne\""},
+          {%{"endings" => [%{"id" => "a", "tilte" => "A"}]}, "unknown key \"tilte\""},
+          {%{
+             "endings" => [
+               %{"id" => "a", "when" => [%{"stat" => ["mina", "art"], "at_leats" => 3}]}
+             ]
+           }, "at_least"},
+          {%{
+             "endings" => [
+               %{
+                 "id" => "a",
+                 "when" => [%{"stat" => ["mina", "art"], "at_least" => 3, "at_most" => 9}]
+               }
+             ]
+           }, "compares one way"},
+          {%{
+             "endings" => [
+               %{"id" => "a", "when" => [%{"stat" => ["mnia", "art"], "at_least" => 3}]}
+             ]
+           }, "\"mnia\", who is not in this cast"},
+          {%{
+             "endings" => [
+               %{
+                 "id" => "a",
+                 "when" => [%{"character" => "user", "field" => "joy", "at_least" => 3}]
+               }
+             ]
+           }, "not a character"},
+          {%{"endings" => [%{"id" => "always"}, %{"id" => "never"}]},
+           "\"never\" can never be reached"},
+          {%{"deadline" => 24}, "needs endings"}
         ] do
       data = Runtime.demo_state() |> State.to_data() |> Map.put("story", story)
       assert {:error, %{code: :invalid_state, message: got}} = State.parse(data)
       assert got =~ message
     end
+  end
+
+  test "with no ending matching yet, the story stays open until one does" do
+    story = %{
+      "activities" => @story["activities"],
+      "decide_when" => [%{"stat" => ["mina", "intelligence"], "at_least" => 10}],
+      "endings" => [
+        %{
+          "id" => "smart",
+          "when" => [
+            %{"stat" => ["mina", "intelligence"], "at_least" => 10},
+            %{"relationship" => ["mina", "user"], "field" => "trust", "at_least" => 50}
+          ]
+        }
+      ]
+    }
+
+    state = world(%{"story" => story})
+    {:ok, step} = Runtime.step(state, Event.activity("mina", "study"))
+    {:ok, step} = Runtime.step(step.state, Event.activity("mina", "study"))
+    assert [] = for(%{type: :ending_reached} = o <- step.outputs, do: o)
+    assert Enum.any?(step.log, &(&1 =~ "no ending matched yet"))
+    refute Aethrion.Rules.Ending.reached?(step.state)
+
+    trusting = State.update_relationship(step.state, "mina", "user", &%{&1 | trust: 60})
+    {:ok, step} = Runtime.step(trusting, Event.activity("mina", "study"))
+    assert [%{ending: "smart"}] = for(%{type: :ending_reached} = o <- step.outputs, do: o)
   end
 end

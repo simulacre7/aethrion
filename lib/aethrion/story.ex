@@ -235,10 +235,12 @@ defmodule Aethrion.Story do
   def parse(nil), do: {:ok, %{}}
 
   def parse(data) when is_map(data) do
-    with {:ok, activities} <- parse_activities(Map.get(data, "activities", %{})),
+    with :ok <- known_keys(data, ~w(activities endings deadline decide_when), []),
+         {:ok, activities} <- parse_activities(Map.get(data, "activities", %{})),
          {:ok, endings} <- parse_endings(Map.get(data, "endings", [])),
          {:ok, deadline} <- parse_deadline(Map.get(data, "deadline")),
-         {:ok, decide} <- parse_conditions(Map.get(data, "decide_when", []), ["decide_when"]) do
+         {:ok, decide} <- parse_conditions(Map.get(data, "decide_when", []), ["decide_when"]),
+         :ok <- something_to_decide(endings, deadline, decide) do
       {:ok,
        %{activities: activities, endings: endings, deadline: deadline, decide_when: decide}
        |> Map.reject(fn {_k, v} -> v in [nil, %{}, []] end)}
@@ -246,6 +248,45 @@ defmodule Aethrion.Story do
   end
 
   def parse(_data), do: {:error, "must be an object", []}
+
+  # A misspelled key ("decide_whne", "at_leats") would otherwise be ignored,
+  # and the story would quietly never end the way it was written to.
+  defp known_keys(data, known, path) do
+    case Enum.sort(Map.keys(data) -- known) do
+      [] ->
+        :ok
+
+      [key | _] ->
+        {:error, "unknown key #{inspect(key)} (expected one of: #{Enum.join(known, ", ")})", path}
+    end
+  end
+
+  defp something_to_decide([], deadline, decide) when deadline != nil or decide != [],
+    do: {:error, "a deadline or decide_when needs endings to choose from", ["endings"]}
+
+  defp something_to_decide(_endings, _deadline, _decide), do: :ok
+
+  @doc false
+  # The actors a story's conditions name, as {id, :character | :actor}:
+  # a character condition needs a character; the others any actor.
+  def actors(story) do
+    conditions =
+      Enum.flat_map(Map.get(story, :endings, []), & &1.when) ++ Map.get(story, :decide_when, [])
+
+    conditions |> Enum.flat_map(&named/1) |> Enum.uniq()
+  end
+
+  defp named({:any, list}), do: Enum.flat_map(list, &named/1)
+  defp named({:not, condition}), do: named(condition)
+  defp named({:bond, from, to, _op, _bond}), do: [{from, :character}, {to, :actor}]
+  defp named({:stat, {actor, _name}, _op, _want}), do: [{actor, :actor}]
+  defp named({:character, {id, _field}, _op, _want}), do: [{id, :character}]
+
+  defp named({:relationship, {from, to, _field}, _op, _want}),
+    do: [{from, :character}, {to, :actor}]
+
+  defp named({:memories, %{"character" => id}, _op, _want}), do: [{id, :character}]
+  defp named({:clock, _what, _op, _want}), do: []
 
   @doc false
   def from_data!(data) do
@@ -292,7 +333,7 @@ defmodule Aethrion.Story do
       end
     end)
     |> case do
-      {:ok, endings} -> check_ids(Enum.reverse(endings))
+      {:ok, endings} -> endings |> Enum.reverse() |> check_ids()
       error -> error
     end
   end
@@ -302,14 +343,25 @@ defmodule Aethrion.Story do
   defp check_ids(endings) do
     ids = Enum.map(endings, & &1.id)
 
-    case ids -- Enum.uniq(ids) do
-      [] -> {:ok, endings}
-      [id | _] -> {:error, "the ending id #{inspect(id)} is used more than once", ["endings"]}
+    catch_all = Enum.find_index(endings, &(&1.when == []))
+
+    cond do
+      (duplicate = ids -- Enum.uniq(ids)) != [] ->
+        {:error, "the ending id #{inspect(hd(duplicate))} is used more than once", ["endings"]}
+
+      catch_all != nil and catch_all < length(endings) - 1 ->
+        {:error,
+         "#{inspect(Enum.at(ids, catch_all + 1))} can never be reached: #{inspect(Enum.at(ids, catch_all))} before it has no conditions, so it is always chosen first",
+         ["endings", catch_all + 1]}
+
+      true ->
+        {:ok, endings}
     end
   end
 
   defp parse_ending(%{"id" => id} = data) when is_binary(id) and id != "" do
-    with {:ok, conditions} <- parse_conditions(Map.get(data, "when", []), ["when"]) do
+    with :ok <- known_keys(data, ~w(id title description when), []),
+         {:ok, conditions} <- parse_conditions(Map.get(data, "when", []), ["when"]) do
       {:ok,
        %{
          id: id,
@@ -339,40 +391,65 @@ defmodule Aethrion.Story do
 
   defp parse_conditions(_list, path), do: {:error, "must be a list of conditions", path}
 
-  defp parse_condition(%{"any" => list}) do
+  @subjects ~w(any not bond stat character relationship memories clock)
+  @operators ~w(is at_least at_most equals)
+
+  defp parse_condition(data) when is_map(data) do
+    subjects = Enum.filter(@subjects, &Map.has_key?(data, &1))
+    operators = Enum.filter(@operators, &Map.has_key?(data, &1))
+
+    cond do
+      length(subjects) > 1 ->
+        {:error, "a condition tests one thing; this one names #{Enum.join(subjects, " and ")}",
+         []}
+
+      length(operators) > 1 ->
+        {:error,
+         "a condition compares one way; this one has #{Enum.join(operators, " and ")} (use two conditions)",
+         []}
+
+      true ->
+        with :ok <- known_keys(data, @subjects ++ @operators ++ ["field"], []),
+             do: parse_one(data)
+    end
+  end
+
+  defp parse_condition(data), do: parse_one(data)
+
+  defp parse_one(%{"any" => list}) do
     with {:ok, conditions} <- parse_conditions(list, ["any"]), do: {:ok, {:any, conditions}}
   end
 
-  defp parse_condition(%{"not" => condition}) do
+  defp parse_one(%{"not" => condition}) do
     with {:ok, parsed} <- parse_condition(condition), do: {:ok, {:not, parsed}}
   end
 
-  defp parse_condition(%{"bond" => [from, to]} = data) when is_binary(from) and is_binary(to) do
+  defp parse_one(%{"bond" => [from, to]} = data) when is_binary(from) and is_binary(to) do
     case bond_op(data) do
       {:ok, op, bond} -> {:ok, {:bond, from, to, op, bond}}
       :error -> {:error, "a bond condition needs is, at_least, or at_most with a bond name", []}
     end
   end
 
-  defp parse_condition(%{"stat" => [actor, name]} = data)
+  defp parse_one(%{"stat" => [actor, name]} = data)
        when is_binary(actor) and is_binary(name),
        do: with_op(data, {:stat, {actor, name}})
 
-  defp parse_condition(%{"character" => id, "field" => field} = data)
+  defp parse_one(%{"character" => id, "field" => field} = data)
        when is_binary(id) and field in @character_fields,
        do: with_op(data, {:character, {id, field}})
 
-  defp parse_condition(%{"relationship" => [from, to], "field" => field} = data)
+  defp parse_one(%{"relationship" => [from, to], "field" => field} = data)
        when is_binary(from) and is_binary(to) and field in @relationship_fields,
        do: with_op(data, {:relationship, {from, to, field}})
 
-  defp parse_condition(%{"memories" => %{"character" => id} = filter} = data)
+  defp parse_one(%{"memories" => %{"character" => id} = filter} = data)
        when is_binary(id),
        do: with_op(data, {:memories, filter})
 
-  defp parse_condition(%{"clock" => true} = data), do: with_op(data, {:clock, nil})
+  defp parse_one(%{"clock" => true} = data), do: with_op(data, {:clock, nil})
 
-  defp parse_condition(_data),
+  defp parse_one(_data),
     do:
       {:error,
        "a condition is one of stat, character (with field), relationship (with field), bond, memories, clock, any, or not",

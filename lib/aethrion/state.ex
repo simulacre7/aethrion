@@ -707,14 +707,37 @@ defmodule Aethrion.State do
             Enum.all?(stats, fn {k, v} -> is_binary(k) and k != "" and is_integer(v) end)
         end)
 
-  defp validate_story(%{"story" => story}) do
+  defp validate_story(%{"story" => story} = data) do
     case Aethrion.Story.parse(story) do
-      {:ok, _story} -> :ok
+      {:ok, story} -> validate_story_actors(story, data)
       {:error, message, path} -> invalid(["story" | path], message)
     end
   end
 
   defp validate_story(_data), do: :ok
+
+  # A story that tests someone the cast does not have (a typo, a renamed
+  # character) could never reach the ending it was written for.
+  defp validate_story_actors(story, data) do
+    characters = data |> Map.get("characters", []) |> Enum.map(& &1["id"])
+
+    actors =
+      ["user" | characters] ++
+        Map.keys(Map.get(data, "people", %{})) ++ Map.keys(Map.get(data, "stats", %{}))
+
+    case Enum.find(Aethrion.Story.actors(story), fn {id, kind} ->
+           id not in if(kind == :character, do: characters, else: actors)
+         end) do
+      nil ->
+        :ok
+
+      {id, :character} ->
+        invalid(["story"], "the story names #{inspect(id)}, who is not a character in this cast")
+
+      {id, :actor} ->
+        invalid(["story"], "the story names #{inspect(id)}, who is not in this cast")
+    end
+  end
 
   @doc "An actor's stat (default 0)."
   @spec stat(t(), String.t(), String.t()) :: integer()
