@@ -60,7 +60,8 @@ defmodule Aethrion.InterpreterTest do
       "흥" => %{"does" => "talk", "tone" => "cold"}
     }
 
-    den = cast("den")
+    # Doyun is hurt, so asking Sera to heal him is a valid move.
+    den = put_in(cast("den").stats["doyun"]["hp"], 5)
 
     assert {:ok, [%{as: :combat, event: %{type: :attack, to: "wolf_grey"}, confidence: 0.93}],
             %{status: :ok, interpreter: Scripted}} = read(den, "sera", "베어 버려", answers)

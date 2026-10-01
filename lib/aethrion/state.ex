@@ -521,6 +521,7 @@ defmodule Aethrion.State do
          :ok <- optional(data, "conversations", &Aethrion.Conversation.valid_data?/1),
          :ok <- optional(data, "tuning", &is_map/1),
          :ok <- optional(data, "stats", &stats?/1),
+         :ok <- dice_limits(data),
          :ok <- validate_story(data) do
       validate_cast(data)
     end
@@ -706,6 +707,39 @@ defmodule Aethrion.State do
           is_binary(id) and is_map(stats) and
             Enum.all?(stats, fn {k, v} -> is_binary(k) and k != "" and is_integer(v) end)
         end)
+
+  # Dice a cast asks the rules to roll are bounded, so a cast cannot make
+  # one blow cost a billion rolls (a critical hit doubles the count).
+  @dice_limits %{
+    "damage_dice" => 20,
+    "heal_dice" => 20,
+    "damage_die" => 100,
+    "heal_die" => 100,
+    "potion_dice" => 20,
+    "potion_die" => 100
+  }
+
+  @doc false
+  def dice_limits, do: @dice_limits
+
+  defp dice_limits(data) do
+    stats =
+      for {id, stats} <- Map.get(data, "stats", %{}),
+          {name, value} <- stats,
+          do: {["stats", id, name], name, value}
+
+    tuning =
+      for {name, value} <- get_in(data, ["tuning", "combat"]) || %{},
+          do: {["tuning", "combat", name], name, value}
+
+    case Enum.find(stats ++ tuning, fn {_path, name, value} ->
+           limit = @dice_limits[name]
+           limit && is_integer(value) && value > limit
+         end) do
+      nil -> :ok
+      {path, name, _value} -> invalid(path, "#{name} must be at most #{@dice_limits[name]}")
+    end
+  end
 
   defp validate_story(%{"story" => story} = data) do
     case Aethrion.Story.parse(story) do

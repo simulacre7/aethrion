@@ -76,28 +76,93 @@ defmodule Aethrion.LLM.CLI do
             ["--system-prompt", system] ++ model
       end
 
-    # Run with stdin closed, so the tool neither waits for input nor warns
-    # about it; the prompt is in the arguments.
-    task =
-      Task.async(fn ->
-        System.cmd("/bin/sh", ["-c", ~s(exec "$0" "$@" < /dev/null), path | args], cd: dir)
-      end)
-
     try do
-      case Task.yield(task, Keyword.get(opts, :timeout, 60_000)) ||
-             Task.shutdown(task, :brutal_kill) do
-        {:ok, {text, 0}} ->
+      case execute(path, args, dir, Keyword.get(opts, :timeout, 60_000)) do
+        {:ok, text, 0} ->
           {:ok, if(command == "codex", do: read_out(out), else: String.trim(text))}
 
-        {:ok, {text, status}} ->
+        {:ok, text, status} ->
           {:error, {:exit, status, String.slice(text, -400, 400)}}
 
-        nil ->
+        {:error, :timeout} ->
           {:error, :timeout}
       end
     after
       File.rm(out)
     end
+  end
+
+  # Runs the tool with stdin closed (so it neither waits for input nor warns
+  # about it; the prompt is in the arguments, each its own word). On a
+  # timeout, or if the caller goes away first, the tool and every process it
+  # started are stopped.
+  defp execute(path, args, dir, timeout) do
+    port =
+      Port.open({:spawn_executable, "/bin/sh"}, [
+        :binary,
+        :exit_status,
+        :hide,
+        args: ["-c", ~s(exec "$0" "$@" < /dev/null), path | args],
+        cd: dir
+      ])
+
+    {:os_pid, os_pid} = Port.info(port, :os_pid)
+    caller = self()
+    reaper = spawn(fn -> reap(caller, os_pid) end)
+
+    try do
+      collect(port, [], System.monotonic_time(:millisecond) + timeout)
+    after
+      send(reaper, :done)
+    end
+  rescue
+    error in ErlangError -> {:error, {:spawn_failed, Exception.message(error)}}
+  end
+
+  defp collect(port, acc, deadline) do
+    wait = max(deadline - System.monotonic_time(:millisecond), 0)
+
+    receive do
+      {^port, {:data, data}} ->
+        collect(port, [acc, data], deadline)
+
+      {^port, {:exit_status, status}} ->
+        {:ok, IO.iodata_to_binary(acc), status}
+    after
+      wait ->
+        {:os_pid, os_pid} = Port.info(port, :os_pid) || {:os_pid, nil}
+        if os_pid, do: kill_tree(os_pid)
+        close(port)
+        {:error, :timeout}
+    end
+  end
+
+  defp close(port) do
+    Port.close(port)
+  catch
+    :error, _closed -> :ok
+  end
+
+  defp reap(caller, os_pid) do
+    ref = Process.monitor(caller)
+
+    receive do
+      :done -> :ok
+      {:DOWN, ^ref, :process, _pid, _reason} -> kill_tree(os_pid)
+    end
+  end
+
+  @doc false
+  # Stops a process and everything under it, children first.
+  def kill_tree(os_pid) do
+    {children, _status} = System.cmd("pgrep", ["-P", to_string(os_pid)], stderr_to_stdout: true)
+
+    children
+    |> String.split()
+    |> Enum.each(&kill_tree/1)
+
+    System.cmd("kill", ["-KILL", to_string(os_pid)], stderr_to_stdout: true)
+    :ok
   end
 
   defp read_out(path) do

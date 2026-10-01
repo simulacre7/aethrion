@@ -375,7 +375,14 @@ defmodule Aethrion.Story do
       Enum.flat_map(Map.get(story, :endings, []) ++ Map.get(story, :milestones, []), & &1.when) ++
         Map.get(story, :decide_when, [])
 
-    conditions |> Enum.flat_map(&named/1) |> Enum.uniq()
+    # Who sends a milestone's first message, and to whom.
+    senders =
+      for %{from: from, to: to} <- Map.get(story, :milestones, []),
+          from != nil,
+          pair <- [{from, :character}, {to, :actor}],
+          do: pair
+
+    (Enum.flat_map(conditions, &named/1) ++ senders) |> Enum.uniq()
   end
 
   defp named({:any, list}), do: Enum.flat_map(list, &named/1)
@@ -517,6 +524,16 @@ defmodule Aethrion.Story do
         Map.has_key?(data, "from") != Map.has_key?(data, "says") ->
           {:error, "from and says go together: who messages first, and what", []}
 
+        Map.has_key?(data, "from") and not name?(data["from"]) ->
+          {:error, "from must be a character id", ["from"]}
+
+        Map.has_key?(data, "to") and not name?(data["to"]) ->
+          {:error, "to must be an actor id", ["to"]}
+
+        Map.has_key?(data, "says") and
+            not (is_binary(data["says"]) and String.trim(data["says"]) != "") ->
+          {:error, "says must be the text of the message", ["says"]}
+
         true ->
           {:ok,
            %{
@@ -533,6 +550,9 @@ defmodule Aethrion.Story do
   end
 
   defp parse_milestone(_data), do: {:error, "a milestone needs a string id", []}
+
+  defp name?(value),
+    do: is_binary(value) and value != "" and not String.match?(value, ~r/\p{Cc}/u)
 
   defp milestone_to_data(milestone) do
     %{

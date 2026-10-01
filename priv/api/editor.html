@@ -193,10 +193,18 @@ function renderStats() {
   for (const [id, stats] of Object.entries(cast.stats)) {
     const rows = el("div");
     for (const [name, value] of Object.entries(stats)) {
+      // The row's current key: renaming moves the value to it, and editing
+      // or deleting afterwards uses it. An empty or taken name is ignored.
+      let key = name;
+      const rename = (v) => {
+        v = v.trim();
+        if (!v || v === key || v in stats) return;
+        const val = stats[key]; delete stats[key]; stats[v] = val; key = v;
+      };
       rows.append(el("div", {class: "row"},
-        text(name, (v) => { const val = stats[name]; delete stats[name]; stats[v] = val; name = v; }, {size: 14}),
-        number(value, (v) => stats[name] = v),
-        el("button", {type: "button", class: "small remove", onclick: () => { delete stats[name]; renderAll(); changed(); }}, "삭제")));
+        text(name, rename, {size: 14}),
+        number(value, (v) => { stats[key] = v; }),
+        el("button", {type: "button", class: "small remove", onclick: () => { delete stats[key]; renderAll(); changed(); }}, "삭제")));
     }
     box.append(el("div", {class: "card"},
       el("div", {class: "row"}, el("h3", {}, actors().find(([a]) => a === id)?.[1] || id), el("span", {class: "grow"}),

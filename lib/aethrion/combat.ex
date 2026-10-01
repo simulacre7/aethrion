@@ -299,6 +299,10 @@ defmodule Aethrion.Combat do
 
   # A potion or a bandage when they say so; someone with no healing of
   # their own reaches for a potion if they have one.
+  @doc false
+  # The item a heal by `from` uses, as the rules read it from `text`.
+  def heal_item(%State{} = state, from, text), do: item(state, from, String.downcase(text))
+
   defp item(state, from, words) do
     cond do
       String.contains?(words, ["potion", "포션", "물약"]) -> "potion"

@@ -36,6 +36,53 @@ defmodule Aethrion.Simulator do
   @spec run(State.t(), [route()], keyword()) :: [map()]
   def run(%State{} = state, routes, opts \\ []), do: Enum.map(routes, &run_route(state, &1, opts))
 
+  @limits %{timeout_ms: 10_000, concurrent: 2}
+
+  @doc "How long a limited run may take, and how many may run at once."
+  def limits, do: @limits
+
+  @doc """
+  `run/3` for untrusted requests: `{:ok, results}`, or `{:error, :busy}`
+  when `limits().concurrent` runs are already going, or `{:error, :timeout}`
+  when it takes longer than `limits().timeout_ms` (`:timeout_ms` overrides);
+  a run that times out is stopped.
+  """
+  @spec run_limited(State.t(), [route()], keyword()) ::
+          {:ok, [map()]} | {:error, :busy | :timeout}
+  def run_limited(%State{} = state, routes, opts \\ []) do
+    slots = slots()
+
+    if :atomics.add_get(slots, 1, 1) > @limits.concurrent do
+      :atomics.sub(slots, 1, 1)
+      {:error, :busy}
+    else
+      try do
+        task = Task.async(fn -> run(state, routes, opts) end)
+
+        case Task.yield(task, Keyword.get(opts, :timeout_ms, @limits.timeout_ms)) ||
+               Task.shutdown(task, :brutal_kill) do
+          {:ok, results} -> {:ok, results}
+          _late -> {:error, :timeout}
+        end
+      after
+        :atomics.sub(slots, 1, 1)
+      end
+    end
+  end
+
+  # One counter of running simulations for the whole node.
+  defp slots do
+    case :persistent_term.get({__MODULE__, :slots}, nil) do
+      nil ->
+        ref = :atomics.new(1, signed: true)
+        :persistent_term.put({__MODULE__, :slots}, ref)
+        ref
+
+      ref ->
+        ref
+    end
+  end
+
   @doc "Parses a route's script into `{:daily | {:every, n} | {:on, day}, line}` pairs."
   @spec parse(String.t()) :: [{term(), String.t()}]
   def parse(script) do

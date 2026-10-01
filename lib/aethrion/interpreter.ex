@@ -86,7 +86,14 @@ defmodule Aethrion.Interpreter do
             fallback(request, opts, :unsure)
 
           true ->
-            {:ok, readings, %{interpreter: interpreter, status: :ok}}
+            # The rules standing in for themselves would read the same.
+            case interpreter != __MODULE__.Rules and invalid(state, readings) do
+              problem when is_binary(problem) ->
+                fallback(request, opts, {:invalid_event, problem})
+
+              _valid ->
+                {:ok, readings, %{interpreter: interpreter, status: :ok}}
+            end
         end
 
       {:error, reason} ->
@@ -98,6 +105,15 @@ defmodule Aethrion.Interpreter do
   end
 
   defp intent(opts), do: [intent: Keyword.get(opts, :intent, [])]
+
+  # A reading the runtime would reject is not taken: the first reading must
+  # be valid now (later ones may depend on it, and are checked when applied).
+  defp invalid(state, [%{event: event} | _]) do
+    case Aethrion.Validator.validate_dispatch(state, event, Aethrion.Story.pipeline()) do
+      :ok -> nil
+      {:error, error} -> error.message
+    end
+  end
 
   defp fallback(request, opts, reason) do
     {:ok, readings} = __MODULE__.Rules.interpret(request, intent(opts))
@@ -209,6 +225,8 @@ defmodule Aethrion.Interpreter do
     known = ["user" | Enum.map(schema.targets, & &1.id)]
 
     with {:ok, kind} <- pick(answers, "does", Enum.map(schema.kinds, &Atom.to_string/1)),
+         :ok <- confidence(confidence),
+         :ok <- in_a_fight(schema, kind),
          :ok <- if(target in [nil | known], do: :ok, else: {:error, {:unknown_target, target}}) do
       case event(request, String.to_existing_atom(kind), answers, target) do
         {:ok, as, event} -> {:ok, [%{as: as, event: event, confidence: confidence}]}
@@ -216,6 +234,15 @@ defmodule Aethrion.Interpreter do
       end
     end
   end
+
+  defp confidence(c) when is_number(c) and c >= 0 and c <= 1, do: :ok
+  defp confidence(c), do: {:error, {:invalid_confidence, c}}
+
+  # Fight moves only while a fight is on.
+  defp in_a_fight(%{fight: false}, kind) when kind in ~w(attack defend heal flee),
+    do: {:error, :no_fight}
+
+  defp in_a_fight(_schema, _kind), do: :ok
 
   defp pick(answers, key, options) do
     value = Map.get(answers, key)
@@ -236,15 +263,20 @@ defmodule Aethrion.Interpreter do
   defp event(%Request{from: from}, :defend, _answers, target),
     do: {:ok, :combat, Event.defend(from, to: if(target in [nil, from], do: nil, else: target))}
 
-  defp event(%Request{from: from, schema: schema}, :heal, answers, target) do
+  defp event(%Request{from: from, schema: schema} = request, :heal, answers, target) do
     case Map.get(answers, "helper") do
       helper when is_binary(helper) ->
         if helper in schema.healers,
           do: {:ok, :combat, Event.heal(helper, target || from, asked_by: from)},
           else: {:error, {:not_an_option, "helper", helper}}
 
+      # The player's own heal takes what the rules would: their healing,
+      # or a potion they hold. The amount is never the model's.
       nil ->
-        {:ok, :combat, Event.heal(from, target || from)}
+        to = target || from
+
+        {:ok, :combat,
+         Event.heal(from, to, item: Combat.heal_item(request.state, from, request.text))}
     end
   end
 

@@ -253,16 +253,25 @@ defmodule Aethrion.API do
 
   defp run(config, :cast_simulate, _query, body) do
     with {:ok, data} <- decode(body),
-         {:ok, routes} <- routes(data),
-         {:ok, state} <- cast_state(data) do
-      results =
-        Aethrion.Simulator.run(state, routes,
-          locale: if(config.locale == :ko, do: :ko, else: :en),
-          interpreter: config.interpreter,
-          interpreter_opts: config.interpreter_opts
-        )
+         {:ok, state} <- cast_state(data),
+         {:ok, routes} <- routes(data, state) do
+      opts = [
+        locale: if(config.locale == :ko, do: :ko, else: :en),
+        interpreter: config.interpreter,
+        interpreter_opts: config.interpreter_opts
+      ]
 
-      {:ok, 200, %{routes: results}}
+      case Aethrion.Simulator.run_limited(state, routes, opts) do
+        {:ok, results} ->
+          {:ok, 200, %{routes: results}}
+
+        {:error, :busy} ->
+          {:error, 429, Error.new(:busy, "simulations are already running; try again shortly")}
+
+        {:error, :timeout} ->
+          {:error, 503,
+           Error.new(:timeout, "the simulation took too long; try fewer days or routes")}
+      end
     end
   end
 
@@ -475,36 +484,42 @@ defmodule Aethrion.API do
   end
 
   # A few routes of a few months at most: simulation runs on the request.
-  defp routes(%{"routes" => routes}) when is_list(routes) and length(routes) in 1..8 do
-    Enum.reduce_while(routes, {:ok, []}, fn
-      %{"to" => to, "script" => script} = route, {:ok, acc}
-      when is_binary(to) and is_binary(script) and byte_size(script) <= 4_000 ->
-        days = Map.get(route, "days", 30)
-
-        if is_integer(days) and days in 1..120,
-          do:
-            {:cont,
-             {:ok,
-              acc ++
-                [
-                  %{
-                    name: to_string(Map.get(route, "name", "route")),
-                    to: to,
-                    days: days,
-                    script: script
-                  }
-                ]}},
-          else: {:halt, {:error, 400, Error.new(:invalid_request, "days must be 1 to 120")}}
-
-      _route, _acc ->
-        {:halt,
-         {:error, 400,
-          Error.new(:invalid_request, "a route needs to (a character) and script (text)")}}
+  defp routes(%{"routes" => routes}, state) when is_list(routes) and length(routes) in 1..8 do
+    Enum.reduce_while(routes, {:ok, []}, fn route, {:ok, acc} ->
+      case sim_route(route, state) do
+        {:ok, route} -> {:cont, {:ok, acc ++ [route]}}
+        {:error, message} -> {:halt, {:error, 400, Error.new(:invalid_request, message)}}
+      end
     end)
   end
 
-  defp routes(_data),
+  defp routes(_data, _state),
     do: {:error, 400, Error.new(:invalid_request, "routes must be a list of 1 to 8 routes")}
+
+  defp sim_route(%{"to" => to, "script" => script} = route, state)
+       when is_binary(to) and is_binary(script) do
+    name = Map.get(route, "name", "route")
+    days = Map.get(route, "days", 30)
+
+    cond do
+      not (is_binary(name) and String.length(name) <= 80) ->
+        {:error, "a route's name must be text"}
+
+      not State.character?(state, to) ->
+        {:error, "#{inspect(to)} is not a character in this cast"}
+
+      byte_size(script) > 4_000 ->
+        {:error, "a route's script is at most 4000 bytes"}
+
+      not (is_integer(days) and days in 1..120) ->
+        {:error, "days must be 1 to 120"}
+
+      true ->
+        {:ok, %{name: name, to: to, days: days, script: script}}
+    end
+  end
+
+  defp sim_route(_route, _state), do: {:error, "a route needs to (a character) and script (text)"}
 
   defp known_character(state, id) do
     if State.character?(state, id),

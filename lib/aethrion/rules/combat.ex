@@ -253,9 +253,11 @@ defmodule Aethrion.Rules.Combat do
     {kind, damage, detail}
   end
 
+  # Bounded here too, whatever the state holds (`State.dice_limits/0`).
   defp damage_dice(state, id),
     do:
-      {max(stat_or(state, id, "damage_dice", 1), 1), max(stat_or(state, id, "damage_die", 6), 2),
+      {stat_or(state, id, "damage_dice", 1) |> max(1) |> min(20),
+       stat_or(state, id, "damage_die", 6) |> max(2) |> min(100),
        State.stat(state, id, "damage_bonus")}
 
   # While a player guards or heals, the companions still act (a healer
@@ -304,6 +306,7 @@ defmodule Aethrion.Rules.Combat do
   end
 
   defp rolled(event, state, count, die, plus) do
+    {count, die} = {count |> max(1) |> min(20), die |> max(2) |> min(100)}
     dice = for i <- 1..count, do: Combat.die(event, state, die, 10 + i)
     {Enum.sum(dice) + plus, %{dice: Combat.dice_label(count, die, plus), dice_rolls: dice}}
   end
