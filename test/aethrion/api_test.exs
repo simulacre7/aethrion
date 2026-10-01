@@ -190,6 +190,9 @@ defmodule Aethrion.APITest do
     assert {400, %{"error" => %{"code" => "invalid_request"}}} =
              request(:post, base <> "/worlds/carol/say", %{"to" => "mina", "text" => "  \n "})
 
+    assert {400, %{"error" => %{"message" => "text must be a string"}}} =
+             request(:post, base <> "/worlds/carol/say", %{"to" => "mina", "text" => 42})
+
     assert {400, %{"error" => %{"code" => "invalid_request"}}} =
              request(:get, base <> "/worlds/carol/conversation?after=soon")
 

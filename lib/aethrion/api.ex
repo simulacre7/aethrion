@@ -365,8 +365,11 @@ defmodule Aethrion.API do
       value when is_binary(value) ->
         if String.trim(value) == "", do: missing(key), else: {:ok, value}
 
-      _missing ->
+      nil ->
         missing(key)
+
+      _other ->
+        {:error, 400, Error.new(:invalid_request, "#{key} must be a string", %{field: key})}
     end
   end
 
