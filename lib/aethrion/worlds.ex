@@ -58,7 +58,8 @@ defmodule Aethrion.Worlds do
     :expression,
     :history_limit,
     :max_depth,
-    :max_events
+    :max_events,
+    :hibernate_after
   ]
 
   @type key :: term()
@@ -349,7 +350,10 @@ defmodule Aethrion.Worlds do
           name: runtime,
           initial_state: Keyword.get(options, :initial_state, Aethrion.Runtime.demo_state()),
           subscribers: {Worlds.subscribers(manager), Worlds.group(key)},
-          tag: {manager, key}
+          tag: {manager, key},
+          # A world between messages holds little: most users are reading
+          # or typing, not sending.
+          hibernate_after: Keyword.get(options, :hibernate_after, 15_000)
         ] ++
           Keyword.take(options, [
             :pipeline,

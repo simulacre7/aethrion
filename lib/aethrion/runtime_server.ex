@@ -67,6 +67,8 @@ defmodule Aethrion.RuntimeServer do
   - `:subscribers` - a started `:pg` scope to keep subscribers in, so they
     survive a restart of this server (`Aethrion.World` provides one), or
     `{scope, group}` to share one scope among many worlds (`Aethrion.Worlds`)
+  - `:hibernate_after` - ms without a message before the server compacts its
+    memory (`GenServer` option; `Aethrion.Worlds` uses 15 seconds)
   - `:tag` - what subscriber messages carry as their second element (default:
     this server's pid; `Aethrion.World` uses the world's name)
   - `:expression` - keyword options enabling asynchronous rendering:
@@ -75,7 +77,7 @@ defmodule Aethrion.RuntimeServer do
     one is started and linked when omitted).
   """
   def start_link(opts \\ []) do
-    {server_opts, init_opts} = Keyword.split(opts, [:name])
+    {server_opts, init_opts} = Keyword.split(opts, [:name, :hibernate_after])
     GenServer.start_link(__MODULE__, init_opts, server_opts)
   end
 
