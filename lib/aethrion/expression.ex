@@ -64,7 +64,13 @@ defmodule Aethrion.Expression do
       conversation: conversation(state, kind, speaker_id, listener_id)
     }
 
-    %{request | fallback_text: Templates.render(request)}
+    said = [request.message | Enum.map(request.conversation, & &1.text)]
+
+    %{
+      request
+      | fallback_text: Templates.render(request),
+        lore: Aethrion.Story.lore_for(state, said)
+    }
   end
 
   @doc """

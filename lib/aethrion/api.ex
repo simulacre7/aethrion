@@ -30,6 +30,7 @@ defmodule Aethrion.API do
   | `GET` | `/worlds/{key}/state` | the whole state, as `Aethrion.State.to_data/1` |
   | `GET` | `/editor` | a cast editor: characters, relationships, endings, and bond stories in forms, checked as you type, with a route simulator |
   | `GET` | `/casts/current` | the cast this server was started with (`mix aethrion.serve --cast`) |
+  | `POST` | `/casts/import-card` | `{"file": base64}` (a PNG, JSON, or CHARX character card) or `{"card": {...}}`, optional `"into"` (a cast to add it to), `"player"`, `"id"`: `{"cast", "notes"}` (`Aethrion.Card`); up to `:max_card` bytes (4 MB) |
   | `POST` | `/casts/check` | `{"cast": {...}}`: `{"ok": true, "summary": ...}` or `{"ok": false, "error": {"message", "path"}}` |
   | `POST` | `/casts/simulate` | `{"cast": {...}, "routes": [{"name", "to", "days", "script"}]}`: where each route ends (`Aethrion.Simulator`); 1 to 8 routes of 1 to 120 days, `to` a character in the cast; at most 2 run at once (429 otherwise), for at most 10 s (503 otherwise) |
   | `GET` | `/health` | `{"ok": true}` |
@@ -99,7 +100,9 @@ defmodule Aethrion.API do
       modules: [__MODULE__.Handler],
       # httpd refuses far larger bodies itself; up to that, the API answers
       # with a JSON 413.
-      max_body_size: 4 * Keyword.get(opts, :max_body, 65_536),
+      # Card files (POST /casts/import-card) may be larger than other bodies.
+      max_body_size:
+        max(4 * Keyword.get(opts, :max_body, 65_536), Keyword.get(opts, :max_card, 4_194_304)),
       keep_alive: true
     ]
 
@@ -115,7 +118,8 @@ defmodule Aethrion.API do
       render_timeout: Keyword.get(opts, :render_timeout, 15_000),
       max_text: Keyword.get(opts, :max_text, 2_000),
       locale: Keyword.get(opts, :locale, :en),
-      max_body: Keyword.get(opts, :max_body, 65_536)
+      max_body: Keyword.get(opts, :max_body, 65_536),
+      max_card: Keyword.get(opts, :max_card, 4_194_304)
     })
 
     with {:ok, pid} <- :inets.start(:httpd, config, :stand_alone) do
@@ -154,17 +158,22 @@ defmodule Aethrion.API do
 
   def handle(config, method, path, query, headers, body) do
     with :ok <- authorize(config, headers),
-         :ok <- small_enough(body, config),
-         {:ok, route} <- route(method, path) do
+         {:ok, route} <- route(method, path),
+         :ok <- small_enough(body, config, route) do
       run(config, route, query, body)
     end
     |> respond()
   end
 
-  defp small_enough(body, %{max_body: max}) when byte_size(body) > max,
+  defp small_enough(body, %{max_card: max}, :cast_import) when byte_size(body) > max,
+    do: {:error, 413, Error.new(:body_too_large, "the card is larger than #{max} bytes")}
+
+  defp small_enough(_body, _config, :cast_import), do: :ok
+
+  defp small_enough(body, %{max_body: max}, _route) when byte_size(body) > max,
     do: {:error, 413, Error.new(:body_too_large, "the body is larger than #{max} bytes")}
 
-  defp small_enough(_body, _config), do: :ok
+  defp small_enough(_body, _config, _route), do: :ok
 
   defp authorize(%{token: nil}, _headers), do: :ok
 
@@ -183,9 +192,11 @@ defmodule Aethrion.API do
   defp route("GET", ["casts", "current"]), do: {:ok, :cast_current}
   defp route("POST", ["casts", "check"]), do: {:ok, :cast_check}
   defp route("POST", ["casts", "simulate"]), do: {:ok, :cast_simulate}
+  defp route("POST", ["casts", "import-card"]), do: {:ok, :cast_import}
 
-  defp route(_method, ["casts", action]) when action in ["current", "check", "simulate"],
-    do: {:error, 405, Error.new(:method_not_allowed, "method not allowed")}
+  defp route(_method, ["casts", action])
+       when action in ["current", "check", "simulate", "import-card"],
+       do: {:error, 405, Error.new(:method_not_allowed, "method not allowed")}
 
   defp route(method, ["worlds", key | rest]) do
     if Regex.match?(@key, key) and not String.contains?(key, "..") do
@@ -238,6 +249,23 @@ defmodule Aethrion.API do
 
   defp run(config, :cast_current, _query, _body),
     do: {:ok, 200, %{cast: State.to_data(config.cast)}}
+
+  # A character card in, cast data out: `{"file": base64}` (PNG, JSON, or
+  # CHARX bytes) or `{"card": {...}}` (card JSON), with an optional
+  # `"into"` cast to add it to and `"player"`/`"id"`.
+  defp run(_config, :cast_import, _query, body) do
+    with {:ok, data} <- decode(body),
+         {:ok, card} <- card(data) do
+      opts =
+        for key <- [:player, :id],
+            is_binary(data[to_string(key)]),
+            do: {key, data[to_string(key)]}
+
+      {cast, notes} = Aethrion.Card.to_cast(card, opts)
+      cast = if is_map(data["into"]), do: Aethrion.Card.merge(data["into"], cast), else: cast
+      {:ok, 200, %{cast: cast, notes: notes}}
+    end
+  end
 
   defp run(_config, :cast_check, _query, body) do
     with {:ok, data} <- decode(body) do
@@ -458,6 +486,25 @@ defmodule Aethrion.API do
       dispatch(config, key, event, %{interpreted: interpreted})
     end
   end
+
+  defp card(%{"file" => file}) when is_binary(file) do
+    with {:ok, bytes} <- file |> Base.decode64(ignore: :whitespace) |> card_bytes() do
+      bytes |> Aethrion.Card.read() |> card_error()
+    end
+  end
+
+  defp card(%{"card" => card}), do: card |> Aethrion.Card.normalize() |> card_error()
+
+  defp card(_data),
+    do: {:error, 400, Error.new(:invalid_request, ~s(send {"file": base64} or {"card": {...}}))}
+
+  defp card_bytes({:ok, bytes}), do: {:ok, bytes}
+  defp card_bytes(:error), do: {:error, 400, Error.new(:invalid_request, "file must be base64")}
+
+  defp card_error({:ok, card}), do: {:ok, card}
+
+  defp card_error({:error, reason}),
+    do: {:error, 400, Error.new(:invalid_card, "not a character card (#{inspect(reason)})")}
 
   defp cast_summary(state) do
     %{

@@ -125,6 +125,7 @@ defmodule Aethrion.Expression.Prompt do
       contact_line(request),
       history_line(request),
       people_line(request),
+      lore_lines(request),
       "Memories:",
       memory_lines(request),
       conversation_lines(request),
@@ -134,6 +135,14 @@ defmodule Aethrion.Expression.Prompt do
     |> Enum.reject(&is_nil/1)
     |> Enum.join("\n")
   end
+
+  defp lore_lines(%Request{lore: [_ | _] = notes}),
+    do: [
+      "World notes (facts of this world, not things that just happened):"
+      | Enum.map(notes, &("- " <> one_line(String.slice(&1, 0, 800))))
+    ]
+
+  defp lore_lines(_request), do: nil
 
   @doc false
   def intent_context(%Intent.Request{} = request) do
