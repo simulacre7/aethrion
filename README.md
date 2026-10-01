@@ -13,7 +13,7 @@ Aethrion is a persistent social simulation runtime for AI characters that rememb
 
 > LLMs generate expression; deterministic rules drive the simulation.
 
-[Try it](#try-it) · [Two events in, a story out](#two-events-in-a-story-out) · [Word gets around](#word-gets-around) · [How it works](#how-it-works) · [The LLM boundary](#the-llm-boundary) · [Scenarios](#scenarios-and-reports) · [Embedding](#embedding-aethrion) · [Chat apps and games](#chat-apps-and-games) · [Docs](#documentation)
+[Try it](#try-it) · [Two events in, a story out](#two-events-in-a-story-out) · [Word gets around](#word-gets-around) · [How it works](#how-it-works) · [The LLM boundary](#the-llm-boundary) · [Scenarios](#scenarios-and-reports) · [Embedding](#embedding-aethrion) · [Chat apps and games](#chat-apps-and-games) · [Endings and fights](#endings-and-fights) · [Docs](#documentation)
 
 Inspired by the ancient idea of aether, Aethrion treats memory, relationships, and autonomous interaction as a shared social layer where persistent agents can live, change, and respond to each other.
 
@@ -306,6 +306,36 @@ curl -s localhost:4848/worlds/alice/events -H 'content-type: application/json' \
 ```
 
 `say` takes free text (interpreted into an event), `events` takes any event a scenario can hold, and `GET /worlds/{key}/conversation?character=mina&after=e12` polls for new lines. A bearer token, localhost binding, and size limits are on by default or one option away. See [docs/api.md](docs/api.md#http-api), the [cookbook](docs/cookbook.md), and [examples/http_client.py](examples/http_client.py) (a chat backend's side, Python standard library only).
+
+## Endings And Fights
+
+Two things AI chat and games keep asking for, decided the same way as everything else: by rules over numbers, so the same play always ends the same way and the reason can be shown.
+
+**Endings by the numbers**, the way a raising sim decides them. A world's `story` holds activities (what "study" or "paint" does to stats and feelings), endings in priority order with their conditions, and when the ending is decided (a deadline, or the moment a condition holds):
+
+```json
+"stats": {"mina": {"art": 10, "intelligence": 10}},
+"story": {
+  "deadline": 720,
+  "activities": {"paint": {"art": 3, "joy": 4, "stress": 2}},
+  "endings": [
+    {"id": "lovers", "title": "Together",
+     "when": [{"relationship": ["mina", "user"], "field": "affinity", "at_least": 80},
+              {"bond": ["mina", "user"], "is": "close"}]},
+    {"id": "painter", "title": "The painter", "when": [{"stat": ["mina", "art"], "at_least": 70}]},
+    {"id": "ordinary", "title": "An ordinary summer", "when": []}
+  ]
+}
+```
+
+`Aethrion.Story.progress/1` says how close each ending is and what is missing ("mina art 55 (needs at least 70)"), so a game can hint at a route; `examples/endings.exs` plays thirty days four ways to four endings.
+
+**Fights** for actors with an `hp` stat, players included: attack, guard, heal, flee, with damage from attack, defense, and a roll derived from the event, so a fight replays exactly. Characters feel it: the attacked resent it, witnesses who care about them trust you less, companions who fight beside you trust you more, the healed grow fonder. In a chat, `POST /worlds/{key}/act` turns "I swing my sword at the wolf" or "방패로 막는다" into the action. `priv/casts/quest.json` is a Korean party against the wolf king whose ending depends on how the fight went and how you treated your companions:
+
+```bash
+mix run examples/combat.exs                                   # the quest, played three ways
+mix aethrion.serve --cast priv/casts/quest.json --locale ko   # then /act 검을 휘두른다 in the chat page
+```
 
 ## Runtime vs LLM Server
 

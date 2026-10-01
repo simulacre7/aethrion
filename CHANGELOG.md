@@ -15,6 +15,10 @@ Ready for chat apps and games: a world per user, conversations a model can follo
 - Integration hardening from an integrator's run and a code review: `Aethrion.Worlds.file_name/1` (distinct, safe file names; `mix aethrion.serve` had given `alice:1` and `alice@1` one journal, mixing two users' chats); only calls that never reached a world are retried, so a stop cannot apply an event twice; idle stopping covers worlds started without a use; a world that cannot start is a `:world_failed` error (503 from the API, details logged); reads do not create worlds; `/health` needs no token; lines carry `event_id` and steps a `last_event_id`; one poll covers every character; JSON 413 and 400s for bad cursors and unknown characters; the token is compared as digests; a rendered line the journal cannot take is not kept, so replay equals the live world.
 - `mix aethrion.serve`: the API over a world per key from a cast file, with a journal per world, `--llm`, `--locale ko` (Korean templates without a model), `--idle`, and `--tick-every` (time passes on its own in running worlds; the chat page polls for what characters say).
 - Characters have a `voice` (how they talk), saved, validated, and given to the model; the demo cast has one each.
+- Stats: free-form numbers per actor in the state, changed through `Transition.adjust_stat/5` with a trace and explained by `Explain.stat/3`.
+- Stories (`Aethrion.Story`): activities (`Event.activity/3`), ordered endings with conditions on stats, feelings, relationships, bonds, memories, and the clock, decided once at a deadline or by `decide_when` (`:ending_reached` outputs; `Rules.Ending`), with `Story.progress/1` for route hints. `examples/endings.exs`.
+- Combat (`Aethrion.Combat`, `Rules.Combat`): `attack`, `defend`, `heal`, and `flee` events between actors with hp, deterministic damage with rolls derived from the event, counterattacks, guards, criticals, and social consequences; `:combat` outputs in English and Korean; `POST /worlds/{key}/act` reads combat from free text. `priv/casts/quest.json`, `examples/combat.exs`.
+- API: `GET /worlds/{key}/story`; step lines include combat and endings.
 
 ### Fixed
 
