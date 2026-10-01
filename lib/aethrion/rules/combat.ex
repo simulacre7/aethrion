@@ -11,8 +11,10 @@ defmodule Aethrion.Rules.Combat do
     much). A raised guard halves the blow and is spent. At 0 hp a fighter is
     defeated. A character still standing hits back once (counterattacks and
     a companion's assisting blows are not answered).
-  - **defend**: the next blow taken is halved; the enemies (characters with
-    an `"enemy"` stat) take their turn.
+  - **defend**: the next blow taken is halved, by the defender or by the
+    companion they shield (`to`); the enemies (actors with an `"enemy"`
+    stat) take their turn, each going for the weakest of the player's side
+    (the player or a companion, by share of hp left).
   - **heal**: restores `amount` (or the healer's `"heal"` stat, or 10), up
     to `"max_hp"`. The healer must be standing and the target hurt and
     standing: the fallen are not revived. A potion uses one of the healer's
@@ -22,7 +24,8 @@ defmodule Aethrion.Rules.Combat do
     the other gets a free blow.
   - **party**: when a player attacks, characters with a `"party"` stat
     move before the enemy answers, if they trust the player (trust >=
-    `party_trust`): healers tend a player below 60% hp, the others strike
+    `party_trust`): healers tend the most hurt of the player and the
+    companions below 60% hp, the others strike
     the same target (never an ally). They act on guard and heal turns too,
     but trust grows only from fighting side by side. Turning on someone who
     is not an enemy still gives the enemies their turn. Those who do not trust the player hold
@@ -89,7 +92,7 @@ defmodule Aethrion.Rules.Combat do
     end
   end
 
-  defp actors(%{type: :defend, from: from}), do: [from]
+  defp actors(%{type: :defend, from: from} = event), do: [from | List.wrap(Map.get(event, :to))]
   defp actors(%{from: from, to: to}), do: [from, to]
 
   defp act(transition, %{type: :attack} = event) do
@@ -140,9 +143,11 @@ defmodule Aethrion.Rules.Combat do
   end
 
   defp act(transition, %{type: :defend} = event) do
+    shielded = Map.get(event, :to) || event.from
+
     transition
-    |> Transition.put_cooldown(Combat.guard_key(event.from))
-    |> combat_output(Map.put(event, :to, nil), event.from, :guarded, 0)
+    |> Transition.put_cooldown(Combat.guard_key(shielded))
+    |> combat_output(Map.put(event, :to, Map.get(event, :to)), shielded, :guarded, 0)
     |> enemies_turn(event.from, event)
   end
 
@@ -225,12 +230,24 @@ defmodule Aethrion.Rules.Combat do
       |> Enum.reduce(transition, fn enemy, transition ->
         Transition.enqueue(
           transition,
-          Event.attack(enemy, player, counter: true, at: event.at)
+          Event.attack(enemy, weakest(state, player), counter: true, at: event.at)
         )
       end)
     else
       transition
     end
+  end
+
+  # Enemies go for the weakest of the player's side: the player or a
+  # companion still standing, by share of hp left (the player on a tie).
+  defp weakest(state, player) do
+    companions = for id <- Combat.party(state), State.stat(state, id, "hp") > 0, do: id
+    Enum.min_by([player | companions], &share(state, &1))
+  end
+
+  defp share(state, id) do
+    hp = State.stat(state, id, "hp")
+    hp * 100 / max(stat_or(state, id, "max_hp", hp), 1)
   end
 
   # Enemies are actors with an "enemy" stat, characters or not, still standing.
@@ -282,8 +299,7 @@ defmodule Aethrion.Rules.Combat do
   # back says so once, until they fight beside the player again.
   defp join(%Transition{state: state} = transition, id, event, target_hp) do
     trust = State.get_relationship(state, id, event.from).trust
-    leader_hp = State.stat(state, event.from, "hp")
-    hurt? = leader_hp * 100 < stat_or(state, event.from, "max_hp", leader_hp) * 60
+    patient = most_hurt(state, event.from)
     held = Combat.held_key(id)
 
     cond do
@@ -295,11 +311,11 @@ defmodule Aethrion.Rules.Combat do
         |> Transition.put_cooldown(held)
         |> combat_output(%{event | from: id, to: event.from}, id, :holds_back, 0)
 
-      State.stat(state, id, "heal") > 0 and hurt? and leader_hp > 0 and
+      State.stat(state, id, "heal") > 0 and patient != nil and
           (target_hp > 0 or Combat.foe(state) != nil) ->
         transition
         |> Transition.clear_cooldown(held)
-        |> Transition.enqueue(Event.heal(id, event.from, at: event.at))
+        |> Transition.enqueue(Event.heal(id, patient, at: event.at))
         |> fought_beside(id, event)
 
       target_hp > 0 ->
@@ -315,6 +331,14 @@ defmodule Aethrion.Rules.Combat do
       true ->
         transition
     end
+  end
+
+  # Who a healer tends: the most hurt of the player and the companions
+  # still standing, below 60% of their hp.
+  defp most_hurt(state, leader) do
+    [leader | Combat.party(state)]
+    |> Enum.filter(&(State.stat(state, &1, "hp") > 0 and share(state, &1) < 60))
+    |> Enum.min_by(&share(state, &1), fn -> nil end)
   end
 
   # Trust is earned fighting side by side, not by standing behind them.

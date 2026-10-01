@@ -155,7 +155,13 @@ defmodule Aethrion.Validator do
     end
   end
 
-  defp validate_combat(state, %{type: :defend} = event), do: require_fighter(state, event, :from)
+  defp validate_combat(state, %{type: :defend} = event) do
+    with :ok <- require_fighter(state, event, :from) do
+      if Map.has_key?(event, :to),
+        do: with(:ok <- require_fighter(state, event, :to), do: require_distinct(event)),
+        else: :ok
+    end
+  end
 
   # The fallen are not revived, a healer must be standing, and someone at
   # full health is not healed (no potion is wasted on them).

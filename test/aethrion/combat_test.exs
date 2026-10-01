@@ -435,4 +435,32 @@ defmodule Aethrion.CombatTest do
            ] =
              Aethrion.Conversation.recent(state, "yuna", "user")
   end
+
+  test "enemies go for the weakest, a player can shield a companion, and a healer tends whoever is most hurt" do
+    state =
+      arena()
+      |> put_in([Access.key(:stats), "goblin", "enemy"], 1)
+      |> put_in([Access.key(:stats), "yuna", "party"], 1)
+      |> put_in([Access.key(:stats), "mina", "party"], 1)
+      |> put_in([Access.key(:stats), "yuna", "hp"], 4)
+
+    # Yuna is the weakest: the goblin goes for her, and the shield halves it.
+    assert %{type: :defend, to: "yuna"} = Combat.action(state, "user", nil, "Yuna를 감싸며 방패를 든다")
+    {_after, outputs, _steps} = run(state, [Event.defend("user", to: "yuna")])
+
+    assert %{kind: :guarded, to: "yuna"} = hd(combat(outputs))
+
+    assert Enum.any?(
+             combat(outputs),
+             &match?(%{character_id: "goblin", to: "yuna", guarded: true}, &1)
+           )
+
+    assert Combat.describe(hd(combat(outputs)), state, :ko) == "너는 Yuna를 감싸며 방패를 들었다."
+
+    # Mina, a healer, tends Yuna rather than an unhurt player.
+    assert Enum.any?(
+             combat(outputs),
+             &match?(%{kind: :healed, character_id: "mina", to: "yuna"}, &1)
+           )
+  end
 end

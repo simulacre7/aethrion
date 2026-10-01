@@ -112,7 +112,7 @@ defmodule Aethrion.Combat do
         Event.attack(from, foe, skill: skill(text), observed_by: party(state) -- [from, foe])
 
       :defend ->
-        Event.defend(from)
+        Event.defend(from, to: shielded(state, words, from))
 
       :flee ->
         Event.flee(from, foe)
@@ -144,6 +144,14 @@ defmodule Aethrion.Combat do
 
       true ->
         nil
+    end
+  end
+
+  # A companion the words name ("리아를 감싼다") is shielded.
+  defp shielded(state, words, from) do
+    case named(state, words, "party", only: true) do
+      ^from -> nil
+      id -> id
     end
   end
 
@@ -268,6 +276,9 @@ defmodule Aethrion.Combat do
   defp told(:en, :defeated, %{character_id: by}, name, _hp),
     do: capitalize("#{name.(by)} #{if by == "user", do: "fall", else: "falls"}.")
 
+  defp told(:en, :guarded, %{character_id: by, to: to}, name, _hp) when is_binary(to),
+    do: capitalize("#{name.(by)} #{verb(by, "shield")} #{name.(to)}.")
+
   defp told(:en, :guarded, %{character_id: by}, name, _hp),
     do: capitalize("#{name.(by)} #{verb(by, "raise")} a guard.")
 
@@ -305,6 +316,10 @@ defmodule Aethrion.Combat do
   end
 
   defp told(:ko, :defeated, %{character_id: by}, name, _hp), do: "#{Ko.subject(name.(by))} 쓰러졌다."
+
+  defp told(:ko, :guarded, %{character_id: by, to: to}, name, _hp) when is_binary(to),
+    do:
+      "#{Ko.with_particle(name.(by), :topic)} #{Ko.with_particle(name.(to), :object)} 감싸며 방패를 들었다."
 
   defp told(:ko, :guarded, %{character_id: by}, name, _hp),
     do: "#{Ko.with_particle(name.(by), :topic)} 방어 자세를 취했다."

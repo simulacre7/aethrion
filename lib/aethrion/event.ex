@@ -183,10 +183,19 @@ defmodule Aethrion.Event do
     |> then(&if(Keyword.get(opts, :counter), do: Map.put(&1, :counter, true), else: &1))
   end
 
-  @doc "`from` guards: the next blow they take is halved."
+  @doc """
+  `from` guards: the next blow they take is halved. With `to:`, they shield
+  someone else, and the next blow that one takes is halved.
+  """
   @spec defend(String.t(), keyword()) :: t()
-  def defend(from, opts \\ []),
-    do: %{type: :defend, from: from, at: Keyword.get(opts, :at, @unspecified)}
+  def defend(from, opts \\ []) do
+    event = %{type: :defend, from: from, at: Keyword.get(opts, :at, @unspecified)}
+
+    case Keyword.get(opts, :to) do
+      nil -> event
+      to -> Map.put(event, :to, to)
+    end
+  end
 
   @doc """
   `from` restores `to`'s hp, by `:amount` (default: `from`'s `"heal"` stat,
@@ -415,7 +424,8 @@ defmodule Aethrion.Event do
     )
   end
 
-  defp build(:defend, data), do: defend(data["from"], at: Map.get(data, "at", @unspecified))
+  defp build(:defend, data),
+    do: defend(data["from"], to: data["to"], at: Map.get(data, "at", @unspecified))
 
   defp build(:heal, data) do
     heal(data["from"], data["to"],
