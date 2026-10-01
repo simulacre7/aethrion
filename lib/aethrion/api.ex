@@ -21,7 +21,7 @@ defmodule Aethrion.API do
   | ------ | ---- | ---- |
   | `POST` | `/worlds/{key}/say` | `{"to": "mina", "text": "...", "from": "user", "observed_by": [...]}`: free text, interpreted (`Aethrion.Intent`) and dispatched |
   | `POST` | `/worlds/{key}/events` | an event, as in a scenario or journal: `{"type": "gift_received", "from": "user", "to": "mina", "item": "tea"}` |
-  | `GET` | `/worlds/{key}/conversation?character=mina&person=user` | the recent turns between them |
+  | `GET` | `/worlds/{key}/conversation?character=mina&person=user&after=e12` | the recent turns between them (after an event, for polling: proactive messages land here too) |
   | `GET` | `/worlds/{key}/state` | the whole state, as `Aethrion.State.to_data/1` |
   | `GET` | `/health` | `{"ok": true}` |
 
@@ -51,6 +51,8 @@ defmodule Aethrion.API do
     `:adapter_opts`), default `Aethrion.LLM.FakeAdapter`
   - `:render_timeout` (ms, default 15_000)
   - `:max_body` (bytes, default 65_536)
+  - `:max_text` (characters, default 2_000) - the longest `say` text; each
+    one may become a model call
   """
 
   alias Aethrion.{Conversation, Error, Event, Intent, Output, State, Worlds}
@@ -91,7 +93,8 @@ defmodule Aethrion.API do
       worlds: worlds,
       token: Keyword.get(opts, :token),
       intent: Keyword.get(opts, :intent, []),
-      render_timeout: Keyword.get(opts, :render_timeout, 15_000)
+      render_timeout: Keyword.get(opts, :render_timeout, 15_000),
+      max_text: Keyword.get(opts, :max_text, 2_000)
     })
 
     with {:ok, pid} <- :inets.start(:httpd, config, :stand_alone) do
@@ -168,7 +171,13 @@ defmodule Aethrion.API do
     with {:ok, character} <- required(query, "character"),
          {:ok, state} <- Worlds.get_state(config.worlds, key) do
       person = Map.get(query, "person", "user")
-      turns = Conversation.recent(state, character, person)
+      after_event = event_index(Map.get(query, "after"))
+
+      turns =
+        state
+        |> Conversation.recent(character, person)
+        |> Enum.filter(&(event_index(&1.event_id) > after_event))
+
       {:ok, 200, %{turns: Conversation.to_data(%{{character, person} => turns}) |> turns_only()}}
     end
   end
@@ -184,6 +193,7 @@ defmodule Aethrion.API do
     with {:ok, data} <- decode(body),
          {:ok, to} <- required(data, "to"),
          {:ok, text} <- required(data, "text"),
+         :ok <- short_enough(text, config.max_text),
          {:ok, state} <- Worlds.get_state(config.worlds, key),
          {:ok, event, meta} <-
            Intent.interpret(state, text,
@@ -278,6 +288,22 @@ defmodule Aethrion.API do
       value when is_binary(value) and value != "" -> {:ok, value}
       _missing -> {:error, 400, Error.new(:invalid_request, "#{key} is required", %{field: key})}
     end
+  end
+
+  # "e12" is 12; anything else counts as before every event.
+  defp event_index("e" <> digits) do
+    case Integer.parse(digits) do
+      {index, ""} -> index
+      _other -> -1
+    end
+  end
+
+  defp event_index(_none), do: -1
+
+  defp short_enough(text, max) do
+    if String.length(text) <= max,
+      do: :ok,
+      else: {:error, 400, Error.new(:text_too_long, "text is longer than #{max} characters")}
   end
 
   defp decode(body) do

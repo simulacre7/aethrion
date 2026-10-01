@@ -70,6 +70,18 @@ defmodule Aethrion.APITest do
              request(:get, base <> "/worlds/alice/conversation?character=mina")
 
     assert first["text"] == "고마워, 진짜로"
+
+    # Polling for what is new.
+    {200, _body} =
+      request(:post, base <> "/worlds/alice/say", %{"to" => "mina", "text" => "또 보자"})
+
+    assert {200, %{"turns" => [%{"text" => "또 보자"}, %{"from" => "mina"}]}} =
+             request(:get, base <> "/worlds/alice/conversation?character=mina&after=e1")
+
+    long = String.duplicate("가", 2_001)
+
+    assert {400, %{"error" => %{"code" => "text_too_long"}}} =
+             request(:post, base <> "/worlds/alice/say", %{"to" => "mina", "text" => long})
   end
 
   test "events in the scenario format", %{base: base} do

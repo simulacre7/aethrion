@@ -270,13 +270,22 @@ defmodule Aethrion.Expression.Prompt do
             _said -> turn.text
           end
 
-        "- #{name}: #{said}"
+        "- #{name}: #{clip(said)}"
       end)
 
     ["Recent conversation (oldest first):" | lines]
   end
 
   defp conversation_lines(_request), do: nil
+
+  # Long messages earlier in the thread keep their start; the one being
+  # answered is shown whole.
+  @turn_chars 400
+  defp clip(text) do
+    if String.length(text) > @turn_chars,
+      do: String.slice(text, 0, @turn_chars) <> "…",
+      else: text
+  end
 
   defp memory_lines(%Request{memories: []}), do: "- (none)"
 
