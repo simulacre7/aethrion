@@ -543,8 +543,10 @@ defmodule Aethrion.API do
 
   defp observers_list(_data), do: :ok
 
+  # Counted in characters as people see them, and in bytes, so text made of
+  # combining marks cannot pass for a short line.
   defp short_enough(text, max) do
-    if String.length(text) <= max,
+    if String.length(text) <= max and byte_size(text) <= max * 8,
       do: :ok,
       else: {:error, 400, Error.new(:text_too_long, "text is longer than #{max} characters")}
   end

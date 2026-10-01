@@ -272,6 +272,7 @@ defmodule Aethrion.Conversation do
   defp deed(state, %{type: :combat, kind: kind, character_id: from, to: to} = output)
        when kind in [:hit, :critical, :healed, :holds_back] and is_binary(to) do
     if from != to and person?(state, from) != person?(state, to) and
+         State.stat(state, from, "enemy") == 0 and State.stat(state, to, "enemy") == 0 and
          (State.character?(state, from) or State.character?(state, to)) do
       [
         %{

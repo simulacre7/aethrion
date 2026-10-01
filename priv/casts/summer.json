@@ -110,12 +110,32 @@
     },
     "decide_when": [
       {
-        "character": "seoyun",
-        "field": "stress",
-        "at_least": 100
+        "all": [
+          {
+            "character": "seoyun",
+            "field": "stress",
+            "at_least": 100
+          },
+          {
+            "clock": true,
+            "at_least": 72
+          }
+        ]
       }
     ],
     "endings": [
+      {
+        "id": "burnout",
+        "title": "지쳐 버린 여름",
+        "description": "시험 날 아침, 서윤은 방문을 열지 않는다. 너무 오래 혼자 버텼다.",
+        "when": [
+          {
+            "character": "seoyun",
+            "field": "stress",
+            "at_least": 85
+          }
+        ]
+      },
       {
         "id": "family",
         "title": "곁에 남은 사람",
@@ -143,18 +163,6 @@
               "user"
             ],
             "is": "close"
-          }
-        ]
-      },
-      {
-        "id": "burnout",
-        "title": "지쳐 버린 여름",
-        "description": "시험 날 아침, 서윤은 방문을 열지 않는다. 너무 오래 혼자 버텼다.",
-        "when": [
-          {
-            "character": "seoyun",
-            "field": "stress",
-            "at_least": 85
           }
         ]
       },

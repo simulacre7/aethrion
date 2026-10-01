@@ -65,16 +65,19 @@ defmodule Aethrion.Combat do
   # 소리친다" does not, "I strike past its guard" attacks. Attacks are read
   # before guards, since a blow often mentions a shield; potions before
   # attacks, since a potion can be thrown.
-  @attack ~r/(벤다|베어|베고|벤 |벰|찌른|찌르|찔러|(?<!도망|소리|외)(?:친다|치고|쳐서)|(?<!도망)쳐(?=$|[\s!.~?])|때린|때려|휘두른|휘둘|공격|반격|내려친|후려친|일격|날린|날려|쏜다|쏘아|쏴|베기|돌진|달려든|처치|따버|던진|던져|물어뜯|마법|주문을|파이어볼|화염구)|\b(attack|attacks|strike|strikes|hit|hits|slash|stab|swing|swings|bash|smash|shoot|cut|charge|charges|punch|kick|thrust|lunge|throw|fireball|spell|magic)\b/u
-  @defend ~r/(막는|막아|막았|막자|막고|막으|방어|방패를 (들|세|올)|방패를 든|웅크|감싸|지킨|지켜|버틴|버텨|숨을 고르|숨을 고른|숨을 돌|기다린|버티|맞선)|\b(defend|guard|block|parry|brace|protect|cover|wait|stand)\b/u
-  @heal ~r/(치료|회복|포션|물약|붕대|상처를 (감|싸))|\b(heal|potion|bandage|cure|patch)\b/u
-  @items ~r/(포션|물약|붕대)|\b(potion|bandage)\b/u
-  @flee ~r/(도망|후퇴|달아나|달아난|피신|튀자|튀어|튄다|빠져나)|\b(flee|escape|retreat|run away|run)\b/u
-  # Asking someone else: "리아, 나 좀 치료해줘", "heal me, Ria".
-  @asks ~r/(해\s?줘|해\s?주세요|해\s?줄래|부탁)|\b(heal me|patch me up|help me)\b/u
+  # Blows with a body or a weapon; spells and throws are attacks too, but
+  # a healing spell is a heal.
+  @blows ~r/(벤다|베어|베고|벤 |벰|찌른|찌르|찔러|(?<!도망|소리|외)(?:친다|치고|쳐서|쳐라)|(?<!도망)쳐(?=$|[\s!.~?])|때린|때려|때리|휘두른|휘둘|공격|반격|내려친|후려친|일격|날린|날려|쏜다|쏘아|쏴|베기|돌진|달려든|처치|따버|던진|던져|물어뜯|싸운|싸우|싸워|찬다|걷어|발차기|죽인|죽여|죽어라|박치기|덤빈|덤벼)|\b(attack|attacks|strike|strikes|hit|hits|slash|stab|swing|swings|bash|smash|shoot|cut|charge|charges|punch|kick|thrust|lunge|throw|fight)\b/u
+  @spells ~r/(마법|주문을|파이어볼|화염구)|\b(fireball|spell|magic)\b/u
+  @defend ~r/(막는|막아|막았|막자|막고|막으|막기|방어|가드|방패를 (들|세|올)|방패를 든|웅크|감싸|감싼|지킨|지켜|버틴|버텨|숨을 고르|숨을 고른|숨을 돌|기다린|버티|맞선|숨는|숨어)|\b(defend|guard|block|parry|brace|protect|cover|wait|stand|shield|hide)\b/u
+  @heal ~r/(치료|치유|회복|포션|물약|붕대|상처를 (감|싸)|힐)|\b(heal|heals|healing|healed|potion|bandage|cure|patch)\b/u
+  @flee ~r/(도망|후퇴|달아나|달아난|피신|튀자|튀어|튄다|빠져나|(?<![\p{L}])런(?![\p{L}]))|\b(flee|escape|retreat|run away|run)\b/u
+  # Asking someone else: "리아, 나 좀 치료해줘", "리아, 포션 좀 줘", "heal me, Ria".
+  @asks ~r/(해\s?줘|해\s?주세요|해\s?줄래|부탁|줘)|\b(heal me|patch me up|help me)\b/u
   # What is ruled out: "늑대왕 말고 카엘을", "공격하지 말고 기다린다",
-  # "도망치지 않고 벤다", "절대 후퇴하지 않는다", "I won't run away".
-  @ruled_out ~r/\S+\s*(?:말고|않고)|\S+지\s*(?:않|말)\S*|\b(?:not|never|won't|don't|can't)\s+(?:\w+\s+)?\w+(?:\s+away)?/u
+  # "도망치지 않고 벤다", "절대 도망치지 마", "후퇴는 없다", "I won't run
+  # away", "no retreat". Each starts at a word, so long text stays cheap.
+  @ruled_out ~r/(?<!\S)\S+?\s*(?:말고|않고)|(?<!\S)\S+?지\s*(?:않|말|마)\S*|(?<!\S)\S+?[은는]\s*없\S*|\b(?:not going to|not|never|won't|don't|can't|no)\b(?:\s+\w+){1,3}/u
 
   @doc """
   The combat event a player's words mean, or `nil` when they do not say
@@ -96,6 +99,7 @@ defmodule Aethrion.Combat do
   @spec action(State.t(), String.t(), String.t() | nil, String.t()) :: Event.t() | nil
   def action(%State{} = state, from, target, text) when is_binary(text) do
     words = text |> String.downcase() |> then(&Regex.replace(@ruled_out, &1, " "))
+    target = target || struck(state, words)
     # With enemies in the world, a blow or an escape is aimed at one of them
     # unless the host names someone else as the target.
     only? = foe(state) != nil
@@ -103,7 +107,7 @@ defmodule Aethrion.Combat do
 
     case reading(state, words, from, foe) do
       :asked ->
-        Event.heal(healer(state, words, from), from)
+        Event.heal(healer(state, words, from), from, asked_by: from)
 
       :heal ->
         heal(state, from, target, words)
@@ -123,28 +127,42 @@ defmodule Aethrion.Combat do
   end
 
   defp reading(state, words, from, foe) do
+    heal? = Regex.match?(@heal, words)
+    blow? = Regex.match?(@blows, words)
+
     cond do
-      Regex.match?(@heal, words) and Regex.match?(@asks, words) and healer(state, words, from) ->
-        :asked
-
-      Regex.match?(@items, words) ->
-        :heal
-
-      Regex.match?(@attack, words) and foe != nil ->
-        :attack
-
-      Regex.match?(@heal, words) ->
-        :heal
-
-      Regex.match?(@defend, words) ->
-        :defend
-
-      Regex.match?(@flee, words) and foe != nil ->
-        :flee
-
-      true ->
-        nil
+      heal? and Regex.match?(@asks, words) -> if healer(state, words, from), do: :asked
+      heal? and not blow? -> :heal
+      foe != nil and (blow? or Regex.match?(@spells, words)) -> :attack
+      true -> otherwise(words, heal?, foe)
     end
+  end
+
+  defp otherwise(words, heal?, foe) do
+    cond do
+      heal? -> :heal
+      Regex.match?(@defend, words) -> :defend
+      foe != nil and Regex.match?(@flee, words) -> :flee
+      true -> nil
+    end
+  end
+
+  # Someone who is not an enemy, struck on purpose: named as the object of
+  # the blow ("카엘을 벤다", "리아에게 주먹을", "I hit Ria"), not called to
+  # ("리아, 같이 공격하자").
+  defp struck(state, words) do
+    Enum.find_value(names(state), fn {name, id} ->
+      object = Regex.escape(name) <> "(?:을|를|에게|한테)"
+
+      english =
+        "\\b(?:attack|hit|strike|stab|slash|kick|punch)\\s+(?:the\\s+)?" <>
+          Regex.escape(name) <> "\\b"
+
+      if State.stat(state, id, "enemy") == 0 and Regex.match?(@blows, words) and
+           (Regex.match?(Regex.compile!("(?<![\\p{L}\\p{N}])" <> object, "u"), words) or
+              Regex.match?(Regex.compile!(english, "u"), words)),
+         do: id
+    end)
   end
 
   # A companion the words name ("리아를 감싼다") is shielded.
@@ -159,7 +177,7 @@ defmodule Aethrion.Combat do
     to =
       cond do
         drinks?(words) -> from
-        named = named(state, words, "party") -> named
+        named = named(state, words, "party", only: true) -> named
         target != nil and State.stat(state, target, "party") > 0 -> target
         true -> from
       end
@@ -206,10 +224,9 @@ defmodule Aethrion.Combat do
   # wins, then the longest name. `only: true` takes only those with it.
   defp named(state, words, prefer, opts \\ []) do
     state
-    |> State.sorted_characters()
-    |> Enum.flat_map(fn c -> [{String.downcase(c.name), c.id}, {String.downcase(c.id), c.id}] end)
+    |> names()
     |> Enum.filter(fn {name, id} ->
-      name != "" and says?(words, name) and
+      says?(words, name) and
         (not Keyword.get(opts, :only, false) or State.stat(state, id, prefer) > 0)
     end)
     |> Enum.max_by(
@@ -217,6 +234,18 @@ defmodule Aethrion.Combat do
       fn -> {nil, nil} end
     )
     |> elem(1)
+  end
+
+  # Characters by name and id, and fighters known only by their id in stats.
+  defp names(state) do
+    characters =
+      Enum.flat_map(State.sorted_characters(state), fn c ->
+        [{String.downcase(c.name), c.id}, {String.downcase(c.id), c.id}]
+      end)
+
+    fighters = for id <- Enum.sort(Map.keys(state.stats)), do: {String.downcase(id), id}
+
+    Enum.uniq(characters ++ fighters) |> Enum.reject(fn {name, _id} -> name == "" end)
   end
 
   # Not inside another word: nothing letter-like before it, and for a

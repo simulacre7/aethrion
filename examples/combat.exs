@@ -1,6 +1,6 @@
 # mix run examples/combat.exs
 #
-# A fight with the wolf king (priv/casts/quest.json), played six ways.
+# A fight with the wolf king (priv/casts/quest.json), played five ways.
 # Hp, damage, and who falls are decided by the numbers and replay exactly;
 # so is how the companions come to feel about you, and the ending the
 # story reaches the moment the fight is settled.

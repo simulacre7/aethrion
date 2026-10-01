@@ -211,6 +211,9 @@ defmodule Aethrion.Event do
       item: Keyword.get(opts, :item),
       at: Keyword.get(opts, :at, @unspecified)
     }
+    |> then(
+      &if(asker = Keyword.get(opts, :asked_by), do: Map.put(&1, :asked_by, asker), else: &1)
+    )
   end
 
   @doc "`from` tries to get away from `to`."

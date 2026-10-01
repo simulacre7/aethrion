@@ -151,22 +151,25 @@ defmodule Aethrion.Rules.Combat do
     |> enemies_turn(event.from, event)
   end
 
+  # A companion asked to heal ("리아, 치료해 줘") does so if they trust the
+  # one asking, and either way it was the asker's turn.
+  defp act(transition, %{type: :heal, asked_by: asker} = event) do
+    trust = State.get_relationship(transition.state, event.from, asker).trust
+
+    if trust < Transition.param(transition, :party_trust) do
+      transition
+      |> combat_output(%{event | to: asker}, event.from, :holds_back, 0)
+      |> enemies_turn(asker, event)
+    else
+      transition
+      |> heal(event)
+      |> enemies_turn(asker, event)
+    end
+  end
+
   defp act(transition, %{type: :heal} = event) do
-    state = transition.state
-
-    amount =
-      event.amount ||
-        stat_or(state, event.from, "heal", Transition.param(transition, :default_heal))
-
-    max_hp = stat_or(state, event.to, "max_hp", State.stat(state, event.to, "hp") + amount)
-    before = State.stat(state, event.to, "hp")
-    healed = max(min(before + amount, max_hp) - before, 0)
-
     transition
-    |> Transition.adjust_stat(event.to, "hp", healed, log: false)
-    |> use_potion(event)
-    |> combat_output(event, event.to, :healed, healed)
-    |> grateful(event, healed)
+    |> heal(event)
     |> enemies_turn(event.from, event)
   end
 
@@ -198,6 +201,22 @@ defmodule Aethrion.Rules.Combat do
   # While a player guards or heals, the companions still act (a healer
   # tends them, the others strike the first enemy standing), then the
   # enemies (characters with an "enemy" stat) strike: guarding costs a turn.
+  defp heal(%Transition{state: state} = transition, event) do
+    amount =
+      event.amount ||
+        stat_or(state, event.from, "heal", Transition.param(transition, :default_heal))
+
+    max_hp = stat_or(state, event.to, "max_hp", State.stat(state, event.to, "hp") + amount)
+    before = State.stat(state, event.to, "hp")
+    healed = max(min(before + amount, max_hp) - before, 0)
+
+    transition
+    |> Transition.adjust_stat(event.to, "hp", healed, log: false)
+    |> use_potion(event)
+    |> combat_output(event, event.to, :healed, healed)
+    |> grateful(event, healed)
+  end
+
   defp enemies_turn(%Transition{state: state} = transition, player, event) do
     if player?(state, player) do
       transition
@@ -230,7 +249,7 @@ defmodule Aethrion.Rules.Combat do
       |> Enum.reduce(transition, fn enemy, transition ->
         Transition.enqueue(
           transition,
-          Event.attack(enemy, weakest(state, player), counter: true, at: event.at)
+          Event.attack(enemy, target(state, enemy, player), counter: true, at: event.at)
         )
       end)
     else
@@ -238,11 +257,16 @@ defmodule Aethrion.Rules.Combat do
     end
   end
 
-  # Enemies go for the weakest of the player's side: the player or a
-  # companion still standing, by share of hp left (the player on a tie).
-  defp weakest(state, player) do
-    companions = for id <- Combat.party(state), State.stat(state, id, "hp") > 0, do: id
-    Enum.min_by([player | companions], &share(state, &1))
+  # Enemies go for someone badly hurt (below 40% of their hp) to finish
+  # them, and otherwise take turns between the player and the companions
+  # still standing, by the enemy's own turn count.
+  defp target(state, enemy, player) do
+    side = [player | for(id <- Combat.party(state), State.stat(state, id, "hp") > 0, do: id)]
+    weakest = Enum.min_by(side, &share(state, &1))
+
+    if share(state, weakest) < 40,
+      do: weakest,
+      else: Enum.at(side, rem(State.stat(state, enemy, "turns"), length(side)))
   end
 
   defp share(state, id) do
@@ -341,8 +365,17 @@ defmodule Aethrion.Rules.Combat do
     |> Enum.min_by(&share(state, &1), fn -> nil end)
   end
 
-  # Trust is earned fighting side by side, not by standing behind them.
-  defp fought_beside(transition, _id, %{guarding: true}), do: transition
+  # Trust is earned fighting side by side; behind a raised shield, half.
+  defp fought_beside(transition, id, %{guarding: true, from: leader}) do
+    Transition.adjust_relationship(
+      transition,
+      id,
+      leader,
+      :trust,
+      div(Transition.param(transition, :fought_beside_trust), 2)
+    )
+  end
+
   defp fought_beside(transition, id, %{from: leader}), do: fought_beside(transition, id, leader)
 
   defp fought_beside(transition, id, leader),

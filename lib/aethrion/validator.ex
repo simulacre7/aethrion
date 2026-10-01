@@ -158,7 +158,12 @@ defmodule Aethrion.Validator do
   defp validate_combat(state, %{type: :defend} = event) do
     with :ok <- require_fighter(state, event, :from) do
       if Map.has_key?(event, :to),
-        do: with(:ok <- require_fighter(state, event, :to), do: require_distinct(event)),
+        do:
+          with(
+            :ok <- require_fighter(state, event, :to),
+            :ok <- require_distinct(event),
+            do: require_ally(state, event)
+          ),
         else: :ok
     end
   end
@@ -194,6 +199,14 @@ defmodule Aethrion.Validator do
     end
   end
 
+  # One shields someone on one's own side, not an enemy (or, for an enemy,
+  # not the player's side).
+  defp require_ally(state, %{from: from, to: to}) do
+    if State.stat(state, from, "enemy") > 0 == State.stat(state, to, "enemy") > 0,
+      do: :ok,
+      else: {:error, error(:invalid_event, "#{to} is not on #{from}'s side", %{field: :to})}
+  end
+
   # With enemies in the world, one runs from them, not from a companion.
   defp require_enemy(state, id) do
     enemies? = Enum.any?(Map.keys(state.stats), &(State.stat(state, &1, "enemy") > 0))
@@ -203,11 +216,13 @@ defmodule Aethrion.Validator do
       else: :ok
   end
 
-  # Someone knocked out in a fight (0 hp) neither talks nor listens.
+  # A character knocked out in a fight (0 hp) neither talks nor listens.
+  # (A player who fell can still talk to the others afterwards.)
   defp require_conscious(state, event) do
     case Enum.find(
            [event.from, event.to],
-           &(State.stat?(state, &1, "hp") and State.stat(state, &1, "hp") <= 0)
+           &(State.character?(state, &1) and State.stat?(state, &1, "hp") and
+               State.stat(state, &1, "hp") <= 0)
          ) do
       nil -> :ok
       id -> {:error, error(:unavailable_character, "#{id} is down", %{character_id: id})}
@@ -284,15 +299,14 @@ defmodule Aethrion.Validator do
        else: :ok
   end
 
-  # Healing takes a healer (a "heal" stat) or an item. Counted items run
-  # out: a potion uses one of "potions", a bandage one of "bandages";
-  # without that stat, the item is the host's to count.
+  # Healing takes a healer (a "heal" stat) or an item the healer has: a
+  # potion uses one of their "potions", a bandage one of "bandages".
   defp require_means(state, %{item: item, from: from}) when is_binary(item) do
     count = item <> "s"
 
-    if State.stat?(state, from, count) and State.stat(state, from, count) <= 0,
-      do: {:error, error(:invalid_event, "#{from} has no #{count} left", %{field: :item})},
-      else: :ok
+    if State.stat(state, from, count) > 0,
+      do: :ok,
+      else: {:error, error(:invalid_event, "#{from} has no #{count} left", %{field: :item})}
   end
 
   defp require_means(state, %{from: from}) do

@@ -748,6 +748,10 @@ defmodule Aethrion.State do
   def stat?(%__MODULE__{stats: stats}, id, name),
     do: stats |> Map.get(id, %{}) |> Map.has_key?(name)
 
+  @doc "Whether an actor is knocked out: they have an hp stat and it is 0."
+  @spec down?(t(), String.t()) :: boolean()
+  def down?(%__MODULE__{} = state, id), do: stat?(state, id, "hp") and stat(state, id, "hp") <= 0
+
   defp in_range?(value, min, max), do: is_integer(value) and value >= min and value <= max
   defp string_list?(value), do: is_list(value) and Enum.all?(value, &is_binary/1)
 

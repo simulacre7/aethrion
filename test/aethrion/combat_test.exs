@@ -463,4 +463,50 @@ defmodule Aethrion.CombatTest do
              &match?(%{kind: :healed, character_id: "mina", to: "yuna"}, &1)
            )
   end
+
+  test "asking a companion to heal is the player's turn, and one who distrusts them refuses" do
+    state =
+      arena()
+      |> put_in([Access.key(:stats), "goblin", "enemy"], 1)
+      |> put_in([Access.key(:stats), "mina", "party"], 1)
+      |> put_in([Access.key(:stats), "user", "hp"], 10)
+
+    asked = Combat.action(state, "user", nil, "Mina, 나 좀 치료해줘")
+    assert %{type: :heal, from: "mina", to: "user", asked_by: "user"} = asked
+
+    {_after, outputs, _steps} = run(state, [asked])
+
+    assert [%{kind: :healed, character_id: "mina"} | _] = combat(outputs)
+    assert Enum.any?(combat(outputs), &(&1.character_id == "goblin"))
+
+    cold = State.update_relationship(state, "mina", "user", &%{&1 | trust: 0})
+    {_after, outputs, _steps} = run(cold, [asked])
+
+    assert [%{kind: :holds_back, character_id: "mina"} | _] = combat(outputs)
+    assert Enum.any?(combat(outputs), &(&1.character_id == "goblin"))
+  end
+
+  test "enemies take turns between the player and the companions, unless someone is nearly down" do
+    state =
+      arena()
+      |> put_in([Access.key(:stats), "goblin", "enemy"], 1)
+      |> put_in([Access.key(:stats), "haru", "party"], 1)
+      |> put_in([Access.key(:stats), "goblin", "attack"], 1)
+
+    {_after, outputs, _steps} = run(state, List.duplicate(Event.defend("user"), 4))
+    struck = for %{character_id: "goblin", to: to} <- combat(outputs), uniq: true, do: to
+    assert "haru" in struck and "user" in struck
+  end
+
+  test "what is not done is not done, and healing spells heal" do
+    state = arena() |> put_in([Access.key(:stats), "goblin", "enemy"], 1)
+
+    for text <- ["도망치지 마", "절대 도망치지 마", "후퇴는 없다", "no retreat!", "I am not going to flee"] do
+      assert Combat.action(state, "user", nil, text) == nil, text
+    end
+
+    assert %{type: :heal} = Combat.action(state, "user", nil, "I cast a healing spell")
+    assert %{type: :attack, to: "haru"} = Combat.action(state, "user", nil, "Goblin 말고 Haru를 공격")
+    assert %{type: :attack, to: "goblin"} = Combat.action(state, "user", nil, "Haru, 같이 공격하자")
+  end
 end

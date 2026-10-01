@@ -45,7 +45,7 @@ defmodule Aethrion.Rules.Autonomy do
   end
 
   defp wants_to_confide?(state, %Character{} = character) do
-    Character.can_act?(character) and
+    Character.can_act?(character) and not State.down?(state, character.id) and
       (CharacterState.distressed?(Mood.derive(character.state, state)) or
          Character.trait?(character, :talkative))
   end
@@ -131,7 +131,7 @@ defmodule Aethrion.Rules.Autonomy do
 
   defp available?(state, id) do
     case State.character(state, id) do
-      %Character{} = character -> Character.can_act?(character)
+      %Character{} = character -> Character.can_act?(character) and not State.down?(state, id)
       nil -> false
     end
   end
