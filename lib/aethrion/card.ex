@@ -187,6 +187,70 @@ defmodule Aethrion.Card do
     end)
   end
 
+  @doc """
+  A card for a cast, to use it from a chat app (with the app's model set to
+  Aethrion's OpenAI-compatible route): a narrator card (V3) whose
+  description presents the characters, whose first message is the first
+  character's greeting (or `:greeting`), and whose lorebook is the cast's
+  lore. Options: `:name` (default "Aethrion"), `:greeting`.
+  """
+  @spec from_cast(Aethrion.State.t(), keyword()) :: map()
+  def from_cast(%Aethrion.State{} = state, opts \\ []) do
+    characters = Aethrion.State.sorted_characters(state)
+
+    description =
+      [
+        "The narrator of a world whose rules (relationships, fights, endings) are kept by Aethrion. The people in it:"
+        | Enum.map(characters, fn c ->
+            "- #{c.name}: #{c.profile}" <> if(c.voice != "", do: " Voice: #{c.voice}", else: "")
+          end)
+      ]
+      |> Enum.join("\n")
+
+    greeting =
+      Keyword.get(opts, :greeting) ||
+        Enum.find_value(characters, "", fn c ->
+          c.greeting != "" and Aethrion.State.stat(state, c.id, "enemy") == 0 and c.greeting
+        end)
+
+    lore =
+      for {note, i} <- Enum.with_index(Map.get(state.story, :lore, [])) do
+        %{
+          "keys" => note.keys,
+          "content" => note.content,
+          "enabled" => true,
+          "insertion_order" => i,
+          "constant" => note.constant,
+          "use_regex" => false,
+          "extensions" => %{}
+        }
+      end
+
+    %{
+      "spec" => "chara_card_v3",
+      "spec_version" => "3.0",
+      "data" => %{
+        "name" => Keyword.get(opts, :name, "Aethrion"),
+        "description" => description,
+        "personality" => "",
+        "scenario" => "",
+        "first_mes" => greeting,
+        "mes_example" => "",
+        "creator_notes" =>
+          "Made by Aethrion. Set the app's model to Aethrion's /v1 route; numbers come from its rules.",
+        "system_prompt" => "",
+        "post_history_instructions" => "",
+        "alternate_greetings" => [],
+        "tags" => ["aethrion"],
+        "creator" => "aethrion",
+        "character_version" => "1",
+        "extensions" => %{},
+        "group_only_greetings" => [],
+        "character_book" => %{"entries" => lore, "extensions" => %{}}
+      }
+    }
+  end
+
   # Example messages say how a character talks; kept as they are, without
   # the <START> separators.
   defp voice(""), do: ""

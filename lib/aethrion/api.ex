@@ -29,6 +29,7 @@ defmodule Aethrion.API do
   | `GET` | `/worlds/{key}/replies?character=hana&person=user` | two or three replies the person might send, each with its tone (`Aethrion.Replies`), for a messenger-style chat; send one as a `message_sent` event with that tone |
   | `GET` | `/worlds/{key}/state` | the whole state, as `Aethrion.State.to_data/1` |
   | `GET` | `/editor` | a cast editor: characters, relationships, endings, and bond stories in forms, checked as you type, with a route simulator |
+  | `GET` | `/casts/card?name=...` | the cast as a narrator character card (V3 JSON) to import into a chat app that uses `/v1` as its model |
   | `GET` | `/casts/current` | the cast this server was started with (`mix aethrion.serve --cast`) |
   | `POST` | `/casts/import-card` | `{"file": base64}` (a PNG, JSON, or CHARX character card) or `{"card": {...}}`, optional `"into"` (a cast to add it to), `"player"`, `"id"`: `{"cast", "notes"}` (`Aethrion.Card`); up to `:max_card` bytes (4 MB) |
   | `POST` | `/casts/check` | `{"cast": {...}}`: `{"ok": true, "summary": ...}` or `{"ok": false, "error": {"message", "path"}}` |
@@ -152,9 +153,25 @@ defmodule Aethrion.API do
   def handle(_config, "GET", [], _query, _headers, _body), do: {200, :html, @chat_html}
   def handle(_config, "GET", ["editor"], _query, _headers, _body), do: {200, :html, @editor_html}
 
+  # Browsers ask before a cross-origin call to the OpenAI-compatible routes.
+  def handle(_config, "OPTIONS", ["v1" | _rest], _query, _headers, _body),
+    do: {204, :preflight, ""}
+
   # Health checks come from load balancers that hold no token.
   def handle(config, "GET", ["health"], _query, _headers, _body),
     do: respond({:ok, 200, %{ok: true, model: config.model}})
+
+  def handle(config, method, ["v1" | _] = path, query, headers, body) do
+    with :ok <- authorize(config, headers),
+         {:ok, route} <- route(method, path),
+         :ok <- small_enough(body, config, route) do
+      run(config, route, query, body)
+    end
+    |> case do
+      {:ok, 200, {:sse, events}} -> {200, :sse, events}
+      result -> result |> respond() |> then(fn {status, json} -> {status, :json_v1, json} end)
+    end
+  end
 
   def handle(config, method, path, query, headers, body) do
     with :ok <- authorize(config, headers),
@@ -169,6 +186,12 @@ defmodule Aethrion.API do
     do: {:error, 413, Error.new(:body_too_large, "the card is larger than #{max} bytes")}
 
   defp small_enough(_body, _config, :cast_import), do: :ok
+
+  # An app's prompt (its card, lorebook, and history) can be long.
+  defp small_enough(body, %{max_card: max}, :openai_chat) when byte_size(body) > max,
+    do: {:error, 413, Error.new(:body_too_large, "the request is larger than #{max} bytes")}
+
+  defp small_enough(_body, _config, :openai_chat), do: :ok
 
   defp small_enough(body, %{max_body: max}, _route) when byte_size(body) > max,
     do: {:error, 413, Error.new(:body_too_large, "the body is larger than #{max} bytes")}
@@ -190,12 +213,15 @@ defmodule Aethrion.API do
 
   defp route("GET", ["health"]), do: {:ok, :health}
   defp route("GET", ["casts", "current"]), do: {:ok, :cast_current}
+  defp route("GET", ["casts", "card"]), do: {:ok, :cast_card}
   defp route("POST", ["casts", "check"]), do: {:ok, :cast_check}
   defp route("POST", ["casts", "simulate"]), do: {:ok, :cast_simulate}
   defp route("POST", ["casts", "import-card"]), do: {:ok, :cast_import}
+  defp route("POST", ["v1", "chat", "completions"]), do: {:ok, :openai_chat}
+  defp route("GET", ["v1", "models"]), do: {:ok, :openai_models}
 
   defp route(_method, ["casts", action])
-       when action in ["current", "check", "simulate", "import-card"],
+       when action in ["current", "check", "simulate", "import-card", "card"],
        do: {:error, 405, Error.new(:method_not_allowed, "method not allowed")}
 
   defp route(method, ["worlds", key | rest]) do
@@ -249,6 +275,67 @@ defmodule Aethrion.API do
 
   defp run(config, :cast_current, _query, _body),
     do: {:ok, 200, %{cast: State.to_data(config.cast)}}
+
+  defp run(%{cast: nil}, :cast_card, _query, _body),
+    do: {:error, 404, Error.new(:not_found, "this server was started without a cast")}
+
+  # Non-enemy characters' greetings open the card; ?name= and ?greeting= override.
+  defp run(config, :cast_card, query, _body) do
+    opts =
+      [name: Map.get(query, "name", "Aethrion")] ++
+        if(g = query["greeting"], do: [greeting: g], else: [])
+
+    {:ok, 200, Aethrion.Card.from_cast(config.cast, opts)}
+  end
+
+  defp run(config, :openai_models, _query, _body) do
+    ids =
+      for model <- ["aethrion", "aethrion-plain"],
+          character <- [nil | Enum.map(State.sorted_characters(config.cast || %State{}), & &1.id)],
+          do: if(character, do: model <> ":" <> character, else: model)
+
+    {:ok, 200,
+     %{object: "list", data: Enum.map(ids, &%{id: &1, object: "model", owned_by: "aethrion"})}}
+  end
+
+  defp run(config, :openai_chat, _query, body) do
+    with {:ok, data} <- decode(body),
+         {:ok, messages} <- chat_messages(data),
+         {:ok, cast} <- bridge_cast(config),
+         {:ok, adapter, adapter_opts} <- generator(config),
+         {:ok, to, status?} <- bridge_model(cast, data["model"]) do
+      locale = if config.locale == :ko, do: :ko, else: :en
+      {all, chat} = Aethrion.Bridge.transcript(messages)
+
+      read =
+        Aethrion.Bridge.reader(
+          to,
+          [
+            interpreter: config.interpreter,
+            interpreter_opts: config.interpreter_opts,
+            intent: config.intent
+          ],
+          Aethrion.Bridge.Readings.cache()
+        )
+
+      {before, now, turn} = Aethrion.Bridge.replay(cast, chat, read)
+      note = %{"role" => "system", "content" => Aethrion.Bridge.note(before, now, turn, locale)}
+      opts = adapter_opts ++ generation_opts(data)
+
+      case Aethrion.LLM.chat(adapter, all ++ [note], opts) do
+        {:ok, text} ->
+          reply =
+            if status?,
+              do: String.trim(text) <> "\n\n" <> Aethrion.Bridge.status(now, turn, locale),
+              else: String.trim(text)
+
+          completion(data, reply)
+
+        {:error, reason} ->
+          {:error, 502, Error.new(:model_failed, "the model did not answer: #{inspect(reason)}")}
+      end
+    end
+  end
 
   # A character card in, cast data out: `{"file": base64}` (PNG, JSON, or
   # CHARX bytes) or `{"card": {...}}` (card JSON), with an optional
@@ -505,6 +592,102 @@ defmodule Aethrion.API do
 
   defp card_error({:error, reason}),
     do: {:error, 400, Error.new(:invalid_card, "not a character card (#{inspect(reason)})")}
+
+  defp chat_messages(%{"messages" => [_ | _] = messages}) do
+    if Enum.all?(messages, &(is_map(&1) and is_binary(&1["role"]))),
+      do: {:ok, messages},
+      else: {:error, 400, Error.new(:invalid_request, "messages must be objects with a role")}
+  end
+
+  defp chat_messages(_data),
+    do: {:error, 400, Error.new(:invalid_request, "messages is required")}
+
+  defp bridge_cast(%{cast: %State{} = cast}), do: {:ok, cast}
+
+  defp bridge_cast(_config),
+    do: {:error, 400, Error.new(:no_cast, "start the server with --cast to use it as a model")}
+
+  defp generator(%{intent: intent}) when is_list(intent) do
+    case Keyword.get(intent, :adapter) do
+      nil ->
+        {:error, 400, Error.new(:no_model, "start the server with --llm: it writes the replies")}
+
+      adapter ->
+        {:ok, adapter, Keyword.get(intent, :adapter_opts, [])}
+    end
+  end
+
+  # "aethrion" or "aethrion-plain" (no status block), optionally
+  # ":character" for whom the player talks to; by default the first character.
+  defp bridge_model(cast, model) do
+    {base, character} =
+      case String.split(to_string(model || "aethrion"), ":", parts: 2) do
+        [base, character] -> {base, character}
+        [base] -> {base, nil}
+      end
+
+    to = character || cast |> State.sorted_characters() |> List.first() |> then(&(&1 && &1.id))
+
+    if to == nil or not State.character?(cast, to) do
+      {:error, 400,
+       Error.new(
+         :invalid_request,
+         "model names a character the cast does not have: #{inspect(model)}"
+       )}
+    else
+      {:ok, to, base != "aethrion-plain"}
+    end
+  end
+
+  defp generation_opts(data) do
+    [
+      max_tokens:
+        if(is_integer(data["max_tokens"]),
+          do: min(max(data["max_tokens"], 16), 8_000),
+          else: 1_200
+        ),
+      temperature: if(is_number(data["temperature"]), do: data["temperature"], else: nil)
+    ]
+    |> Enum.reject(fn {_k, v} -> is_nil(v) end)
+  end
+
+  # The OpenAI shape: a completion, or for stream: true, server-sent events
+  # (the whole reply as one chunk; it is written before it is sent).
+  defp completion(data, reply) do
+    id = "chatcmpl-" <> Base.encode16(:crypto.strong_rand_bytes(8), case: :lower)
+    model = to_string(data["model"] || "aethrion")
+    created = System.system_time(:second)
+
+    if data["stream"] == true do
+      chunk = fn delta, finish ->
+        "data: " <>
+          Jason.encode!(%{
+            id: id,
+            object: "chat.completion.chunk",
+            created: created,
+            model: model,
+            choices: [%{index: 0, delta: delta, finish_reason: finish}]
+          }) <>
+          "\n\n"
+      end
+
+      {:ok, 200,
+       {:sse,
+        chunk.(%{role: "assistant", content: reply}, nil) <>
+          chunk.(%{}, "stop") <> "data: [DONE]\n\n"}}
+    else
+      {:ok, 200,
+       %{
+         id: id,
+         object: "chat.completion",
+         created: created,
+         model: model,
+         choices: [
+           %{index: 0, message: %{role: "assistant", content: reply}, finish_reason: "stop"}
+         ]
+       }}
+    end
+  end
 
   defp cast_summary(state) do
     %{
@@ -863,6 +1046,9 @@ defmodule Aethrion.API do
         try do
           case Aethrion.API.handle(config, method, segments, query, headers, body) do
             {status, :html, html} -> {status, ~c"text/html; charset=utf-8", html}
+            {status, :json_v1, json} -> {status, ~c"application/json", json}
+            {status, :sse, events} -> {status, ~c"text/event-stream", events}
+            {status, :preflight, ""} -> {status, ~c"text/plain", ""}
             {status, json} -> {status, ~c"application/json", json}
           end
         rescue
@@ -886,8 +1072,19 @@ defmodule Aethrion.API do
               code: status,
               content_type: content_type,
               content_length: Integer.to_charlist(byte_size(json))
-            ], :erlang.binary_to_list(json)}
+            ] ++ cors(segments), :erlang.binary_to_list(json)}
        ]}
     end
+
+    # Only the OpenAI-compatible routes answer other origins (a chat app in
+    # a browser); the rest of the API stays same-origin.
+    defp cors(["v1" | _]),
+      do: [
+        "access-control-allow-origin": ~c"*",
+        "access-control-allow-headers": ~c"authorization, content-type",
+        "access-control-allow-methods": ~c"GET, POST, OPTIONS"
+      ]
+
+    defp cors(_segments), do: []
   end
 end

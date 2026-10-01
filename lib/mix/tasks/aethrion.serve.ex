@@ -89,6 +89,10 @@ defmodule Mix.Tasks.Aethrion.Serve do
         end
       )
 
+    # What chat lines were read as, for the OpenAI-compatible route.
+    {:ok, _readings} =
+      Aethrion.Bridge.Readings.start_link(path: Path.join(data, "bridge-readings.jsonl"))
+
     token = opts[:token] || System.get_env("AETHRION_TOKEN")
 
     {:ok, api} =
