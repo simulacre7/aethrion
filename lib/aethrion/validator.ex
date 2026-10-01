@@ -193,7 +193,7 @@ defmodule Aethrion.Validator do
       {:error,
        error(
          :invalid_event,
-         "tone must be one of #{inspect(Event.tones())}, got: #{inspect(tone)}",
+         "tone must be one of #{Enum.map_join(Event.tones(), ", ", &Atom.to_string/1)}, got: #{if is_binary(tone), do: tone, else: inspect(tone)}",
          %{field: :tone}
        )}
     end
