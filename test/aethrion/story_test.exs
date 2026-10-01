@@ -193,8 +193,9 @@ defmodule Aethrion.StoryTest do
     for {expected, routine} <- routines do
       {_state, reached} =
         Enum.reduce_while(1..30, {world, nil}, fn d, {state, nil} ->
+          # Each activity is a day: the cast's activity_hours moves the clock.
           {state, reached} =
-            Enum.reduce(routine.(d) ++ [Event.time_tick("day #{d}", hours: 24)], {state, nil}, fn
+            Enum.reduce(routine.(d), {state, nil}, fn
               event, {state, reached} ->
                 {:ok, step} = Runtime.step(state, event)
                 {step.state, reached || Enum.find(step.outputs, &(&1.type == :ending_reached))}

@@ -47,6 +47,24 @@ defmodule Aethrion.Rules.Activity do
             Transition.adjust_stat(transition, character, stat, delta, min: 0)
         end)
         |> Transition.note("#{Transition.name(transition, character)} spent time on #{name}")
+        |> pass_time(state, event)
+    end
+  end
+
+  # An activity that takes time (the story's `activity_hours`) moves the
+  # clock on, as its own event after this one.
+  defp pass_time(transition, state, _event) do
+    case Map.get(state.story, :activity_hours) do
+      nil ->
+        transition
+
+      hours ->
+        label = if hours == 24, do: "the next day", else: "#{hours} hours later"
+
+        Transition.enqueue(
+          transition,
+          Aethrion.Event.time_tick(label, hours: hours)
+        )
     end
   end
 end

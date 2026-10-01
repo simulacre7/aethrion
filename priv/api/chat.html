@@ -37,10 +37,11 @@ form input{flex:1;min-width:0}
     <label>Talk to <select id="character" aria-label="Character"></select></label>
     <label>Token <input id="token" type="password" size="8" aria-label="Bearer token"></label>
     <button id="later" type="button" title="Let a few hours pass in the world">Time passes</button>
+    <button id="story" type="button" title="How close each ending is, and what is missing">Story</button>
   </header>
   <div id="log" aria-live="polite"></div>
   <form id="form">
-    <input id="text" autocomplete="off" placeholder="Say something… (/gift flower, /sorry …, /act swing the sword, /do study, /story)" aria-label="Message">
+    <input id="text" autocomplete="off" placeholder="Talk, act, or suggest something, the way you would in a chat" aria-label="Message">
     <button class="primary" type="submit">Send</button>
   </form>
   <p class="hint">Each world key is its own world, kept on the server. Characters remember what you say, react to how you treat them, and talk to each other while time passes.</p>
@@ -110,8 +111,9 @@ async function history() {
   const character = $("character").value;
   const data = await call("GET", worldPath("/conversation?character=" + encodeURIComponent(character)));
   for (const turn of data.turns) {
-    if (turn.kind === "deed") add("note", (names[turn.from] || turn.from) + " " + turn.text);
-    else if (turn.from === "user") add("me", turn.kind === "gift" ? "(gives " + turn.text + ")" : turn.text, "You");
+    // Deeds are the fight as a model reads it; the page showed the fight itself.
+    if (turn.kind === "deed") continue;
+    if (turn.from === "user") add("me", turn.kind === "gift" ? "(gives " + turn.text + ")" : turn.text, "You");
     else add("them", turn.text, names[turn.from] || turn.from);
     seen(turn.event_id);
   }
@@ -141,36 +143,20 @@ $("form").addEventListener("submit", async (event) => {
   if (!text) return;
   $("text").value = "";
   const to = $("character").value;
-  // "/gift tea" gives a gift, "/sorry ..." apologizes, "/act ..." fights
-  // (whoever the words name, else the first enemy standing), "/do study"
-  // spends a day on an activity, "/story" shows how close each ending is;
-  // anything else is said.
-  const [, command, rest] = text.match(/^\/(gift|sorry|act|do|story)\s*(.*)$/) || [];
-  if (command === "story") return story().catch((e) => add("error", e.message));
-  if (command === "do") return spendDay(to, rest).catch((e) => add("error", e.message));
-  add("me", command === "gift" ? "(gives " + (rest || "a gift") + ")" : command === "sorry" ? "(apologizes) " + rest : command === "act" ? "(" + rest + ")" : text, "You");
-  const request = command === "gift"
-    ? ["/events", {type: "gift_received", from: "user", to, item: rest || "gift"}]
-    : command === "sorry"
-      ? ["/events", {type: "apology_offered", from: "user", to, reason: rest || "I'm sorry."}]
-      : command === "act"
-        ? ["/act", {text: rest || "attack"}]
-        : ["/say", {to, text}];
+  // Typed the way one talks: the server reads whether it is a move in a
+  // fight, a day spent on something, a gift, or just talk (Aethrion.Chat).
+  add("me", text, "You");
   try {
-    const data = await call("POST", worldPath(request[0]), request[1]);
+    const data = await call("POST", worldPath("/chat"), {to, text});
+    const as = data.interpreted && data.interpreted.as;
+    if (as === "activity") await dayPassed();
     show(data.lines);
     seen(data.last_event_id);
   } catch (error) { add("error", error.message); }
 });
 
-// A day spent on an activity, the way a raising sim counts days.
-async function spendDay(character, activity) {
-  add("me", "(" + (names[character] || character) + ": " + activity + ")", "You");
-  const done = await call("POST", worldPath("/events"), {type: "activity", character, activity});
-  show(done.lines);
-  const day = await call("POST", worldPath("/events"), {type: "time_tick", hours: 24, now: "the next day"});
-  show(day.lines);
-  seen(day.last_event_id);
+// In a story that counts days, say which day it is.
+async function dayPassed() {
   const s = await call("GET", worldPath("/story"));
   if (s.deadline && !s.reached) add("note", "Day " + Math.floor(s.hour / 24) + " of " + Math.floor(s.deadline / 24));
 }
@@ -178,11 +164,13 @@ async function spendDay(character, activity) {
 async function story() {
   const s = await call("GET", worldPath("/story"));
   if (s.reached) return add("note", "★ " + s.reached.title + " — " + s.reached.description);
-  if (s.activities.length) add("note", "Activities (/do …): " + s.activities.join(", "));
+  if (!s.endings.length) return add("note", "This world has no story endings.");
   for (const e of s.endings) {
     add("note", Math.round(e.closeness * 100) + "% " + e.title + (e.missing.length ? " — missing: " + e.missing.join("; ") : ""));
   }
 }
+
+$("story").addEventListener("click", () => story().catch((e) => add("error", e.message)));
 
 $("later").addEventListener("click", async () => {
   add("note", "A few hours pass…");

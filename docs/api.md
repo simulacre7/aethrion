@@ -356,6 +356,7 @@ Fights (`Aethrion.Combat`, `Aethrion.Rules.Combat`) are between actors with an `
 | --- | --- | --- | --- |
 | `POST` | `/worlds/{key}/say` | `{"to", "text", "from"?, "observed_by"?}` | the step: `event_id`, `lines`, `outputs`, `interpreted` |
 | `POST` | `/worlds/{key}/events` | an event as in a scenario (`{"type": "gift_received", ...}`) | the step |
+| `POST` | `/worlds/{key}/chat` | `{"to", "text", "from"?, "observed_by"?}`: one chat line, read by `Aethrion.Chat` as a fight move (while an enemy stands), a story activity the player suggests (the story's `phrases`, or the activity's name with "하자/할까/let's"), a gift handed over, or talk (`Aethrion.Intent`); `interpreted.as` is `combat`, `activity`, `gift`, or `talk` | the step |
 | `POST` | `/worlds/{key}/act` | `{"text", "to"?, "from"?}`: a combat action in words, aimed at whoever the words name (an enemy for a blow), else `to`, else the first enemy standing; `400 unclear_action` when the words do not say what happens | the step |
 | `GET` | `/worlds/{key}/story` | | `{"reached": ending \| null, "endings": progress}` |
 | `GET` | `/worlds/{key}/conversation` | `character` (omit for every character), `person` (default `user`), `after` (an event id) | `{"turns": [...]}`, oldest first |

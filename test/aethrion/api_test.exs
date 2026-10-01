@@ -191,6 +191,34 @@ defmodule Aethrion.APITest do
              request(:get, base <> "/worlds/quest/story")
   end
 
+  test "one chat line, read as what it does: a day spent, a gift, talk, or a move in a fight",
+       %{base: base, dir: dir} do
+    for {key, cast} <- [{"summer", "priv/casts/summer.json"}, {"fight", "priv/casts/quest.json"}] do
+      {:ok, state} = cast |> File.read!() |> Jason.decode!() |> Aethrion.State.parse()
+      :ok = Aethrion.Journal.create(Path.join(dir, Worlds.file_name(key) <> ".jsonl"), state)
+    end
+
+    chat = fn key, to, text ->
+      request(:post, base <> "/worlds/#{key}/chat", %{"to" => to, "text" => text})
+    end
+
+    assert {200, %{"interpreted" => %{"as" => "activity"}}} =
+             chat.("summer", "seoyun", "오늘은 같이 그림 그리자")
+
+    assert {200, %{"clock" => 24}} = request(:get, base <> "/worlds/summer/state")
+
+    assert {200, %{"interpreted" => %{"as" => "talk", "tone" => "warm"}, "lines" => [_reply]}} =
+             chat.("summer", "seoyun", "네 그림 진짜 좋다")
+
+    assert {200, %{"interpreted" => %{"as" => "gift", "type" => "gift_received"}}} =
+             chat.("summer", "seoyun", "물감 새로 사 왔어")
+
+    assert {200, %{"interpreted" => %{"as" => "combat", "type" => "attack", "to" => "wolf"}}} =
+             chat.("fight", "kael", "카엘, 엄호해 줘! 늑대왕의 목을 노려 벤다")
+
+    assert {200, %{"interpreted" => %{"as" => "talk"}}} = chat.("fight", "kael", "고마워, 카엘")
+  end
+
   test "mistakes are errors with a status", %{base: base} do
     assert {400, %{"error" => %{"code" => "invalid_key"}}} =
              request(:post, base <> "/worlds/..%2Fetc/say", %{"to" => "mina", "text" => "hi"})

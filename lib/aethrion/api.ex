@@ -19,6 +19,7 @@ defmodule Aethrion.API do
 
   | method | path | does |
   | ------ | ---- | ---- |
+  | `POST` | `/worlds/{key}/chat` | `{"to": "seoyun", "text": "오늘은 같이 그림 그리자", "from": "user"}`: one line as a person would type it in a chat, read by `Aethrion.Chat` as a fight action, a story activity, a gift, or talk, and dispatched; `interpreted.as` says which |
   | `POST` | `/worlds/{key}/say` | `{"to": "mina", "text": "...", "from": "user", "observed_by": [...]}`: free text, interpreted (`Aethrion.Intent`) and dispatched |
   | `POST` | `/worlds/{key}/act` | `{"text": "I swing at the goblin", "to": "goblin", "from": "user"}`: a combat action in free words (`Aethrion.Combat.action/4`): attack, guard, heal, or flee |
   | `POST` | `/worlds/{key}/events` | an event, as in a scenario or journal: `{"type": "gift_received", "from": "user", "to": "mina", "item": "tea"}` |
@@ -177,6 +178,7 @@ defmodule Aethrion.API do
 
   defp route(_method, _path), do: not_found()
 
+  defp world_route("POST", ["chat"], key), do: {:ok, {:chat, key}}
   defp world_route("POST", ["say"], key), do: {:ok, {:say, key}}
   defp world_route("POST", ["events"], key), do: {:ok, {:event, key}}
   defp world_route("POST", ["act"], key), do: {:ok, {:act, key}}
@@ -187,6 +189,7 @@ defmodule Aethrion.API do
 
   defp world_route(_method, route, _key)
        when route in [
+              ["chat"],
               ["say"],
               ["events"],
               ["act"],
@@ -309,8 +312,33 @@ defmodule Aethrion.API do
          {:ok, to} <- required(data, "to"),
          {:ok, text} <- required(data, "text"),
          :ok <- observers_list(data),
+         :ok <- short_enough(text, config.max_text) do
+      talk(config, key, data, to, text)
+    end
+  end
+
+  defp run(config, {:chat, key}, _query, body) do
+    with {:ok, data} <- decode(body),
+         {:ok, to} <- required(data, "to"),
+         {:ok, text} <- required(data, "text"),
+         :ok <- observers_list(data),
          :ok <- short_enough(text, config.max_text),
-         {:ok, state} <- Worlds.get_state(config.worlds, key),
+         {:ok, state} <- Worlds.peek_state(config.worlds, key),
+         :ok <- known_character(state, to) do
+      case Aethrion.Chat.read(state, Map.get(data, "from", "user"), to, text) do
+        :talk ->
+          talk(config, key, data, to, text)
+
+        {as, event} ->
+          dispatch(config, key, event, %{
+            interpreted: %{as: as, type: event.type, to: Map.get(event, :to)}
+          })
+      end
+    end
+  end
+
+  defp talk(config, key, data, to, text) do
+    with {:ok, state} <- Worlds.get_state(config.worlds, key),
          {:ok, event, meta} <-
            Intent.interpret(state, text,
              to: to,
@@ -319,9 +347,21 @@ defmodule Aethrion.API do
              adapter: Keyword.get(config.intent, :adapter, Aethrion.LLM.FakeAdapter),
              adapter_opts: Keyword.get(config.intent, :adapter_opts, [])
            ) do
-      interpreted = %{type: event.type, tone: Map.get(event, :tone), status: meta.status}
+      interpreted = %{
+        as: :talk,
+        type: event.type,
+        tone: Map.get(event, :tone),
+        status: meta.status
+      }
+
       dispatch(config, key, event, %{interpreted: interpreted})
     end
+  end
+
+  defp known_character(state, id) do
+    if State.character?(state, id),
+      do: :ok,
+      else: {:error, 400, Error.new(:unknown_character, "unknown character: #{inspect(id)}")}
   end
 
   defp conversation_characters(state, %{"character" => id}) do

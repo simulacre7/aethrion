@@ -328,17 +328,26 @@ Two things AI chat and games keep asking for, decided the same way as everything
 }
 ```
 
-`Aethrion.Story.progress/1` says how close each ending is and what is missing ("mina art 55 (needs at least 70)"), so a game can hint at a route; `examples/endings.exs` plays thirty days four ways to four endings. `priv/casts/summer.json` is a Korean raising sim to play in the chat page: thirty days with Seoyun before her art school exam, where what she spends each day on (`/do 그림`, `/do 공부`, `/do 휴식`) and how you talk to her decide one of six endings; push her to 100 stress and it ends before the deadline, and once an ending is decided no more days can be spent. `/story` shows how close each ending is and what is missing:
+`Aethrion.Story.progress/1` says how close each ending is and what is missing ("mina art 55 (needs at least 70)"), so a game can hint at a route; `examples/endings.exs` plays thirty days four ways to four endings. `priv/casts/summer.json` is a Korean raising sim to play in the chat page: thirty days with Seoyun before her art school exam, where what you suggest she spend each day on ("오늘은 같이 그림 그리자", "내일은 좀 쉬자") and how you talk to her decide one of six endings; push her to 100 stress and it ends before the deadline, and once an ending is decided no more days can be spent. The page's Story button shows how close each ending is and what is missing.
 
 ```bash
-mix aethrion.serve --cast priv/casts/summer.json --locale ko   # then /do 그림 and /story in the chat page
+mix aethrion.serve --cast priv/casts/summer.json --locale ko   # then just chat at http://localhost:4848
 ```
 
-**Fights** for actors with an `hp` stat, players included: attack, guard, heal, flee, with damage from attack, defense, and a roll derived from who acts on whom and where the fight stands (their hp), so a fight replays exactly and chatting in between does not change the dice. Guarding or healing gives the enemies (actors with an `enemy` stat) their turn, and they go for the weakest of your side, so shielding a companion ("리아를 감싸며 방패를 든다") matters; the fallen are not revived; once the ending is decided, nobody fights. Characters feel it: the attacked resent it, witnesses who care about them trust you less, companions who fight beside you trust you more, the healed grow fonder. And it runs the other way: party members (a `party` stat) fight beside a player whose trust they hold, above a threshold (`combat.party_trust`, 10 by default; the quest uses 15), with a healer tending a hurt player first, and otherwise hold back (saying so once), so how you talked to your companions decides who stands with you. Companions gain trust by joining in, not by watching. In a chat, `POST /worlds/{key}/act` turns "I swing my sword at the wolf" or "방패로 막는다" into the action, aimed at the first enemy still standing unless `to` says otherwise. `priv/casts/quest.json` is a Korean party against the wolf king whose ending depends on how the fight went and how you treated your companions:
+**No commands in a chat.** `POST /worlds/{key}/chat` takes a line the way a player types it and reads what it does (`Aethrion.Chat`): a move while a fight is on, a story activity when the player suggests one, a gift when they hand something over, and otherwise talk, whose tone `Aethrion.Intent` reads. The response says how it was read (`interpreted.as`). The same line in the same world always does the same thing:
+
+```txt
+You:  서윤아, 오늘은 같이 그림 그리자         -> activity 그림, a day passes (Day 1 of 30)
+You:  네 그림 진짜 좋다. 색이 예뻐            -> talk (warm)   서윤: 정말? ...그렇게 말해 줘서 고마워.
+You:  물감 새로 사 왔어                       -> gift 물감     서윤: 물감... 나 주려고 챙긴 거야? 고마워.
+You:  내일은 좀 쉬자. 요즘 너무 무리했어      -> activity 휴식, a day passes
+```
+
+**Fights** for actors with an `hp` stat, players included: attack, guard, heal, flee, with damage from attack, defense, and a roll derived from who acts on whom and where the fight stands (their hp), so a fight replays exactly and chatting in between does not change the dice. Guarding or healing gives the enemies (actors with an `enemy` stat) their turn, and they go for the weakest of your side, so shielding a companion ("리아를 감싸며 방패를 든다") matters; the fallen are not revived; once the ending is decided, nobody fights. Characters feel it: the attacked resent it, witnesses who care about them trust you less, companions who fight beside you trust you more, the healed grow fonder. And it runs the other way: party members (a `party` stat) fight beside a player whose trust they hold, above a threshold (`combat.party_trust`, 10 by default; the quest uses 15), with a healer tending a hurt player first, and otherwise hold back (saying so once), so how you talked to your companions decides who stands with you. Companions gain trust by joining in, not by watching. In a chat, the player just types: "늑대왕의 목을 노려 벤다" is a blow, "리아를 감싸며 방패를 든다" shields Ria, "리아, 치료해 줘" has her heal you, and "카엘, 고마워" is talk. `priv/casts/quest.json` is a Korean party against the wolf king whose ending depends on how the fight went and how you treated your companions:
 
 ```bash
 mix run examples/combat.exs                                   # the quest, five ways to five endings
-mix aethrion.serve --cast priv/casts/quest.json --locale ko   # then /act 검을 휘두른다 in the chat page
+mix aethrion.serve --cast priv/casts/quest.json --locale ko   # then just chat at http://localhost:4848
 ```
 
 ## Runtime vs LLM Server

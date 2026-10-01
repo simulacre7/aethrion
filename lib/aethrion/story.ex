@@ -11,6 +11,11 @@ defmodule Aethrion.Story do
   - `endings` - an ordered list. The first ending whose conditions all hold
     is the one reached; an ending with no conditions is the one everybody
     else gets.
+  - `phrases` - how a player says each activity in a chat (`"그림": ["그림
+    그리자", "스케치하자"]`), so `Aethrion.Chat` can tell "let's paint" from
+    "your painting is lovely".
+  - `activity_hours` - how long an activity takes: with `24`, each one is a
+    day, and the clock moves on by itself, the way a raising sim counts days.
   - `deadline` - the simulated hour at which the ending is decided (say
     `720` for thirty days). The world emits an `:ending_reached` output
     once, the first time its clock reaches it.
@@ -239,14 +244,28 @@ defmodule Aethrion.Story do
   def parse(nil), do: {:ok, %{}}
 
   def parse(data) when is_map(data) do
-    with :ok <- known_keys(data, ~w(activities endings deadline decide_when), []),
+    with :ok <-
+           known_keys(
+             data,
+             ~w(activities phrases activity_hours endings deadline decide_when),
+             []
+           ),
          {:ok, activities} <- parse_activities(Map.get(data, "activities", %{})),
+         {:ok, phrases} <- parse_phrases(Map.get(data, "phrases", %{}), activities),
+         {:ok, hours} <- parse_hours(Map.get(data, "activity_hours")),
          {:ok, endings} <- parse_endings(Map.get(data, "endings", [])),
          {:ok, deadline} <- parse_deadline(Map.get(data, "deadline")),
          {:ok, decide} <- parse_conditions(Map.get(data, "decide_when", []), ["decide_when"]),
          :ok <- something_to_decide(endings, deadline, decide) do
       {:ok,
-       %{activities: activities, endings: endings, deadline: deadline, decide_when: decide}
+       %{
+         activities: activities,
+         phrases: phrases,
+         activity_hours: hours,
+         endings: endings,
+         deadline: deadline,
+         decide_when: decide
+       }
        |> Map.reject(fn {_k, v} -> v in [nil, %{}, []] end)}
     end
   end
@@ -303,6 +322,8 @@ defmodule Aethrion.Story do
   def to_data(story) do
     %{}
     |> put_if("activities", story[:activities])
+    |> put_if("phrases", story[:phrases])
+    |> put_if("activity_hours", story[:activity_hours])
     |> put_if("endings", story[:endings] && Enum.map(story.endings, &ending_to_data/1))
     |> put_if("deadline", story[:deadline])
     |> put_if(
@@ -327,6 +348,30 @@ defmodule Aethrion.Story do
   end
 
   defp parse_activities(_activities), do: {:error, "must be an object", ["activities"]}
+
+  # How a player says an activity in a chat ("그림 그리자", "쉬자"), per
+  # activity, for `Aethrion.Chat`.
+  defp parse_phrases(phrases, activities) when is_map(phrases) do
+    Enum.reduce_while(phrases, {:ok, %{}}, fn {name, list}, {:ok, acc} ->
+      cond do
+        not Map.has_key?(activities, name) ->
+          {:halt, {:error, "phrases for an activity the story does not have", ["phrases", name]}}
+
+        is_list(list) and list != [] and
+            Enum.all?(list, &(is_binary(&1) and String.trim(&1) != "")) ->
+          {:cont, {:ok, Map.put(acc, name, list)}}
+
+        true ->
+          {:halt, {:error, "must be a list of phrases", ["phrases", name]}}
+      end
+    end)
+  end
+
+  defp parse_phrases(_phrases, _activities), do: {:error, "must be an object", ["phrases"]}
+
+  defp parse_hours(nil), do: {:ok, nil}
+  defp parse_hours(hours) when is_integer(hours) and hours > 0, do: {:ok, hours}
+  defp parse_hours(_hours), do: {:error, "must be a positive number of hours", ["activity_hours"]}
 
   defp parse_endings(endings) when is_list(endings) do
     endings
