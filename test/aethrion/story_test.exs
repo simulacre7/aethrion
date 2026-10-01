@@ -215,4 +215,14 @@ defmodule Aethrion.StoryTest do
     assert {:error, %{message: "the story has reached its ending"}} =
              Runtime.step(state, act.("휴식"))
   end
+
+  test "praise pasted twenty times in a row is not twenty times the affection" do
+    {:ok, summer} = "priv/casts/summer.json" |> File.read!() |> Jason.decode!() |> State.parse()
+    praise = Event.message_sent("user", "seoyun", "네 그림 진짜 좋다", tone: :warm)
+    {once, _} = run(summer, [praise])
+    {spammed, _} = run(summer, List.duplicate(praise, 20))
+
+    gained = &(State.get_relationship(&1, "seoyun", "user").affinity - 30)
+    assert gained.(spammed) < gained.(once) * 8
+  end
 end

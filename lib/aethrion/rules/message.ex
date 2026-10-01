@@ -10,6 +10,10 @@ defmodule Aethrion.Rules.Message do
   | cold     | affinity -3, tension +4, joy -5, remembers it                            |
   | hostile  | affinity -8, trust -6, tension +10, stress +20 (`:sensitive` +10), joy -10, remembers it (with the trust it took) |
 
+  Kind words wear thin when they keep coming: each warm message from the
+  same sender in the last day (`warm_fatigue_hours`) takes a quarter off the
+  next one's effect, down to a quarter.
+
   History changes how a message lands. Impressions are built by
   `Aethrion.Rules.Consolidation` from faded memories:
 
@@ -59,7 +63,8 @@ defmodule Aethrion.Rules.Message do
       reputation_goodwill_count: 3,
       reputation_goodwill_percent: 75,
       reputation_wariness_count: 2,
-      reputation_wariness_percent: 75
+      reputation_wariness_percent: 75,
+      warm_fatigue_hours: 24
     ]
 
   alias Aethrion.{Memories, Memory, State, Transition}
@@ -80,6 +85,7 @@ defmodule Aethrion.Rules.Message do
   def apply(%Transition{event: event} = transition) do
     effects = Map.fetch!(@effects, event.tone)
     {transition, percent} = history_modifier(transition)
+    {transition, percent} = fatigue(transition, percent)
 
     amount = fn field ->
       div(Transition.param(transition, :"#{event.tone}_#{field}") * percent, 100)
@@ -179,6 +185,38 @@ defmodule Aethrion.Rules.Message do
 
   # Returns the percentage of the tone's normal effect that applies, noting why
   # when history changes it.
+  # Kind words wear thin when they keep coming: each warm message from the
+  # same sender in the last `warm_fatigue_hours` takes a quarter off the
+  # next one's effect, down to a quarter. Praise pasted twenty times in a
+  # row is not twenty times the affection.
+  defp fatigue(%Transition{event: %{tone: :warm} = event, state: state} = transition, percent) do
+    since = state.clock - Transition.param(transition, :warm_fatigue_hours)
+
+    recent =
+      Enum.count(state.memories, fn memory ->
+        memory.character_id == event.to and memory.created_tick > since and
+          match?(
+            %{"event" => "message_sent", "tone" => "warm", "from" => from}
+            when from == event.from,
+            memory.data
+          )
+      end)
+
+    case recent do
+      0 ->
+        {transition, percent}
+
+      count ->
+        {Transition.note(
+           transition,
+           "#{Transition.name(transition, event.to)} has heard many kind words from #{Transition.name(transition, event.from)} lately",
+           subject: event.to
+         ), div(percent * max(100 - 25 * count, 25), 100)}
+    end
+  end
+
+  defp fatigue(transition, percent), do: {transition, percent}
+
   defp history_modifier(%Transition{event: event, state: state} = transition) do
     counts = Consolidation.counts(state, event.to, event.from)
     count = &Map.get(counts, {"impression", &1}, 0)
