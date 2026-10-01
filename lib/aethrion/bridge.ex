@@ -236,14 +236,16 @@ defmodule Aethrion.Bridge do
   end
 
   # A trimmed chat whose first turn was edited: the world before its lines,
-  # walking back from its reply's checkpoint one line at a time. Only an
-  # edit, one line changed in place, is taken that way: a deleted or added
-  # line would put the walk in the wrong world.
+  # walking back from its reply's checkpoint one line at a time. Only edits
+  # in place are taken that way: a deleted line would land the walk in a
+  # world that already holds the first line, which is refused. (A line
+  # edited into the one before it looks the same, and replays from the
+  # cast.)
   defp edited_first(turns, root, get) do
     with index when is_integer(index) <- Enum.find_index(turns, &is_binary(&1.id)),
          lines = Enum.take(turns, index + 1),
          true <- Enum.all?(lines, &is_binary(&1.line)),
-         {id, 1} when is_binary(id) and id != root <-
+         {id, changed} when is_binary(id) and id != root and changed > 0 <-
            back(Enum.at(turns, index).id, Enum.reverse(lines), 0, get),
          first = digest(hd(lines).line),
          %{line: before} = saved when before != first <- get.(id) do

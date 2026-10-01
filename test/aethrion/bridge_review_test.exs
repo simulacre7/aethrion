@@ -296,6 +296,14 @@ defmodule Aethrion.BridgeReviewTest do
       assert hp(before, "dire_wolf") == 37 and hp(again, "dire_wolf") == hp(first, "dire_wolf")
     end
 
+    test "a trimmed chat whose first turn had both its lines edited goes on from before them" do
+      {_before, now, _turn} = play(den(), in_a_row("세라에게 웃어 보인다", "도윤에게 손을 흔든다"))
+      expected = fresh([@u1, "세라에게 웃어 보인다", "도윤에게 손을 흔든다", @u3, "안녕"])
+
+      assert {hp(now, "dire_wolf"), hp(now, "user")} ==
+               {hp(expected, "dire_wolf"), hp(expected, "user")}
+    end
+
     test "a line deleted from the first turn is not applied twice" do
       m = [user(@u1), user("방패를 들어 막는다"), user(@u2)]
       m = m ++ [reply(den(), m)]
