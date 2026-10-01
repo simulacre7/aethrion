@@ -38,7 +38,7 @@ mix aethrion.serve --cast priv/casts/den.json --llm claude --locale ko --port 48
 
 ## 2. Install RisuAI
 
-The tested setup is a self-hosted RisuAI (Docker); the desktop app sends the same requests. The web version (risuai.xyz) sends most requests through RisuAI's servers, but calls `localhost` and `127.0.0.1` from the browser directly, so it can reach `http://localhost:4848/v1`. Aethrion sends the CORS headers for that, but the browser may ask before allowing local network access, and this path is untested.
+The tested setup is a self-hosted RisuAI (Docker); the desktop app sends the same requests. The web version (risuai.xyz) sends most requests through RisuAI's servers, but calls `localhost` and `127.0.0.1` from the browser directly, so it can reach `http://localhost:4848/v1`. Aethrion sends the CORS headers for that, but answering the browser's preflight (OPTIONS) needs Erlang/OTP 29 or later (older `:httpd` refuses OPTIONS with 501). The browser may also ask before allowing local network access, and this path is untested.
 
 ```bash
 git clone https://github.com/kwaroran/RisuAI

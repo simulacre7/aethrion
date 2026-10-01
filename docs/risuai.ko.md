@@ -38,7 +38,7 @@ mix aethrion.serve --cast priv/casts/den.json --llm claude --locale ko --port 48
 
 ## 2. RisuAI 설치
 
-시험한 방법은 직접 띄운 RisuAI(Docker)입니다. 데스크톱 앱도 같은 요청을 보냅니다. 웹 버전(risuai.xyz)은 대부분의 요청을 RisuAI 쪽 서버를 거쳐 보내지만, `localhost`·`127.0.0.1` 주소는 브라우저에서 바로 요청하므로 `http://localhost:4848/v1`에 닿을 수 있습니다. Aethrion은 이를 위한 CORS 헤더를 보내지만, 브라우저가 로컬 네트워크 접근을 허용할지 물을 수 있고, 이 경로는 시험하지 않았습니다.
+시험한 방법은 직접 띄운 RisuAI(Docker)입니다. 데스크톱 앱도 같은 요청을 보냅니다. 웹 버전(risuai.xyz)은 대부분의 요청을 RisuAI 쪽 서버를 거쳐 보내지만, `localhost`·`127.0.0.1` 주소는 브라우저에서 바로 요청하므로 `http://localhost:4848/v1`에 닿을 수 있습니다. Aethrion은 이를 위한 CORS 헤더를 보내지만, 브라우저의 사전 요청(OPTIONS)에 답하려면 Erlang/OTP 29 이상이 필요합니다(그 전의 `:httpd`는 OPTIONS를 501로 거절합니다). 브라우저가 로컬 네트워크 접근을 허용할지 물을 수도 있고, 이 경로는 시험하지 않았습니다.
 
 ```bash
 git clone https://github.com/kwaroran/RisuAI

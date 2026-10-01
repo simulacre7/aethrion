@@ -201,6 +201,15 @@ defmodule Aethrion.BridgeTest do
     assert String.ends_with?(events, "data: [DONE]\n\n")
   end
 
+  defp inets_before?(version) do
+    :inets
+    |> Application.spec(:vsn)
+    |> to_string()
+    |> String.split(".")
+    |> Enum.map(&String.to_integer/1)
+    |> Kernel.<(version)
+  end
+
   test "models, preflight, and mistakes", %{base: base} do
     {:ok, {{_v, 200, _r}, _h, models}} = :httpc.request(String.to_charlist(base <> "/v1/models"))
     assert %{"data" => [%{"id" => "aethrion"} | _] = list} = Jason.decode!(models)
@@ -208,11 +217,21 @@ defmodule Aethrion.BridgeTest do
     # The foes are fought, not talked to.
     refute Enum.any?(list, &(&1["id"] == "aethrion:dire_wolf"))
 
-    {:ok, {{_v, 204, _r}, headers, _}} =
-      :httpc.request(:options, {String.to_charlist(base <> "/v1/chat/completions"), []}, [], [])
+    # A browser's preflight. :httpd takes OPTIONS from inets 9.8 (OTP 29);
+    # before, it answers 501 itself and only server-side callers get in.
+    case :httpc.request(
+           :options,
+           {String.to_charlist(base <> "/v1/chat/completions"), []},
+           [],
+           []
+         ) do
+      {:ok, {{_v, 204, _r}, headers, _}} ->
+        assert {~c"access-control-allow-origin", ~c"*"} in headers
+        assert {~c"access-control-allow-private-network", ~c"true"} in headers
 
-    assert {~c"access-control-allow-origin", ~c"*"} in headers
-    assert {~c"access-control-allow-private-network", ~c"true"} in headers
+      {:ok, {{_v, 501, _r}, _headers, _}} ->
+        assert inets_before?([9, 8])
+    end
 
     assert {400, _h, body} = post(base, %{"model" => "aethrion:ghost", "messages" => risu([])})
     assert body =~ "ghost"
