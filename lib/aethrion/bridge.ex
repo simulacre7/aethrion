@@ -107,7 +107,7 @@ defmodule Aethrion.Bridge do
     turns = turns(chat)
 
     {pending, from, id} =
-      case base(turns, root, checkpoints) do
+      case base(turns, root, to, checkpoints) do
         {index, id, %{state: saved}} -> {Enum.drop(turns, index + 1), with_lore(saved, state), id}
         nil -> {turns, state, root}
       end
@@ -115,15 +115,21 @@ defmodule Aethrion.Bridge do
     if length(pending) > Keyword.get(opts, :max_lines, :infinity) do
       {:error, :too_many_lines}
     else
-      {answered, unanswered} = Enum.split_while(pending, & &1.replied)
+      # This turn is the lines after the last reply.
+      replied = Enum.find_index(Enum.reverse(pending), & &1.replied)
+      {answered, unanswered} = Enum.split(pending, length(pending) - (replied || length(pending)))
       put = &if(checkpoints, do: checkpoints.put.(&1, checkpoint(&2, &3, &4, root)))
 
       {now, id} =
-        Enum.reduce(answered, {from, id}, fn %{line: line}, {state, prev} ->
-          {state, _readings, _outputs} = play(state, line, prev, read)
-          id = checkpoint_id(prev, to, line)
-          put.(id, prev, line, state)
-          {state, id}
+        Enum.reduce(answered, {from, id}, fn
+          %{line: nil}, acc ->
+            acc
+
+          %{line: line}, {state, prev} ->
+            {state, _readings, _outputs} = play(state, line, prev, read)
+            id = checkpoint_id(prev, to, line)
+            put.(id, prev, line, state)
+            {state, id}
         end)
 
       turn = %{line: nil, readings: [], outputs: [], id: id}
@@ -174,7 +180,8 @@ defmodule Aethrion.Bridge do
   defp with_lore(state, _cast), do: state
 
   # The player's lines, each with whether a reply came after it and that
-  # reply's checkpoint id.
+  # reply's checkpoint id. A chat the app trimmed may begin with a reply: it
+  # is kept, with no line, for its checkpoint.
   defp turns(chat) do
     chat
     |> Enum.reduce([], fn
@@ -186,17 +193,32 @@ defmodule Aethrion.Bridge do
       %{"role" => "assistant"} = reply, [%{replied: false} = turn | turns] ->
         [%{turn | id: reply["checkpoint"], replied: true} | turns]
 
+      %{"role" => "assistant", "checkpoint" => id}, [] when is_binary(id) ->
+        [%{line: nil, id: id, replied: true}]
+
       _other, turns ->
         turns
     end)
     |> Enum.reverse()
   end
 
-  # The latest turn whose checkpoint is from this cast and whose chain
-  # matches the lines up to it: `{index, id, checkpoint}`.
-  defp base(_turns, _root, nil), do: nil
+  # Where the replay starts: `{index, id, checkpoint}`, the world after turn
+  # `index` (-1: before the first turn), or nil for the cast.
+  defp base(_turns, _root, _to, nil), do: nil
 
-  defp base(turns, root, checkpoints) do
+  defp base(turns, root, to, checkpoints) do
+    get = fn id ->
+      case checkpoints.get.(id) do
+        %{root: ^root} = saved -> saved
+        _other -> nil
+      end
+    end
+
+    marked(turns, get) || edited_first(turns, root, get) || computed(turns, root, to, get)
+  end
+
+  # The latest reply whose checkpoint chain matches the lines up to it.
+  defp marked(turns, get) do
     turns
     |> Enum.with_index()
     |> Enum.reverse()
@@ -205,26 +227,54 @@ defmodule Aethrion.Bridge do
         nil
 
       {%{id: id}, index} ->
-        case checkpoints.get.(id) do
-          %{root: ^root} = saved ->
-            if chain?(Enum.take(turns, index + 1), id, checkpoints), do: {index, id, saved}
-
-          _other ->
-            nil
-        end
+        saved = get.(id)
+        if saved && chain?(Enum.take(turns, index + 1), id, get), do: {index, id, saved}
     end)
+  end
+
+  # A trimmed chat whose first line was edited: the world before that line.
+  defp edited_first([%{line: line, id: id} | _turns], root, get)
+       when is_binary(line) and is_binary(id) do
+    with %{prev: prev} when prev != root <- get.(id),
+         %{} = saved <- get.(prev),
+         do: {-1, prev, saved},
+         else: (_other -> nil)
+  end
+
+  defp edited_first(_turns, _root, _get), do: nil
+
+  # A chat whose replies carry no ids (`aethrion-plain`), from its start:
+  # the ids follow from the lines, so the checkpoints can still be found.
+  defp computed(turns, root, to, get) do
+    turns
+    |> Enum.with_index()
+    |> Enum.reduce_while({root, nil}, fn
+      {%{line: line, replied: true}, index}, {prev, found} when is_binary(line) ->
+        id = checkpoint_id(prev, to, line)
+
+        digest = digest(line)
+
+        case get.(id) do
+          %{line: ^digest} = saved -> {:cont, {id, {index, id, saved}}}
+          _missing -> {:halt, {prev, found}}
+        end
+
+      _turn, acc ->
+        {:halt, acc}
+    end)
+    |> elem(1)
   end
 
   # Walks the chain back from `id` over the lines still in the chat (the
   # earliest may have been trimmed away): each line must be the one kept,
   # and each reply's id the one the chain gives.
-  defp chain?(turns, id, checkpoints) do
+  defp chain?(turns, id, get) do
     turns
     |> Enum.reverse()
     |> Enum.reduce_while(id, fn %{line: line, id: seen}, id ->
-      case checkpoints.get.(id) do
+      case get.(id) do
         %{line: kept, prev: prev} when seen in [nil, id] ->
-          if kept == digest(line), do: {:cont, prev}, else: {:halt, false}
+          if line == nil or kept == digest(line), do: {:cont, prev}, else: {:halt, false}
 
         _other ->
           {:halt, false}

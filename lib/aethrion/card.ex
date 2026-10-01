@@ -230,12 +230,16 @@ defmodule Aethrion.Card do
           cast
 
         lore ->
-          Map.update(
-            cast,
+          cast
+          |> Map.update("story", %{}, &if(is_map(&1), do: &1, else: %{}))
+          |> Map.update(
             "story",
             %{"lore" => lore},
             # The same card added again does not repeat its notes.
-            &Map.update(&1, "lore", lore, fn old -> old ++ (lore -- old) end)
+            &Map.update(&1, "lore", lore, fn
+              old when is_list(old) -> old ++ (lore -- old)
+              _other -> lore
+            end)
           )
       end
     end)

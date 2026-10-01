@@ -198,6 +198,19 @@ defmodule Aethrion.API do
 
   defp small_enough(_body, _config, _route), do: :ok
 
+  # Without a token, a page from another site must not drive the server
+  # (browsers send its Origin, even where CORS lets nothing back); with one,
+  # the token keeps it out.
+  defp authorize(%{token: nil}, %{"origin" => origin} = headers) do
+    host = Map.get(headers, "host", "")
+
+    if origin in ["http://" <> host, "https://" <> host],
+      do: :ok,
+      else:
+        {:error, 403,
+         Error.new(:forbidden_origin, "requests from other sites need the server to have a token")}
+  end
+
   defp authorize(%{token: nil}, _headers), do: :ok
 
   defp authorize(%{token: token}, headers) do
@@ -582,11 +595,9 @@ defmodule Aethrion.API do
   end
 
   # The cast a card is added to must itself be a cast, and so must the result.
-  defp into(nil, cast), do: {:ok, cast}
-
   defp into(into, cast) do
-    with {:ok, _state} <- State.parse(into),
-         merged = Aethrion.Card.merge(into, cast),
+    with {:ok, _state} <- State.parse(into || %{}),
+         merged = if(into, do: Aethrion.Card.merge(into, cast), else: cast),
          {:ok, _state} <- State.parse(merged) do
       {:ok, merged}
     else

@@ -152,6 +152,77 @@ defmodule Aethrion.BridgeReviewTest do
     end
   end
 
+  describe "checkpoints, second pass" do
+    defp plain(lines_and_replies),
+      do:
+        Enum.map(lines_and_replies, fn
+          :reply -> %{"role" => "assistant", "content" => "…"}
+          line -> %{"role" => "user", "content" => line}
+        end)
+
+    test "only the lines after the last reply are this turn's" do
+      {before, _now, turn} = play(den(), plain([@u1, :reply, @u2, @u2, :reply, @u3]))
+      {_before, expected, _turn} = play(den(), plain([@u1, @u2, @u2]))
+      assert hp(before, "dire_wolf") == hp(expected, "dire_wolf")
+      assert turn.line == @u3 and length(turn.readings) == 1
+
+      {_before, _now, turn} = play(den(), plain([@u1, @u2, :reply]))
+      assert turn.line == nil
+    end
+
+    test "a chat trimmed to begin with a reply goes on from that reply" do
+      messages = chat(den(), [@u1, @u2])
+      {_before, full, _turn} = play(den(), messages)
+      [_u1, _a1, _u2, a2] = messages
+
+      {_before, now, turn} = play(den(), [a2])
+      assert hp(now, "dire_wolf") == hp(full, "dire_wolf") and turn.line == nil
+
+      {before, _now, _turn} = play(den(), [a2, %{"role" => "user", "content" => @u3}])
+      assert hp(before, "dire_wolf") == hp(full, "dire_wolf")
+    end
+
+    test "the first line left after trimming, edited, is replayed from the world before it" do
+      [_u1, _a1, _u2, a2, u3, a3] = chat(den(), [@u1, @u2, @u3])
+      edited = %{"role" => "user", "content" => "방패를 들어 막는다"}
+
+      {_before, now, _turn} =
+        play(den(), [edited, a2, u3, a3, %{"role" => "user", "content" => "안녕"}])
+
+      {_before, expected, _turn} =
+        Bridge.replay(
+          den(),
+          plain([@u1, edited["content"], @u3, "안녕"]),
+          Bridge.reader("sera", [interpreter: Aethrion.Interpreter.Rules], no_cache()),
+          to: "sera"
+        )
+
+      assert hp(now, "dire_wolf") == hp(expected, "dire_wolf")
+      assert hp(now, "user") == hp(expected, "user")
+    end
+
+    test "a chat without status blocks still goes on from its checkpoints" do
+      lines = ["안녕", "고마워", "오늘 날씨 좋다", "같이 가자"]
+
+      history =
+        Enum.reduce(lines, [], fn line, history ->
+          history = history ++ [%{"role" => "user", "content" => line}]
+          play(den(), history)
+          history ++ [%{"role" => "assistant", "content" => "…"}]
+        end)
+
+      {_all, chat} = Bridge.transcript(history ++ [%{"role" => "user", "content" => "잘 자"}])
+      read = Bridge.reader("sera", [interpreter: Aethrion.Interpreter.Rules], no_cache())
+
+      assert {_before, _now, %{line: "잘 자"}} =
+               Bridge.replay(den(), chat, read,
+                 to: "sera",
+                 checkpoints: checkpoints(),
+                 max_lines: 2
+               )
+    end
+  end
+
   describe "readings" do
     test "are kept per world, not per line, and a stand-in reading is not kept" do
       cache = Store.cache(Aethrion.Bridge.Readings)
@@ -222,7 +293,7 @@ defmodule Aethrion.BridgeReviewTest do
       body = %{"model" => "aethrion:sera", "messages" => [%{"role" => "user", "content" => "안녕"}]}
       origin = [{~c"origin", ~c"https://elsewhere.example"}]
 
-      {200, headers, _} = request(open, "/v1/chat/completions", body, origin)
+      {403, headers, _} = request(open, "/v1/chat/completions", body, origin)
       refute Map.has_key?(headers, "access-control-allow-origin")
 
       {200, headers, _} =
@@ -256,6 +327,44 @@ defmodule Aethrion.BridgeReviewTest do
       |> String.split(".")
       |> Enum.map(&String.to_integer/1)
       |> Kernel.<(version)
+    end
+
+    test "without a token, a page from another site cannot drive the server", %{open: open} do
+      body = %{"model" => "aethrion:sera", "messages" => [%{"role" => "user", "content" => "안녕"}]}
+      host = open |> URI.parse() |> then(&"#{&1.host}:#{&1.port}")
+
+      assert {403, _h, _} =
+               request(open, "/v1/chat/completions", body, [
+                 {~c"origin", ~c"https://elsewhere.example"}
+               ])
+
+      assert {403, _h, _} =
+               request(open, "/worlds/a/say", %{"to" => "sera", "text" => "hi"}, [
+                 {~c"origin", ~c"null"}
+               ])
+
+      assert {200, _h, _} =
+               request(open, "/v1/chat/completions", body, [
+                 {~c"origin", String.to_charlist("http://" <> host)}
+               ])
+    end
+
+    test "a card added with a story of null, or an id the cast cannot have, is not a 500", %{
+      open: open
+    } do
+      card = %{
+        "name" => "Lumi",
+        "character_book" => %{"entries" => [%{"keys" => ["별"], "content" => "별은 노래한다."}]}
+      }
+
+      assert {status, _h, _} =
+               request(open, "/casts/import-card", %{"card" => card, "into" => %{"story" => nil}})
+
+      assert status in [200, 400]
+
+      for id <- ["", "user"] do
+        assert {400, _h, _} = request(open, "/casts/import-card", %{"card" => card, "id" => id})
+      end
     end
 
     test "a model that is not a name, or too many lines to replay, is a 400", %{open: open} do
