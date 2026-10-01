@@ -769,8 +769,11 @@ defmodule Aethrion.State do
   # Traits and tags are descriptive. Values that match an existing atom (such
   # as the traits rules understand) become atoms; anything else stays a string,
   # so untrusted data cannot grow the atom table.
+  # The traits rules understand always become atoms, whether or not the
+  # modules that use them are loaded yet.
   defp trait_from_data(value) when is_binary(value) do
-    String.to_existing_atom(value)
+    Enum.find(Aethrion.Character.known_traits(), &(Atom.to_string(&1) == value)) ||
+      String.to_existing_atom(value)
   rescue
     ArgumentError -> value
   end
