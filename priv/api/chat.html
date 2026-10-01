@@ -40,7 +40,7 @@ form input{flex:1;min-width:0}
   </header>
   <div id="log" aria-live="polite"></div>
   <form id="form">
-    <input id="text" autocomplete="off" placeholder="Say something…" aria-label="Message">
+    <input id="text" autocomplete="off" placeholder="Say something… (/gift flower, /sorry …)" aria-label="Message">
     <button class="primary" type="submit">Send</button>
   </form>
   <p class="hint">Each world key is its own world, kept on the server. Characters remember what you say, react to how you treat them, and talk to each other while time passes.</p>
@@ -138,9 +138,17 @@ $("form").addEventListener("submit", async (event) => {
   const text = $("text").value.trim();
   if (!text) return;
   $("text").value = "";
-  add("me", text, "You");
+  const to = $("character").value;
+  // "/gift tea" gives a gift and "/sorry ..." apologizes; anything else is said.
+  const [, command, rest] = text.match(/^\/(gift|sorry)\s*(.*)$/) || [];
+  add("me", command === "gift" ? "(gives " + (rest || "a gift") + ")" : command === "sorry" ? "(apologizes) " + rest : text, "You");
+  const request = command === "gift"
+    ? ["/events", {type: "gift_received", from: "user", to, item: rest || "gift"}]
+    : command === "sorry"
+      ? ["/events", {type: "apology_offered", from: "user", to, reason: rest || "I'm sorry."}]
+      : ["/say", {to, text}];
   try {
-    const data = await call("POST", worldPath("/say"), {to: $("character").value, text});
+    const data = await call("POST", worldPath(request[0]), request[1]);
     show(data.lines);
     seen(data.last_event_id);
   } catch (error) { add("error", error.message); }
