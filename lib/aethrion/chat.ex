@@ -52,7 +52,9 @@ defmodule Aethrion.Chat do
   Like `read/4`, for a line that may both say something and do something
   in a fight ("카엘, 고마워! 늑대왕을 벤다"): the sentences that act are the
   move, and the others, when they call someone by name ("카엘, ..."), are
-  talk to them, first, as it was said. Outside a fight, one reading.
+  talk to them, first, as it was said. Suggesting an activity works the
+  same way: "잘 잤어? 오늘은 같이 그림 그리자" says good morning, then
+  spends the day painting.
   """
   @spec read_all(State.t(), String.t(), String.t(), String.t()) ::
           [reading() | {:talk, String.t(), String.t()}]
@@ -75,6 +77,14 @@ defmodule Aethrion.Chat do
         case addressee(state, said) do
           nil -> [move]
           called -> [{:talk, called, said}, move]
+        end
+
+      {:activity, _event} = activity ->
+        # "잘 잤어? 오늘은 같이 그림 그리자": the greeting is said, then the
+        # day is spent.
+        case text |> sentences() |> Enum.reject(&activity(state, String.downcase(&1))) do
+          [] -> [activity]
+          said -> [{:talk, to, Enum.join(said, " ")}, activity]
         end
 
       reading ->

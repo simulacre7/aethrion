@@ -18,6 +18,9 @@ defmodule Aethrion.ChatTest do
     assert {:activity, %{activity: "공부"}} = read.("오늘은 공부할까?")
     assert :talk = read.("네 그림 정말 좋다")
     assert :talk = read.("그림 그리는 거 힘들지?")
+
+    assert [{:talk, "seoyun", "서윤아 잘 잤어?"}, {:activity, %{activity: "그림"}}] =
+             Chat.read_all(summer, "user", "seoyun", "서윤아 잘 잤어? 오늘은 같이 그림 그리자")
   end
 
   test "handing something over is a gift, named by what it is" do
