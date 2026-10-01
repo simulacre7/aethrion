@@ -799,10 +799,10 @@ defmodule Aethrion.NarrativeTest do
       [gift, _first, second] = replies(outputs, "haru")
 
       assert Aethrion.Expression.Prompt.render_context(gift.context) =~
-               "Listener just gave the speaker: tea"
+               ~s(Listener just gave the speaker: "tea")
 
       assert Aethrion.Expression.Prompt.render_context(second.context) =~
-               "Listener just apologized: Sorry again."
+               ~s(Listener just apologized: "Sorry again.")
 
       assert second.context.repeats == 2
     end

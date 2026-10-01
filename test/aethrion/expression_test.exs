@@ -174,7 +174,7 @@ defmodule Aethrion.ExpressionTest do
       assert Aethrion.Expression.Templates.Ko.render(back.context) == "오랜만이야! 고마워."
 
       {_system, context} = Aethrion.Expression.Prompt.render_parts(back.context)
-      assert context =~ "Listener just said (warm) (after 100 hours without talking): hi"
+      assert context =~ ~s|Listener just said (warm) (after 100 hours without talking): "hi"|
     end
 
     test "a strained bond or a darker mood speaks before a reunion" do

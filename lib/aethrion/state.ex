@@ -78,6 +78,7 @@ defmodule Aethrion.State do
         id: "mina",
         name: "Mina",
         profile: "Warm, expressive, and easily moved by small gestures.",
+        voice: "Bubbly and open; says what she feels, exclamation marks, a little gushing.",
         traits: [:warm, :romantic],
         state: %CharacterState{mood: :neutral, loneliness: 12}
       },
@@ -85,6 +86,7 @@ defmodule Aethrion.State do
         id: "yuna",
         name: "Yuna",
         profile: "Sensitive, observant, and afraid of being forgotten.",
+        voice: "Quiet and careful; short, hesitant sentences, trailing off with ellipses.",
         traits: [:observant, :sensitive],
         state: %CharacterState{mood: :neutral, loneliness: 26}
       },
@@ -93,6 +95,7 @@ defmodule Aethrion.State do
         name: "Haru",
         profile:
           "Calm, playful, and usually outside the immediate drama. Quietly looks out for Yuna.",
+        voice: "Easygoing and dry; few words, light teasing, never dramatic.",
         traits: [:calm, :playful],
         state: %CharacterState{mood: :neutral, loneliness: 8}
       }

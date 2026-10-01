@@ -212,12 +212,15 @@ user> why yuna jealousy
   jealousy 15 -> 0 by apology in e2: user apologizes to Yuna: sorry I forgot about you
 
 user> context yuna
-  Speaker: Yuna (Sensitive, observant, and afraid of being forgotten; traits: observant, sensitive; mood: neutral)
+  Speaker: Yuna (Sensitive, observant, and afraid of being forgotten; voice: Quiet and careful; short, hesitant sentences, trailing off with ellipses; traits: observant, sensitive; mood: neutral)
   Speaker toward listener: friendly; affinity 38, trust 28, tension 0 (scale -100..100)
   People: mina = Mina, user = you, yuna = Yuna
   Memories:
   - user apologized to yuna: sorry I forgot about you (experienced, importance 70, just now)
   - yuna saw user give mina a flower. (observed, importance 60, just now)
+  Recent conversation (oldest first):
+  - you: (apologizes) "sorry I forgot about you"
+  - Yuna: "Thanks. I just wanted to feel remembered too."
   Draft line: It's been quiet today. Do you have a minute to talk?
 ```
 
