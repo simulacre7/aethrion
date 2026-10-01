@@ -110,7 +110,8 @@ async function history() {
   const character = $("character").value;
   const data = await call("GET", worldPath("/conversation?character=" + encodeURIComponent(character)));
   for (const turn of data.turns) {
-    if (turn.from === "user") add("me", turn.kind === "gift" ? "(gives " + turn.text + ")" : turn.text, "You");
+    if (turn.kind === "deed") add("note", (names[turn.from] || turn.from) + " " + turn.text);
+    else if (turn.from === "user") add("me", turn.kind === "gift" ? "(gives " + turn.text + ")" : turn.text, "You");
     else add("them", turn.text, names[turn.from] || turn.from);
     seen(turn.event_id);
   }
@@ -126,7 +127,7 @@ async function poll() {
     const data = await call("GET", worldPath("/conversation?after=" + last));
     for (const turn of data.turns) {
       seen(turn.event_id);
-      if (turn.from === "user") continue;
+      if (turn.from === "user" || turn.kind === "deed") continue;
       const who = names[turn.from] || turn.from;
       add("them", turn.text, turn.from === $("character").value ? who : who + " (messaged you)");
     }

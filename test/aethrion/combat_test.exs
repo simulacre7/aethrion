@@ -420,4 +420,19 @@ defmodule Aethrion.CombatTest do
     assert %{type: :heal, from: "mina", to: "user"} =
              Combat.action(state, "user", nil, "Mina, 나 좀 치료해줘")
   end
+
+  test "what a person and a character did in a fight is in their conversation" do
+    hurt = put_in(arena().stats["user"]["hp"], 10)
+
+    {state, _outputs, _steps} =
+      run(hurt, [Event.heal("mina", "user"), Event.attack("user", "yuna")])
+
+    assert [%{from: "mina", kind: :deed, text: "heals user for 8"}] =
+             Aethrion.Conversation.recent(state, "mina", "user")
+
+    assert [
+             %{from: "user", kind: :deed, text: "hits yuna" <> _} | _
+           ] =
+             Aethrion.Conversation.recent(state, "yuna", "user")
+  end
 end

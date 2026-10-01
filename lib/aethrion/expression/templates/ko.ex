@@ -160,7 +160,7 @@ defmodule Aethrion.Expression.Templates.Ko do
       :another -> "또 선물이야? 정말 고마워!"
       :remembered -> "내 생각 해 준 거야? 정말 고마워."
       :close -> Choices.pick(request, ["이런 거 안 해도 되는데! 너무 좋다.", "또 챙겨 준 거야? 진짜 고마워."])
-      :thanks when is_binary(item) -> "#{gift_word(item)}? 우와, 고마워!"
+      :thanks when is_binary(item) -> gift_thanks(Choices.temperament(request), gift_word(item))
       :thanks -> "나 주는 거야? 고마워!"
     end
   end
@@ -177,7 +177,7 @@ defmodule Aethrion.Expression.Templates.Ko do
       :once_more -> "알았어... 그래도 자꾸 그러진 말아 줘."
       :needs_time -> "말해 줘서 고마워. 조금만 시간을 줘."
       :shaken -> "아직 좀 놀랐지만, 고마워."
-      :accepted -> "그렇게 말해 줘서 고마워. 마음이 좀 풀렸어."
+      :accepted -> accepted(Choices.temperament(request))
     end
   end
 
@@ -299,16 +299,58 @@ defmodule Aethrion.Expression.Templates.Ko do
 
   defp reply_line(tone, request) do
     case Choices.reply_choice(tone, request) do
-      {:bond, bond} -> Choices.pick(request, bond_line(tone, bond))
-      :guarded when tone == :warm -> "고마워... 그래도 아직 좀 서운해."
-      :guarded -> "...응, 왜."
-      {:reunion, :missed} -> "연락 왔네... 보고 싶었어."
-      {:reunion, :thanks} -> "오랜만이야! 고마워."
-      {:reunion, :hello} -> "오랜만이네!"
-      :question -> Choices.pick(request, ["음, 글쎄. 생각 좀 해 볼게.", "왜? 궁금해?", "음... 좋은 질문이네."])
-      {:mood, mood} -> Choices.pick(request, reply(tone, mood))
+      {:bond, bond} ->
+        Choices.pick(request, bond_line(tone, bond))
+
+      :guarded when tone == :warm ->
+        "고마워... 그래도 아직 좀 서운해."
+
+      :guarded ->
+        "...응, 왜."
+
+      {:reunion, :missed} ->
+        "연락 왔네... 보고 싶었어."
+
+      {:reunion, :thanks} ->
+        "오랜만이야! 고마워."
+
+      {:reunion, :hello} ->
+        "오랜만이네!"
+
+      :question ->
+        Choices.pick(request, ["음, 글쎄. 생각 좀 해 볼게.", "왜? 궁금해?", "음... 좋은 질문이네."])
+
+      {:mood, mood} ->
+        Choices.pick(
+          request,
+          voiced(Choices.temperament(request), tone, mood) || reply(tone, mood)
+        )
     end
   end
+
+  # Everyday replies in the speaker's temperament: a calm character says
+  # little, a playful one teases, a sensitive one takes it to heart. Moods
+  # that color a reply (lonely, upset, jealous) keep their own lines.
+  defp voiced(temperament, tone, mood) when mood in [:happy, :neutral] or is_nil(mood),
+    do: voiced(temperament, tone)
+
+  defp voiced(_temperament, _tone, _mood), do: nil
+
+  defp voiced(:calm, :warm), do: ["...고맙다.", "그래. 고맙다.", "알았어. 고마워."]
+  defp voiced(:calm, :neutral), do: ["왜.", "응. 말해.", "듣고 있어."]
+
+  defp voiced(:playful, :warm),
+    do: ["에이, 갑자기 왜 이래? 기분은 좋네.", "헤헤, 그런 말은 더 해 줘도 돼.", "오, 오늘 왜 이렇게 다정해?"]
+
+  defp voiced(:playful, :neutral), do: ["응? 무슨 일인데? 재밌는 거야?", "왜왜, 뭔데?", "불렀어? 심심했구나?"]
+
+  defp voiced(:sensitive, :warm),
+    do: ["정말? ...그렇게 말해 줘서 고마워.", "그 말, 오래 기억할게.", "고마워. 괜히 마음이 찡하네."]
+
+  defp voiced(:sensitive, :neutral),
+    do: ["응, 무슨 일 있어?", "왜? ...무슨 일 있는 거 아니지?", "응, 얘기해. 듣고 있을게."]
+
+  defp voiced(_temperament, _tone), do: nil
 
   defp bond_line(:warm, :close),
     do: ["역시 너밖에 없어. 고마워.", "너 진짜 최고야, 알지?", "네 연락이 하루 중에 제일 반가워."]
@@ -335,6 +377,15 @@ defmodule Aethrion.Expression.Templates.Ko do
   defp reply(:hostile, :upset), do: "그만해 줘."
   defp reply(:hostile, _mood), do: "왜 그런 말을 해?"
   defp reply(_tone, _mood), do: "..."
+
+  defp gift_thanks(:calm, gift), do: "#{gift}? ...고맙다. 잘 쓸게."
+  defp gift_thanks(:playful, gift), do: "#{gift}? 뭐야, 나 주는 거야? 최고!"
+  defp gift_thanks(:sensitive, gift), do: "#{gift}... 나 주려고 챙긴 거야? 고마워."
+  defp gift_thanks(_temperament, gift), do: "#{gift}? 우와, 고마워!"
+
+  defp accepted(:calm), do: "알았어. 됐어."
+  defp accepted(:playful), do: "흠, 이번만 봐준다?"
+  defp accepted(_temperament), do: "그렇게 말해 줘서 고마워. 마음이 좀 풀렸어."
 
   defp first_hurt(:sensitive), do: "그 말 좀 아프다. 왜 그런 말을 해?"
   defp first_hurt(:calm), do: "...그건 좀 너무했다."

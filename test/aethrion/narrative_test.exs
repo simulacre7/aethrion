@@ -614,14 +614,14 @@ defmodule Aethrion.NarrativeTest do
 
       assert [first, second] = replies(outputs, "haru")
       assert first.text != second.text
-      assert Ko.render(first.context) == "초콜릿? 우와, 고마워!"
+      assert Ko.render(first.context) == "초콜릿? ...고맙다. 잘 쓸게."
       assert Ko.render(second.context) == "또 선물이야? 정말 고마워!"
 
       {_state, outputs} =
         run!(Runtime.demo_state(), [Event.gift_received("user", "haru", "moonstone")])
 
       assert [%{context: context}] = replies(outputs, "haru")
-      assert Ko.render(context) == "선물이야? 우와, 고마워!"
+      assert Ko.render(context) == "선물이야? ...고맙다. 잘 쓸게."
     end
 
     test "a gift gets a reply that fits, and reassures someone jealous of that giver" do

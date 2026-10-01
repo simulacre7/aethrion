@@ -3,8 +3,9 @@ defmodule Aethrion.Conversation do
   What a character and a person recently said to each other.
 
   Every step records, per pair, what a person said to a character (a
-  message, a gift, an apology) and what the character said back (a reply or
-  a proactive message), keeping the last #{24} turns. Replies and proactive
+  message, a gift, an apology), what the character said back (a reply or
+  a proactive message), and what they did to each other in a fight (a
+  `:deed`: a blow, a heal, holding back), keeping the last #{24} turns. Replies and proactive
   messages carry the recent turns in their expression request
   (`Aethrion.Expression.Request` `:conversation`), so a model answering in a
   chat sees the thread, not only the latest line.
@@ -22,7 +23,7 @@ defmodule Aethrion.Conversation do
 
   @turns_kept 24
 
-  @type kind :: :message | :gift | :apology | :reply | :proactive
+  @type kind :: :message | :gift | :apology | :reply | :proactive | :deed
   @type turn :: %{
           from: String.t(),
           to: String.t(),
@@ -55,7 +56,7 @@ defmodule Aethrion.Conversation do
   def record_step(%State{} = state, events, outputs) do
     turns =
       Enum.flat_map(events, &said_by_person(state, &1)) ++
-        Enum.flat_map(outputs, &said_to_person(state, &1))
+        Enum.flat_map(outputs, &(said_to_person(state, &1) ++ deed(state, &1)))
 
     Enum.reduce(turns, state, &append(&2, &1))
   end
@@ -180,7 +181,7 @@ defmodule Aethrion.Conversation do
 
   def valid_data?(_data), do: false
 
-  @kinds [:message, :gift, :apology, :reply, :proactive]
+  @kinds [:message, :gift, :apology, :reply, :proactive, :deed]
   @tones [:warm, :neutral, :cold, :hostile, :gift, :apology]
 
   defp valid_turn?(%{"from" => from, "to" => to, "text" => text, "kind" => kind} = turn) do
@@ -265,6 +266,36 @@ defmodule Aethrion.Conversation do
   end
 
   defp said_to_person(_state, _output), do: []
+
+  # What a person and a character did to each other in a fight (a blow, a
+  # heal, holding back), told in a line, so a reply can remember it.
+  defp deed(state, %{type: :combat, kind: kind, character_id: from, to: to} = output)
+       when kind in [:hit, :critical, :healed, :holds_back] and is_binary(to) do
+    if from != to and person?(state, from) != person?(state, to) and
+         (State.character?(state, from) or State.character?(state, to)) do
+      [
+        %{
+          from: from,
+          to: to,
+          text: deed_text(output),
+          kind: :deed,
+          tone: nil,
+          event_id: Map.get(output, :event_id),
+          at: state.clock
+        }
+      ]
+    else
+      []
+    end
+  end
+
+  defp deed(_state, _output), do: []
+
+  # Ids, not "you": the line is read from either side.
+  defp deed_text(%{kind: :healed, to: to, amount: amount}), do: "heals #{to} for #{amount}"
+  defp deed_text(%{kind: :holds_back, to: to}), do: "holds back instead of fighting beside #{to}"
+  defp deed_text(%{kind: :critical, to: to, amount: amount}), do: "hits #{to} hard for #{amount}"
+  defp deed_text(%{to: to, amount: amount}), do: "hits #{to} for #{amount}"
 
   defp turn(state, event, kind, text, tone) do
     %{

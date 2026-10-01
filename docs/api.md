@@ -315,7 +315,7 @@ A running world with the demo cast and a short chat takes about 120 KB and three
 
 ### Conversations
 
-Every step records what people said to characters (messages, gifts, apologies) and what characters said back (replies, proactive messages): the last 24 turns per pair, in `state.conversations`, saved and journaled with the state. No rule reads them.
+Every step records what people said to characters (messages, gifts, apologies), what characters said back (replies, proactive messages), and what a person and a character did to each other in a fight (`deed` turns such as "heals user for 8", which a model sees as "(in the fight: ...)"): the last 24 turns per pair, in `state.conversations`, saved and journaled with the state. No rule reads them.
 
 ```elixir
 Aethrion.Conversation.recent(state, "mina", "user")

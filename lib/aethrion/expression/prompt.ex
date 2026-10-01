@@ -282,6 +282,7 @@ defmodule Aethrion.Expression.Prompt do
           case turn.kind do
             :gift -> "(gives #{quoted(clip(turn.text))})"
             :apology -> "(apologizes) #{quoted(clip(turn.text))}"
+            :deed -> "(in the fight: #{one_line(clip(turn.text))})"
             _said -> quoted(clip(turn.text))
           end
 
