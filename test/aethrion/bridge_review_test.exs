@@ -296,6 +296,45 @@ defmodule Aethrion.BridgeReviewTest do
       assert hp(before, "dire_wolf") == 37 and hp(again, "dire_wolf") == hp(first, "dire_wolf")
     end
 
+    test "a line deleted from the first turn is not applied twice" do
+      m = [user(@u1), user("방패를 들어 막는다"), user(@u2)]
+      m = m ++ [reply(den(), m)]
+      [a, _b, c, r] = m
+      {_before, now, _turn} = play(den(), [a, c, r, user("안녕")])
+      expected = fresh([@u1, @u2, "안녕"])
+
+      assert {hp(now, "dire_wolf"), hp(now, "user")} ==
+               {hp(expected, "dire_wolf"), hp(expected, "user")}
+    end
+
+    test "a chat without status blocks follows its own chain when another chat began alike" do
+      plain = fn messages, to ->
+        play(den(), messages, to)
+        messages ++ [%{"role" => "assistant", "content" => "…"}]
+      end
+
+      # Another chat said the same first words, to someone else.
+      plain.([user("고마워")], "doyun")
+
+      # This chat said them to Sera, and went on; then turns to Doyun. Its
+      # own chain is the longer one. (Had it turned to Doyun right after the
+      # first line, nothing in a chat without ids could tell the two apart.)
+      history = plain.([user("고마워")], "sera")
+      history = plain.(history ++ [user("너 최고야")], "sera")
+      {_before, now, _turn} = play(den(), history ++ [user("잘 자")], "doyun")
+
+      marked =
+        Enum.reduce([{"고마워", "sera"}, {"너 최고야", "sera"}], [], fn {line, to}, history ->
+          history = history ++ [user(line)]
+          history ++ [reply(den(), history, to)]
+        end)
+
+      {_before, expected, _turn} = play(den(), marked ++ [user("잘 자")], "doyun")
+
+      assert State.get_relationship(now, "sera", "user") ==
+               State.get_relationship(expected, "sera", "user")
+    end
+
     test "a chat without status blocks keeps who each line was said to" do
       plain = fn messages, to ->
         play(den(), messages, to)
@@ -474,6 +513,12 @@ defmodule Aethrion.BridgeReviewTest do
       # A page whose name was rebound to 127.0.0.1 sends its own name both ways.
       assert get.("evil.example:4848", "Origin: http://evil.example:4848\r\n") == 403
       assert get.("evil.example:4848", "") == 403
+      # A name that only begins like a loopback address is still a name.
+      assert get.("127.attacker.example:4848", "Origin: http://127.attacker.example:4848\r\n") ==
+               403
+
+      assert get.("127.0.0.1.nip.io:4848", "") == 403
+      assert get.("127.0.0.1:4848", "") == 200
       assert get.("localhost:4848", "") == 200
       # RisuAI in Docker calls the host by this name.
       assert get.("host.docker.internal:4848", "") == 200

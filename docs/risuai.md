@@ -66,7 +66,7 @@ Request model names (listed by `GET /v1/models`; foes are not listed):
 
 - `aethrion:CHARACTER_ID`: lines are read as said to that character.
 - `aethrion`: the first character who is not a foe.
-- `aethrion-plain:CHARACTER_ID`: narration without the status block. Without it there are no checkpoints, so a trimmed chat is computed from what is left.
+- `aethrion-plain:CHARACTER_ID`: narration without the status block. Replies then carry no checkpoint ids: an untrimmed chat finds its checkpoints again from its lines, but a trimmed one is computed from what is left, and right after a change of character it may not tell itself apart from another chat on the server that began with the same words to someone else. `aethrion`, with status blocks, is exact.
 
 **Do not set the auxiliary model to Custom API.** RisuAI hands summaries, emotion images, and translation to the auxiliary model; sent to Aethrion, the text to summarize would be read as the player's words.
 

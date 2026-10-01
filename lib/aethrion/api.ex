@@ -238,6 +238,10 @@ defmodule Aethrion.API do
 
   @local_names ["localhost", "127.0.0.1", "::1", "host.docker.internal"]
 
+  # 127.0.0.2 is this machine; 127.attacker.example is a name.
+  defp loopback?(name),
+    do: match?({:ok, {127, _, _, _}}, :inet.parse_ipv4strict_address(String.to_charlist(name)))
+
   defp address(ip) when is_tuple(ip), do: ip |> :inet.ntoa() |> to_string()
   defp address(ip), do: to_string(ip)
 
@@ -245,7 +249,7 @@ defmodule Aethrion.API do
     name = URI.parse("http://" <> host).host || ""
 
     name in @local_names or String.ends_with?(name, ".localhost") or
-      String.starts_with?(name, "127.") or name == address(Map.get(config, :bind))
+      loopback?(name) or name == address(Map.get(config, :bind))
   end
 
   defp route("GET", ["health"]), do: {:ok, :health}
