@@ -11,7 +11,8 @@ defmodule Aethrion.Rules.Combat do
     standing hits back once (`counter: true` events are not answered).
   - **defend**: the next blow taken is halved.
   - **heal**: restores `amount` (or the healer's `"heal"` stat, or 10), up
-    to `"max_hp"`.
+    to `"max_hp"`. A potion uses one of the healer's `"potions"` if they have
+    that stat; with none left, it cannot be used.
   - **flee**: gets away when `speed + roll >= the other's speed + 3`;
     otherwise the other gets a free blow.
 
@@ -104,6 +105,7 @@ defmodule Aethrion.Rules.Combat do
 
     transition
     |> Transition.adjust_stat(event.to, "hp", healed, log: false)
+    |> use_potion(event)
     |> combat_output(event, event.to, :healed, healed)
     |> grateful(event)
   end
@@ -122,6 +124,14 @@ defmodule Aethrion.Rules.Combat do
   end
 
   def apply(transition), do: transition
+
+  defp use_potion(%Transition{state: state} = transition, %{item: "potion", from: from}) do
+    if State.stat?(state, from, "potions"),
+      do: Transition.adjust_stat(transition, from, "potions", -1, min: 0),
+      else: transition
+  end
+
+  defp use_potion(transition, _event), do: transition
 
   defp stat_or(state, id, stat, default),
     do: if(State.stat?(state, id, stat), do: State.stat(state, id, stat), else: default)

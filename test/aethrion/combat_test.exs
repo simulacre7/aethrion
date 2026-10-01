@@ -82,6 +82,15 @@ defmodule Aethrion.CombatTest do
     assert hp(healed, "user") == 30
   end
 
+  test "counted potions run out" do
+    state = put_in(arena().stats["user"]["potions"], 1)
+    {state, _outputs, _steps} = run(state, [Event.heal("user", "user", item: "potion")])
+    assert State.stat(state, "user", "potions") == 0
+
+    assert {:error, %{message: "user has no potions left"}} =
+             Runtime.step(state, Event.heal("user", "user", item: "potion"))
+  end
+
   test "fleeing works by speed; failing gives the other a free blow" do
     {_state, outputs, _steps} = run(arena(), [Event.flee("user", "goblin")])
     assert [%{kind: first} | rest] = combat(outputs)

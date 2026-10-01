@@ -94,7 +94,8 @@ defmodule Aethrion.Validator do
   defp validate_event(state, %{type: :heal} = event) do
     with :ok <- require_name(event, :from),
          :ok <- require_fighter(state, event, :to, alive: false),
-         :ok <- optional_name(event, :item) do
+         :ok <- optional_name(event, :item),
+         :ok <- require_potion(state, event) do
       case Map.get(event, :amount) do
         nil ->
           :ok
@@ -199,6 +200,15 @@ defmodule Aethrion.Validator do
       end
     end
   end
+
+  # Counted potions run out; without a "potions" stat they do not.
+  defp require_potion(state, %{item: "potion", from: from}) do
+    if State.stat?(state, from, "potions") and State.stat(state, from, "potions") <= 0,
+      do: {:error, error(:invalid_event, "#{from} has no potions left", %{field: :item})},
+      else: :ok
+  end
+
+  defp require_potion(_state, _event), do: :ok
 
   defp optional_name(event, field) do
     case Map.get(event, field) do

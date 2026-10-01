@@ -118,6 +118,12 @@ defmodule Aethrion.Combat do
   defp told(:en, :guarded, %{character_id: by}, name, _hp),
     do: capitalize("#{name.(by)} #{verb(by, "raise")} a guard.")
 
+  defp told(:en, :healed, %{character_id: by, to: by} = output, name, hp),
+    do:
+      capitalize(
+        "#{name.(by)} #{verb(by, "heal")} #{if by == "user", do: "yourself", else: "themselves"} for #{output.amount}.#{hp}"
+      )
+
   defp told(:en, :healed, %{character_id: by} = output, name, hp),
     do:
       capitalize(
@@ -146,6 +152,9 @@ defmodule Aethrion.Combat do
 
   defp told(:ko, :guarded, %{character_id: by}, name, _hp),
     do: "#{Ko.with_particle(name.(by), :topic)} 방어 자세를 취했다."
+
+  defp told(:ko, :healed, %{character_id: by, to: by} = output, name, hp),
+    do: "#{Ko.with_particle(name.(by), :topic)} 상처를 #{output.amount}만큼 치료했다.#{hp}"
 
   defp told(:ko, :healed, %{character_id: by} = output, name, hp),
     do: "#{Ko.subject(name.(by))} #{name.(output.to)}의 상처를 #{output.amount}만큼 치료했다.#{hp}"
