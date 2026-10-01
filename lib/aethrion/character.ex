@@ -29,7 +29,7 @@ defmodule Aethrion.Character do
   Traits the built-in rules read. Custom rules may read others; persisted
   traits become atoms only when some loaded rule uses them.
   """
-  def known_traits, do: [:sensitive, :calm, :playful, :talkative]
+  def known_traits, do: [:sensitive, :calm, :playful, :talkative, :polite]
 
   @doc "Returns true when the character has `trait`."
   def trait?(%__MODULE__{traits: traits}, trait), do: trait in traits

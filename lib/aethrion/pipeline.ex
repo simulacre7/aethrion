@@ -55,7 +55,7 @@ defmodule Aethrion.Pipeline do
         heal: [Rules.Combat],
         flee: [Rules.Combat]
       },
-      reactive_rules: [Rules.Mood, Rules.Proactive, Rules.Bond, Rules.Ending]
+      reactive_rules: [Rules.Mood, Rules.Proactive, Rules.Bond, Rules.Milestone, Rules.Ending]
     }
   end
 

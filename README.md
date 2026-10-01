@@ -350,6 +350,19 @@ mix run examples/combat.exs                                   # the quest, five 
 mix aethrion.serve --cast priv/casts/quest.json --locale ko   # then just chat at http://localhost:4848
 ```
 
+**Messenger-style chats.** Modeled on how messenger features in character games work (a student messages their teacher first, replies are picked from a few choices, and the next bond story unlocks as the bond grows), with original characters and text: a story's `milestones` unlock once when their conditions hold, with the line the character sends first, and the story goes on (`Aethrion.Rules.Milestone`, `:milestone_reached`); `GET /worlds/{key}/replies?character=hana` offers three replies with their tones (`Aethrion.Replies`), and unlike in many games the choice moves the relationship; characters with the `polite` trait write in 존댓말 to 선생님 even without a model. `priv/casts/academy.json` has three students (하나, 유키, 미오) and six bond stories:
+
+```txt
+You:  하나야, 어제 만든 거 정말 대단하더라!    하나: 에이, 갑자기 왜 이래요? 기분은 좋네요.
+You:  고마워, 덕분에 수업 준비가 금방 끝났어.  하나: 헤헤, 그런 말은 더 해 줘도 돼요.
+      ♥ 인연 스토리 · 하나 1: 고장 난 오르골
+      하나: 선생님! 혹시 방과 후에 시간 있어요? 보여 드릴 게 있어요!
+```
+
+```bash
+mix aethrion.serve --cast priv/casts/academy.json --locale ko --tick-every 30
+```
+
 **Tabletop rules (D&D 5e SRD).** Give fighters an `attack_bonus` and an `ac` (and damage dice: `damage_dice`, `damage_die`, `damage_bonus`) and attacks follow the d20 rules of the System Reference Document 5.1: d20 + bonus against armor class, a natural 20 hits and rolls the damage dice twice, a natural 1 misses, a guarding (dodging) target is attacked with disadvantage, healers roll their dice (`heal_dice` 1, `heal_die` 8, `heal_bonus` 3 is a Cure Wounds), and a potion can be the SRD's Potion of Healing (2d4+2). The dice come from the fight itself, so they replay exactly, and every line shows them the way a table reads them out: `[d20 13+5=18 vs AC 14, 명중. 1d8+3 (3)] 네가 다이어 울프에게 6의 피해를 입혔다.` `priv/casts/den.json` is a wolf den with the SRD's Dire Wolf and Wolves against a fighter (you), a cleric, and a rogue; `examples/den.exs` plays it in plain Korean three ways to three endings. SRD material is used under CC-BY-4.0 (`priv/casts/SRD-NOTICE.md`). A Dodge lasts until the next blow rather than a full round, and save effects such as a wolf knocking someone prone are not modeled.
 
 ```bash

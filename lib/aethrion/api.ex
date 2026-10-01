@@ -26,6 +26,7 @@ defmodule Aethrion.API do
   | `GET` | `/worlds/{key}/conversation?character=mina&person=user&after=e12` | the recent turns between them (after an event, for polling: proactive messages land here too) |
   | `GET` | `/worlds/{key}/characters?person=user` | each character with their mood and how they feel about that person (bond, affinity, trust, tension), for a game's UI |
   | `GET` | `/worlds/{key}/story` | the ending reached (or `null`), how close every ending is with what is missing (`Aethrion.Story`), the story's `activities`, the world's `hour`, and the `deadline` |
+  | `GET` | `/worlds/{key}/replies?character=hana&person=user` | two or three replies the person might send, each with its tone (`Aethrion.Replies`), for a messenger-style chat; send one as a `message_sent` event with that tone |
   | `GET` | `/worlds/{key}/state` | the whole state, as `Aethrion.State.to_data/1` |
   | `GET` | `/health` | `{"ok": true}` |
   | `GET` | `/` | a small chat page for trying a world in a browser (no token needed to load it; its requests send one) |
@@ -186,6 +187,7 @@ defmodule Aethrion.API do
   defp world_route("GET", ["state"], key), do: {:ok, {:state, key}}
   defp world_route("GET", ["characters"], key), do: {:ok, {:characters, key}}
   defp world_route("GET", ["story"], key), do: {:ok, {:story, key}}
+  defp world_route("GET", ["replies"], key), do: {:ok, {:replies, key}}
 
   defp world_route(_method, route, _key)
        when route in [
@@ -196,7 +198,8 @@ defmodule Aethrion.API do
               ["conversation"],
               ["state"],
               ["characters"],
-              ["story"]
+              ["story"],
+              ["replies"]
             ],
        do: {:error, 405, Error.new(:method_not_allowed, "method not allowed")}
 
@@ -209,6 +212,16 @@ defmodule Aethrion.API do
   defp run(config, {:state, key}, _query, _body) do
     with {:ok, state} <- Worlds.peek_state(config.worlds, key) do
       {:ok, 200, State.to_data(state)}
+    end
+  end
+
+  defp run(config, {:replies, key}, query, _body) do
+    with {:ok, state} <- Worlds.peek_state(config.worlds, key),
+         {:ok, character} <- required(query, "character"),
+         :ok <- known_character(state, character) do
+      locale = if config.locale == :ko, do: :ko, else: :en
+      person = Map.get(query, "person", "user")
+      {:ok, 200, %{replies: Aethrion.Replies.suggest(state, character, person, locale)}}
     end
   end
 
@@ -415,7 +428,9 @@ defmodule Aethrion.API do
         # Lines in the order things happened: what was said, and blows.
         lines =
           step.outputs
-          |> Enum.filter(&(Output.expressive?(&1) or &1.type in [:combat, :ending_reached]))
+          |> Enum.filter(
+            &(Output.expressive?(&1) or &1.type in [:combat, :ending_reached, :milestone_reached])
+          )
           |> Enum.map(fn output ->
             Enum.find(
               rendered,
@@ -485,6 +500,12 @@ defmodule Aethrion.API do
 
   # Why a proactive message was sent, which kind of scene, or the tone a
   # reply answers; whichever the line has.
+  defp line(%{type: :milestone_reached} = output) do
+    output
+    |> Map.take([:type, :event_id, :milestone, :title, :description, :character_id, :to, :text])
+    |> Map.put(:rendered, false)
+  end
+
   defp line(%{type: :ending_reached} = output) do
     %{
       type: :ending_reached,

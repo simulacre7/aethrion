@@ -157,7 +157,7 @@ defmodule Aethrion.LLM.FakeAdapter do
   @impl true
   def render(%Request{} = request, opts \\ []) do
     case Keyword.get(opts, :locale, :en) do
-      :ko -> {:ok, Templates.Ko.render(request)}
+      :ko -> {:ok, request |> Templates.Ko.render() |> Templates.Ko.polite(request)}
       _en -> {:ok, request.fallback_text || Templates.render(request)}
     end
   end

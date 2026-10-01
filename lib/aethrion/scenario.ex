@@ -456,7 +456,7 @@ defmodule Aethrion.Scenario do
 
   # Expectations that could never match would pass silently as "count: 0";
   # catch misspelled output types, keys, and values when the scenario loads.
-  @output_types ~w(relationship_changed memory_created mood_changed bond_changed proactive_message reply character_interaction ending_reached combat)
+  @output_types ~w(relationship_changed memory_created mood_changed bond_changed proactive_message reply character_interaction ending_reached milestone_reached combat)
   @comparisons ~w(count equals at_least at_most)
   @output_filters ~w(character to from reason kind tone text before after delta rule event_id ending amount subject)
   @memory_filters ~w(id character kind topic source content data faded importance strength created_at created_tick related_characters consolidated_into)

@@ -17,6 +17,9 @@ defmodule Aethrion.Story do
   - `labels` - what stats are called in hints (`"art": "그림 실력"`).
   - `activity_hours` - how long an activity takes: with `24`, each one is a
     day, and the clock moves on by itself, the way a raising sim counts days.
+  - `milestones` - moments a relationship unlocks once as it grows (a bond
+    story, a confession), each with conditions and, optionally, the line a
+    character sends first (`Aethrion.Rules.Milestone`). The story goes on.
   - `deadline` - the simulated hour at which the ending is decided (say
     `720` for thirty days). The world emits an `:ending_reached` output
     once, the first time its clock reaches it.
@@ -318,7 +321,7 @@ defmodule Aethrion.Story do
     with :ok <-
            known_keys(
              data,
-             ~w(activities phrases activity_hours labels endings deadline decide_when),
+             ~w(activities phrases activity_hours labels milestones endings deadline decide_when),
              []
            ),
          {:ok, activities} <- parse_activities(Map.get(data, "activities", %{})),
@@ -326,6 +329,7 @@ defmodule Aethrion.Story do
          {:ok, hours} <- parse_hours(Map.get(data, "activity_hours")),
          {:ok, labels} <- parse_labels(Map.get(data, "labels", %{})),
          {:ok, endings} <- parse_endings(Map.get(data, "endings", [])),
+         {:ok, milestones} <- parse_milestones(Map.get(data, "milestones", [])),
          {:ok, deadline} <- parse_deadline(Map.get(data, "deadline")),
          {:ok, decide} <- parse_conditions(Map.get(data, "decide_when", []), ["decide_when"]),
          :ok <- something_to_decide(endings, deadline, decide) do
@@ -335,6 +339,7 @@ defmodule Aethrion.Story do
          phrases: phrases,
          activity_hours: hours,
          labels: labels,
+         milestones: milestones,
          endings: endings,
          deadline: deadline,
          decide_when: decide
@@ -367,7 +372,8 @@ defmodule Aethrion.Story do
   # a character condition needs a character; the others any actor.
   def actors(story) do
     conditions =
-      Enum.flat_map(Map.get(story, :endings, []), & &1.when) ++ Map.get(story, :decide_when, [])
+      Enum.flat_map(Map.get(story, :endings, []) ++ Map.get(story, :milestones, []), & &1.when) ++
+        Map.get(story, :decide_when, [])
 
     conditions |> Enum.flat_map(&named/1) |> Enum.uniq()
   end
@@ -398,6 +404,10 @@ defmodule Aethrion.Story do
     |> put_if("phrases", story[:phrases])
     |> put_if("activity_hours", story[:activity_hours])
     |> put_if("labels", story[:labels])
+    |> put_if(
+      "milestones",
+      story[:milestones] && Enum.map(story.milestones, &milestone_to_data/1)
+    )
     |> put_if("endings", story[:endings] && Enum.map(story.endings, &ending_to_data/1))
     |> put_if("deadline", story[:deadline])
     |> put_if(
@@ -472,6 +482,77 @@ defmodule Aethrion.Story do
   end
 
   defp parse_endings(_endings), do: {:error, "must be a list", ["endings"]}
+
+  defp parse_milestones(list) when is_list(list) do
+    list
+    |> Enum.with_index()
+    |> Enum.reduce_while({:ok, []}, fn {data, index}, {:ok, acc} ->
+      case parse_milestone(data) do
+        {:ok, milestone} -> {:cont, {:ok, [milestone | acc]}}
+        {:error, message, path} -> {:halt, {:error, message, ["milestones", index | path]}}
+      end
+    end)
+    |> case do
+      {:ok, milestones} ->
+        ids = Enum.map(milestones, & &1.id)
+
+        if ids == Enum.uniq(ids),
+          do: {:ok, Enum.reverse(milestones)},
+          else: {:error, "a milestone id is used more than once", ["milestones"]}
+
+      error ->
+        error
+    end
+  end
+
+  defp parse_milestones(_list), do: {:error, "must be a list", ["milestones"]}
+
+  defp parse_milestone(%{"id" => id} = data) when is_binary(id) and id != "" do
+    with :ok <- known_keys(data, ~w(id title description from to says when), []),
+         {:ok, conditions} <- parse_conditions(Map.get(data, "when", []), ["when"]) do
+      cond do
+        conditions == [] ->
+          {:error, "a milestone needs conditions (it would be reached at once)", ["when"]}
+
+        Map.has_key?(data, "from") != Map.has_key?(data, "says") ->
+          {:error, "from and says go together: who messages first, and what", []}
+
+        true ->
+          {:ok,
+           %{
+             id: id,
+             title: string_or(data["title"], id),
+             description: string_or(data["description"], ""),
+             from: data["from"],
+             to: string_or(data["to"], "user"),
+             says: data["says"],
+             when: conditions
+           }}
+      end
+    end
+  end
+
+  defp parse_milestone(_data), do: {:error, "a milestone needs a string id", []}
+
+  defp milestone_to_data(milestone) do
+    %{
+      "id" => milestone.id,
+      "title" => milestone.title,
+      "description" => milestone.description,
+      "when" => Enum.map(milestone.when, &condition_to_data/1)
+    }
+    |> then(
+      &if(milestone.from,
+        do:
+          Map.merge(&1, %{
+            "from" => milestone.from,
+            "to" => milestone.to,
+            "says" => milestone.says
+          }),
+        else: &1
+      )
+    )
+  end
 
   defp check_ids(endings) do
     ids = Enum.map(endings, & &1.id)

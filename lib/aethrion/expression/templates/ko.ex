@@ -35,6 +35,89 @@ defmodule Aethrion.Expression.Templates.Ko do
     end
   end
 
+  @doc """
+  A reply or message from a `:polite` speaker, in 존댓말 to someone they look
+  up to, the way a student writes to 선생님: sentence endings take 요 ("고마워."
+  becomes "고마워요."), and "너" becomes "선생님". Other lines are returned as
+  they are.
+  """
+  @spec polite(String.t(), Request.t()) :: String.t()
+  def polite(text, %Request{kind: kind, speaker: %{traits: traits}})
+      when kind in [:reply, :proactive_message] and is_list(traits) do
+    if :polite in traits, do: polite(text), else: text
+  end
+
+  def polite(text, _request), do: text
+
+  @you [
+    {~r/(?<![\p{L}])너한테/u, "선생님한테"},
+    {~r/(?<![\p{L}])너랑/u, "선생님이랑"},
+    {~r/(?<![\p{L}])너는/u, "선생님은"},
+    {~r/(?<![\p{L}])넌(?=\s)/u, "선생님은"},
+    {~r/(?<![\p{L}])너도/u, "선생님도"},
+    {~r/(?<![\p{L}])너밖에/u, "선생님밖에"},
+    {~r/(?<![\p{L}])너답/u, "선생님답"},
+    {~r/(?<![\p{L}])너(?=[\s.,!?]|$)/u, "선생님"},
+    {~r/(?<![\p{L}])네가/u, "선생님이"},
+    {~r/(?<![\p{L}])니가/u, "선생님이"},
+    {~r/(?<![\p{L}])널/u, "선생님을"},
+    {~r/(?<![\p{L}])네(?=\s)/u, "선생님"},
+    # And themselves humbly: 나 becomes 저, 내 becomes 제.
+    {~r/(?<![\p{L}])나한테/u, "저한테"},
+    {~r/(?<![\p{L}])나도/u, "저도"},
+    {~r/(?<![\p{L}])나만/u, "저만"},
+    {~r/(?<![\p{L}])나(?=\s)/u, "저"},
+    {~r/(?<![\p{L}])내가/u, "제가"},
+    {~r/(?<![\p{L}])내(?=\s)/u, "제"}
+  ]
+
+  # Interjections stay as they are ("우와", "아...", "에이").
+  @interjections ~w(우와 와 아 어머 헤헤 에이 흠 음 오 엇 앗)
+
+  # Clause endings and their polite forms; the first that fits wins.
+  @endings [
+    {~r/^(응|그래)$/u, "네"},
+    {~r/^(안녕)$/u, "안녕하세요"},
+    {~r/이야$/u, "이에요"},
+    {~r/야$/u, "예요"},
+    {~r/좋다$/u, "좋아요"},
+    {~r/고맙다$/u, "고마워요"},
+    {~r/아프다$/u, "아파요"},
+    {~r/낫다$/u, "나아요"},
+    {~r/겠다$/u, "겠어요"},
+    {~r/했다$/u, "했어요"},
+    {~r/구나$/u, "군요"},
+    {~r/(알|거|있|했|좋|맞|겠|하|되|돼|않|없)지$/u, "\\1죠"},
+    {~r/(거)?든$/u, "\\0요"},
+    {~r/왜$/u, "왜요"},
+    {~r/(어|아|워|와|줘|봐|해|돼|네|게|래|걸|데|까|나|가|군)$/u, "\\0요"}
+  ]
+
+  defp polite(text) do
+    text = Enum.reduce(@you, text, fn {pattern, to}, text -> Regex.replace(pattern, text, to) end)
+
+    ~r/([^.!?~…,]*)([.!?~…,]+|$)/u
+    |> Regex.scan(text)
+    |> Enum.map_join(fn [_all, clause, mark] -> polite_clause(clause) <> mark end)
+  end
+
+  defp polite_clause(clause) do
+    trimmed = String.trim_trailing(clause)
+    tail = String.slice(clause, String.length(trimmed)..-1//1)
+    last_word = trimmed |> String.split(~r/\s+/u) |> List.last()
+
+    case Enum.find(@endings, fn {pattern, _to} -> Regex.match?(pattern, trimmed) end) do
+      _skip when last_word in @interjections ->
+        clause
+
+      nil ->
+        clause
+
+      {pattern, to} ->
+        Regex.replace(pattern, trimmed, to, global: false) <> tail
+    end
+  end
+
   # Present-tense narration endings and their past forms. The quoted part of a
   # line (someone's words) is left alone.
   @past [

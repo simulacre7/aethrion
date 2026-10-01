@@ -265,6 +265,19 @@ defmodule Aethrion.Conversation do
     end
   end
 
+  # A milestone's first message ("선생님! 오늘 시간 있어요?") is said to the
+  # person, like a proactive message.
+  defp said_to_person(
+         state,
+         %{type: :milestone_reached, character_id: from, to: to, text: text} = output
+       )
+       when is_binary(text) do
+    said_to_person(
+      state,
+      %{output | type: :proactive_message} |> Map.merge(%{character_id: from, to: to})
+    )
+  end
+
   defp said_to_person(_state, _output), do: []
 
   # What a person and a character did to each other in a fight (a blow, a

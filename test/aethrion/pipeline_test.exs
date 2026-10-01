@@ -67,6 +67,7 @@ defmodule Aethrion.PipelineTest do
              Aethrion.Rules.Mood,
              Festival,
              Aethrion.Rules.Bond,
+             Aethrion.Rules.Milestone,
              Aethrion.Rules.Ending
            ]
   end
@@ -77,7 +78,7 @@ defmodule Aethrion.PipelineTest do
     assert {:gift_received, [{:gift, _}, {:reply, _}, {:observation, _}]} =
              List.keyfind(description, :gift_received, 0)
 
-    assert {:reactive, [{:mood, _}, {:proactive, _}, {:bond, _}, {:ending, _}]} =
+    assert {:reactive, [{:mood, _}, {:proactive, _}, {:bond, _}, {:milestone, _}, {:ending, _}]} =
              List.last(description)
   end
 

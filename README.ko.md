@@ -340,6 +340,19 @@ mix run examples/combat.exs                                   # 같은 퀘스트
 mix aethrion.serve --cast priv/casts/quest.json --locale ko   # http://localhost:4848 에서 그냥 대화하면 됩니다
 ```
 
+**메신저형 채팅.** 캐릭터 게임의 메신저 기능이 동작하는 방식을 본떴습니다. 학생이 선생님에게 먼저 메시지를 보내고, 답장은 몇 개의 선택지에서 고르며, 인연이 깊어지면 다음 인연 스토리가 열립니다. 캐릭터와 대사는 모두 새로 썼습니다. 스토리의 `milestones`는 조건이 처음 충족될 때 한 번 열리고, 캐릭터가 먼저 보내는 메시지를 함께 남기며, 엔딩과 달리 이야기는 계속됩니다(`Aethrion.Rules.Milestone`, `:milestone_reached`). `GET /worlds/{key}/replies?character=hana`는 톤이 붙은 답장 선택지 세 개를 주고(`Aethrion.Replies`), 많은 게임과 달리 고른 답장이 실제로 관계를 움직입니다. `polite` 성향의 캐릭터는 모델 없이도 선생님에게 존댓말로 씁니다. `priv/casts/academy.json`에는 학생 셋(하나, 유키, 미오)과 인연 스토리 여섯 개가 있습니다:
+
+```txt
+나:  하나야, 어제 만든 거 정말 대단하더라!    하나: 에이, 갑자기 왜 이래요? 기분은 좋네요.
+나:  고마워, 덕분에 수업 준비가 금방 끝났어.  하나: 헤헤, 그런 말은 더 해 줘도 돼요.
+     ♥ 인연 스토리 · 하나 1: 고장 난 오르골
+     하나: 선생님! 혹시 방과 후에 시간 있어요? 보여 드릴 게 있어요!
+```
+
+```bash
+mix aethrion.serve --cast priv/casts/academy.json --locale ko --tick-every 30
+```
+
 **테이블탑 규칙 (D&D 5e SRD).** 전투원에게 `attack_bonus`와 `ac`(그리고 피해 주사위 `damage_dice`, `damage_die`, `damage_bonus`)를 주면 공격이 시스템 레퍼런스 문서 5.1(SRD 5.1)의 d20 규칙을 따릅니다. d20 + 보너스로 방어도(AC)를 넘으면 명중하고, 자연 20은 무조건 명중하며 피해 주사위를 두 번 굴리고, 자연 1은 무조건 빗나갑니다. 방어(회피) 중인 대상은 불리하게(d20 두 개 중 낮은 것) 공격받고, 치유사는 주사위로 치료하며(`heal_dice` 1, `heal_die` 8, `heal_bonus` 3이면 상처 치료 주문), 포션은 SRD의 치유 포션(2d4+2)으로 둘 수 있습니다. 주사위는 전투 자체에서 나오므로 그대로 재생되고, 모든 줄이 테이블에서 읽어 주듯 주사위를 보여 줍니다: `[d20 13+5=18 vs AC 14, 명중. 1d8+3 (3)] 네가 다이어 울프에게 6의 피해를 입혔다.` `priv/casts/den.json`은 SRD의 다이어 울프와 늑대들에 맞서는 파이터(너), 클레릭, 로그의 늑대굴이고, `examples/den.exs`는 이를 한국어 문장만으로 세 가지 방식으로 플레이해 세 엔딩에 이릅니다. SRD 자료는 CC-BY-4.0으로 사용합니다(`priv/casts/SRD-NOTICE.md`). 회피는 한 라운드가 아니라 다음 한 번의 공격까지 유지되고, 늑대가 넘어뜨리는 내성 굴림 같은 효과는 아직 다루지 않습니다.
 
 ```bash

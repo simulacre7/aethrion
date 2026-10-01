@@ -27,6 +27,8 @@ button.primary{background:var(--me);color:var(--me-text);border-color:transparen
 form{display:flex;gap:8px;margin-top:12px}
 form input{flex:1;min-width:0}
 .hint{font-size:12px;color:var(--muted);margin:6px 2px 0}
+  .choices { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
+  .choices button { font-size: 0.85rem; padding: 4px 10px; border-radius: 14px; }
 </style>
 </head>
 <body>
@@ -40,6 +42,7 @@ form input{flex:1;min-width:0}
     <button id="story" type="button" title="How close each ending is, and what is missing">Story</button>
   </header>
   <div id="log" aria-live="polite"></div>
+  <div id="choices" class="choices" aria-label="Reply choices"></div>
   <form id="form">
     <input id="text" autocomplete="off" placeholder="Talk, act, or suggest something, the way you would in a chat" aria-label="Message">
     <button class="primary" type="submit">Send</button>
@@ -87,6 +90,10 @@ function show(lines) {
     const who = names[line.character_id] || line.character_id;
     if (line.type === "character_interaction" || line.type === "combat") add("note", line.text);
     else if (line.type === "ending_reached") add("note", "★ " + line.title + " — " + line.text);
+    else if (line.type === "milestone_reached") {
+      if (line.text) add("them", line.text, (names[line.character_id] || line.character_id) + (line.character_id === $("character").value ? "" : " (messaged you)"));
+      add("note", "♥ " + line.title + (line.description ? " — " + line.description : ""));
+    }
     else if (line.to === "user" && line.character_id === $("character").value) add("them", line.text, who);
     else if (line.to === "user") add("them", line.text, who + " (messaged you)");
   }
@@ -120,6 +127,7 @@ async function history() {
   const all = await call("GET", worldPath("/conversation"));
   for (const turn of all.turns) seen(turn.event_id);
   if (!last) last = "e0";
+  choices();
 }
 
 // Characters write on their own when time passes on the server.
@@ -153,6 +161,7 @@ $("form").addEventListener("submit", async (event) => {
     show(data.lines);
     seen(data.last_event_id);
   } catch (error) { add("error", error.message); }
+  choices();
 });
 
 // In a story that counts days, say which day it is.
@@ -168,6 +177,33 @@ async function story() {
   for (const e of s.endings) {
     add("note", Math.round(e.closeness * 100) + "% " + e.title + (e.missing.length ? " — missing: " + e.missing.join("; ") : ""));
   }
+}
+
+// Replies to pick, as a messenger game offers them; each is sent with its tone.
+async function choices() {
+  const box = $("choices");
+  box.replaceChildren();
+  try {
+    const to = $("character").value;
+    const data = await call("GET", worldPath("/replies?character=" + encodeURIComponent(to)));
+    for (const choice of data.replies) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = choice.text;
+      button.title = choice.tone;
+      button.addEventListener("click", async () => {
+        add("me", choice.text, "You");
+        box.replaceChildren();
+        try {
+          const step = await call("POST", worldPath("/events"), {type: "message_sent", from: "user", to, text: choice.text, tone: choice.tone});
+          show(step.lines);
+          seen(step.last_event_id);
+        } catch (error) { add("error", error.message); }
+        choices();
+      });
+      box.append(button);
+    }
+  } catch {}
 }
 
 $("story").addEventListener("click", () => story().catch((e) => add("error", e.message)));
