@@ -30,6 +30,7 @@ defmodule Aethrion.Card do
 
   @png <<137, 80, 78, 71, 13, 10, 26, 10>>
   @max_text 20_000
+  @max_card_json 16_000_000
 
   @doc "Reads a card from a file's bytes: `{:ok, data}` (the card's fields) or `{:error, reason}`."
   @spec read(binary()) :: {:ok, map()} | {:error, term()}
@@ -103,12 +104,58 @@ defmodule Aethrion.Card do
 
   # RisuAI keeps a card's scripts in module.risum beside card.json.
   defp charx(zip) do
-    with {:ok, [{_name, json}]} <- :zip.unzip(zip, [:memory, {:file_list, [~c"card.json"]}]),
-         {:ok, data} <- read(json) do
+    with {:ok, json} <- card_json(zip),
+         {:ok, card} <- Jason.decode(json) |> ok_or_error(:bad_json),
+         {:ok, data} <- normalize(card) do
       {:ok, if(module?(zip), do: Map.put(data, "__risu_module", true), else: data)}
+    end
+  end
+
+  defp ok_or_error({:ok, value}, _reason), do: {:ok, value}
+  defp ok_or_error({:error, _error}, reason), do: {:error, reason}
+
+  # card.json, inflated by hand so a small zip cannot unpack into gigabytes
+  # (the sizes a zip states are not trusted).
+  defp card_json(zip) do
+    with {:ok, [_comment | entries]} <- :zip.list_dir(zip),
+         {:zip_file, _name, _info, _comment, offset, size} <-
+           Enum.find(entries, &match?({:zip_file, ~c"card.json", _, _, _, _}, &1)),
+         <<_::binary-size(^offset), "PK", 3, 4, _version::16, _flags::16, method::little-16,
+           _::binary-size(16), name_length::little-16, extra_length::little-16, rest::binary>> <-
+           zip,
+         <<_::binary-size(^name_length), _::binary-size(^extra_length), data::binary-size(^size),
+           _::binary>> <- rest do
+      case method do
+        0 when size <= @max_card_json -> {:ok, data}
+        0 -> {:error, :card_too_large}
+        8 -> inflate(data)
+        _other -> {:error, :unsupported_zip}
+      end
     else
-      {:error, reason} when is_atom(reason) -> {:error, reason}
       _other -> {:error, :no_card_json}
+    end
+  end
+
+  defp inflate(data) do
+    z = :zlib.open()
+
+    try do
+      :ok = :zlib.inflateInit(z, -15)
+      z |> :zlib.safeInflate(data) |> inflated(z, [], 0)
+    rescue
+      ErlangError -> {:error, :bad_zip}
+    after
+      :zlib.close(z)
+    end
+  end
+
+  defp inflated({status, out}, z, acc, size) do
+    size = size + IO.iodata_length(out)
+
+    cond do
+      size > @max_card_json -> {:error, :card_too_large}
+      status == :finished -> {:ok, IO.iodata_to_binary(Enum.reverse([out | acc]))}
+      true -> z |> :zlib.safeInflate([]) |> inflated(z, [out | acc], size)
     end
   end
 
@@ -187,7 +234,8 @@ defmodule Aethrion.Card do
             cast,
             "story",
             %{"lore" => lore},
-            &Map.update(&1, "lore", lore, fn old -> old ++ lore end)
+            # The same card added again does not repeat its notes.
+            &Map.update(&1, "lore", lore, fn old -> old ++ (lore -- old) end)
           )
       end
     end)
@@ -307,7 +355,11 @@ defmodule Aethrion.Card do
   end
 
   defp notes(data) do
-    risu = get_in(data, ["extensions", "risuai"]) || %{}
+    risu =
+      case data["extensions"] do
+        %{"risuai" => %{} = risu} -> risu
+        _none -> %{}
+      end
 
     [
       {List.wrap(risu["customScripts"]) != [] or data["__risu_module"] == true,
@@ -327,7 +379,10 @@ defmodule Aethrion.Card do
   end
 
   defp macro_note(%{"character_book" => %{"entries" => entries}}) when is_list(entries) do
-    case Enum.count(entries, &(is_binary(&1["content"]) and risu_macros?(&1["content"]))) do
+    case Enum.count(
+           entries,
+           &(is_map(&1) and is_binary(&1["content"]) and risu_macros?(&1["content"]))
+         ) do
       0 -> []
       1 -> ["1 lore note written for RisuAI's macros is left out"]
       n -> ["#{n} lore notes written for RisuAI's macros are left out"]

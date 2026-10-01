@@ -318,26 +318,26 @@ defmodule Aethrion.API do
           Aethrion.Bridge.Store.cache(Aethrion.Bridge.Readings)
         )
 
-      {before, now, turn} =
-        Aethrion.Bridge.replay(cast, chat, read,
-          to: to,
-          checkpoints: Aethrion.Bridge.Store.cache(Aethrion.Bridge.Checkpoints)
-        )
+      with {:ok, {before, now, turn}} <- replay_chat(cast, chat, read, to) do
+        note = %{"role" => "system", "content" => Aethrion.Bridge.note(before, now, turn, locale)}
+        opts = adapter_opts ++ generation_opts(data)
 
-      note = %{"role" => "system", "content" => Aethrion.Bridge.note(before, now, turn, locale)}
-      opts = adapter_opts ++ generation_opts(data)
+        case Aethrion.LLM.chat(adapter, all ++ [note], opts) do
+          # A reply to a request to continue one adds to it: no new turn, no
+          # second status block.
+          {:ok, text} when status? and turn.line != nil ->
+            completion(
+              data,
+              String.trim(text) <> "\n\n" <> Aethrion.Bridge.status(now, turn, locale)
+            )
 
-      case Aethrion.LLM.chat(adapter, all ++ [note], opts) do
-        {:ok, text} ->
-          reply =
-            if status?,
-              do: String.trim(text) <> "\n\n" <> Aethrion.Bridge.status(now, turn, locale),
-              else: String.trim(text)
+          {:ok, text} ->
+            completion(data, String.trim(text))
 
-          completion(data, reply)
-
-        {:error, reason} ->
-          {:error, 502, Error.new(:model_failed, "the model did not answer: #{inspect(reason)}")}
+          {:error, reason} ->
+            {:error, 502,
+             Error.new(:model_failed, "the model did not answer: #{inspect(reason)}")}
+        end
       end
     end
   end
@@ -354,8 +354,10 @@ defmodule Aethrion.API do
             do: {key, data[to_string(key)]}
 
       {cast, notes} = Aethrion.Card.to_cast(card, opts)
-      cast = if is_map(data["into"]), do: Aethrion.Card.merge(data["into"], cast), else: cast
-      {:ok, 200, %{cast: cast, notes: notes}}
+
+      with {:ok, cast} <- into(data["into"], cast) do
+        {:ok, 200, %{cast: cast, notes: notes}}
+      end
     end
   end
 
@@ -579,6 +581,20 @@ defmodule Aethrion.API do
     end
   end
 
+  # The cast a card is added to must itself be a cast, and so must the result.
+  defp into(nil, cast), do: {:ok, cast}
+
+  defp into(into, cast) do
+    with {:ok, _state} <- State.parse(into),
+         merged = Aethrion.Card.merge(into, cast),
+         {:ok, _state} <- State.parse(merged) do
+      {:ok, merged}
+    else
+      {:error, error} ->
+        {:error, 400, Error.new(:invalid_cast, "into: " <> reason(error))}
+    end
+  end
+
   defp card(%{"file" => file}) when is_binary(file) do
     with {:ok, bytes} <- file |> Base.decode64(ignore: :whitespace) |> card_bytes() do
       bytes |> Aethrion.Card.read() |> card_error()
@@ -622,6 +638,28 @@ defmodule Aethrion.API do
     end
   end
 
+  # At most this many lines are replayed in one request (with a model
+  # reading them, each new one is a call).
+  @max_replay 300
+
+  defp replay_chat(cast, chat, read, to) do
+    case Aethrion.Bridge.replay(cast, chat, read,
+           to: to,
+           checkpoints: Aethrion.Bridge.Store.cache(Aethrion.Bridge.Checkpoints),
+           max_lines: @max_replay
+         ) do
+      {:error, :too_many_lines} ->
+        {:error, 400,
+         Error.new(
+           :too_many_lines,
+           "more than #{@max_replay} lines to replay; send a shorter chat, or one with the status blocks of earlier replies"
+         )}
+
+      replayed ->
+        {:ok, replayed}
+    end
+  end
+
   # The characters one talks to: not the foes.
   defp talkers(cast),
     do: Enum.filter(State.sorted_characters(cast), &(State.stat(cast, &1.id, "enemy") == 0))
@@ -629,9 +667,12 @@ defmodule Aethrion.API do
   # "aethrion" or "aethrion-plain" (no status block), optionally
   # ":character" for whom the player talks to; by default the first one
   # who is not a foe.
+  defp bridge_model(_cast, model) when not is_binary(model) and model != nil,
+    do: {:error, 400, Error.new(:invalid_request, "model must be a string")}
+
   defp bridge_model(cast, model) do
     {base, character} =
-      case String.split(to_string(model || "aethrion"), ":", parts: 2) do
+      case String.split(model || "aethrion", ":", parts: 2) do
         [base, character] -> {base, character}
         [base] -> {base, nil}
       end
@@ -1082,13 +1123,14 @@ defmodule Aethrion.API do
               code: status,
               content_type: content_type,
               content_length: Integer.to_charlist(byte_size(json))
-            ] ++ cors(segments), :erlang.binary_to_list(json)}
+            ] ++ cors(segments, config), :erlang.binary_to_list(json)}
        ]}
     end
 
     # Only the OpenAI-compatible routes answer other origins (a chat app in
-    # a browser); the rest of the API stays same-origin.
-    defp cors(["v1" | _]),
+    # a browser), and only with a token: otherwise any site the user opens
+    # could use the server, and the model behind it.
+    defp cors(["v1" | _], %{token: token}) when is_binary(token) and token != "",
       do: [
         "access-control-allow-origin": ~c"*",
         "access-control-allow-headers": ~c"authorization, content-type",
@@ -1097,6 +1139,6 @@ defmodule Aethrion.API do
         "access-control-allow-private-network": ~c"true"
       ]
 
-    defp cors(_segments), do: []
+    defp cors(_segments, _config), do: []
   end
 end

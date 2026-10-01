@@ -38,7 +38,7 @@ mix aethrion.serve --cast priv/casts/den.json --llm claude --locale ko --port 48
 
 ## 2. Install RisuAI
 
-The tested setup is a self-hosted RisuAI (Docker); the desktop app sends the same requests. The web version (risuai.xyz) sends most requests through RisuAI's servers, but calls `localhost` and `127.0.0.1` from the browser directly, so it can reach `http://localhost:4848/v1`. Aethrion sends the CORS headers for that, but answering the browser's preflight (OPTIONS) needs Erlang/OTP 29 or later (older `:httpd` refuses OPTIONS with 501). The browser may also ask before allowing local network access, and this path is untested.
+The tested setup is a self-hosted RisuAI (Docker); the desktop app sends the same requests. The web version (risuai.xyz) sends most requests through RisuAI's servers, but calls `localhost` and `127.0.0.1` from the browser directly, so it can reach `http://localhost:4848/v1`. For that, run Aethrion with `--token` and put the token in as the key: without a token, Aethrion sends no CORS headers to other origins, since any site the user opens could otherwise use the server and the model behind it. Answering the browser's preflight (OPTIONS) needs Erlang/OTP 29 or later (older `:httpd` refuses OPTIONS with 501). The browser may also ask before allowing local network access, and this path is untested.
 
 ```bash
 git clone https://github.com/kwaroran/RisuAI
@@ -95,13 +95,18 @@ Description, personality, and scenario become the profile; example messages the 
 - **Reroll:** the same history, the same outcome; only the narration is new.
 - **Edit:** the last line or an earlier one, everything from the edited line is recomputed.
 - **Long chats:** trimmed history goes on from the checkpoints. Deleting a reply's status block loses that turn's checkpoint; the replay starts from the one before.
+- **Continue:** not a new turn: the rules apply nothing again, and the continuation gets no second status block.
+- **Lines in a row:** several lines sent before a reply all make this turn, and the model hears about all of them.
+- **Another character:** switching the request model to `aethrion:doyun` goes on from the checkpoints so far; lines from then on are read as said to Doyun.
+- **After editing the cast:** checkpoints remember their cast, so a changed cast is computed afresh from the chat.
 
 ## Limits
 
 - Replies come whole; with `stream: true` they come as one server-sent event.
 - A CLI model (`--llm claude`) takes about 10-15 s a turn; API models are faster.
+- One request replays at most 300 lines; a longer chat without checkpoints is a 400 (`too_many_lines`).
 - Group chats are not supported yet; the model name says who the player talks to.
-- Checkpoints store the whole world every turn, so the file grows with use. Deleting it is safe: the state is then recomputed from the transcript.
+- Checkpoints store the whole world (without the cast's lore) every turn, so the file grows with use. Deleting it is safe: the state is then recomputed from the transcript.
 
 ## SillyTavern
 

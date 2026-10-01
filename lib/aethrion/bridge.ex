@@ -81,48 +81,74 @@ defmodule Aethrion.Bridge do
 
   @doc """
   The world after the player's lines in `chat` (user messages, in order),
-  replayed from `state`; returns `{before, after, turn}`, where `turn` holds
-  the last line's readings, outputs, and checkpoint `id`. `read` turns a
-  line into readings (`fn state, text -> [reading] end`).
+  replayed from `state`; returns `{before, after, turn}`. `turn` is the
+  player's lines no reply has answered yet (usually one): their `readings`
+  and `outputs`, the last `line` (nil when every line has its reply, as in
+  a request to continue a reply), and the checkpoint `id` of the world
+  after them; `before` is the world before them. `read` turns a line into
+  readings (`fn state, line, prev -> [reading] end`, `prev` being the
+  checkpoint id of the world it is read in).
 
-  Options: `:to`, the character the player talks to, and `:checkpoints`
+  Options: `:to`, the character the player talks to; `:checkpoints`
   (`%{get: fun, put: fun}`, see `Aethrion.Bridge.Store`), which keeps the
-  world after each line under an id chaining the cast, `:to`, and every
-  line so far. The replay starts after the latest reply whose checkpoint is
-  known and whose chain matches the lines still in the chat, so an edited
-  line is replayed with everything after it, and lines the app left out
-  are not lost. The last line is always replayed.
+  world after each line under an id chaining the cast, the character, and
+  every line so far; `:max_lines`, the most lines one call may replay
+  (more is `{:error, :too_many_lines}`). The replay starts after the latest
+  reply whose checkpoint comes from this cast and whose chain matches the
+  lines still in the chat, so an edited line is replayed with everything
+  after it, and lines the app left out are not lost.
   """
-  @spec replay(State.t(), [map()], (State.t(), String.t() -> [map()]), keyword()) ::
-          {State.t(), State.t(), map()}
+  @spec replay(State.t(), [map()], (State.t(), String.t(), String.t() -> [map()]), keyword()) ::
+          {State.t(), State.t(), map()} | {:error, :too_many_lines}
   def replay(%State{} = state, chat, read, opts \\ []) do
     to = Keyword.get(opts, :to, "")
     checkpoints = Keyword.get(opts, :checkpoints)
+    root = root(state)
     turns = turns(chat)
 
-    {start, from, id} =
-      case base(turns, to, checkpoints) do
-        {index, id, %{state: saved}} -> {index + 1, saved, id}
-        nil -> {0, state, root(state)}
+    {pending, from, id} =
+      case base(turns, root, checkpoints) do
+        {index, id, %{state: saved}} -> {Enum.drop(turns, index + 1), with_lore(saved, state), id}
+        nil -> {turns, state, root}
       end
 
-    turns
-    |> Enum.drop(start)
-    |> Enum.reduce({from, from, %{line: nil, readings: [], outputs: [], id: id}}, fn {line, _seen},
-                                                                                     {_before,
-                                                                                      state, turn} ->
-      {after_line, readings, outputs} = play(state, line, read)
-      id = checkpoint_id(turn.id, to, line)
+    if length(pending) > Keyword.get(opts, :max_lines, :infinity) do
+      {:error, :too_many_lines}
+    else
+      {answered, unanswered} = Enum.split_while(pending, & &1.replied)
+      put = &if(checkpoints, do: checkpoints.put.(&1, checkpoint(&2, &3, &4, root)))
 
-      if checkpoints,
-        do: checkpoints.put.(id, %{prev: turn.id, line: digest(line), to: to, state: after_line})
+      {now, id} =
+        Enum.reduce(answered, {from, id}, fn %{line: line}, {state, prev} ->
+          {state, _readings, _outputs} = play(state, line, prev, read)
+          id = checkpoint_id(prev, to, line)
+          put.(id, prev, line, state)
+          {state, id}
+        end)
 
-      {state, after_line, %{line: line, readings: readings, outputs: outputs, id: id}}
-    end)
+      turn = %{line: nil, readings: [], outputs: [], id: id}
+
+      {after_all, turn} =
+        Enum.reduce(unanswered, {now, turn}, fn %{line: line}, {state, turn} ->
+          {state, readings, outputs} = play(state, line, turn.id, read)
+          id = checkpoint_id(turn.id, to, line)
+          put.(id, turn.id, line, state)
+
+          {state,
+           %{
+             line: line,
+             readings: turn.readings ++ readings,
+             outputs: turn.outputs ++ outputs,
+             id: id
+           }}
+        end)
+
+      {now, after_all, turn}
+    end
   end
 
-  defp play(state, line, read) do
-    readings = read.(state, line)
+  defp play(state, line, prev, read) do
+    readings = read.(state, line, prev)
 
     {after_line, outputs} =
       Enum.reduce(readings, {state, []}, fn %{event: event}, {state, outputs} ->
@@ -135,15 +161,30 @@ defmodule Aethrion.Bridge do
     {after_line, readings, outputs}
   end
 
-  # The player's lines, each with the checkpoint id of the reply after it.
+  # The cast's lore is the same in every world of the cast: it is left out
+  # of checkpoints and put back from the cast.
+  defp checkpoint(prev, line, state, root),
+    do: %{prev: prev, line: digest(line), root: root, state: with_lore(state, nil)}
+
+  defp with_lore(%State{story: %{} = story} = state, cast) do
+    lore = if cast, do: Map.get(cast.story || %{}, :lore, []), else: []
+    if Map.has_key?(story, :lore), do: %{state | story: Map.put(story, :lore, lore)}, else: state
+  end
+
+  defp with_lore(state, _cast), do: state
+
+  # The player's lines, each with whether a reply came after it and that
+  # reply's checkpoint id.
   defp turns(chat) do
     chat
     |> Enum.reduce([], fn
       %{"role" => "user", "content" => text}, turns ->
-        if String.trim(text) == "", do: turns, else: [{text, nil} | turns]
+        if String.trim(text) == "",
+          do: turns,
+          else: [%{line: text, id: nil, replied: false} | turns]
 
-      %{"role" => "assistant"} = reply, [{line, nil} | turns] ->
-        [{line, reply["checkpoint"]} | turns]
+      %{"role" => "assistant"} = reply, [%{replied: false} = turn | turns] ->
+        [%{turn | id: reply["checkpoint"], replied: true} | turns]
 
       _other, turns ->
         turns
@@ -151,36 +192,38 @@ defmodule Aethrion.Bridge do
     |> Enum.reverse()
   end
 
-  # The latest turn but the last whose checkpoint chain matches the lines up
-  # to it: `{index, id, checkpoint}`.
-  defp base(_turns, _to, nil), do: nil
+  # The latest turn whose checkpoint is from this cast and whose chain
+  # matches the lines up to it: `{index, id, checkpoint}`.
+  defp base(_turns, _root, nil), do: nil
 
-  defp base(turns, to, checkpoints) do
+  defp base(turns, root, checkpoints) do
     turns
     |> Enum.with_index()
-    |> Enum.drop(-1)
     |> Enum.reverse()
     |> Enum.find_value(fn
-      {{_line, nil}, _index} ->
+      {%{id: nil}, _index} ->
         nil
 
-      {{_line, id}, index} ->
-        saved = checkpoints.get.(id)
+      {%{id: id}, index} ->
+        case checkpoints.get.(id) do
+          %{root: ^root} = saved ->
+            if chain?(Enum.take(turns, index + 1), id, checkpoints), do: {index, id, saved}
 
-        if saved && chain?(Enum.take(turns, index + 1), id, to, checkpoints),
-          do: {index, id, saved}
+          _other ->
+            nil
+        end
     end)
   end
 
   # Walks the chain back from `id` over the lines still in the chat (the
   # earliest may have been trimmed away): each line must be the one kept,
   # and each reply's id the one the chain gives.
-  defp chain?(turns, id, to, checkpoints) do
+  defp chain?(turns, id, checkpoints) do
     turns
     |> Enum.reverse()
-    |> Enum.reduce_while(id, fn {line, seen}, id ->
+    |> Enum.reduce_while(id, fn %{line: line, id: seen}, id ->
       case checkpoints.get.(id) do
-        %{line: kept, to: ^to, prev: prev} when seen in [nil, id] ->
+        %{line: kept, prev: prev} when seen in [nil, id] ->
           if kept == digest(line), do: {:cont, prev}, else: {:halt, false}
 
         _other ->
@@ -195,7 +238,8 @@ defmodule Aethrion.Bridge do
 
   defp digest(line), do: :crypto.hash(:sha256, line)
 
-  # The chain starts from the cast, so another cast's checkpoints never match.
+  # The chain starts from the cast; a checkpoint keeps its root, so another
+  # cast's checkpoints are never used.
   defp root(state),
     do:
       state
@@ -357,16 +401,23 @@ defmodule Aethrion.Bridge do
 
   @doc """
   Reads a line with the interpreter, through `cache` (`get` and `put`
-  functions on a key), so a line seen before is not read again.
+  functions on a key), so a line seen before in the same world is not read
+  again. The key holds the interpreter, the character, the line, and the
+  checkpoint of the world it is read in (`prev`); a reading the rules gave
+  in place of a failing interpreter is not kept.
   """
   def reader(to, opts, cache) do
-    fn state, line ->
-      key = :crypto.hash(:sha256, [to, 0, line]) |> Base.encode16(case: :lower)
+    interpreter = Keyword.get(opts, :interpreter, Interpreter.Rules)
+
+    fn state, line, prev ->
+      key =
+        :crypto.hash(:sha256, [inspect(interpreter), 0, prev, 0, to, 0, line])
+        |> Base.encode16(case: :lower)
 
       case cache.get.(key) do
         nil ->
-          {:ok, readings, _meta} = Interpreter.read(state, "user", to, line, opts)
-          cache.put.(key, readings)
+          {:ok, readings, meta} = Interpreter.read(state, "user", to, line, opts)
+          if meta.status == :ok, do: cache.put.(key, readings)
           readings
 
         readings ->
