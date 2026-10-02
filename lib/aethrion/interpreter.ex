@@ -156,7 +156,13 @@ defmodule Aethrion.Interpreter do
       fight: Combat.foe(state) != nil and not Combat.over?(state),
       kinds: @kinds,
       targets: targets,
-      healers: for(t <- targets, Combat.healer?(state, t.id), do: t.id),
+      healers:
+        for(
+          t <- targets,
+          Combat.healer?(state, t.id),
+          State.stat(state, t.id, "away") == 0,
+          do: t.id
+        ),
       tones: @tones,
       activities: state.story |> Map.get(:activities, %{}) |> Map.keys() |> Enum.sort()
     }

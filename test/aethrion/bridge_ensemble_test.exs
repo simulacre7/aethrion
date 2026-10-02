@@ -164,6 +164,31 @@ defmodule Aethrion.BridgeEnsembleTest do
     assert turn.between == []
   end
 
+  test "lines in a row: who saw each, and who came back between them, in order" do
+    state = %{camp() | stats: put_in(camp().stats, ["harin", "away"], 1)}
+
+    {_all, chat} =
+      Bridge.transcript([
+        %{"role" => "user", "content" => "세라, 안녕"},
+        %{"role" => "user", "content" => "세라, 목걸이 사 왔어. 선물이야"}
+      ])
+
+    read = Bridge.reader([interpreter: Aethrion.Interpreter.Rules], no_cache())
+    {before, now, turn} = Bridge.replay(state, chat, read, to: "sera")
+    note = Bridge.note(before, now, turn, :ko)
+
+    # Harin missed the first line, came back, and saw the gift.
+    refute note =~ "Seen by: 도윤, 하린.\n- Not there, and does not know: 하린."
+
+    [first, back, second] =
+      for text <- ["세라, 안녕", "하린 is back", "세라, 목걸이 사 왔어"],
+          do: :binary.match(note, text) |> elem(0)
+
+    assert first < back and back < second
+    assert note =~ ~r/세라, 안녕[^\n]*Not there, and does not know: 하린/
+    assert note =~ ~r/목걸이 사 왔어[^\n]*Seen by: 도윤, 하린/
+  end
+
   test "without turn_hours, time stands still in a chat" do
     {_before, now, _turn} = play(camp(%{}), ["세라, 목걸이 사 왔어. 선물이야", "세라, 어때?"])
     assert now.clock == 0

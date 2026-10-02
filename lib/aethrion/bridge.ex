@@ -32,6 +32,9 @@ defmodule Aethrion.Bridge do
   @status ~r/\s*<aethrion-status[^>]*>.*?<\/aethrion-status>\s*/s
   @checkpoint ~r/<aethrion-status id="([0-9a-f]{8,64})"/
   @start ~r/\[Start a new chat\]/i
+  # What the player does that the characters there see.
+  @witnessed [:message_sent, :gift_received, :apology_offered]
+  @between_max 8
 
   @doc "The text of a message's content (a string, or a list of parts)."
   @spec text(term()) :: String.t()
@@ -85,9 +88,11 @@ defmodule Aethrion.Bridge do
   player's lines no reply has answered yet (usually one): their `readings`
   and `outputs`, the last `line` (nil when every line has its reply, as in
   a request to continue a reply), and the checkpoint `id` of the world
-  after them; `before` is the world before them; `seen_by`, who was there
-  to see it, `away`, who was not, and `between`, how the characters'
-  feelings toward each other moved (`[{from, to, field, delta}]`). `read`
+  after them; `before` is the world before them; `scenes`, for each line in
+  order, who was there to see it (`seen_by`), who was not (`away`), and
+  who came back as its hours passed (`back`); and `between`, how the
+  characters' feelings toward each other moved (`[{from, to, field,
+  delta}]`). `read`
   turns a line into readings (`fn state, line, prev, to -> [reading] end`,
   `prev` being the checkpoint id of the world it is read in and `to` whom
   the player is talking to).
@@ -150,7 +155,7 @@ defmodule Aethrion.Bridge do
             {played.state, played.id, played.talking}
         end)
 
-      turn = %{line: nil, readings: [], outputs: [], id: id, seen_by: [], away: []}
+      turn = %{line: nil, readings: [], outputs: [], id: id, scenes: []}
 
       {after_all, turn, _talking} =
         Enum.reduce(unanswered, {now, turn, talking}, fn %{line: line}, {state, turn, talking} ->
@@ -162,8 +167,7 @@ defmodule Aethrion.Bridge do
              readings: turn.readings ++ played.readings,
              outputs: turn.outputs ++ played.outputs,
              id: played.id,
-             seen_by: Enum.uniq(turn.seen_by ++ played.seen_by),
-             away: Enum.uniq(turn.away ++ played.away)
+             scenes: turn.scenes ++ [played.scene]
            }, played.talking}
         end)
 
@@ -191,14 +195,22 @@ defmodule Aethrion.Bridge do
     talking = addressee(after_line, readings) || talking
     put.(id, prev, line, after_line, talking)
 
+    away = for c <- people(state), State.stat(state, c.id, "away") > 0, do: c.id
+    targets = for %{event: %{type: type} = event} <- readings, type in @witnessed, do: event.to
+
     %{
       state: after_line,
       readings: readings,
       outputs: outputs,
       id: id,
       talking: talking,
-      seen_by: seen_by,
-      away: for(c <- people(state), State.stat(state, c.id, "away") > 0, do: c.id)
+      scene: %{
+        line: line,
+        targets: targets,
+        seen_by: seen_by -- targets,
+        away: away,
+        back: Enum.filter(away, &(State.stat(after_line, &1, "away") == 0))
+      }
     }
   end
 
@@ -214,9 +226,6 @@ defmodule Aethrion.Bridge do
         not State.down?(state, c.id),
         do: c.id
   end
-
-  @witnessed [:message_sent, :gift_received, :apology_offered]
-  @between_max 8
 
   defp witnessed(%{type: type} = event, seen_by) when type in @witnessed do
     if Map.get(event, :observed_by, []) != [],
@@ -498,27 +507,38 @@ defmodule Aethrion.Bridge do
       for output <- outputs, line = told(output, now, locale), line != nil, do: "- " <> line
 
     read ++
-      scene(now, turn) ++
+      scenes(now, turn) ++
       told ++
       changes(before, now) ++
       between_lines(now, turn) ++
-      moods(before, now) ++ back(before, now)
+      moods(before, now)
   end
 
-  # Who saw the player's words and gifts, and who was not there to.
-  defp scene(state, %{readings: readings} = turn) do
-    targets = for %{event: %{type: type} = event} <- readings, type in @witnessed, do: event.to
+  # Line by line: who saw the player's words and gifts, who was not there
+  # to, and who came back after it. With several lines, each says which.
+  defp scenes(state, turn) do
+    scenes = Map.get(turn, :scenes, [])
+    names = &Enum.map_join(&1, ", ", fn id -> State.name(state, id) end)
 
-    if targets == [] do
-      []
-    else
-      names = &Enum.map_join(&1, ", ", fn id -> State.name(state, id) end)
-      seen = Map.get(turn, :seen_by, []) -- targets
-      away = Map.get(turn, :away, [])
+    Enum.flat_map(scenes, fn scene ->
+      witnessed =
+        if(scene.targets != [] and scene.seen_by != [],
+          do: ["Seen by: #{names.(scene.seen_by)}."],
+          else: []
+        ) ++
+          if scene.targets != [] and scene.away != [],
+            do: ["Not there, and does not know: #{names.(scene.away)}."],
+            else: []
 
-      if(seen != [], do: ["- Seen by: #{names.(seen)}."], else: []) ++
-        if away != [], do: ["- Not there, and does not know: #{names.(away)}."], else: []
-    end
+      said =
+        cond do
+          witnessed == [] -> []
+          length(scenes) == 1 -> Enum.map(witnessed, &("- " <> &1))
+          true -> ["- \"#{String.slice(scene.line, 0, 40)}\": " <> Enum.join(witnessed, " ")]
+        end
+
+      said ++ for(id <- scene.back, do: "- #{State.name(state, id)} is back.")
+    end)
   end
 
   defp between_lines(state, turn) do
@@ -552,13 +572,6 @@ defmodule Aethrion.Bridge do
         feelings ++ mood != [] do
       "- #{c.name} feels: " <> Enum.join(feelings ++ mood, ", ")
     end
-  end
-
-  defp back(before, now) do
-    for c <- people(now),
-        State.stat(before, c.id, "away") > 0,
-        State.stat(now, c.id, "away") == 0,
-        do: "- #{c.name} is back."
   end
 
   defp target(state, %{to: to}) when is_binary(to), do: " (#{State.name(state, to)})"

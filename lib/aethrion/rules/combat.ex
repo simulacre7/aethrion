@@ -613,37 +613,45 @@ defmodule Aethrion.Rules.Combat do
   defp in_party?(state, id),
     do: State.stat(state, id, "party") > 0 and State.stat(state, id, "away") == 0
 
+  # The one saved, if a character, likes and trusts the protector more (a
+  # player holds no feelings in the state: relationships are characters');
+  # the protector remembers it either way.
   defp saved(%Transition{state: state} = transition, saved, protector, event) do
-    if State.character?(state, saved) or player?(state, saved) do
-      transition
-      |> Transition.adjust_relationship(
-        saved,
-        protector,
-        :affinity,
-        Transition.param(transition, :protected_affinity)
+    transition
+    |> then(fn transition ->
+      if State.character?(state, saved),
+        do: grateful_to(transition, saved, protector),
+        else: transition
+    end)
+    |> Transition.remember(
+      Memory.new(
+        id: "memory:#{protector}:protected:#{event.id}:#{saved}",
+        character_id: protector,
+        content: "#{protector} took a blow meant for #{saved}.",
+        importance: 65,
+        created_at: event.at,
+        related_characters: [saved],
+        kind: :experienced,
+        topic: "protect:#{event.id}",
+        data: %{"event" => "protect", "from" => protector, "to" => saved}
       )
-      |> Transition.adjust_relationship(
-        saved,
-        protector,
-        :trust,
-        Transition.param(transition, :protected_trust)
-      )
-      |> Transition.remember(
-        Memory.new(
-          id: "memory:#{protector}:protected:#{event.id}:#{saved}",
-          character_id: protector,
-          content: "#{protector} took a blow meant for #{saved}.",
-          importance: 65,
-          created_at: event.at,
-          related_characters: [saved],
-          kind: :experienced,
-          topic: "protect:#{event.id}",
-          data: %{"event" => "protect", "from" => protector, "to" => saved}
-        )
-      )
-    else
-      transition
-    end
+    )
+  end
+
+  defp grateful_to(transition, saved, protector) do
+    transition
+    |> Transition.adjust_relationship(
+      saved,
+      protector,
+      :affinity,
+      Transition.param(transition, :protected_affinity)
+    )
+    |> Transition.adjust_relationship(
+      saved,
+      protector,
+      :trust,
+      Transition.param(transition, :protected_trust)
+    )
   end
 
   # Those who cared about someone on the player's side who just fell.

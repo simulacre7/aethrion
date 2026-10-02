@@ -73,4 +73,51 @@ defmodule Aethrion.CampfireTest do
     refute Enum.any?(outputs, &match?(%{type: :combat, kind: :protected}, &1))
     refute Enum.any?(outputs, &match?(%{type: :character_interaction, kind: :gossip}, &1))
   end
+
+  describe "from a review" do
+    test "a world where Sera shielded the player saves and reads back, and a trimmed chat goes on from it" do
+      start_supervised!({Aethrion.Bridge.Store, name: Aethrion.Bridge.Checkpoints})
+      checkpoints = Aethrion.Bridge.Store.cache(Aethrion.Bridge.Checkpoints)
+
+      read =
+        Bridge.reader(
+          [interpreter: Aethrion.Interpreter.Rules],
+          %{get: fn _key -> nil end, put: fn _key, _value -> :ok end}
+        )
+
+      replay = fn messages ->
+        {_all, chat} = Bridge.transcript(messages)
+        result = Bridge.replay(cast(), chat, read, to: "sera", checkpoints: checkpoints)
+        _ = :sys.get_state(Aethrion.Bridge.Checkpoints)
+        result
+      end
+
+      messages =
+        Enum.reduce(["세라, 목걸이 사 왔어. 선물이야" | @fight], [], fn line, messages ->
+          messages = messages ++ [%{"role" => "user", "content" => line}]
+          {_before, now, turn} = replay.(messages)
+          assert {:ok, _state} = State.parse(State.to_data(now))
+
+          messages ++
+            [%{"role" => "assistant", "content" => "…\n\n" <> Bridge.status(now, turn, :ko)}]
+        end)
+
+      next = [%{"role" => "user", "content" => "세라, 고마워"}]
+      {_before, full, _turn} = replay.(messages ++ next)
+      {_before, trimmed, _turn} = replay.([List.last(messages)] ++ next)
+      assert State.to_data(trimmed) == State.to_data(full)
+    end
+
+    test "a healer who is away does not heal when asked" do
+      state = %{
+        cast()
+        | stats: cast().stats |> put_in(["sera", "away"], 3) |> put_in(["user", "hp"], 5)
+      }
+
+      event = Aethrion.Combat.action(state, "user", nil, "세라, 치료해 줘")
+      assert {:error, %{message: message}} = Aethrion.Runtime.step(state, event)
+      assert message =~ "away"
+      refute "sera" in Aethrion.Interpreter.schema(state, "user", "sera").healers
+    end
+  end
 end
