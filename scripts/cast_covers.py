@@ -13,6 +13,7 @@ COVERS = {
     "summer": ("꿈", "서윤의 여름", "30일 육성 시뮬", "미술 입시까지 한 달, 하루하루가 엔딩을 정한다", ("#0f2420", "#2f7a68")),
     "academy": ("답", "방과 후 메신저", "하나 · 유키 · 미오", "답장 하나로 쌓이는 인연 스토리", ("#241020", "#8a3a6a")),
     "cafe": ("잔", "골목 카페", "지우 · 민호 · 서라", "단골들이 서로를 기억하는 작은 카페", ("#1f170f", "#6b4a2a")),
+    "campfire_en": ("✶", "Campfire", "Sera · Doyun · Harin", "One gift decides who shields whom tonight", ("#2b1408", "#7a2f0c"), "Aethrion · rules keep the numbers, your model tells it"),
 }
 
 PAGE = """<!doctype html><html lang="ko"><head><meta charset="utf-8"><style>
@@ -27,10 +28,11 @@ h1{{font-size:64px;margin:28px 0 8px;letter-spacing:-1px}}
 .line{{font-size:22px;line-height:1.45;opacity:.9;margin-top:22px}}
 .brand{{font-size:18px;opacity:.7;border-top:1px solid rgba(255,255,255,.25);padding-top:14px}}
 </style></head><body><div><div class="glyph">{glyph}</div><h1>{title}</h1><div class="who">{who}</div><div class="line">{line}</div></div>
-<div class="brand">Aethrion · 숫자는 규칙이, 이야기는 모델이</div></body></html>"""
+<div class="brand">{brand}</div></body></html>"""
 
-for cast, (glyph, title, who, line, (c0, c1)) in COVERS.items():
-    page = PAGE.format(glyph=glyph, title=html.escape(title), who=html.escape(who), line=html.escape(line), c0=c0, c1=c1)
+for cast, (glyph, title, who, line, (c0, c1), *rest) in COVERS.items():
+    brand = rest[0] if rest else "Aethrion · 숫자는 규칙이, 이야기는 모델이"
+    page = PAGE.format(glyph=glyph, title=html.escape(title), who=html.escape(who), line=html.escape(line), c0=c0, c1=c1, brand=html.escape(brand))
     with tempfile.NamedTemporaryFile("w", suffix=".html", delete=False) as f:
         f.write(page)
     out = os.path.join("priv", "casts", cast + ".png")

@@ -1,0 +1,323 @@
+{
+  "characters": [
+    {
+      "id": "sera",
+      "name": "Sera",
+      "profile": "A 3rd-level cleric of the dawn god. She has tended the party's wounds all along and worries about Doyun's recklessness more than anyone. She trusts the player and follows their lead.",
+      "voice": "Calm and polite. When she worries, her sentences get shorter.",
+      "traits": [
+        "calm"
+      ],
+      "greeting": "(Night at camp. The fire crackles. Harin is out scouting.)\nSera: Harin won't be back for a few hours. …But that bush over there. Something has been moving in it for a while."
+    },
+    {
+      "id": "doyun",
+      "name": "Doyun",
+      "profile": "A 3rd-level rogue with a loose tongue. He looks up to the player like an older brother and notices quickly when he is left out. He only tells Harin what he really feels.",
+      "voice": "Joking and casual. When he is hurt, he laughs it off.",
+      "traits": [
+        "sensitive"
+      ]
+    },
+    {
+      "id": "harin",
+      "name": "Harin",
+      "profile": "A talkative 3rd-level ranger, out scouting. She hears the party's news first and spreads it fastest.",
+      "voice": "Breezy and direct. She always asks back about anything she hears.",
+      "traits": [
+        "talkative"
+      ]
+    },
+    {
+      "id": "goblin_boss",
+      "name": "Goblin Boss",
+      "profile": "The leader of the band in the bushes. Goes for the wounded first.",
+      "voice": "Shouts in a grating voice."
+    },
+    {
+      "id": "goblin_a",
+      "name": "Goblin Scout",
+      "profile": "A goblin that hovers near the boss.",
+      "voice": "Cackles."
+    },
+    {
+      "id": "goblin_b",
+      "name": "Goblin Archer",
+      "profile": "A goblin hiding behind the bushes.",
+      "voice": "Cackles."
+    }
+  ],
+  "relationships": [
+    {
+      "from": "sera",
+      "to": "user",
+      "affinity": 40,
+      "trust": 42
+    },
+    {
+      "from": "doyun",
+      "to": "user",
+      "affinity": 45,
+      "trust": 20
+    },
+    {
+      "from": "harin",
+      "to": "user",
+      "affinity": 25,
+      "trust": 20
+    },
+    {
+      "from": "sera",
+      "to": "doyun",
+      "affinity": 55,
+      "trust": 30
+    },
+    {
+      "from": "doyun",
+      "to": "sera",
+      "affinity": 50,
+      "trust": 30
+    },
+    {
+      "from": "doyun",
+      "to": "harin",
+      "affinity": 40,
+      "trust": 45
+    },
+    {
+      "from": "harin",
+      "to": "doyun",
+      "affinity": 45,
+      "trust": 35
+    },
+    {
+      "from": "sera",
+      "to": "harin",
+      "affinity": 30,
+      "trust": 30
+    },
+    {
+      "from": "harin",
+      "to": "sera",
+      "affinity": 30,
+      "trust": 30
+    }
+  ],
+  "stats": {
+    "user": {
+      "hp": 28,
+      "max_hp": 28,
+      "ac": 16,
+      "attack_bonus": 5,
+      "damage_dice": 1,
+      "damage_die": 8,
+      "damage_bonus": 3,
+      "speed": 3,
+      "potions": 2
+    },
+    "sera": {
+      "hp": 21,
+      "max_hp": 21,
+      "ac": 18,
+      "attack_bonus": 4,
+      "damage_dice": 1,
+      "damage_die": 6,
+      "damage_bonus": 2,
+      "heal_dice": 1,
+      "heal_die": 8,
+      "heal_bonus": 3,
+      "speed": 3,
+      "party": 1
+    },
+    "doyun": {
+      "hp": 20,
+      "max_hp": 20,
+      "ac": 14,
+      "attack_bonus": 5,
+      "damage_dice": 1,
+      "damage_die": 6,
+      "damage_bonus": 3,
+      "speed": 4,
+      "party": 1
+    },
+    "harin": {
+      "hp": 24,
+      "max_hp": 24,
+      "ac": 14,
+      "attack_bonus": 5,
+      "damage_dice": 1,
+      "damage_die": 8,
+      "damage_bonus": 3,
+      "speed": 4,
+      "party": 1,
+      "away": 3
+    },
+    "goblin_boss": {
+      "hp": 21,
+      "max_hp": 21,
+      "ac": 17,
+      "attack_bonus": 4,
+      "damage_dice": 1,
+      "damage_die": 6,
+      "damage_bonus": 2,
+      "speed": 3,
+      "enemy": 1
+    },
+    "goblin_a": {
+      "hp": 7,
+      "max_hp": 7,
+      "ac": 15,
+      "attack_bonus": 4,
+      "damage_dice": 1,
+      "damage_die": 6,
+      "damage_bonus": 2,
+      "speed": 3,
+      "enemy": 1
+    },
+    "goblin_b": {
+      "hp": 7,
+      "max_hp": 7,
+      "ac": 15,
+      "attack_bonus": 4,
+      "damage_dice": 1,
+      "damage_die": 6,
+      "damage_bonus": 2,
+      "speed": 3,
+      "enemy": 1
+    }
+  },
+  "story": {
+    "turn_hours": 1,
+    "labels": {
+      "hp": "HP",
+      "away": "hours until back",
+      "fury": "fury"
+    },
+    "decide_when": [
+      {
+        "all": [
+          {
+            "stat": [
+              "goblin_boss",
+              "hp"
+            ],
+            "at_most": 0
+          },
+          {
+            "stat": [
+              "goblin_a",
+              "hp"
+            ],
+            "at_most": 0
+          },
+          {
+            "stat": [
+              "goblin_b",
+              "hp"
+            ],
+            "at_most": 0
+          }
+        ]
+      },
+      {
+        "stat": [
+          "user",
+          "hp"
+        ],
+        "at_most": 0
+      }
+    ],
+    "endings": [
+      {
+        "id": "carried",
+        "title": "Carried on someone's back",
+        "description": "You wake on a swaying back. You hear Sera praying, and Doyun out of breath.",
+        "when": [
+          {
+            "stat": [
+              "user",
+              "hp"
+            ],
+            "at_most": 0
+          },
+          {
+            "relationship": [
+              "sera",
+              "user"
+            ],
+            "field": "trust",
+            "at_least": 30
+          }
+        ]
+      },
+      {
+        "id": "alone",
+        "title": "The fire burns out",
+        "description": "The goblins' laughter fades into the dark. No one calls your name.",
+        "when": [
+          {
+            "stat": [
+              "user",
+              "hp"
+            ],
+            "at_most": 0
+          }
+        ]
+      },
+      {
+        "id": "a_price",
+        "title": "A night won, a seat empty",
+        "description": "Every goblin is down. But one seat by the fire is empty.",
+        "when": [
+          {
+            "any": [
+              {
+                "stat": [
+                  "sera",
+                  "hp"
+                ],
+                "at_most": 0
+              },
+              {
+                "stat": [
+                  "doyun",
+                  "hp"
+                ],
+                "at_most": 0
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "four",
+        "title": "Four by the fire",
+        "description": "Back from scouting, Harin picks up the goblin boss's helmet and grins. \"What happened while I was gone? Tell me everything, from the start.\"",
+        "when": [
+          {
+            "stat": [
+              "harin",
+              "away"
+            ],
+            "at_most": 0
+          }
+        ]
+      },
+      {
+        "id": "three",
+        "title": "A night the three of you held",
+        "description": "The goblins beaten, the three of you build up the fire again without a word. There will be a lot to tell Harin when she is back.",
+        "when": []
+      }
+    ]
+  },
+  "tuning": {
+    "combat": {
+      "party_trust": 10,
+      "potion_dice": 2,
+      "potion_die": 4,
+      "potion_bonus": 2,
+      "protect_below": 60
+    }
+  }
+}

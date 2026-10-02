@@ -71,7 +71,7 @@ Then open http://localhost:4848 and click **RisuAI**: it shows the values to cop
 ```bash
 mix deps.get
 mix demo.drama      # two events in, a small social drama out; no model needed
-mix aethrion.serve --cast priv/casts/campfire.json --locale ko --llm claude
+mix aethrion.serve --cast priv/casts/campfire_en.json --llm claude   # campfire.json --locale ko for Korean
 ```
 
 Then open http://localhost:4848 to chat, or http://localhost:4848/editor to edit the cast, or point RisuAI at `http://localhost:4848/v1` ([setup](docs/risuai.md)).
@@ -92,7 +92,8 @@ Without `--llm`, keyword rules and templates stand in. That is for tests and dev
 - **Endings by the numbers.** Raising-sim stats and activities, endings with a hint of what is still missing, and messenger-style bond stories. ([stories](docs/stories.md))
 - **Fights.** HP, guarding, healing, and the d20 rules of the D&D 5e SRD. Companions fight beside you only if they trust you. ([stories](docs/stories.md#endings-and-fights))
 - **A cast editor and route simulator** at `/editor`. Write a route the way a player chats and see which ending it reaches. ([stories](docs/stories.md#authoring-worlds))
-- **Bundled Korean casts**:
+- **Bundled casts**, most in Korean:
+  - `campfire_en`: the campfire party in English
   - `summer`: a raising sim
   - `quest`: a hunt for the wolf king
   - `den`: a D&D wolf den

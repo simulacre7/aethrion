@@ -8,6 +8,7 @@ Ready for chat apps and games: a world per user, conversations a model can follo
 
 ### Added
 
+- `priv/casts/campfire_en.json`: the campfire cast in English, with the same numbers (a test keeps them equal) and its own cover. Card names come from the cast file in words: `campfire_en.json` is "Campfire (EN)".
 - Card covers: the bundled casts have cover images (`priv/casts/<cast>.png`, drawn by `scripts/cast_covers.py`), and `GET /casts/card?format=png` puts the card into the cover next to the cast file (`Card.to_png/2`, `ccv3` and `chara` chunks), so the card shows a picture in RisuAI's list. The chat page's RisuAI panel downloads the PNG card when there is one.
 - Streaming: with `stream: true`, `/v1/chat/completions` sends the narration as the model writes it (chunked server-sent events), the status block last; a model failing mid-stream ends it with an error event. `LLM.stream_chat/4`, with `stream_chat/3` in `OpenAICompatible`, `Anthropic`, and `CLI` (the Claude Code CLI's `stream-json`; Codex replies whole). `HTTP.stream_post/6` reads server-sent events on `:httpc`.
 - Easier set-up for chat apps: the chat page's **RisuAI** panel shows the URL and request model to copy and downloads the cast's card (named after the cast file, `--cast priv/casts/campfire.json` gives "Campfire"); `mix aethrion.serve` prints how to connect; the server logs one line per bridge turn (the line, rules and model time, the outcome). A model name without a character (`aethrion`) now talks to the character who greets on the card, not the first in the cast.

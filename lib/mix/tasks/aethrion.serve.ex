@@ -135,9 +135,18 @@ defmodule Mix.Tasks.Aethrion.Serve do
   end
 
   # The cast's file name, for the card RisuAI imports: "campfire.json" is
-  # "Campfire".
+  # "Campfire", "campfire_en.json" "Campfire (EN)".
   defp card_name(nil), do: "Aethrion"
-  defp card_name(path), do: path |> Path.basename(".json") |> String.capitalize()
+
+  defp card_name(path) do
+    case path |> Path.basename(".json") |> String.split(~r/[_.-]/, trim: true) do
+      [name, lang] when byte_size(lang) == 2 ->
+        String.capitalize(name) <> " (#{String.upcase(lang)})"
+
+      words ->
+        Enum.map_join(words, " ", &String.capitalize/1)
+    end
+  end
 
   # A cover image next to the cast file ("campfire.png"), for the card.
   defp card_image(nil), do: nil

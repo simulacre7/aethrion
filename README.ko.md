@@ -97,7 +97,7 @@ mix aethrion.serve --cast priv/casts/campfire.json --locale ko --llm claude
   - `quest`: 늑대왕 토벌
   - `den`: D&D 늑대 굴
   - `academy`: 메신저 아카데미
-  - `campfire`: 모닥불 파티
+  - `campfire`: 모닥불 파티 (영어판 `campfire_en`)
 
 ## 동작 방식
 
