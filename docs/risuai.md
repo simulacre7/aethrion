@@ -28,6 +28,24 @@ RisuAI ◀──(narration + <aethrion-status>)──┘
 - The `<aethrion-status id="...">` block at the end of a reply is drawn as a status window and taken out of the history on the next request. Its id is a checkpoint: the world after that turn. When RisuAI trims the oldest messages to fit its context, the replay starts from the checkpoints still in the chat, so the state does not rewind.
 - What each line was read as is cached (`bridge-readings.jsonl` under `--data`, `tmp/worlds` by default), so only new lines go to the interpreting model. Checkpoints are kept beside it in `bridge-checkpoints.jsonl`.
 
+## The Quick Way: Docker
+
+No Elixir needed. `compose.yaml` runs RisuAI and Aethrion together, both reachable only from this computer:
+
+```bash
+git clone https://github.com/simulacre7/aethrion && cd aethrion
+cp .env.example .env     # put your model's address and key in .env
+docker compose up -d
+```
+
+`.env.example` shows the choices for the model that narrates: any OpenAI-compatible API (OpenRouter, for one), the Claude API, or a model served on this computer (Ollama, LM Studio, llama.cpp). `AETHRION_CAST` picks the cast (`campfire` by default).
+
+Open RisuAI at http://localhost:6001, then set up the model as in [section 3](#3-set-the-model) with the URL `http://aethrion:4848/v1`, and import a card as in [section 4](#4-character-cards). The card comes from http://localhost:4848/casts/card?name=Campfire. `docker compose logs aethrion` shows what Aethrion is doing, and `docker compose down` stops both.
+
+Already running RisuAI? Start only Aethrion with `docker compose up -d aethrion`, and use `http://host.docker.internal:4848/v1` as the URL.
+
+The rest of this page sets things up by hand, with Elixir installed.
+
 ## 1. Run Aethrion
 
 ```bash

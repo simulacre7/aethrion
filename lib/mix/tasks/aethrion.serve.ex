@@ -26,6 +26,9 @@ defmodule Mix.Tasks.Aethrion.Serve do
   - `--port N` (default 4848), `--bind ADDRESS` (default `127.0.0.1`)
   - `--token TOKEN` - require `Authorization: Bearer TOKEN` (default: the
     `AETHRION_TOKEN` environment variable; none when unset)
+  - `--allow-host NAMES` - comma-separated names besides this machine's that
+    may reach the server without a token, such as a Docker Compose service
+    name (default: the `AETHRION_ALLOW_HOSTS` environment variable)
   - `--llm NAME` - the model that reads what each chat line does and writes
     what characters say: `anthropic`, `openai` (any OpenAI-compatible API),
     `ollama`, `lmstudio`, `llamacpp` (a model served on this machine),
@@ -57,6 +60,7 @@ defmodule Mix.Tasks.Aethrion.Serve do
     port: :integer,
     bind: :string,
     token: :string,
+    allow_host: :string,
     llm: :string,
     model: :string,
     base_url: :string,
@@ -66,7 +70,7 @@ defmodule Mix.Tasks.Aethrion.Serve do
   ]
 
   @usage "mix aethrion.serve [--cast FILE] [--data DIR] [--port N] [--bind ADDRESS] " <>
-           "[--token TOKEN] [--llm anthropic|openai] [--locale ko] [--idle MINUTES] [--tick-every SECONDS]"
+           "[--token TOKEN] [--allow-host NAMES] [--llm anthropic|openai] [--locale ko] [--idle MINUTES] [--tick-every SECONDS]"
 
   @impl Mix.Task
   def run(args) do
@@ -102,7 +106,8 @@ defmodule Mix.Tasks.Aethrion.Serve do
       {:ok, _store} = Aethrion.Bridge.Store.start_link(name: name, path: Path.join(data, file))
     end
 
-    token = opts[:token] || System.get_env("AETHRION_TOKEN")
+    # An empty AETHRION_TOKEN (as Compose passes an unset one) means no token.
+    token = blank_to_nil(opts[:token] || System.get_env("AETHRION_TOKEN"))
 
     {:ok, api} =
       Aethrion.API.start_link(
@@ -111,6 +116,7 @@ defmodule Mix.Tasks.Aethrion.Serve do
           port: Keyword.get(opts, :port, 4848),
           bind: opts[:bind] || "127.0.0.1",
           token: token,
+          allow_hosts: allow_hosts(opts[:allow_host] || System.get_env("AETHRION_ALLOW_HOSTS")),
           locale: if(opts[:locale] == "ko", do: :ko, else: :en),
           cast: cast
         ] ++ reading(adapter, adapter_opts, backend_opts, label)
@@ -127,6 +133,18 @@ defmodule Mix.Tasks.Aethrion.Serve do
 
     unless iex_running?(), do: Process.sleep(:infinity)
   end
+
+  defp blank_to_nil(value) when value in [nil, ""], do: nil
+  defp blank_to_nil(value), do: value
+
+  defp allow_hosts(nil), do: []
+
+  defp allow_hosts(names),
+    do:
+      names
+      |> String.split(",", trim: true)
+      |> Enum.map(&String.trim/1)
+      |> Enum.reject(&(&1 == ""))
 
   defp scheduler(nil), do: []
 

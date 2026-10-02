@@ -28,6 +28,36 @@ RisuAI ◀──(이야기 + <aethrion-status>)──┘
 - 응답 끝의 `<aethrion-status id="...">` 블록은 상태창으로 그려지고, 다음 요청 때 기록에서 빠집니다. 블록의 id는 그 턴 뒤의 세계를 가리키는 체크포인트입니다. RisuAI가 컨텍스트 한도에 맞추려고 오래된 메시지를 잘라 보내도, 남아 있는 체크포인트부터 이어서 계산하므로 상태가 되감기지 않습니다.
 - 문장을 무엇으로 읽었는지는 캐시되어(`--data` 폴더, 기본 `tmp/worlds`의 `bridge-readings.jsonl`), 새 문장만 해석 모델을 부릅니다. 체크포인트는 같은 폴더의 `bridge-checkpoints.jsonl`에 남습니다.
 
+## 가장 쉬운 방법: Docker
+
+Elixir를 설치할 필요가 없습니다. `compose.yaml` 하나로 RisuAI와 Aethrion이 함께 뜨고, 둘 다 이 컴퓨터에서만 접속할 수 있습니다.
+
+```bash
+git clone https://github.com/simulacre7/aethrion && cd aethrion
+cp .env.example .env     # .env에 모델 주소와 키를 넣습니다
+docker compose up -d
+```
+
+이야기를 쓸 모델은 `.env.example`에 있는 셋 중에서 고르면 됩니다.
+
+- OpenAI 호환 API(OpenRouter 등)
+- Claude API
+- 이 컴퓨터에서 돌리는 모델(Ollama, LM Studio, llama.cpp)
+
+캐스트는 `AETHRION_CAST`로 고르고, 기본값은 `campfire`(모닥불)입니다.
+
+그다음 순서는 이렇습니다.
+
+1. http://localhost:6001 에서 RisuAI를 엽니다.
+2. [3. 모델 설정](#3-모델-설정)대로 설정하되, URL은 `http://aethrion:4848/v1`로 넣습니다.
+3. [4. 캐릭터 카드](#4-캐릭터-카드)대로 카드를 가져옵니다. 카드는 http://localhost:4848/casts/card?name=Campfire 에서 받을 수 있습니다.
+
+`docker compose logs aethrion`으로 Aethrion이 하는 일을 볼 수 있고, `docker compose down`이면 둘 다 멈춥니다.
+
+이미 RisuAI를 쓰고 계시면 `docker compose up -d aethrion`으로 Aethrion만 띄우고, URL은 `http://host.docker.internal:4848/v1`을 쓰세요.
+
+이 아래는 Elixir를 설치해서 직접 설정하는 방법입니다.
+
 ## 1. Aethrion 서버 실행
 
 ```bash

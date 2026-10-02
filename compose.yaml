@@ -1,0 +1,51 @@
+# RisuAI with Aethrion keeping the numbers, in one command:
+#
+#   cp .env.example .env    # then put your model's address and key in .env
+#   docker compose up -d
+#
+# RisuAI:                      http://localhost:6001
+#   Settings -> Bot Settings -> Model: Custom API, URL: http://aethrion:4848/v1,
+#   Request Model: aethrion, Format: OpenAI Compatible (docs/risuai.md)
+# Aethrion's chat and editor:  http://localhost:4848
+#
+# Only this computer can reach either port. Already running RisuAI? Run just
+# Aethrion with `docker compose up -d aethrion` and use
+# http://host.docker.internal:4848/v1 as the URL instead.
+name: aethrion
+
+services:
+  aethrion:
+    image: ghcr.io/simulacre7/aethrion:latest
+    build: .
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${AETHRION_PORT:-4848}:4848"
+    environment:
+      # RisuAI's server calls Aethrion by its service name.
+      AETHRION_ALLOW_HOSTS: aethrion
+      AETHRION_TOKEN: ${AETHRION_TOKEN:-}
+      AETHRION_LLM_BASE_URL: ${AETHRION_LLM_BASE_URL:-}
+      AETHRION_LLM_API_KEY: ${AETHRION_LLM_API_KEY:-}
+      AETHRION_LLM_MODEL: ${AETHRION_LLM_MODEL:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    command:
+      - --cast
+      - priv/casts/${AETHRION_CAST:-campfire}.json
+      - --locale
+      - ${AETHRION_LOCALE:-ko}
+      - --llm
+      - ${AETHRION_LLM:-openai}
+    volumes:
+      - aethrion-data:/data
+
+  risuai:
+    image: ghcr.io/kwaroran/risuai:latest
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${RISUAI_PORT:-6001}:6001"
+    volumes:
+      - risuai-save:/app/save
+
+volumes:
+  aethrion-data:
+  risuai-save:

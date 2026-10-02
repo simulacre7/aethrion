@@ -52,16 +52,25 @@ Aethrion은 AI 롤플레이에서 바뀌면 안 되는 사실들을 결정론적
 
 ## 빠르게 시작하기
 
-Elixir 1.19 이상과 Erlang/OTP 28 이상이 필요합니다(macOS는 `brew install elixir`). 데이터베이스나 vector store는 필요 없고, 모델은 선택 사항입니다.
+**Docker로 (Elixir 설치 불필요).** RisuAI와 Aethrion이 함께 뜨고, 이 컴퓨터에서만 접속할 수 있습니다.
 
 ```bash
 git clone https://github.com/simulacre7/aethrion && cd aethrion
+cp .env.example .env     # 모델 주소와 키: OpenRouter, Claude API, Ollama 등
+docker compose up -d
+```
+
+http://localhost:6001 에서 RisuAI를 열고, Custom API를 `http://aethrion:4848/v1`로 연결하세요([자세한 순서](docs/risuai.ko.md#가장-쉬운-방법-docker)). Aethrion의 채팅 페이지와 캐스트 편집기는 http://localhost:4848 에 있습니다.
+
+**Elixir로** (Elixir 1.19 이상, Erlang/OTP 28 이상. macOS는 `brew install elixir`). 데이터베이스나 vector store는 필요 없고, 모델은 선택 사항입니다.
+
+```bash
 mix deps.get
 mix demo.drama      # 이벤트 두 개를 넣으면 작은 인간관계 드라마가 나옵니다. 모델 불필요
 mix aethrion.serve --cast priv/casts/campfire.json --locale ko --llm claude
 ```
 
-그다음 http://localhost:4848 에서 바로 대화하거나, http://localhost:4848/editor 에서 캐스트를 편집합니다. RisuAI에서 플레이하려면 `http://localhost:4848/v1`을 연결하세요([설정 방법](docs/risuai.ko.md)).
+그다음 http://localhost:4848 에서 대화하거나, http://localhost:4848/editor 에서 캐스트를 편집합니다. RisuAI에서 플레이하려면 `http://localhost:4848/v1`을 연결하세요([설정 방법](docs/risuai.ko.md)).
 
 `--llm`으로 내레이터를 고릅니다.
 
