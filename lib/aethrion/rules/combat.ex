@@ -477,7 +477,7 @@ defmodule Aethrion.Rules.Combat do
 
   defp party_member?(state, id, event),
     do:
-      State.stat(state, id, "party") > 0 and id not in [event.from, event.to] and
+      in_party?(state, id) and id not in [event.from, event.to] and
         id != Map.get(event, :acted) and
         State.stat(state, id, "hp") > 0
 
@@ -567,7 +567,7 @@ defmodule Aethrion.Rules.Combat do
         |> State.sorted_characters()
         |> Enum.map(& &1.id)
         |> Enum.filter(fn id ->
-          State.stat(state, id, "party") > 0 and id not in [to, event.from] and
+          in_party?(state, id) and id not in [to, event.from] and
             State.stat(state, id, "hp") > 0 and share(state, id) >= param.(:protect_above) and
             State.get_relationship(state, id, to).affinity >= param.(:protect_affinity) and
             not Map.has_key?(state.cooldowns, "combat:protect:#{id}")
@@ -589,6 +589,10 @@ defmodule Aethrion.Rules.Combat do
   end
 
   defp on_side?(state, id), do: player?(state, id) or State.stat(state, id, "party") > 0
+
+  # A companion who is here: someone away fights no one's battles.
+  defp in_party?(state, id),
+    do: State.stat(state, id, "party") > 0 and State.stat(state, id, "away") == 0
 
   defp saved(%Transition{state: state} = transition, saved, protector, event) do
     if State.character?(state, saved) or player?(state, saved) do
@@ -630,7 +634,7 @@ defmodule Aethrion.Rules.Combat do
       |> State.sorted_characters()
       |> Enum.map(& &1.id)
       |> Enum.filter(fn id ->
-        State.stat(state, id, "party") > 0 and id != fallen and State.stat(state, id, "hp") > 0 and
+        in_party?(state, id) and id != fallen and State.stat(state, id, "hp") > 0 and
           State.stat(state, id, "fury") == 0 and
           State.get_relationship(state, id, fallen).affinity >=
             Transition.param(transition, :fury_affinity)

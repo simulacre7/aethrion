@@ -515,7 +515,8 @@ defmodule Aethrion.Bridge do
           for(
             f <- [:jealousy, :loneliness, :joy, :stress],
             d = Map.get(c.state, f) - Map.get(was.state, f),
-            d != 0,
+            # Not the drift of each passing hour.
+            abs(d) >= 5,
             do: "#{f} #{if d > 0, do: "+", else: ""}#{d}"
           ),
         mood = if(c.state.mood != was.state.mood, do: ["now #{c.state.mood}"], else: []),
@@ -561,7 +562,7 @@ defmodule Aethrion.Bridge do
 
   # How the characters' feelings toward the player moved.
   defp changes(before, now) do
-    for character <- State.sorted_characters(now),
+    for character <- people(now),
         was = State.get_relationship(before, character.id, "user"),
         is = State.get_relationship(now, character.id, "user"),
         delta =
@@ -590,7 +591,7 @@ defmodule Aethrion.Bridge do
       for id <- Enum.sort(Map.keys(state.stats)),
           State.stat?(state, id, "hp"),
           not State.character?(state, id) or State.stat(state, id, "enemy") > 0 do
-        "- #{State.name(state, id)}#{hp(state, id)}"
+        "- #{if id == "user", do: "the player", else: State.name(state, id)}#{hp(state, id)}"
       end
 
     ending =

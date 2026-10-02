@@ -251,6 +251,7 @@ defmodule Aethrion.Combat do
     for id <- Enum.sort(Map.keys(stats)),
         State.character?(state, id),
         State.stat(state, id, "party") > 0,
+        State.stat(state, id, "away") == 0,
         do: id
   end
 

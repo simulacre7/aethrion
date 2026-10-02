@@ -1,0 +1,117 @@
+{
+  "characters": [
+    {
+      "id": "sera",
+      "name": "세라",
+      "profile": "새벽의 신을 섬기는 3레벨 클레릭. 일행의 상처를 도맡아 왔고, 도윤의 무모함을 누구보다 걱정한다. 플레이어를 믿고 따른다.",
+      "voice": "차분한 존댓말. 걱정이 깊어지면 말이 짧아진다.",
+      "traits": ["calm"],
+      "greeting": "(밤의 야영지. 모닥불이 탁탁 튄다. 하린은 정찰을 나갔다.)\n세라: 하린 씨가 돌아오려면 몇 시간은 걸릴 거예요. …그런데 저 덤불, 아까부터 뭔가 움직여요."
+    },
+    {
+      "id": "doyun",
+      "name": "도윤",
+      "profile": "입이 가벼운 3레벨 로그. 플레이어를 형처럼 따르고, 눈치가 빨라 서운한 것도 빨리 알아챈다. 속마음은 하린에게만 털어놓는다.",
+      "voice": "장난스러운 반말. 서운하면 농담으로 얼버무린다.",
+      "traits": ["sensitive"]
+    },
+    {
+      "id": "harin",
+      "name": "하린",
+      "profile": "말이 많은 3레벨 레인저. 정찰을 나가 있다. 일행의 소식은 누구보다 빨리 듣고 누구보다 빨리 퍼뜨린다.",
+      "voice": "시원시원한 반말. 들은 이야기를 꼭 한 번은 되묻는다.",
+      "traits": ["talkative"]
+    },
+    {
+      "id": "goblin_boss",
+      "name": "고블린 두목",
+      "profile": "덤불 속 무리의 우두머리. 다친 자부터 노린다.",
+      "voice": "쇳소리 섞인 고함을 지른다."
+    },
+    {
+      "id": "goblin_a",
+      "name": "고블린 척후",
+      "profile": "두목 곁을 맴도는 고블린.",
+      "voice": "낄낄거린다."
+    },
+    {
+      "id": "goblin_b",
+      "name": "고블린 궁수",
+      "profile": "덤불 뒤에 숨은 고블린.",
+      "voice": "낄낄거린다."
+    }
+  ],
+  "relationships": [
+    {"from": "sera", "to": "user", "affinity": 40, "trust": 42},
+    {"from": "doyun", "to": "user", "affinity": 45, "trust": 20},
+    {"from": "harin", "to": "user", "affinity": 25, "trust": 20},
+    {"from": "sera", "to": "doyun", "affinity": 55, "trust": 30},
+    {"from": "doyun", "to": "sera", "affinity": 50, "trust": 30},
+    {"from": "doyun", "to": "harin", "affinity": 40, "trust": 45},
+    {"from": "harin", "to": "doyun", "affinity": 45, "trust": 35},
+    {"from": "sera", "to": "harin", "affinity": 30, "trust": 30},
+    {"from": "harin", "to": "sera", "affinity": 30, "trust": 30}
+  ],
+  "stats": {
+    "user": {"hp": 28, "max_hp": 28, "ac": 16, "attack_bonus": 5, "damage_dice": 1, "damage_die": 8, "damage_bonus": 3, "speed": 3, "potions": 2},
+    "sera": {"hp": 21, "max_hp": 21, "ac": 18, "attack_bonus": 4, "damage_dice": 1, "damage_die": 6, "damage_bonus": 2, "heal_dice": 1, "heal_die": 8, "heal_bonus": 3, "speed": 3, "party": 1},
+    "doyun": {"hp": 20, "max_hp": 20, "ac": 14, "attack_bonus": 5, "damage_dice": 1, "damage_die": 6, "damage_bonus": 3, "speed": 4, "party": 1},
+    "harin": {"hp": 24, "max_hp": 24, "ac": 14, "attack_bonus": 5, "damage_dice": 1, "damage_die": 8, "damage_bonus": 3, "speed": 4, "party": 1, "away": 3},
+    "goblin_boss": {"hp": 21, "max_hp": 21, "ac": 17, "attack_bonus": 4, "damage_dice": 1, "damage_die": 6, "damage_bonus": 2, "speed": 3, "enemy": 1},
+    "goblin_a": {"hp": 7, "max_hp": 7, "ac": 15, "attack_bonus": 4, "damage_dice": 1, "damage_die": 6, "damage_bonus": 2, "speed": 3, "enemy": 1},
+    "goblin_b": {"hp": 7, "max_hp": 7, "ac": 15, "attack_bonus": 4, "damage_dice": 1, "damage_die": 6, "damage_bonus": 2, "speed": 3, "enemy": 1}
+  },
+  "story": {
+    "turn_hours": 1,
+    "labels": {"hp": "체력", "away": "돌아오기까지 남은 시간", "fury": "분노"},
+    "decide_when": [
+      {"all": [
+        {"stat": ["goblin_boss", "hp"], "at_most": 0},
+        {"stat": ["goblin_a", "hp"], "at_most": 0},
+        {"stat": ["goblin_b", "hp"], "at_most": 0}
+      ]},
+      {"stat": ["user", "hp"], "at_most": 0}
+    ],
+    "endings": [
+      {
+        "id": "carried",
+        "title": "누군가의 등에 업혀",
+        "description": "흔들리는 등 위에서 눈을 뜬다. 세라의 기도 소리와, 숨을 몰아쉬는 도윤의 목소리가 들린다.",
+        "when": [
+          {"stat": ["user", "hp"], "at_most": 0},
+          {"relationship": ["sera", "user"], "field": "trust", "at_least": 30}
+        ]
+      },
+      {
+        "id": "alone",
+        "title": "꺼져 가는 모닥불",
+        "description": "고블린들의 웃음소리가 멀어진다. 아무도 네 이름을 부르지 않는다.",
+        "when": [{"stat": ["user", "hp"], "at_most": 0}]
+      },
+      {
+        "id": "a_price",
+        "title": "이긴 밤, 비어 있는 자리",
+        "description": "고블린은 모두 쓰러졌다. 그러나 모닥불 곁 한 자리가 비어 있다.",
+        "when": [
+          {"any": [
+            {"stat": ["sera", "hp"], "at_most": 0},
+            {"stat": ["doyun", "hp"], "at_most": 0}
+          ]}
+        ]
+      },
+      {
+        "id": "four",
+        "title": "모닥불 곁의 넷",
+        "description": "돌아온 하린이 고블린 두목의 투구를 집어 들며 웃는다. \"나 없는 사이에 무슨 일이 있었던 거야? 처음부터 다 말해 봐.\"",
+        "when": [{"stat": ["harin", "away"], "at_most": 0}]
+      },
+      {
+        "id": "three",
+        "title": "셋이서 지킨 밤",
+        "description": "고블린을 물리치고 셋은 말없이 모닥불을 다시 지핀다. 하린이 돌아오면 할 이야기가 많다.",
+        "when": []
+      }
+    ]
+  },
+  "tuning": {"combat": {"party_trust": 10, "potion_dice": 2, "potion_die": 4, "potion_bonus": 2, "protect_below": 60}}
+}

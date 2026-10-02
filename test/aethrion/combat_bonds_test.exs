@@ -200,6 +200,19 @@ defmodule Aethrion.CombatBondsTest do
     end
   end
 
+  test "a companion who is away does not join, protect, or rage" do
+    away = %{"doyun" => %{"away" => 3}}
+
+    {_state, outputs} = run(party(%{}, away), [Event.attack("user", "wolf")])
+    refute Enum.any?(combat(outputs), &(&1.character_id == "doyun"))
+
+    state =
+      party(%{{"doyun", "sera"} => %{"affinity" => 60}}, Map.put(away, "sera", %{"hp" => 5}))
+
+    {_state, outputs} = run(state, [Event.attack("wolf", "sera", counter: true)])
+    refute Enum.any?(combat(outputs), &(&1.kind == :protected))
+  end
+
   test "the new moments are told in both languages" do
     state = party()
 
