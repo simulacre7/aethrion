@@ -374,6 +374,9 @@ mix run examples/den.exs
 mix aethrion.serve --cast priv/casts/den.json --locale ko --llm claude   # then just chat at http://localhost:4848
 ```
 
+**Fights that follow feelings.** How the fighters feel about each other changes the fight, by numbers a cast can tune: a companion who cares about someone in danger (affinity 50 or more, they below half their hp) steps in front of the blow, once a round, and is liked and trusted more for it; when someone falls, the companions who loved them fight on enraged (+2 to their attacks); a companion who trusts you deeply (trust 40 or more) strikes beside you with advantage, as the SRD's Help action gives; and a healer passes over someone they resent (tension 50 or more) until that one falls. So what happened before the fight decides who shields whom in it. In `priv/casts/campfire.json`, a necklace for Sera by the fire lifts her care for you just past the line where she takes the goblins' blows for you; without it she never does (`test/aethrion/campfire_test.exs` plays both).
+
+
 ## Authoring Worlds
 
 A world is a cast file (JSON): characters with a profile, a voice, and traits; relationships; stats; a story with activities, endings, and bond stories; and tuning for the rules' numbers. `mix aethrion.serve` also serves a **cast editor** at `/editor`: characters, relationships, stats, endings, and bond stories in forms (conditions with a builder: stat, relationship, bond, mood, time), checked by the server as you type (the problem and where it is), and downloaded as JSON. Its **route simulator** plays the story along routes written the way a player chats, and shows where each ends, on which day, and how close the other endings came:
@@ -403,6 +406,18 @@ People already play long role-play and simulation chats in apps like RisuAI and 
 ```
 
 A reroll gets the same outcome, an edited line is recomputed, and a chat the app trims to fit its context goes on from checkpoints kept with each reply. `GET /casts/card` exports a cast as a narrator card that brings the status window into RisuAI; `mix aethrion.card` goes the other way, turning a shared character card (V1/V2/V3 PNG, JSON, CHARX) into a cast to add numbers and endings to. Setup: [docs/risuai.md](docs/risuai.md) ([한국어](docs/risuai.ko.md)).
+
+**The whole cast, not one character.** A chat goes to whoever the player last called by name ("도윤, 왜 그렇게 조용해?"), the characters there see what the player says and gives, someone `away` does not, and a story's `turn_hours` lets time pass each turn, so the one who saw it can grow jealous and confide in a friend before the player's next line. The model is told all of it as facts (who saw it, who was away and does not know, who told whom, how they now feel about each other), and the status window shows the changes between characters. From a run of `priv/casts/campfire.json` with the Claude Code CLI as the model (the narration is the model's; every number and who did what is the rules'):
+
+```txt
+나:   세라, 목걸이 사 왔어. 선물이야
+      …그 모습을 지켜보던 도윤은 "와, 형, 나는 육포 한 조각도 안 사 왔으면서~" 하고 낄낄 웃었지만,
+      세라 쪽으로 향한 눈길은 어딘가 비뚜름했다. …
+      세라 · 호감 50 · 신뢰 42   도윤 → 하린 · 호감 +3 · 신뢰 +7   도윤 → 세라 · 긴장 +8
+나:   고블린 척후를 벤다
+      …세라는 새벽의 신께 짧게 기도하며 네 옆구리의 상처에 다시 빛을 얹고는 곧바로 네 앞을 막아섰고, …
+```
+
 
 ## Runtime vs LLM Server
 

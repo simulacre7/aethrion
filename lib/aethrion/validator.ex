@@ -85,13 +85,22 @@ defmodule Aethrion.Validator do
 
   defp validate_event(state, %{type: type} = event)
        when type in [:attack, :defend, :heal, :flee] do
-    if Aethrion.Combat.over?(state),
-      do:
+    away = Enum.find([:from, :to], &(State.stat(state, Map.get(event, &1), "away") > 0))
+
+    cond do
+      Aethrion.Combat.over?(state) ->
         {:error,
          error(:invalid_event, "the fight is over: the story has reached its ending", %{
            field: :type
-         })},
-      else: validate_combat(state, event)
+         })}
+
+      # Someone away ("away" hours left) is not here to fight or be fought.
+      away ->
+        {:error, error(:invalid_event, "#{Map.get(event, away)} is away", %{field: away})}
+
+      true ->
+        validate_combat(state, event)
+    end
   end
 
   defp validate_event(state, %{type: :activity} = event) do

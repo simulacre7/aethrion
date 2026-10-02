@@ -92,7 +92,7 @@ Apologies take `observed_by` too. Witnesses remember it (importance 45), and tho
 
 ### `time_tick` -> `time_passage`, `memory_decay`, `consolidation`, `autonomy`, `companionship`
 
-**time_passage** - advances `state.clock` by `hours`. For each active character, per hour: joy -2, stress -2, and loneliness +2 for each hour 16 or more (`quiet_hours`) after they last had company. Anything that eases a character's loneliness (a warm or neutral message, a gift, an apology, comfort, gossip, time together) counts as company; a character who has never had company grows lonely from the start. For each simulated day boundary crossed, jealousy fades by 5 and tension in every relationship eases by 2. None of this depends on how time was split into ticks.
+**time_passage** - advances `state.clock` by `hours`. For each active character, per hour: joy -2, stress -2, and loneliness +2 for each hour 16 or more (`quiet_hours`) after they last had company. Anything that eases a character's loneliness (a warm or neutral message, a gift, an apology, comfort, gossip, time together) counts as company; a character who has never had company grows lonely from the start. For each simulated day boundary crossed, jealousy fades by 5 and tension in every relationship eases by 2. None of this depends on how time was split into ticks. An actor with an `"away"` stat is away that many more hours: it counts down by the hours passed, and at 0 they are back (who is away does not witness what happens in `Aethrion.Bridge`, and does not fight).
 
 **memory_decay** - recomputes each memory's strength from its age:
 

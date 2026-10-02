@@ -56,7 +56,7 @@ defmodule Aethrion.BridgeReviewTest do
 
   defp play(cast, messages, to \\ "sera") do
     {_all, chat} = Bridge.transcript(messages)
-    read = Bridge.reader(to, [interpreter: Aethrion.Interpreter.Rules], no_cache())
+    read = Bridge.reader([interpreter: Aethrion.Interpreter.Rules], no_cache())
     replayed = Bridge.replay(cast, chat, read, to: to, checkpoints: checkpoints())
     # Checkpoints are kept in the background; the next request comes later.
     _ = :sys.get_state(Aethrion.Bridge.Checkpoints)
@@ -116,7 +116,7 @@ defmodule Aethrion.BridgeReviewTest do
         Bridge.replay(
           after_two,
           next,
-          Bridge.reader("doyun", [interpreter: Aethrion.Interpreter.Rules], no_cache()),
+          Bridge.reader([interpreter: Aethrion.Interpreter.Rules], no_cache()),
           to: "doyun"
         )
 
@@ -197,7 +197,7 @@ defmodule Aethrion.BridgeReviewTest do
         Bridge.replay(
           den(),
           plain([@u1, edited["content"], @u3, "안녕"]),
-          Bridge.reader("sera", [interpreter: Aethrion.Interpreter.Rules], no_cache()),
+          Bridge.reader([interpreter: Aethrion.Interpreter.Rules], no_cache()),
           to: "sera"
         )
 
@@ -216,7 +216,7 @@ defmodule Aethrion.BridgeReviewTest do
         end)
 
       {_all, chat} = Bridge.transcript(history ++ [%{"role" => "user", "content" => "잘 자"}])
-      read = Bridge.reader("sera", [interpreter: Aethrion.Interpreter.Rules], no_cache())
+      read = Bridge.reader([interpreter: Aethrion.Interpreter.Rules], no_cache())
 
       assert {_before, _now, %{line: "잘 자"}} =
                Bridge.replay(den(), chat, read,
@@ -240,7 +240,7 @@ defmodule Aethrion.BridgeReviewTest do
         Bridge.replay(
           den(),
           Enum.map(lines, &user/1),
-          Bridge.reader(to, [interpreter: Aethrion.Interpreter.Rules], no_cache()),
+          Bridge.reader([interpreter: Aethrion.Interpreter.Rules], no_cache()),
           to: to
         )
 
@@ -282,7 +282,7 @@ defmodule Aethrion.BridgeReviewTest do
         end)
 
       {_all, chat} = Bridge.transcript(history ++ [user("잘 자")])
-      read = Bridge.reader("sera", [interpreter: Aethrion.Interpreter.Rules], no_cache())
+      read = Bridge.reader([interpreter: Aethrion.Interpreter.Rules], no_cache())
 
       assert {_before, _now, %{line: "잘 자"}} =
                Bridge.replay(den(), chat, read,
@@ -380,26 +380,26 @@ defmodule Aethrion.BridgeReviewTest do
   describe "readings" do
     test "are kept per world, not per line, stand-in readings too" do
       cache = Store.cache(Aethrion.Bridge.Readings)
-      read = Bridge.reader("sera", [interpreter: Counting], cache)
+      read = Bridge.reader([interpreter: Counting], cache)
       state = den()
 
-      read.(state, "안녕", "a")
+      read.(state, "안녕", "a", "sera")
       assert_received {:interpreted, "안녕"}
       _ = :sys.get_state(Aethrion.Bridge.Readings)
-      read.(state, "안녕", "a")
+      read.(state, "안녕", "a", "sera")
       refute_received {:interpreted, "안녕"}
 
       # The same words after a different history are read again.
-      read.(state, "안녕", "b")
+      read.(state, "안녕", "b", "sera")
       assert_received {:interpreted, "안녕"}
 
       # A stand-in reading is kept like any other: the API keeps a turn's
       # readings only once its reply has gone out (second review), and a
       # turn that was answered must replay the same.
-      down = Bridge.reader("sera", [interpreter: Counting, interpreter_opts: [down: true]], cache)
-      down.(state, "잘 가", "a")
+      down = Bridge.reader([interpreter: Counting, interpreter_opts: [down: true]], cache)
+      down.(state, "잘 가", "a", "sera")
       _ = :sys.get_state(Aethrion.Bridge.Readings)
-      down.(state, "잘 가", "a")
+      down.(state, "잘 가", "a", "sera")
       assert_received {:interpreted, "잘 가"}
       refute_received {:interpreted, "잘 가"}
     end

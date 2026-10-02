@@ -49,7 +49,6 @@ defmodule Aethrion.BridgeSecondReviewTest do
 
       read =
         Bridge.reader(
-          "sera",
           [interpreter: Aethrion.Interpreter.Rules],
           Store.cache(Aethrion.Bridge.Readings)
         )
