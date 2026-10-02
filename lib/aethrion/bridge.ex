@@ -167,7 +167,7 @@ defmodule Aethrion.Bridge do
            }, played.talking}
         end)
 
-      {now, after_all, Map.put(turn, :between, between(now, after_all))}
+      {now, after_all, Map.put(turn, :between, between(after_all, turn.outputs))}
     end
   end
 
@@ -252,24 +252,23 @@ defmodule Aethrion.Bridge do
     end)
   end
 
-  # How the characters' feelings toward each other moved (not toward the
-  # player): `[{from, to, field, delta}]`, without the drift of passing time
-  # (tension eases 2 a day between everyone), largest first, at most
-  # `@between_max`.
-  defp between(before, now) do
-    ids = Enum.map(people(now), & &1.id)
+  # How the characters' feelings toward each other moved this turn (not
+  # toward the player), from what the rules changed: `[{from, to, field,
+  # delta}]`, largest first, at most `@between_max`. Time's own easing of
+  # tension is no event, so it is not among them.
+  defp between(state, outputs) do
+    ids = MapSet.new(people(state), & &1.id)
 
-    for from <- ids,
-        to <- ids,
-        from != to,
-        was = State.get_relationship(before, from, to),
-        is = State.get_relationship(now, from, to),
-        field <- [:affinity, :trust, :tension],
-        delta = Map.get(is, field) - Map.get(was, field),
-        abs(delta) > 2 do
-      {from, to, field, delta}
+    for %{type: :relationship_changed, from: from, to: to, delta: delta} <- outputs,
+        from in ids and to in ids,
+        {field, d} <- delta,
+        field in [:affinity, :trust, :tension],
+        reduce: %{} do
+      acc -> Map.update(acc, {from, to, field}, d, &(&1 + d))
     end
-    |> Enum.sort_by(fn {from, to, field, delta} -> {-abs(delta), from, to, field} end)
+    |> Enum.reject(fn {_key, d} -> d == 0 end)
+    |> Enum.map(fn {{from, to, field}, d} -> {from, to, field, d} end)
+    |> Enum.sort_by(fn {from, to, field, d} -> {-abs(d), from, to, field} end)
     |> Enum.take(@between_max)
   end
 

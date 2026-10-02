@@ -38,10 +38,11 @@ defmodule Aethrion.Rules.Combat do
   - **protecting**: when an enemy goes for someone on the player's side
     who is below `protect_below`% of their hp, a companion who cares about
     them (affinity >= `protect_affinity`) and still has `protect_above`% of
-    their own steps in and takes the blow (`:protected`), once a round (a
-    round ends with the player's next move). The one saved grows fonder of
-    them and trusts them more.
-  - **fury**: when someone on the player's side falls, the companions who
+    their own steps in and takes the blow (`:protected`), unless a raised
+    guard is there to take it, once a round (a round ends with the
+    player's next move, asking a companion to heal included, or when time
+    passes). The one saved grows fonder of them and trusts them more.
+  - **fury**: when an enemy fells someone on the player's side, the companions who
     cared about them (affinity >= `fury_affinity`) are enraged
     (`:enraged`, a `"fury"` stat): `fury_bonus` on their attacks for the
     rest of the story.

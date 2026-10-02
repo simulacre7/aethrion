@@ -125,6 +125,27 @@ defmodule Aethrion.BridgeEnsembleTest do
     assert Bridge.status(now, turn, :ko) |> String.split("\n") |> length() <= 20
   end
 
+  test "days passing in a turn hide nothing: what happened between characters is listed whole" do
+    {_before, _now, turn} = play(camp(%{"turn_hours" => 72}), ["세라, 목걸이 사 왔어. 선물이야"])
+    assert {"doyun", "sera", :tension, 8} in turn.between
+
+    {:ok, crowd} =
+      State.parse(%{
+        "characters" => for(i <- 1..12, do: %{"id" => "c#{i}", "name" => "인물#{i}"}),
+        "relationships" =>
+          for(
+            i <- 1..12,
+            j <- 1..12,
+            i != j,
+            do: %{"from" => "c#{i}", "to" => "c#{j}", "tension" => 30}
+          ),
+        "story" => %{"turn_hours" => 24}
+      })
+
+    {_before, _now, turn} = play(crowd, ["인물1, 안녕", "인물1, 잘 지내?"], "c1")
+    assert turn.between == []
+  end
+
   test "without turn_hours, time stands still in a chat" do
     {_before, now, _turn} = play(camp(%{}), ["세라, 목걸이 사 왔어. 선물이야", "세라, 어때?"])
     assert now.clock == 0

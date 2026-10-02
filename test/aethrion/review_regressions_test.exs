@@ -108,7 +108,8 @@ defmodule Aethrion.ReviewRegressionsTest do
 
     test "on timeout, the process and its children are gone", %{tmp_dir: dir} do
       {cli, pids} = slow_cli(dir)
-      assert {:error, :timeout} = CLI.complete("s", "u", command: cli, timeout: 500)
+      # Long enough for the script to start under load, and write its pids.
+      assert {:error, :timeout} = CLI.complete("s", "u", command: cli, timeout: 2_000)
       [shell, child] = read_pids(pids)
       assert eventually_dead?(shell)
       assert eventually_dead?(child)
