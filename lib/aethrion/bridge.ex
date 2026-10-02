@@ -27,7 +27,7 @@ defmodule Aethrion.Bridge do
   which is taken out of the history the app sends back.
   """
 
-  alias Aethrion.{Combat, Interpreter, Runtime, State}
+  alias Aethrion.{Combat, Event, Interpreter, Runtime, State}
 
   @status ~r/\s*<aethrion-status[^>]*>.*?<\/aethrion-status>\s*/s
   @checkpoint ~r/<aethrion-status id="([0-9a-f]{8,64})"/
@@ -102,14 +102,16 @@ defmodule Aethrion.Bridge do
           {State.t(), State.t(), map()} | {:error, :too_many_lines}
   def replay(%State{} = state, chat, read, opts \\ []) do
     to = Keyword.get(opts, :to, "")
-    checkpoints = Keyword.get(opts, :checkpoints)
+    checkpoints = opts |> Keyword.get(:checkpoints) |> as_json()
     root = root(state)
     turns = turns(chat)
 
     {pending, from, id} =
-      case base(state, turns, root, to, checkpoints) do
-        {index, id, %{state: saved}} -> {Enum.drop(turns, index + 1), with_lore(saved, state), id}
-        nil -> {turns, state, root}
+      with {index, id, %{state: {:data, data}}} <- base(state, turns, root, to, checkpoints),
+           {:ok, saved} <- State.parse(data) do
+        {Enum.drop(turns, index + 1), with_story(saved, state), id}
+      else
+        _none -> {turns, state, root}
       end
 
     if length(pending) > Keyword.get(opts, :max_lines, :infinity) do
@@ -167,17 +169,39 @@ defmodule Aethrion.Bridge do
     {after_line, readings, outputs}
   end
 
-  # The cast's lore is the same in every world of the cast: it is left out
-  # of checkpoints and put back from the cast.
+  # The story (endings, lore, activities) is the cast's, the same in every
+  # world of it: it is left out of checkpoints and put back from the cast.
+  defp with_story(state, nil), do: %{state | story: %{}}
+  defp with_story(state, %State{story: story}), do: %{state | story: story}
+
   defp checkpoint(prev, line, state, root),
-    do: %{prev: prev, line: digest(line), root: root, state: with_lore(state, nil)}
+    do: %{prev: prev, line: digest(line), root: root, state: with_story(state, nil)}
 
-  defp with_lore(%State{story: %{} = story} = state, cast) do
-    lore = if cast, do: Map.get(cast.story || %{}, :lore, []), else: []
-    if Map.has_key?(story, :lore), do: %{state | story: Map.put(story, :lore, lore)}, else: state
+  # Checkpoints are kept as JSON (`Aethrion.Bridge.Store`); the world in one
+  # is read back only when a replay starts from it.
+  defp as_json(nil), do: nil
+
+  defp as_json(%{get: get, put: put}) do
+    %{
+      get: fn id ->
+        case get.(id) do
+          %{"prev" => prev, "line" => line, "root" => root, "state" => data} ->
+            %{prev: prev, line: line, root: root, state: {:data, data}}
+
+          _none ->
+            nil
+        end
+      end,
+      put: fn id, checkpoint ->
+        put.(id, %{
+          "prev" => checkpoint.prev,
+          "line" => checkpoint.line,
+          "root" => checkpoint.root,
+          "state" => State.to_data(checkpoint.state)
+        })
+      end
+    }
   end
-
-  defp with_lore(state, _cast), do: state
 
   # The player's lines, each with whether a reply came after it and that
   # reply's checkpoint id. A chat the app trimmed may begin with a reply: it
@@ -323,7 +347,7 @@ defmodule Aethrion.Bridge do
   defp checkpoint_id(prev, to, line),
     do: [prev, 0, to, 0, line] |> sha() |> binary_part(0, 24)
 
-  defp digest(line), do: :crypto.hash(:sha256, line)
+  defp digest(line), do: :crypto.hash(:sha256, line) |> Base.encode64()
 
   # The chain starts from the cast; a checkpoint keeps its root, so another
   # cast's checkpoints are never used.
@@ -490,8 +514,13 @@ defmodule Aethrion.Bridge do
   Reads a line with the interpreter, through `cache` (`get` and `put`
   functions on a key), so a line seen before in the same world is not read
   again. The key holds the interpreter, the character, the line, and the
-  checkpoint of the world it is read in (`prev`); a reading the rules gave
-  in place of a failing interpreter is not kept.
+  checkpoint of the world it is read in (`prev`). What is kept is JSON
+  (the event as `Aethrion.Event.to_data/1` writes it), so it comes back in
+  a fresh VM; a kept reading that does not read back is read again. A
+  reading the rules gave in place of a failing interpreter is kept like any
+  other: a chat app's server keeps a turn's readings only once its reply
+  has gone out (`Aethrion.Bridge.Store.staged/1`), and a turn that was
+  answered must replay the same.
   """
   def reader(to, opts, cache) do
     interpreter = Keyword.get(opts, :interpreter, Interpreter.Rules)
@@ -501,10 +530,10 @@ defmodule Aethrion.Bridge do
         :crypto.hash(:sha256, [inspect(interpreter), 0, prev, 0, to, 0, line])
         |> Base.encode16(case: :lower)
 
-      case cache.get.(key) do
+      case key |> cache.get.() |> from_json() do
         nil ->
-          {:ok, readings, meta} = Interpreter.read(state, "user", to, line, opts)
-          if meta.status == :ok, do: cache.put.(key, readings)
+          {:ok, readings, _meta} = Interpreter.read(state, "user", to, line, opts)
+          cache.put.(key, to_json(readings))
           readings
 
         readings ->
@@ -512,4 +541,30 @@ defmodule Aethrion.Bridge do
       end
     end
   end
+
+  @as ~w(combat activity gift talk)a
+
+  defp to_json(readings),
+    do:
+      Enum.map(readings, fn %{as: as, confidence: confidence, event: event} ->
+        %{"as" => Atom.to_string(as), "confidence" => confidence, "event" => Event.to_data(event)}
+      end)
+
+  @doc false
+  # Readings as the reader keeps them, read back; nil when they do not read.
+  def readings_from_data(data), do: from_json(data)
+
+  defp from_json(readings) when is_list(readings) do
+    Enum.reduce_while(readings, [], fn reading, acc ->
+      with %{"as" => as, "confidence" => confidence, "event" => data} <- reading,
+           as when is_atom(as) <- Enum.find(@as, &(Atom.to_string(&1) == as)),
+           {:ok, event} <- Event.from_data(data) do
+        {:cont, acc ++ [%{as: as, confidence: confidence, event: event}]}
+      else
+        _other -> {:halt, nil}
+      end
+    end)
+  end
+
+  defp from_json(_none), do: nil
 end

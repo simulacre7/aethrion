@@ -345,40 +345,27 @@ defmodule Aethrion.API do
          {:ok, cast} <- bridge_cast(config),
          {:ok, adapter, adapter_opts} <- generator(config),
          {:ok, to, status?} <- bridge_model(cast, data["model"]) do
-      locale = if config.locale == :ko, do: :ko, else: :en
-      {all, chat} = Aethrion.Bridge.transcript(messages)
+      # What this turn reads and reaches is kept only once its reply has
+      # gone out: a turn that was answered then replays the same, whatever
+      # the model would read now, and a failed one leaves nothing behind.
+      {readings, commit_readings, discard_readings} =
+        Aethrion.Bridge.Store.staged(Aethrion.Bridge.Readings)
 
-      read =
-        Aethrion.Bridge.reader(
-          to,
-          [
-            interpreter: config.interpreter,
-            interpreter_opts: config.interpreter_opts,
-            intent: config.intent
-          ],
-          Aethrion.Bridge.Store.cache(Aethrion.Bridge.Readings)
-        )
+      {checkpoints, commit_checkpoints, discard_checkpoints} =
+        Aethrion.Bridge.Store.staged(Aethrion.Bridge.Checkpoints)
 
-      with {:ok, {before, now, turn}} <- replay_chat(cast, chat, read, to) do
-        note = %{"role" => "system", "content" => Aethrion.Bridge.note(before, now, turn, locale)}
-        opts = adapter_opts ++ generation_opts(data)
-
-        case Aethrion.LLM.chat(adapter, all ++ [note], opts) do
-          # A reply to a request to continue one adds to it: no new turn, no
-          # second status block.
-          {:ok, text} when status? and turn.line != nil ->
-            completion(
-              data,
-              String.trim(text) <> "\n\n" <> Aethrion.Bridge.status(now, turn, locale)
-            )
-
-          {:ok, text} ->
-            completion(data, String.trim(text))
-
-          {:error, reason} ->
-            {:error, 502,
-             Error.new(:model_failed, "the model did not answer: #{inspect(reason)}")}
-        end
+      try do
+        bridge_turn(config, data, messages, cast, %{
+          to: to,
+          status?: status?,
+          generator: {adapter, adapter_opts},
+          readings: readings,
+          checkpoints: checkpoints,
+          commit: fn -> Enum.each([commit_readings, commit_checkpoints], & &1.()) end
+        })
+      after
+        # Whatever was not committed (a failed reply, an error) is dropped.
+        Enum.each([discard_readings, discard_checkpoints], & &1.())
       end
     end
   end
@@ -677,14 +664,54 @@ defmodule Aethrion.API do
     end
   end
 
+  defp bridge_turn(config, data, messages, cast, turn_opts) do
+    locale = if config.locale == :ko, do: :ko, else: :en
+    {all, chat} = Aethrion.Bridge.transcript(messages)
+    {adapter, adapter_opts} = turn_opts.generator
+
+    read =
+      Aethrion.Bridge.reader(
+        turn_opts.to,
+        [
+          interpreter: config.interpreter,
+          interpreter_opts: config.interpreter_opts,
+          intent: config.intent
+        ],
+        turn_opts.readings
+      )
+
+    with {:ok, {before, now, turn}} <-
+           replay_chat(cast, chat, read, turn_opts.to, turn_opts.checkpoints) do
+      note = %{"role" => "system", "content" => Aethrion.Bridge.note(before, now, turn, locale)}
+      replied = Aethrion.LLM.chat(adapter, all ++ [note], adapter_opts ++ generation_opts(data))
+      if match?({:ok, _text}, replied), do: turn_opts.commit.()
+
+      case replied do
+        # A reply to a request to continue one adds to it: no new turn, no
+        # second status block.
+        {:ok, text} when turn_opts.status? and turn.line != nil ->
+          completion(
+            data,
+            String.trim(text) <> "\n\n" <> Aethrion.Bridge.status(now, turn, locale)
+          )
+
+        {:ok, text} ->
+          completion(data, String.trim(text))
+
+        {:error, reason} ->
+          {:error, 502, Error.new(:model_failed, "the model did not answer: #{inspect(reason)}")}
+      end
+    end
+  end
+
   # At most this many lines are replayed in one request (with a model
   # reading them, each new one is a call).
   @max_replay 300
 
-  defp replay_chat(cast, chat, read, to) do
+  defp replay_chat(cast, chat, read, to, checkpoints) do
     case Aethrion.Bridge.replay(cast, chat, read,
            to: to,
-           checkpoints: Aethrion.Bridge.Store.cache(Aethrion.Bridge.Checkpoints),
+           checkpoints: checkpoints,
            max_lines: @max_replay
          ) do
       {:error, :too_many_lines} ->

@@ -135,7 +135,11 @@ defmodule Aethrion.BridgeReviewTest do
       messages = chat(cast, [@u1])
       [_, id] = Regex.run(~r/id="([0-9a-f]+)"/, List.last(messages)["content"])
 
-      assert Store.get(Aethrion.Bridge.Checkpoints, id).state.story.lore == []
+      assert get_in(Store.get(Aethrion.Bridge.Checkpoints, id), ["state", "story", "lore"]) in [
+               nil,
+               []
+             ]
+
       {_before, now, _turn} = play(cast, messages ++ [%{"role" => "user", "content" => @u3}])
       assert now.story.lore == cast.story.lore
     end
@@ -374,7 +378,7 @@ defmodule Aethrion.BridgeReviewTest do
   end
 
   describe "readings" do
-    test "are kept per world, not per line, and a stand-in reading is not kept" do
+    test "are kept per world, not per line, stand-in readings too" do
       cache = Store.cache(Aethrion.Bridge.Readings)
       read = Bridge.reader("sera", [interpreter: Counting], cache)
       state = den()
@@ -389,12 +393,15 @@ defmodule Aethrion.BridgeReviewTest do
       read.(state, "안녕", "b")
       assert_received {:interpreted, "안녕"}
 
+      # A stand-in reading is kept like any other: the API keeps a turn's
+      # readings only once its reply has gone out (second review), and a
+      # turn that was answered must replay the same.
       down = Bridge.reader("sera", [interpreter: Counting, interpreter_opts: [down: true]], cache)
       down.(state, "잘 가", "a")
       _ = :sys.get_state(Aethrion.Bridge.Readings)
       down.(state, "잘 가", "a")
       assert_received {:interpreted, "잘 가"}
-      assert_received {:interpreted, "잘 가"}
+      refute_received {:interpreted, "잘 가"}
     end
   end
 
