@@ -57,6 +57,7 @@
             "activities": {"type": "object", "additionalProperties": {"type": "object", "additionalProperties": {"type": "integer"}}},
             "phrases": {"type": "object", "additionalProperties": {"type": "array", "items": {"type": "string"}, "minItems": 1}},
             "activity_hours": {"type": "integer", "minimum": 1},
+            "turn_hours": {"type": "integer", "minimum": 1},
             "labels": {"type": "object", "additionalProperties": {"type": "string"}},
             "lore": {
               "type": "array",

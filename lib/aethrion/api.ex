@@ -350,7 +350,6 @@ defmodule Aethrion.API do
 
       read =
         Aethrion.Bridge.reader(
-          to,
           [
             interpreter: config.interpreter,
             interpreter_opts: config.interpreter_opts,

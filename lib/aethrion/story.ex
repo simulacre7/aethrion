@@ -19,6 +19,10 @@ defmodule Aethrion.Story do
   - `labels` - what stats are called in hints (`"art": "그림 실력"`).
   - `activity_hours` - how long an activity takes: with `24`, each one is a
     day, and the clock moves on by itself, the way a raising sim counts days.
+  - `turn_hours` - how long one turn of a chat takes where the chat is the
+    clock (`Aethrion.Bridge`, a chat app's model): with `1`, each line the
+    player sends lets an hour pass, so characters away come back, moods
+    settle, and word gets around between turns.
   - `milestones` - moments a relationship unlocks once as it grows (a bond
     story, a confession), each with conditions and, optionally, the line a
     character sends first (`Aethrion.Rules.Milestone`). The story goes on.
@@ -323,12 +327,13 @@ defmodule Aethrion.Story do
     with :ok <-
            known_keys(
              data,
-             ~w(activities phrases activity_hours labels lore milestones endings deadline decide_when),
+             ~w(activities phrases activity_hours turn_hours labels lore milestones endings deadline decide_when),
              []
            ),
          {:ok, activities} <- parse_activities(Map.get(data, "activities", %{})),
          {:ok, phrases} <- parse_phrases(Map.get(data, "phrases", %{}), activities),
-         {:ok, hours} <- parse_hours(Map.get(data, "activity_hours")),
+         {:ok, hours} <- parse_hours(Map.get(data, "activity_hours"), "activity_hours"),
+         {:ok, turn_hours} <- parse_hours(Map.get(data, "turn_hours"), "turn_hours"),
          {:ok, labels} <- parse_labels(Map.get(data, "labels", %{})),
          {:ok, lore} <- parse_lore(Map.get(data, "lore", [])),
          {:ok, endings} <- parse_endings(Map.get(data, "endings", [])),
@@ -341,6 +346,7 @@ defmodule Aethrion.Story do
          activities: activities,
          phrases: phrases,
          activity_hours: hours,
+         turn_hours: turn_hours,
          labels: labels,
          lore: lore,
          milestones: milestones,
@@ -414,6 +420,7 @@ defmodule Aethrion.Story do
     |> put_if("activities", story[:activities])
     |> put_if("phrases", story[:phrases])
     |> put_if("activity_hours", story[:activity_hours])
+    |> put_if("turn_hours", story[:turn_hours])
     |> put_if("labels", story[:labels])
     |> put_if("lore", story[:lore] && Enum.map(story.lore, &lore_to_data/1))
     |> put_if(
@@ -528,9 +535,9 @@ defmodule Aethrion.Story do
     |> Enum.map(& &1.content)
   end
 
-  defp parse_hours(nil), do: {:ok, nil}
-  defp parse_hours(hours) when is_integer(hours) and hours > 0, do: {:ok, hours}
-  defp parse_hours(_hours), do: {:error, "must be a positive number of hours", ["activity_hours"]}
+  defp parse_hours(nil, _key), do: {:ok, nil}
+  defp parse_hours(hours, _key) when is_integer(hours) and hours > 0, do: {:ok, hours}
+  defp parse_hours(_hours, key), do: {:error, "must be a positive number of hours", [key]}
 
   defp parse_endings(endings) when is_list(endings) do
     endings

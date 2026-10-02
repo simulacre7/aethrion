@@ -10,6 +10,10 @@ defmodule Aethrion.Rules.TimePassage do
   company. A character who has never had company in this world grows lonely
   from the start. Hours are counted the same however time is split into
   ticks.
+
+  Someone with an `"away"` stat is away for that many more hours: it
+  counts down as time passes, and at 0 they are back. (Who is away does
+  not see what happens; `Aethrion.Bridge` leaves them out of the witnesses.)
   """
 
   use Aethrion.Rule,
@@ -59,11 +63,21 @@ defmodule Aethrion.Rules.TimePassage do
       end)
 
     transition
+    |> come_back(hours)
     |> Transition.note(
       "#{hours}h passed (clock #{to_clock}h): loneliness +#{per_hour} an hour for characters " <>
         "without company for #{quiet}h, or none yet"
     )
     |> ease_daily(state.clock, to_clock)
+  end
+
+  defp come_back(%Transition{state: state} = transition, hours) do
+    state.stats
+    |> Enum.filter(fn {_id, stats} -> Map.get(stats, "away", 0) > 0 end)
+    |> Enum.sort()
+    |> Enum.reduce(transition, fn {id, _stats}, transition ->
+      Transition.adjust_stat(transition, id, "away", -hours, min: 0)
+    end)
   end
 
   # Hours in [from, to) at least `quiet` hours after the character's last company.
