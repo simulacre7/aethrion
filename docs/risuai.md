@@ -82,13 +82,13 @@ From RisuAI in Docker, Aethrion on the host is `http://host.docker.internal:4848
 
 ## 3. Set The Model
 
-In Settings → Bot Settings:
+In Settings → Chat Bot → Model:
 
 | field | value |
 | --- | --- |
 | Model | `Custom API` |
-| URL | `http://host.docker.internal:4848/v1` (desktop app: `http://localhost:4848/v1`) |
-| Key/Password | the `--token` or `AETHRION_TOKEN` value (blank when none) |
+| URL | `http://localhost:4848/v1` (a RisuAI running in Docker: `http://host.docker.internal:4848/v1`) |
+| Key/Password | the access password (the `--token` or `AETHRION_TOKEN` value) |
 | Request Model | `aethrion` (talks to whoever greets on the card; `aethrion:sera` names one) |
 | Format | `OpenAI Compatible` |
 
@@ -102,7 +102,7 @@ Request model names (listed by `GET /v1/models`; foes are not listed):
 
 ## 4. Character Cards
 
-Export an Aethrion cast as a narrator card and import it into RisuAI:
+Export an Aethrion cast as a narrator card and import it into RisuAI. Open http://localhost:4848, put the access password in Token, and click **RisuAI**, then **Download the RisuAI card**. From a terminal:
 
 ```bash
 curl -s -H "Authorization: Bearer $AETHRION_TOKEN" 'localhost:4848/casts/card?name=Wolf%20Den' -o den.json
@@ -121,6 +121,25 @@ mix aethrion.card mycard.png --player Teacher --out casts/my.json
 Description, personality, and scenario become the profile; example messages the voice; the first message the greeting; the lorebook world notes. Cards hold no game numbers: add stats, endings, and bond stories in `/editor`. RisuAI regex and trigger scripts, and lore built from macros (`{{getvar}}` and the like), are not run; the import says what it left out.
 
 ## 5. Play
+
+The status window after attacking a goblin in the campfire cast, the turn after giving Sera the necklace. In brackets: what this turn changed.
+
+```txt
+You: 고블린 척후를 벤다   (I strike the goblin scout)
+
+(the model's narration)
+┌──────────────────────────────────────
+│ 나 · HP 28/28
+│ 도윤 · 호감 45 · 신뢰 22 (+2) · HP 13/20 (-7)
+│ 하린 · 호감 25 · 신뢰 20 · HP 24/24
+│ 세라 · 호감 50 · 신뢰 44 (+2) · HP 21/21
+│ 고블린 척후 · HP 0/7 (-7)
+│ 고블린 궁수 · HP 7/7
+│ 고블린 두목 · HP 21/21
+└──────────────────────────────────────
+```
+
+The scout is down, and Doyun, fighting beside you, took its blow. Doyun and Sera, who fought with you, trust you a little more (호감 is affinity, 신뢰 trust).
 
 - **Reroll:** the same history, the same outcome; only the narration is new.
 - **Edit:** the last line or an earlier one, everything from the edited line is recomputed.
@@ -149,9 +168,9 @@ curl -s -H "Authorization: Bearer $AETHRION_TOKEN" 'localhost:4848/casts/card?na
 
 Give Sera a necklace and Doyun, who sees it, grows jealous and sends word to Harin, while Sera comes to care enough to take the goblins' blows for the player. Fight without the gift and she never does.
 
-## Limits
+## Good To Know, And Limits
 
-- **Streaming:** turn on Response Streaming in RisuAI (Settings → Bot Settings) to see the narration as it is written. The status block comes last. An OpenAI-compatible API, the Claude API, and the Claude Code CLI stream; the Codex CLI sends the reply whole.
+- **Streaming:** turn on Response Streaming in RisuAI (Settings → Chat Bot) to see the narration as it is written. The status block comes last. An OpenAI-compatible API, the Claude API, and the Claude Code CLI stream; the Codex CLI sends the reply whole.
 - **Time:** a new line is first read by the model (a few seconds; a line already read is cached, so a reroll skips this), then narrated. With the Claude Code CLI a turn takes 15-40 s, depending on how long the narration is. API models are faster.
 - **Cost:** each new line costs two model calls, one to read it and one to narrate. `--read-model NAME` (or `AETHRION_READ_MODEL`) reads with a smaller model of the same API. With the Claude Code CLI it does not make a turn faster, since starting the CLI takes most of a reading.
 - **The server console** shows one line per turn: the line, the time the rules and the model took, and whether the model answered. If nothing shows up, RisuAI did not reach Aethrion.
