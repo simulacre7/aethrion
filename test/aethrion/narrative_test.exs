@@ -233,6 +233,13 @@ defmodule Aethrion.NarrativeTest do
       assert Ko.render(request) =~ "어떻게 하는지도 들었어"
     end
 
+    test "saying sorry for nothing builds no trust" do
+      trust = fn state -> State.get_relationship(state, "haru", "user").trust end
+      sorry = Event.apology_offered("user", "haru", "Sorry!")
+      {state, _} = run!(Runtime.demo_state(), [sorry, sorry, sorry])
+      assert trust.(state) == trust.(Runtime.demo_state())
+    end
+
     test "apologizing again for one thing is not taken as a pattern" do
       events =
         [Event.message_sent("user", "haru", "Useless.", tone: :hostile)] ++
@@ -607,14 +614,14 @@ defmodule Aethrion.NarrativeTest do
 
       assert [first, second] = replies(outputs, "haru")
       assert first.text != second.text
-      assert Ko.render(first.context) == "초콜릿? 우와, 고마워!"
+      assert Ko.render(first.context) == "초콜릿? ...고맙다. 잘 먹을게."
       assert Ko.render(second.context) == "또 선물이야? 정말 고마워!"
 
       {_state, outputs} =
         run!(Runtime.demo_state(), [Event.gift_received("user", "haru", "moonstone")])
 
       assert [%{context: context}] = replies(outputs, "haru")
-      assert Ko.render(context) == "선물이야? 우와, 고마워!"
+      assert Ko.render(context) == "선물이야? ...고맙다. 잘 쓸게."
     end
 
     test "a gift gets a reply that fits, and reassures someone jealous of that giver" do
@@ -799,10 +806,10 @@ defmodule Aethrion.NarrativeTest do
       [gift, _first, second] = replies(outputs, "haru")
 
       assert Aethrion.Expression.Prompt.render_context(gift.context) =~
-               "Listener just gave the speaker: tea"
+               ~s(Listener just gave the speaker: "tea")
 
       assert Aethrion.Expression.Prompt.render_context(second.context) =~
-               "Listener just apologized: Sorry again."
+               ~s(Listener just apologized: "Sorry again.")
 
       assert second.context.repeats == 2
     end

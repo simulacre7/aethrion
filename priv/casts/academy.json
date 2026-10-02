@@ -1,0 +1,208 @@
+{
+  "characters": [
+    {
+      "id": "hana",
+      "name": "하나",
+      "profile": "공학부 1학년. 고장 난 물건만 보면 일단 뜯어 보고 싶어 한다. 덜렁대지만 누구보다 밝고, 선생님에게 하루에도 몇 번씩 메시지를 보낸다.",
+      "voice": "들뜬 존댓말. 느낌표가 많고, 신나면 문장이 길어진다.",
+      "traits": [
+        "polite",
+        "playful"
+      ]
+    },
+    {
+      "id": "yuki",
+      "name": "유키",
+      "profile": "도서부 2학년. 말수가 적고 책 뒤에 숨는다. 칭찬을 들으면 한참 뒤에야 답장을 보낸다.",
+      "voice": "조용한 존댓말. 말끝을 흐리고, 말줄임표가 많다.",
+      "traits": [
+        "polite",
+        "sensitive"
+      ]
+    },
+    {
+      "id": "mio",
+      "name": "미오",
+      "profile": "학생회 서기 3학년. 서류와 규칙에 깐깐하지만, 선생님이 끼니를 거르는 건 그냥 넘어가지 못한다.",
+      "voice": "또박또박한 존댓말. 용건부터 말하고, 걱정은 맨 마지막에 붙인다.",
+      "traits": [
+        "polite",
+        "calm"
+      ]
+    }
+  ],
+  "people": {
+    "user": "선생님"
+  },
+  "relationships": [
+    {
+      "from": "hana",
+      "to": "user",
+      "affinity": 20,
+      "trust": 15
+    },
+    {
+      "from": "yuki",
+      "to": "user",
+      "affinity": 18,
+      "trust": 15
+    },
+    {
+      "from": "mio",
+      "to": "user",
+      "affinity": 20,
+      "trust": 18
+    },
+    {
+      "from": "hana",
+      "to": "yuki",
+      "affinity": 40,
+      "trust": 30
+    },
+    {
+      "from": "yuki",
+      "to": "hana",
+      "affinity": 35,
+      "trust": 30
+    },
+    {
+      "from": "hana",
+      "to": "mio",
+      "affinity": 25,
+      "trust": 20
+    },
+    {
+      "from": "mio",
+      "to": "hana",
+      "affinity": 15,
+      "trust": 10
+    }
+  ],
+  "story": {
+    "milestones": [
+      {
+        "id": "hana-1",
+        "title": "인연 스토리 · 하나 1: 고장 난 오르골",
+        "description": "공학부 작업실 구석, 하나가 태엽이 끊어진 오르골을 내민다.",
+        "from": "hana",
+        "says": "선생님! 혹시 방과 후에 시간 있어요? 보여 드릴 게 있어요!",
+        "when": [
+          {
+            "bond": [
+              "hana",
+              "user"
+            ],
+            "at_least": "friendly"
+          }
+        ]
+      },
+      {
+        "id": "hana-2",
+        "title": "인연 스토리 · 하나 2: 끝까지 고친 첫 번째 물건",
+        "description": "오르골이 다시 노래한다. 하나는 처음으로 무언가를 끝까지 고쳤다.",
+        "from": "hana",
+        "says": "선생님, 오르골 소리 들어 보실래요? 제가 끝까지 고친 첫 번째 물건이에요!",
+        "when": [
+          {
+            "relationship": [
+              "hana",
+              "user"
+            ],
+            "field": "affinity",
+            "at_least": 50
+          },
+          {
+            "relationship": [
+              "hana",
+              "user"
+            ],
+            "field": "trust",
+            "at_least": 24
+          }
+        ]
+      },
+      {
+        "id": "yuki-1",
+        "title": "인연 스토리 · 유키 1: 반납되지 않은 책",
+        "description": "도서실 반납함에서 유키가 오래 붙잡고 있던 책 한 권.",
+        "from": "yuki",
+        "says": "선생님… 혹시 이 책 읽어 보셨어요? 아, 아니에요. 그냥 여쭤본 거예요.",
+        "when": [
+          {
+            "bond": [
+              "yuki",
+              "user"
+            ],
+            "at_least": "friendly"
+          }
+        ]
+      },
+      {
+        "id": "yuki-2",
+        "title": "인연 스토리 · 유키 2: 책갈피",
+        "description": "책 사이에 끼워 둔 손글씨 책갈피. 유키는 감상을 기다리고 있다.",
+        "from": "yuki",
+        "says": "선생님, 다 읽으시면… 감상 들려주실래요? 기다릴게요.",
+        "when": [
+          {
+            "relationship": [
+              "yuki",
+              "user"
+            ],
+            "field": "affinity",
+            "at_least": 50
+          },
+          {
+            "relationship": [
+              "yuki",
+              "user"
+            ],
+            "field": "trust",
+            "at_least": 24
+          }
+        ]
+      },
+      {
+        "id": "mio-1",
+        "title": "인연 스토리 · 미오 1: 밀린 결재",
+        "description": "결재 서류 세 건과, 서류 밑에 깔린 도시락 하나.",
+        "from": "mio",
+        "says": "선생님, 결재 서류 세 건 밀렸어요. 그리고 점심은 드셨어요? 안 드셨으면 제가 챙겨 갈게요.",
+        "when": [
+          {
+            "bond": [
+              "mio",
+              "user"
+            ],
+            "at_least": "friendly"
+          }
+        ]
+      },
+      {
+        "id": "mio-2",
+        "title": "인연 스토리 · 미오 2: 학생회실의 불",
+        "description": "늦은 밤까지 켜진 학생회실. 미오가 처음으로 서류를 덮는다.",
+        "from": "mio",
+        "says": "선생님. 오늘은 서류 얘기 말고… 그냥 잠깐 쉬다 가도 될까요?",
+        "when": [
+          {
+            "relationship": [
+              "mio",
+              "user"
+            ],
+            "field": "affinity",
+            "at_least": 50
+          },
+          {
+            "relationship": [
+              "mio",
+              "user"
+            ],
+            "field": "trust",
+            "at_least": 24
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -39,6 +39,16 @@ defmodule Aethrion.Explain do
     character(trace, events, character_id, field)
   end
 
+  @doc "Changes to an actor's stat (`\"hp\"`, `\"charm\"`) across steps, oldest first."
+  @spec stat([Aethrion.Step.t()], String.t(), String.t()) :: [map()]
+  def stat(steps, actor_id, name) when is_list(steps) and is_binary(name) do
+    {trace, events} = from_steps(steps)
+
+    trace
+    |> Enum.filter(&match?(%Trace{kind: :stat, target: ^actor_id, field: ^name}, &1))
+    |> changes(events)
+  end
+
   @doc """
   Changes to a relationship field across a list of `Aethrion.Step`s, oldest first.
   """

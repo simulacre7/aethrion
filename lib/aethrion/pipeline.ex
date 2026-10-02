@@ -48,9 +48,14 @@ defmodule Aethrion.Pipeline do
         ],
         gossip_shared: [Rules.Gossip, Rules.Reputation, Rules.Empathy],
         comfort_offered: [Rules.Comfort],
-        time_spent_together: [Rules.Together]
+        time_spent_together: [Rules.Together],
+        activity: [Rules.Activity],
+        attack: [Rules.Combat],
+        defend: [Rules.Combat],
+        heal: [Rules.Combat],
+        flee: [Rules.Combat]
       },
-      reactive_rules: [Rules.Mood, Rules.Proactive, Rules.Bond]
+      reactive_rules: [Rules.Mood, Rules.Proactive, Rules.Bond, Rules.Milestone, Rules.Ending]
     }
   end
 

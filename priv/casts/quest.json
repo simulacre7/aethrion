@@ -1,0 +1,303 @@
+{
+  "characters": [
+    {
+      "id": "ria",
+      "name": "리아",
+      "profile": "떠돌이 치유사. 겁이 많지만 동료가 다치는 건 못 본다.",
+      "voice": "부드럽고 걱정 많은 반말. 상대가 다치면 말이 빨라진다.",
+      "traits": [
+        "sensitive"
+      ]
+    },
+    {
+      "id": "kael",
+      "name": "카엘",
+      "profile": "용병 출신 검사. 말수가 적고, 등을 맡길 사람을 오래 지켜본다.",
+      "voice": "짧고 무뚝뚝한 반말. 칭찬은 한 마디로 끝낸다.",
+      "traits": [
+        "calm"
+      ]
+    },
+    {
+      "id": "wolf",
+      "name": "늑대왕",
+      "profile": "숲을 지배하는 거대한 늑대. 겁먹은 자를 먼저 노린다.",
+      "voice": "낮게 으르렁거리는 말투. 인간을 비웃는다."
+    }
+  ],
+  "relationships": [
+    {
+      "from": "ria",
+      "to": "user",
+      "affinity": 30,
+      "trust": 20
+    },
+    {
+      "from": "kael",
+      "to": "user",
+      "affinity": 20,
+      "trust": 18
+    },
+    {
+      "from": "ria",
+      "to": "kael",
+      "affinity": 35,
+      "trust": 30
+    },
+    {
+      "from": "kael",
+      "to": "ria",
+      "affinity": 40,
+      "trust": 35
+    },
+    {
+      "from": "wolf",
+      "to": "user",
+      "affinity": -40,
+      "trust": -40
+    }
+  ],
+  "stats": {
+    "user": {
+      "hp": 32,
+      "max_hp": 32,
+      "attack": 7,
+      "defense": 2,
+      "speed": 3,
+      "potions": 3,
+      "bandages": 0
+    },
+    "ria": {
+      "hp": 18,
+      "max_hp": 18,
+      "attack": 2,
+      "defense": 1,
+      "heal": 9,
+      "party": 1
+    },
+    "kael": {
+      "hp": 28,
+      "max_hp": 28,
+      "attack": 7,
+      "defense": 3,
+      "speed": 2,
+      "party": 1
+    },
+    "wolf": {
+      "hp": 52,
+      "max_hp": 52,
+      "attack": 7,
+      "defense": 2,
+      "speed": 4,
+      "enemy": 1
+    }
+  },
+  "story": {
+    "decide_when": [
+      {
+        "stat": [
+          "wolf",
+          "hp"
+        ],
+        "at_most": 0
+      },
+      {
+        "stat": [
+          "user",
+          "hp"
+        ],
+        "at_most": 0
+      },
+      {
+        "stat": [
+          "user",
+          "fled"
+        ],
+        "at_least": 1
+      }
+    ],
+    "labels": {
+      "hp": "체력",
+      "fled": "도망친 횟수"
+    },
+    "endings": [
+      {
+        "id": "fallen",
+        "title": "쓰러진 영웅",
+        "description": "늑대왕의 울음소리가 숲을 덮는다. 눈을 떴을 때, 리아가 울고 있었다.",
+        "when": [
+          {
+            "stat": [
+              "user",
+              "hp"
+            ],
+            "at_most": 0
+          },
+          {
+            "stat": [
+              "ria",
+              "hp"
+            ],
+            "at_least": 1
+          },
+          {
+            "relationship": [
+              "ria",
+              "user"
+            ],
+            "field": "trust",
+            "at_least": 15
+          }
+        ]
+      },
+      {
+        "id": "fallen_alone",
+        "title": "아무도 오지 않은 숲",
+        "description": "늑대왕의 울음소리가 숲을 덮는다. 너를 찾으러 오는 발소리는 없었다.",
+        "when": [
+          {
+            "stat": [
+              "user",
+              "hp"
+            ],
+            "at_most": 0
+          }
+        ]
+      },
+      {
+        "id": "companions",
+        "title": "함께 돌아오는 길",
+        "description": "늑대왕이 쓰러진다. 카엘이 말없이 네 어깨를 두드리고, 리아는 웃으며 붕대를 감아 준다.",
+        "when": [
+          {
+            "stat": [
+              "wolf",
+              "hp"
+            ],
+            "at_most": 0
+          },
+          {
+            "relationship": [
+              "kael",
+              "user"
+            ],
+            "field": "trust",
+            "at_least": 20
+          },
+          {
+            "stat": [
+              "kael",
+              "hp"
+            ],
+            "at_least": 1
+          },
+          {
+            "relationship": [
+              "ria",
+              "user"
+            ],
+            "field": "trust",
+            "at_least": 22
+          },
+          {
+            "stat": [
+              "ria",
+              "hp"
+            ],
+            "at_least": 1
+          }
+        ]
+      },
+      {
+        "id": "one_beside",
+        "title": "곁에 남은 한 사람",
+        "description": "늑대왕이 쓰러진다. 돌아보니 곁에 남아 있는 건 한 사람뿐이다.",
+        "when": [
+          {
+            "stat": [
+              "wolf",
+              "hp"
+            ],
+            "at_most": 0
+          },
+          {
+            "any": [
+              {
+                "all": [
+                  {
+                    "relationship": [
+                      "kael",
+                      "user"
+                    ],
+                    "field": "trust",
+                    "at_least": 20
+                  },
+                  {
+                    "stat": [
+                      "kael",
+                      "hp"
+                    ],
+                    "at_least": 1
+                  }
+                ]
+              },
+              {
+                "all": [
+                  {
+                    "relationship": [
+                      "ria",
+                      "user"
+                    ],
+                    "field": "trust",
+                    "at_least": 22
+                  },
+                  {
+                    "stat": [
+                      "ria",
+                      "hp"
+                    ],
+                    "at_least": 1
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "alone",
+        "title": "혼자만의 승리",
+        "description": "늑대왕은 쓰러졌지만, 누구도 너와 눈을 마주치지 않는다.",
+        "when": [
+          {
+            "stat": [
+              "wolf",
+              "hp"
+            ],
+            "at_most": 0
+          }
+        ]
+      },
+      {
+        "id": "night",
+        "title": "끝나지 않은 밤",
+        "description": "늑대왕의 울음이 등 뒤에서 멀어진다. 살아남았지만, 숲은 아직 그의 것이다.",
+        "when": [
+          {
+            "stat": [
+              "user",
+              "fled"
+            ],
+            "at_least": 1
+          }
+        ]
+      }
+    ]
+  },
+  "tuning": {
+    "combat": {
+      "party_trust": 15,
+      "default_heal": 15
+    }
+  }
+}

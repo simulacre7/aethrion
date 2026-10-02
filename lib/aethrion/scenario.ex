@@ -456,9 +456,9 @@ defmodule Aethrion.Scenario do
 
   # Expectations that could never match would pass silently as "count: 0";
   # catch misspelled output types, keys, and values when the scenario loads.
-  @output_types ~w(relationship_changed memory_created mood_changed bond_changed proactive_message reply character_interaction)
+  @output_types ~w(relationship_changed memory_created mood_changed bond_changed proactive_message reply character_interaction ending_reached milestone_reached combat)
   @comparisons ~w(count equals at_least at_most)
-  @output_filters ~w(character to from reason kind tone text before after delta rule event_id)
+  @output_filters ~w(character to from reason kind tone text before after delta rule event_id ending amount subject)
   @memory_filters ~w(id character kind topic source content data faded importance strength created_at created_tick related_characters consolidated_into)
   @values %{
     "tone" => ~w(warm neutral cold hostile gift apology),
@@ -500,11 +500,15 @@ defmodule Aethrion.Scenario do
 
   defp filter_problem(_expectation, _custom?), do: nil
 
+  defp kinds("combat"), do: ~w(hit critical missed defeated guarded healed fled caught holds_back)
+  defp kinds(_type), do: @values["kind"]
+
   defp value_problem(filters, type) do
     allowed =
       Map.merge(@values, %{
         "before" => before_after(type),
-        "after" => before_after(type)
+        "after" => before_after(type),
+        "kind" => kinds(type)
       })
 
     Enum.find_value(filters, fn {key, value} ->
@@ -539,6 +543,10 @@ defmodule Aethrion.Scenario do
   defp valid_expectation?(%{"output" => type}), do: is_binary(type)
   defp valid_expectation?(%{"memory" => %{}}), do: true
   defp valid_expectation?(%{"clock" => _}), do: true
+
+  defp valid_expectation?(%{"stat" => [actor, name]}) when is_binary(actor) and is_binary(name),
+    do: true
+
   defp valid_expectation?(_expectation), do: false
 
   ## Checking
@@ -586,6 +594,7 @@ defmodule Aethrion.Scenario do
   end
 
   defp actual(%{"clock" => _}, state, _outputs), do: state.clock
+  defp actual(%{"stat" => [actor, name]}, state, _outputs), do: State.stat(state, actor, name)
 
   defp compare(%{"clock" => value}, actual) when is_integer(value), do: actual == value
 
@@ -659,6 +668,9 @@ defmodule Aethrion.Scenario do
   end
 
   def describe(%{"clock" => value}), do: "clock == #{show(value)}"
+
+  def describe(%{"stat" => [actor, name]} = expectation),
+    do: "#{actor} #{name} #{comparison(expectation)}"
 
   defp comparison(%{"equals" => value}), do: "== #{show(value)}"
   defp comparison(%{"at_least" => value}), do: ">= #{show(value)}"

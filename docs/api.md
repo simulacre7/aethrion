@@ -272,7 +272,7 @@ A world supervises a `:pg` scope for its subscribers, a `Task.Supervisor` for re
 
 | function | meaning |
 | --- | --- |
-| `start_link(opts)` | `:initial_state`, `:name`, `:pipeline`, `:max_depth`, `:max_events`, `:history_limit`, `:persistence` or `:journal` (with `:journal_compact_every`), `:expression`, `:subscribers` (a `:pg` scope), `:tag` |
+| `start_link(opts)` | `:initial_state`, `:name`, `:pipeline`, `:max_depth`, `:max_events`, `:history_limit`, `:persistence` or `:journal` (with `:journal_compact_every`), `:expression`, `:subscribers` (a `:pg` scope, or `{scope, group}`), `:tag` |
 | `dispatch(server, event)` | same result as `Runtime.dispatch/3` |
 | `step(server, event)` | `{:ok, %Aethrion.Step{}}` |
 | `get_state(server)`, `put_state(server, state)` | read or replace the state |
@@ -289,9 +289,88 @@ Subscriber messages:
 
 `tag` is the world's name for an `Aethrion.World` (so one process can listen to many worlds), and the server's pid for a bare `RuntimeServer` unless it was given `tag:`. A World keeps its subscribers outside the runtime server, so they stay subscribed when it restarts.
 
+### Many worlds
+
+`Aethrion.Worlds` runs one world per key (any term, never made an atom) for chat apps and game servers:
+
+```elixir
+children = [
+  {Aethrion.Worlds,
+   name: MyApp.Worlds,
+   idle_after: :timer.minutes(30),     # stop unused worlds; needs :journal or :persistence
+   world: fn user_id ->                # options of Aethrion.World, except :name
+     [initial_state: MyApp.Cast.state(), journal: "data/worlds/#{Aethrion.Worlds.file_name(user_id)}.jsonl"]
+   end}
+]
+
+{:ok, state, outputs, log} = Aethrion.Worlds.dispatch(MyApp.Worlds, "user-42", event)
+{:ok, step} = Aethrion.Worlds.step(MyApp.Worlds, "user-42", event)
+{:ok, state} = Aethrion.Worlds.get_state(MyApp.Worlds, "user-42")
+:ok = Aethrion.Worlds.subscribe(MyApp.Worlds, "user-42")   # {:aethrion, {MyApp.Worlds, "user-42"}, payload}
+Aethrion.Worlds.running(MyApp.Worlds)                       # keys of running worlds
+:ok = Aethrion.Worlds.stop(MyApp.Worlds, "user-42")
+```
+
+A running world with the demo cast and a short chat takes about 120 KB and three processes; 500 such worlds handled 5,000 messages in about 2.5 seconds on a laptop, so memory, not CPU, is what `:idle_after` saves. Worlds start on first use; `peek_state/2` reads one without starting it if it has never been used. Name files after keys with `Aethrion.Worlds.file_name/1`, which keeps every key distinct (also on case-insensitive file systems) and inside the directory. Subscriptions belong to the key, so they last while its world stops and starts. A world's options are checked when it starts; unknown keys and `:idle_after` without storage are `:invalid_options` errors.
+
+### Conversations
+
+Every step records what people said to characters (messages, gifts, apologies), what characters said back (replies, proactive messages), and what a person and a character did to each other in a fight (`deed` turns such as "heals user for 8", which a model sees as "(in the fight: ...)"): the last 24 turns per pair, in `state.conversations`, saved and journaled with the state. No rule reads them.
+
+```elixir
+Aethrion.Conversation.recent(state, "mina", "user")
+# [%{from: "user", to: "mina", text: "...", kind: :message, tone: :warm, event_id: "e3", at: 12}, ...]
+```
+
+Replies and proactive messages carry the last 12 turns in their request (`Request.conversation`). A server rendering with a model replaces a character's draft with what the model said (`Aethrion.Conversation.put_rendered/2`) and journals it, so replay holds the same words. Hosts rendering on their own (`Aethrion.Expression.render/2`) can call `put_rendered/2` with the rendered outputs.
+
 ### Scheduler
 
 `Aethrion.Scheduler` emits `time_tick` events into a runtime server every `:interval_ms`, advancing `:tick_hours`. It owns no rules. With `notify: pid`, it sends `{:aethrion, scheduler_pid, {:scheduler_tick, result}}` after each tick.
+
+## Stats, stories, and fights
+
+Every actor (character or player) can have free-form numeric `stats` in the state (`%{"mina" => %{"charm" => 12}, "user" => %{"hp" => 30}}`). Rules change them with `Aethrion.Transition.adjust_stat/5` (traced), and `Aethrion.Explain.stat/3` says why one is what it is.
+
+A world's `story` (`Aethrion.Story`) holds `activities`, ordered `endings` with conditions, a `deadline`, and `decide_when`. `Event.activity("mina", "study")` applies an activity; the ending is decided once, at the deadline or when a `decide_when` condition holds, as an `:ending_reached` output (`ending`, `title`, `description`, `because`).
+
+```elixir
+Aethrion.Story.ending(state)     # {:ok, %{id, title, description, because}} | :none, if decided now
+Aethrion.Story.progress(state)   # [%{id, title, met, total, closeness, missing}]
+Aethrion.Rules.Ending.reached(state)  # the ending decided, or nil
+```
+
+Conditions: `{"stat": [actor, name]}`, `{"character": id, "field": f}`, `{"relationship": [from, to], "field": f}` with `at_least`/`at_most`/`equals`; `{"bond": [from, to], "is" | "at_least" | "at_most": bond}`; `{"memories": {"character": id, ...data filters}}` counts; `{"clock": true}`; `{"any": [...]}`; `{"not": c}`.
+
+Fights (`Aethrion.Combat`, `Aethrion.Rules.Combat`) are between actors with an `"hp"` stat (`"max_hp"`, `"attack"`, `"defense"`, `"speed"`, `"heal"` optional): `Event.attack/3`, `defend/2`, `heal/3`, `flee/3`. Outputs are `:combat` maps (`kind`: `:hit`, `:critical`, `:defeated`, `:guarded`, `:healed`, `:fled`, `:caught`, `:holds_back`; `character_id`, `to`, `subject`, `amount`, `hp`, `max_hp`, `text`). `Combat.describe(output, state, :ko)` tells one in Korean; `Combat.action(state, from, target, text)` reads a player's words (a nil target means `Combat.foe/1`, the first enemy standing, and an attack is watched by `Combat.party/1`). Damage rolls come from who acts on whom and both fighters' hp, not from the event id, so a fight replays exactly. Heals need a healer's `"heal"` stat or an item they hold (a potion uses one of their `"potions"`, a bandage one of `"bandages"`), a standing healer, and a hurt, standing target; asking a companion to heal ("리아, 치료해 줘") is the asker's turn, and a companion below `party_trust` refuses; one shields only someone on one's own side and flees only from an enemy; enemies go for someone below 40% hp, else take turns between the player and the companions; a character at 0 hp neither talks, listens, nor reaches out; once the story's ending is decided (`decide_when`), combat events are rejected.
+
+## HTTP API
+
+`Aethrion.API` serves an `Aethrion.Worlds` as JSON over HTTP (Erlang's built-in `:httpd`), for engines and backends in any language. `mix aethrion.serve` runs both from a cast file.
+
+```elixir
+{Aethrion.API, worlds: MyApp.Worlds, port: 4848, token: System.fetch_env!("AETHRION_TOKEN")}
+```
+
+| method | path | body / query | returns |
+| --- | --- | --- | --- |
+| `POST` | `/worlds/{key}/say` | `{"to", "text", "from"?, "observed_by"?}` | the step: `event_id`, `lines`, `outputs`, `interpreted` |
+| `POST` | `/worlds/{key}/events` | an event as in a scenario (`{"type": "gift_received", ...}`) | the step |
+| `POST` | `/worlds/{key}/chat` | `{"to", "text", "from"?, "observed_by"?}`: one chat line, read by `Aethrion.Chat` as a fight move (while an enemy stands), a story activity the player suggests (the story's `phrases`, or the activity's name with "하자/할까/let's"), a gift handed over, or talk (`Aethrion.Intent`); `interpreted.as` is `combat`, `activity`, `gift`, or `talk` | the step |
+| `POST` | `/worlds/{key}/act` | `{"text", "to"?, "from"?}`: a combat action in words, aimed at whoever the words name (an enemy for a blow), else `to`, else the first enemy standing; `400 unclear_action` when the words do not say what happens | the step |
+| `POST` | `/casts/check` | `{"cast"}` | `{"ok": true, "summary"}` or `{"ok": false, "error": {"message", "path"}}` |
+| `POST` | `/casts/simulate` | `{"cast", "routes": [{"name", "to", "days", "script"}]}`; 1 to 8 routes of 1 to 120 days; at most 2 at once (429), 10 s each (503) | `{"routes": [...]}` |
+| `GET` | `/worlds/{key}/replies` | `character`, `person`? | `{"replies": [{"text", "tone"}]}` |
+| `GET` | `/worlds/{key}/story` | | `{"reached": ending \| null, "endings": progress}` |
+| `GET` | `/worlds/{key}/conversation` | `character` (omit for every character), `person` (default `user`), `after` (an event id) | `{"turns": [...]}`, oldest first |
+| `GET` | `/worlds/{key}/characters` | `person` (default `user`) | `{"characters": [{id, name, profile, mood, toward: {id, bond, affinity, trust, tension}}]}` |
+| `GET` | `/worlds/{key}/state` | | `State.to_data/1` |
+| `GET` | `/health` | | `{"ok": true}` (no token needed) |
+| `GET` | `/` | | a chat page for trying worlds in a browser |
+
+`lines` are what characters said or did in the step: `{type, event_id, character_id, to, text, rendered, reason | kind | tone}`; `rendered` is true when a model phrased the line (not the built-in templates) (a reply's `tone` is what it answers: a message tone, `gift`, or `apology`). `last_event_id` is the last event the step processed, cascades included: poll `conversation?after=` from it so nothing comes twice. Reads (`state`, `characters`, `conversation`) of a world never used do not start it or write files. When the world renders with a model, the response waits (up to `:render_timeout`, default 15 s) for the model's lines; `rendered: false` means the deterministic text. Errors are `{"error": {"code", "message"}}` with 400 (bad request, unknown character, invalid event, `text_too_long`), 401, 404, 405, 413 (`body_too_large`), or 503 (a world could not start or store; the reason goes to the server's log, not the client).
+
+Options: `:worlds`, `:port` (0 for a free one; `Aethrion.API.port/1`), `:bind` (default `"127.0.0.1"`), `:token`, `:intent` (adapter for `say`, default the fake adapter), `:render_timeout`, `:max_body` (bytes), `:max_text` (characters of `say` text, default 2,000). World keys are 1-128 characters of letters, digits, and `_ - . : @`, so they are safe in file names.
 
 ## Persistence
 
@@ -363,4 +442,5 @@ The `demo.*` tasks live in `dev/` and run only from a checkout of this repositor
 | `mix aethrion.scenario PATH \| --all` | run scenarios and check expectations |
 | `mix aethrion.report PATH \| --all` | render HTML reports (`Aethrion.Report.html(result, locale: :ko)` from code); `--out` / `--out-dir`, `--locale ko` for a Korean report |
 | `mix aethrion.rules` | print the rule pipeline |
+| `mix aethrion.serve` | the HTTP API over a world per key: `--cast FILE`, `--data DIR`, `--port`, `--bind`, `--token` (or `AETHRION_TOKEN`), `--llm anthropic\|openai`, `--locale ko`, `--idle MINUTES`, `--tick-every SECONDS` (an hour passes in each running world that often) |
 | `mix aethrion.journal PATH` | replay a journal; `--scenario` / `--report` to export, `--compact [--archive FILE]`, `--digest [--locale ko]`, `--max-depth` / `--max-events` |

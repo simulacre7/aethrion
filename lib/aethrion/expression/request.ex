@@ -36,6 +36,9 @@ defmodule Aethrion.Expression.Request do
     `hours_ago/2` says how long ago a memory was formed
   - `sequence` - how many events the world had processed then, so lines can
     vary between several messages within one hour
+  - `conversation` - for replies and proactive messages, the recent turns
+    between the speaker and the listener before this one, oldest first
+    (`Aethrion.Conversation`): `%{from, to, text, kind, tone, at}`
   - `fallback_text` - the deterministic template text
   """
 
@@ -54,6 +57,7 @@ defmodule Aethrion.Expression.Request do
           goodwill: boolean() | nil,
           now: non_neg_integer() | nil,
           sequence: non_neg_integer() | nil,
+          conversation: [map()],
           fallback_text: String.t() | nil
         }
 
@@ -72,6 +76,7 @@ defmodule Aethrion.Expression.Request do
     goodwill: nil,
     now: nil,
     sequence: nil,
+    conversation: [],
     fallback_text: nil
   ]
 

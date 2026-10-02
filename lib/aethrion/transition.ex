@@ -122,6 +122,37 @@ defmodule Aethrion.Transition do
   end
 
   @doc """
+  Changes an actor's stat (`State` `stats`: free-form numbers such as
+  `"hp"` or `"charm"`, for characters and people alike) by `delta`, kept
+  within `:min` and `:max` when given. Records a trace entry (kind `:stat`)
+  and logs unless `log: false`.
+  """
+  @spec adjust_stat(t(), String.t(), String.t(), integer(), keyword()) :: t()
+  def adjust_stat(%__MODULE__{} = transition, actor_id, stat, delta, opts \\ [])
+      when is_binary(stat) and is_integer(delta) do
+    before = State.stat(transition.state, actor_id, stat)
+
+    value =
+      (before + delta)
+      |> then(&if(min = opts[:min], do: max(&1, min), else: &1))
+      |> then(&if(max = opts[:max], do: min(&1, max), else: &1))
+
+    if value == before and State.stat?(transition.state, actor_id, stat) do
+      transition
+    else
+      stats =
+        Map.update(transition.state.stats, actor_id, %{stat => value}, &Map.put(&1, stat, value))
+
+      %{transition | state: %{transition.state | stats: stats}}
+      |> add_trace(:stat, actor_id, actor_id, stat, before, value)
+      |> maybe_log(
+        Keyword.get(opts, :log, true),
+        "[State] #{name(transition, actor_id)} #{stat} #{signed(value - before)} (now #{value})"
+      )
+    end
+  end
+
+  @doc """
   Sets a non-numeric character field such as `:mood` or `:last_active_at`.
   Records a trace entry when the value changes; never logs.
   """
@@ -349,6 +380,15 @@ defmodule Aethrion.Transition do
   @spec put_cooldown(t(), String.t()) :: t()
   def put_cooldown(%__MODULE__{} = transition, key) do
     %{transition | state: State.put_cooldown(transition.state, key)}
+  end
+
+  @doc "Forgets a cooldown key (a one-off mark, such as a raised guard)."
+  @spec clear_cooldown(t(), String.t()) :: t()
+  def clear_cooldown(%__MODULE__{} = transition, key) do
+    %{
+      transition
+      | state: %{transition.state | cooldowns: Map.delete(transition.state.cooldowns, key)}
+    }
   end
 
   @doc "Replaces the state directly. Prefer the tracked helpers."

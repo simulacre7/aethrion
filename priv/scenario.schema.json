@@ -42,6 +42,55 @@
       "type": "object",
       "required": ["characters"],
       "properties": {
+        "stats": {
+          "description": "Free-form numbers per actor (characters and players): {\"mina\": {\"charm\": 12}, \"user\": {\"hp\": 30}}.",
+          "type": "object",
+          "additionalProperties": {"type": "object", "additionalProperties": {"type": "integer"}}
+        },
+        "story": {
+          "description": "Activities, endings, and the hour endings are decided at. See Aethrion.Story.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "deadline": {"type": "integer", "minimum": 1},
+            "decide_when": {"type": "array", "items": {"type": "object"}},
+            "activities": {"type": "object", "additionalProperties": {"type": "object", "additionalProperties": {"type": "integer"}}},
+            "phrases": {"type": "object", "additionalProperties": {"type": "array", "items": {"type": "string"}, "minItems": 1}},
+            "activity_hours": {"type": "integer", "minimum": 1},
+            "labels": {"type": "object", "additionalProperties": {"type": "string"}},
+            "milestones": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["id", "when"],
+                "additionalProperties": false,
+                "properties": {
+                  "id": {"type": "string"},
+                  "title": {"type": "string"},
+                  "description": {"type": "string"},
+                  "from": {"type": "string"},
+                  "to": {"type": "string"},
+                  "says": {"type": "string"},
+                  "when": {"type": "array", "items": {"type": "object"}, "minItems": 1}
+                }
+              }
+            },
+            "endings": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["id"],
+                "additionalProperties": false,
+                "properties": {
+                  "id": {"type": "string"},
+                  "title": {"type": "string"},
+                  "description": {"type": "string"},
+                  "when": {"type": "array", "items": {"type": "object"}}
+                }
+              }
+            }
+          }
+        },
         "people": {
           "description": "Display names for actors who are not characters (players): {\"player:alex\": \"Alex\"}.",
           "type": "object",
@@ -56,6 +105,7 @@
               "id": {"$ref": "#/definitions/id"},
               "name": {"type": "string"},
               "profile": {"type": "string"},
+              "voice": {"type": "string", "description": "How the character talks, for models that phrase their lines."},
               "traits": {
                 "type": "array",
                 "items": {"type": "string"},
@@ -160,6 +210,50 @@
         },
         {
           "properties": {
+            "type": {"const": "attack"},
+            "from": {"$ref": "#/definitions/id"},
+            "to": {"$ref": "#/definitions/id"},
+            "skill": {"type": "string"},
+            "observed_by": {"type": "array", "items": {"$ref": "#/definitions/id"}},
+            "at": {"type": "string"}
+          },
+          "required": ["type", "from", "to"]
+        },
+        {
+          "properties": {"type": {"const": "defend"}, "from": {"$ref": "#/definitions/id"}, "to": {"$ref": "#/definitions/id"}, "at": {"type": "string"}},
+          "required": ["type", "from"]
+        },
+        {
+          "properties": {
+            "type": {"const": "heal"},
+            "from": {"$ref": "#/definitions/id"},
+            "to": {"$ref": "#/definitions/id"},
+            "amount": {"type": "integer", "minimum": 1},
+            "item": {"type": "string"},
+            "at": {"type": "string"}
+          },
+          "required": ["type", "from", "to"]
+        },
+        {
+          "properties": {
+            "type": {"const": "flee"},
+            "from": {"$ref": "#/definitions/id"},
+            "to": {"$ref": "#/definitions/id"},
+            "at": {"type": "string"}
+          },
+          "required": ["type", "from", "to"]
+        },
+        {
+          "properties": {
+            "type": {"const": "activity"},
+            "character": {"$ref": "#/definitions/id"},
+            "activity": {"type": "string", "description": "One of the story's activities."},
+            "at": {"type": "string"}
+          },
+          "required": ["type", "character", "activity"]
+        },
+        {
+          "properties": {
             "type": {"const": "comfort_offered"},
             "from": {"$ref": "#/definitions/id"},
             "to": {"$ref": "#/definitions/id"},
@@ -199,7 +293,7 @@
           "required": ["output"],
           "properties": {
             "output": {
-              "enum": ["proactive_message", "reply", "character_interaction", "mood_changed", "bond_changed", "relationship_changed", "memory_created"]
+              "enum": ["proactive_message", "reply", "character_interaction", "mood_changed", "bond_changed", "relationship_changed", "memory_created", "ending_reached", "milestone_reached", "combat"]
             }
           }
         },
@@ -210,6 +304,10 @@
         {
           "required": ["clock"],
           "properties": {"clock": {"type": "integer", "minimum": 0}}
+        },
+        {
+          "required": ["stat"],
+          "properties": {"stat": {"type": "array", "items": {"type": "string"}, "minItems": 2, "maxItems": 2}}
         }
       ]
     }

@@ -35,6 +35,90 @@ defmodule Aethrion.Expression.Templates.Ko do
     end
   end
 
+  @doc """
+  A reply or message from a `:polite` speaker, in 존댓말 to someone they look
+  up to, the way a student writes to 선생님: sentence endings take 요 ("고마워."
+  becomes "고마워요."), and "너" becomes "선생님". Other lines are returned as
+  they are.
+  """
+  @spec polite(String.t(), Request.t()) :: String.t()
+  def polite(text, %Request{kind: kind, speaker: %{traits: traits}})
+      when kind in [:reply, :proactive_message] and is_list(traits) do
+    if :polite in traits, do: polite(text), else: text
+  end
+
+  def polite(text, _request), do: text
+
+  @you [
+    {~r/(?<![\p{L}])너한테/u, "선생님한테"},
+    {~r/(?<![\p{L}])너랑/u, "선생님이랑"},
+    {~r/(?<![\p{L}])너는/u, "선생님은"},
+    {~r/(?<![\p{L}])넌(?=\s)/u, "선생님은"},
+    {~r/(?<![\p{L}])너도/u, "선생님도"},
+    {~r/(?<![\p{L}])너밖에/u, "선생님밖에"},
+    {~r/(?<![\p{L}])너답/u, "선생님답"},
+    {~r/(?<![\p{L}])너(?=[\s.,!?]|$)/u, "선생님"},
+    {~r/(?<![\p{L}])네가/u, "선생님이"},
+    {~r/(?<![\p{L}])니가/u, "선생님이"},
+    {~r/(?<![\p{L}])널/u, "선생님을"},
+    {~r/(?<![\p{L}])네(?=\s)/u, "선생님"},
+    # And themselves humbly: 나 becomes 저, 내 becomes 제.
+    {~r/(?<![\p{L}])나한테/u, "저한테"},
+    {~r/(?<![\p{L}])나도/u, "저도"},
+    {~r/(?<![\p{L}])나만/u, "저만"},
+    {~r/(?<![\p{L}])나(?=\s)/u, "저"},
+    {~r/(?<![\p{L}])내가/u, "제가"},
+    {~r/(?<![\p{L}])내(?=\s)/u, "제"}
+  ]
+
+  # Interjections stay as they are ("우와", "아...", "에이").
+  @interjections ~w(우와 와 아 어머 헤헤 에이 흠 음 오 엇 앗)
+
+  # Clause endings and their polite forms; the first that fits wins.
+  @endings [
+    {~r/^(응|그래)$/u, "네"},
+    {~r/^(안녕)$/u, "안녕하세요"},
+    {~r/아니야$/u, "아니에요"},
+    {~r/이야$/u, "이에요"},
+    {~r/야$/u, "예요"},
+    {~r/좋다$/u, "좋아요"},
+    {~r/고맙다$/u, "고마워요"},
+    {~r/아프다$/u, "아파요"},
+    {~r/낫다$/u, "나아요"},
+    {~r/겠다$/u, "겠어요"},
+    {~r/했다$/u, "했어요"},
+    {~r/구나$/u, "군요"},
+    {~r/(알|거|있|했|좋|맞|겠|하|되|돼|않|없)지$/u, "\\1죠"},
+    {~r/(거)?든$/u, "\\0요"},
+    {~r/왜$/u, "왜요"},
+    {~r/(어|아|워|와|줘|봐|해|돼|네|게|래|걸|데|까|나|가|군)$/u, "\\0요"}
+  ]
+
+  defp polite(text) do
+    text = Enum.reduce(@you, text, fn {pattern, to}, text -> Regex.replace(pattern, text, to) end)
+
+    ~r/([^.!?~…,]*)([.!?~…,]+|$)/u
+    |> Regex.scan(text)
+    |> Enum.map_join(fn [_all, clause, mark] -> polite_clause(clause) <> mark end)
+  end
+
+  defp polite_clause(clause) do
+    trimmed = String.trim_trailing(clause)
+    tail = String.slice(clause, String.length(trimmed)..-1//1)
+    last_word = trimmed |> String.split(~r/\s+/u) |> List.last()
+
+    case Enum.find(@endings, fn {pattern, _to} -> Regex.match?(pattern, trimmed) end) do
+      _skip when last_word in @interjections ->
+        clause
+
+      nil ->
+        clause
+
+      {pattern, to} ->
+        Regex.replace(pattern, trimmed, to, global: false) <> tail
+    end
+  end
+
   # Present-tense narration endings and their past forms. The quoted part of a
   # line (someone's words) is left alone.
   @past [
@@ -160,7 +244,7 @@ defmodule Aethrion.Expression.Templates.Ko do
       :another -> "또 선물이야? 정말 고마워!"
       :remembered -> "내 생각 해 준 거야? 정말 고마워."
       :close -> Choices.pick(request, ["이런 거 안 해도 되는데! 너무 좋다.", "또 챙겨 준 거야? 진짜 고마워."])
-      :thanks when is_binary(item) -> "#{gift_word(item)}? 우와, 고마워!"
+      :thanks when is_binary(item) -> gift_thanks(Choices.temperament(request), gift_word(item))
       :thanks -> "나 주는 거야? 고마워!"
     end
   end
@@ -177,7 +261,7 @@ defmodule Aethrion.Expression.Templates.Ko do
       :once_more -> "알았어... 그래도 자꾸 그러진 말아 줘."
       :needs_time -> "말해 줘서 고마워. 조금만 시간을 줘."
       :shaken -> "아직 좀 놀랐지만, 고마워."
-      :accepted -> "그렇게 말해 줘서 고마워. 마음이 좀 풀렸어."
+      :accepted -> accepted(Choices.temperament(request))
     end
   end
 
@@ -299,16 +383,95 @@ defmodule Aethrion.Expression.Templates.Ko do
 
   defp reply_line(tone, request) do
     case Choices.reply_choice(tone, request) do
-      {:bond, bond} -> Choices.pick(request, bond_line(tone, bond))
-      :guarded when tone == :warm -> "고마워... 그래도 아직 좀 서운해."
-      :guarded -> "...응, 왜."
-      {:reunion, :missed} -> "연락 왔네... 보고 싶었어."
-      {:reunion, :thanks} -> "오랜만이야! 고마워."
-      {:reunion, :hello} -> "오랜만이네!"
-      :question -> Choices.pick(request, ["음, 글쎄. 생각 좀 해 볼게.", "왜? 궁금해?", "음... 좋은 질문이네."])
-      {:mood, mood} -> Choices.pick(request, reply(tone, mood))
+      {:bond, bond} ->
+        Choices.pick(request, bond_line(tone, bond))
+
+      :guarded when tone == :warm ->
+        "고마워... 그래도 아직 좀 서운해."
+
+      :guarded ->
+        "...응, 왜."
+
+      {:reunion, :missed} ->
+        "연락 왔네... 보고 싶었어."
+
+      {:reunion, :thanks} ->
+        "오랜만이야! 고마워."
+
+      {:reunion, :hello} ->
+        "오랜만이네!"
+
+      :question ->
+        Choices.pick(request, answer(request.message, Choices.temperament(request)))
+
+      {:mood, mood} ->
+        Choices.pick(
+          request,
+          thanked(tone, request.message, Choices.temperament(request)) ||
+            voiced(Choices.temperament(request), tone, mood) || reply(tone, mood)
+        )
     end
   end
+
+  # A question is answered as what it is: an invitation ("같이 먹을래?") is
+  # taken up, "어땠어?" is told, and anything else is thought over.
+  defp answer(message, temperament) when is_binary(message) do
+    cond do
+      Regex.match?(~r/(같이|함께).*(래|자|까|어때)|(갈래|먹을래|할래|볼래)/u, message) ->
+        invited(temperament)
+
+      Regex.match?(~r/어땠|어때|괜찮아\?|잘 지냈/u, message) ->
+        ["나쁘지 않았어. 너는?", "괜찮았어. 물어봐 줘서 고마워.", "음, 그럭저럭? 너는 어땠어?"]
+
+      true ->
+        ["음, 글쎄. 생각 좀 해 볼게.", "왜? 궁금해?", "음... 좋은 질문이네."]
+    end
+  end
+
+  defp answer(_message, _temperament), do: ["음, 글쎄. 생각 좀 해 볼게.", "왜? 궁금해?"]
+
+  defp invited(:calm), do: ["그래. 가자.", "좋아. 시간 맞춰 갈게."]
+  defp invited(:playful), do: ["진짜? 좋아, 같이 가!", "오예! 그럼 내가 맛있는 데 알아."]
+  defp invited(:sensitive), do: ["...나랑? 응, 좋아.", "응, 좋아. 불러 줘서 고마워."]
+  defp invited(_temperament), do: ["좋아, 같이 하자!", "응, 좋아."]
+
+  # Being thanked is answered with "별말을", not with thanks back.
+  defp thanked(:warm, message, temperament) when is_binary(message) do
+    if Regex.match?(~r/고마|감사|thank/iu, message), do: welcome(temperament)
+  end
+
+  defp thanked(_tone, _message, _temperament), do: nil
+
+  defp welcome(:calm), do: ["별것 아니야.", "그 정도는 당연하지."]
+  defp welcome(:playful), do: ["헤헤, 이 정도쯤이야!", "그럼 다음엔 간식으로 갚아!"]
+  defp welcome(:sensitive), do: ["도움이 됐다니 다행이야.", "...그렇게 말해 주니까 좋다."]
+  defp welcome(_temperament), do: ["별말을. 도움이 됐다니 다행이야.", "천만에!"]
+
+  # Everyday replies in the speaker's temperament: a calm character says
+  # little, a playful one teases, a sensitive one takes it to heart. Moods
+  # that color a reply (lonely, upset, jealous) keep their own lines.
+  defp voiced(temperament, tone, mood) when mood in [:happy, :neutral] or is_nil(mood),
+    do: voiced(temperament, tone)
+
+  defp voiced(_temperament, _tone, _mood), do: nil
+
+  defp voiced(:calm, :warm),
+    do: ["...고맙다.", "그렇게 말해 주면, 나쁘지 않네.", "흠. 기억해 둘게.", "알았어. 고마워."]
+
+  defp voiced(:calm, :neutral), do: ["응.", "응, 알겠어.", "듣고 있어."]
+
+  defp voiced(:playful, :warm),
+    do: ["에이, 갑자기 왜 이래? 기분은 좋네.", "헤헤, 그런 말은 더 해 줘도 돼.", "오, 오늘 왜 이렇게 다정해?"]
+
+  defp voiced(:playful, :neutral), do: ["응? 무슨 일인데? 재밌는 거야?", "왜왜, 뭔데?", "불렀어? 심심했구나?"]
+
+  defp voiced(:sensitive, :warm),
+    do: ["정말? ...그렇게 말해 줘서 고마워.", "그 말, 오래 기억할게.", "고마워. 괜히 마음이 찡하네."]
+
+  defp voiced(:sensitive, :neutral),
+    do: ["응, 무슨 일 있어?", "왜? ...무슨 일 있는 거 아니지?", "응, 얘기해. 듣고 있을게."]
+
+  defp voiced(_temperament, _tone), do: nil
 
   defp bond_line(:warm, :close),
     do: ["역시 너밖에 없어. 고마워.", "너 진짜 최고야, 알지?", "네 연락이 하루 중에 제일 반가워."]
@@ -335,6 +498,18 @@ defmodule Aethrion.Expression.Templates.Ko do
   defp reply(:hostile, :upset), do: "그만해 줘."
   defp reply(:hostile, _mood), do: "왜 그런 말을 해?"
   defp reply(_tone, _mood), do: "..."
+
+  @edible ~w(쿠키 케이크 초콜릿 사탕 빵 머핀 간식 도시락 과자 귤 디저트 커피 차 음료 아이스크림 젤리 떡 마카롱 샌드위치 우유 주스)
+
+  defp gift_thanks(:calm, gift) when gift in @edible, do: "#{gift}? ...고맙다. 잘 먹을게."
+  defp gift_thanks(:calm, gift), do: "#{gift}? ...고맙다. 잘 쓸게."
+  defp gift_thanks(:playful, gift), do: "#{gift}? 뭐야, 나 주는 거야? 최고!"
+  defp gift_thanks(:sensitive, gift), do: "#{gift}... 나 주려고 챙긴 거야? 고마워."
+  defp gift_thanks(_temperament, gift), do: "#{gift}? 우와, 고마워!"
+
+  defp accepted(:calm), do: "알았어. 됐어."
+  defp accepted(:playful), do: "흠, 이번만 봐준다?"
+  defp accepted(_temperament), do: "그렇게 말해 줘서 고마워. 마음이 좀 풀렸어."
 
   defp first_hurt(:sensitive), do: "그 말 좀 아프다. 왜 그런 말을 해?"
   defp first_hurt(:calm), do: "...그건 좀 너무했다."
@@ -411,9 +586,29 @@ defmodule Aethrion.Expression.Templates.Ko do
         "#{with_particle(name.(event.from), :with)} #{with_particle(name.(event.to), :topic)} 함께 시간을 보낸다"
 
       _other ->
-        Aethrion.Event.describe(event, names)
+        describe_action(event, name, subject, names)
     end
   end
+
+  # Activities and fights.
+  defp describe_action(%{type: :attack} = event, name, subject, _names),
+    do:
+      "#{subject.(event.from)} #{with_particle(name.(event.to), :object)} 공격한다" <>
+        seen_by(event, name)
+
+  defp describe_action(%{type: :defend} = event, name, _subject, _names),
+    do: "#{with_particle(name.(event.from), :topic)} 방어 자세를 취한다"
+
+  defp describe_action(%{type: :heal} = event, name, subject, _names),
+    do: "#{subject.(event.from)} #{with_particle(name.(event.to), :object)} 치료한다"
+
+  defp describe_action(%{type: :flee} = event, name, _subject, _names),
+    do: "#{with_particle(name.(event.from), :topic)} #{name.(event.to)}에게서 도망치려 한다"
+
+  defp describe_action(%{type: :activity} = event, name, _subject, _names),
+    do: "#{with_particle(name.(event.character), :topic)} #{event.activity}에 시간을 쓴다"
+
+  defp describe_action(event, _name, _subject, names), do: Aethrion.Event.describe(event, names)
 
   @doc """
   One-line Korean description of a memory, from its structured data, for

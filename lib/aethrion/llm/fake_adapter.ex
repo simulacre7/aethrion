@@ -47,11 +47,13 @@ defmodule Aethrion.LLM.FakeAdapter do
              "stop it"
            ] ++
              ["꺼져", "닥쳐", "바보", "멍청", "한심", "질렸", "재수 없", "재수없", "지긋지긋"] ++
-             ["연락하지 마", "상종", "역겨", "저리 가", "입 다물", "이기적", "그 모양"]
+             ["연락하지 마", "상종", "역겨", "저리 가", "입 다물", "이기적", "그 모양"] ++
+             ["짐짝", "쓸모없", "쓸모 없", "쓰레기", "죽어", "방해만", "꼴 보기 싫", "꼴보기 싫"] ++
+             ["재능 없", "재능도 없", "그만둬", "때려치", "그것밖에", "그거밖에"]
   # "그만해", but not "걱정 그만해" or "그만해도 돼".
   @stop ~r/(?<!걱정 )그만해(?!도)/u
   # Harsh only when aimed at the listener: "너 싫어", not "비 와서 싫어".
-  @hostile_at_you ["싫어", "최악", "미워", "짜증"]
+  @hostile_at_you ["싫어", "최악", "미워", "짜증", "재미없", "재미 없"]
   # Denied insults are not insults: "너 바보 아니야".
   @hostile_denied ~r/(?:바보|멍청|한심|이기적|싫|미워|최악)\S*\s*(?:아니|아냐|안\s)/u
   @you ~r/(?:^|\s)(?:너(?![무희])|넌|널|니(?=\s)|네가|니가|너가|당신)/u
@@ -108,7 +110,25 @@ defmodule Aethrion.LLM.FakeAdapter do
     "재미있",
     "내 편",
     "잘 잤",
-    "잘 지냈"
+    "잘 지냈",
+    "덕분에",
+    "잘 될 거",
+    "잘될 거",
+    "푹 쉬어",
+    "무리하지 마",
+    "걱정돼",
+    "걱정 돼",
+    "대박",
+    "멋졌",
+    "지켜줄게",
+    "지켜 줄게",
+    "좋구나",
+    "잘하는구나",
+    "든든",
+    "완벽",
+    "내가 있잖아",
+    "잘했",
+    "훌륭"
   ]
   # Disappointment is cold even next to a warm word ("대단히 실망했어"), and so
   # is brushing something off ("사랑 따위 필요 없어").
@@ -144,7 +164,7 @@ defmodule Aethrion.LLM.FakeAdapter do
   @impl true
   def render(%Request{} = request, opts \\ []) do
     case Keyword.get(opts, :locale, :en) do
-      :ko -> {:ok, Templates.Ko.render(request)}
+      :ko -> {:ok, request |> Templates.Ko.render() |> Templates.Ko.polite(request)}
       _en -> {:ok, request.fallback_text || Templates.render(request)}
     end
   end

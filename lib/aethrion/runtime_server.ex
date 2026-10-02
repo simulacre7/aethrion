@@ -65,7 +65,10 @@ defmodule Aethrion.RuntimeServer do
     starts quickly. A failed compaction is logged and retried after the next
     event; the journal stays valid either way.
   - `:subscribers` - a started `:pg` scope to keep subscribers in, so they
-    survive a restart of this server (`Aethrion.World` provides one)
+    survive a restart of this server (`Aethrion.World` provides one), or
+    `{scope, group}` to share one scope among many worlds (`Aethrion.Worlds`)
+  - `:hibernate_after` - ms without a message before the server compacts its
+    memory (`GenServer` option; `Aethrion.Worlds` uses 15 seconds)
   - `:tag` - what subscriber messages carry as their second element (default:
     this server's pid; `Aethrion.World` uses the world's name)
   - `:expression` - keyword options enabling asynchronous rendering:
@@ -74,7 +77,7 @@ defmodule Aethrion.RuntimeServer do
     one is started and linked when omitted).
   """
   def start_link(opts \\ []) do
-    {server_opts, init_opts} = Keyword.split(opts, [:name])
+    {server_opts, init_opts} = Keyword.split(opts, [:name, :hibernate_after])
     GenServer.start_link(__MODULE__, init_opts, server_opts)
   end
 
@@ -155,7 +158,7 @@ defmodule Aethrion.RuntimeServer do
          subscribers: %{},
          # A :pg scope holding subscribers outside this process, so they
          # survive a restart (Aethrion.World provides one).
-         pg: Keyword.get(opts, :subscribers),
+         pg: subscriber_group(Keyword.get(opts, :subscribers)),
          tag: Keyword.get(opts, :tag, self()),
          expression: expression,
          pending: %{}
@@ -218,10 +221,10 @@ defmodule Aethrion.RuntimeServer do
     end
   end
 
-  def handle_call({:subscribe, pid}, _from, %{pg: scope} = server)
-      when not is_nil(scope) and node(pid) == node() do
-    unless pid in :pg.get_local_members(scope, :subscribers),
-      do: :ok = :pg.join(scope, :subscribers, pid)
+  def handle_call({:subscribe, pid}, _from, %{pg: {scope, group}} = server)
+      when node(pid) == node() do
+    unless pid in :pg.get_local_members(scope, group),
+      do: :ok = :pg.join(scope, group, pid)
 
     {:reply, :ok, server}
   end
@@ -235,9 +238,9 @@ defmodule Aethrion.RuntimeServer do
     end
   end
 
-  def handle_call({:unsubscribe, pid}, _from, %{pg: scope} = server)
-      when not is_nil(scope) and node(pid) == node() do
-    _left_or_not_joined = :pg.leave(scope, :subscribers, pid)
+  def handle_call({:unsubscribe, pid}, _from, %{pg: {scope, group}} = server)
+      when node(pid) == node() do
+    _left_or_not_joined = :pg.leave(scope, group, pid)
     {:reply, :ok, server}
   end
 
@@ -259,7 +262,8 @@ defmodule Aethrion.RuntimeServer do
     {{_output, timer, _pid}, pending} = Map.pop(server.pending, ref)
     Process.cancel_timer(timer)
 
-    {:noreply, broadcast(%{server | pending: pending}, {:expressed, rendered})}
+    server = %{server | pending: pending} |> remember_rendered(rendered)
+    {:noreply, broadcast(server, {:expressed, rendered})}
   end
 
   # A rendering task crashed or was killed.
@@ -452,6 +456,35 @@ defmodule Aethrion.RuntimeServer do
     %{server | history: Enum.take([event | server.history], server.history_limit)}
   end
 
+  # What a model said goes into the world's conversation, so the next line
+  # it phrases sees it, and into the journal, so replay restores it.
+  # If the journal cannot take the line, the world keeps the draft, so a
+  # replay never differs from the live world.
+  defp remember_rendered(server, rendered) do
+    world = Aethrion.Conversation.put_rendered(server.world, rendered)
+
+    cond do
+      world == server.world ->
+        server
+
+      server.journal == nil ->
+        persist(%{server | world: world})
+
+      true ->
+        case Aethrion.Journal.append_rendered(server.journal, rendered) do
+          :ok ->
+            persist(%{server | world: world})
+
+          {:error, error} ->
+            Logger.warning(
+              "Aethrion.RuntimeServer could not journal a rendered line: #{error.message}"
+            )
+
+            server
+        end
+    end
+  end
+
   defp persist(%{persistence: nil} = server), do: server
 
   defp persist(%{persistence: {adapter, opts}} = server) do
@@ -536,12 +569,16 @@ defmodule Aethrion.RuntimeServer do
     subscribers =
       case server.pg do
         nil -> Map.keys(server.subscribers)
-        scope -> :pg.get_local_members(scope, :subscribers) ++ Map.keys(server.subscribers)
+        {scope, group} -> :pg.get_local_members(scope, group) ++ Map.keys(server.subscribers)
       end
 
     for pid <- subscribers, do: send(pid, {:aethrion, server.tag, payload})
     server
   end
+
+  defp subscriber_group(nil), do: nil
+  defp subscriber_group({scope, group}), do: {scope, group}
+  defp subscriber_group(scope), do: {scope, :subscribers}
 
   defp render_async(%{expression: nil} = server, _outputs), do: server
 

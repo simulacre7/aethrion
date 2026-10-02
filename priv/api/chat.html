@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Aethrion Chat</title>
+<style>
+:root{color-scheme:light;--page:#f6f5f2;--surface:#ffffff;--text:#151515;--muted:#6b6a66;--border:rgba(0,0,0,.10);--me:#2a78d6;--me-text:#ffffff;--them:#ecebe7;--note:#8a6d1f;--bad:#c23b3b}
+@media (prefers-color-scheme:dark){:root{color-scheme:dark;--page:#0f0f0f;--surface:#1a1a19;--text:#f2f2f0;--muted:#a3a29c;--border:rgba(255,255,255,.12);--me:#3987e5;--me-text:#ffffff;--them:#2a2a28;--note:#d9b45a;--bad:#e66767}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--page);color:var(--text);font:15px/1.5 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:760px;margin:0 auto;padding:16px;display:flex;flex-direction:column;height:100vh;height:100dvh}
+header{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px}
+header h1{font-size:18px;margin:0 auto 0 0}
+label{font-size:13px;color:var(--muted);display:flex;gap:6px;align-items:center}
+input,select,button{font:inherit;color:inherit;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:6px 10px}
+button{cursor:pointer}
+button.primary{background:var(--me);color:var(--me-text);border-color:transparent}
+#log{flex:1;overflow-y:auto;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:8px}
+.msg{max-width:80%;padding:8px 12px;border-radius:14px;white-space:pre-wrap;overflow-wrap:anywhere}
+.me{align-self:flex-end;background:var(--me);color:var(--me-text);border-bottom-right-radius:4px}
+.them{align-self:flex-start;background:var(--them);border-bottom-left-radius:4px}
+.who{display:block;font-size:12px;color:var(--muted);margin-bottom:2px}
+.me .who{color:rgba(255,255,255,.8)}
+.note{align-self:center;font-size:13px;color:var(--note);text-align:center;max-width:90%}
+.error{align-self:center;font-size:13px;color:var(--bad)}
+form{display:flex;gap:8px;margin-top:12px}
+form input{flex:1;min-width:0}
+.hint{font-size:12px;color:var(--muted);margin:6px 2px 0}
+  .choices { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
+  .choices button { font-size: 0.85rem; padding: 4px 10px; border-radius: 14px; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Aethrion Chat</h1>
+    <label>World <input id="world" size="12" aria-label="World key"></label>
+    <label>Talk to <select id="character" aria-label="Character"></select></label>
+    <label>Token <input id="token" type="password" size="8" aria-label="Bearer token"></label>
+    <button id="later" type="button" title="Let a few hours pass in the world">Time passes</button>
+    <button id="story" type="button" title="How close each ending is, and what is missing">Story</button>
+    <span id="model" class="hint"></span>
+  </header>
+  <div id="log" aria-live="polite"></div>
+  <div id="choices" class="choices" aria-label="Reply choices"></div>
+  <form id="form">
+    <input id="text" autocomplete="off" placeholder="Talk, act, or suggest something, the way you would in a chat" aria-label="Message">
+    <button class="primary" type="submit">Send</button>
+  </form>
+  <p class="hint">Each world key is its own world, kept on the server. Characters remember what you say, react to how you treat them, and talk to each other while time passes.</p>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+const store = {
+  get(key, fallback) { try { return localStorage.getItem(key) ?? fallback; } catch { return fallback; } },
+  set(key, value) { try { localStorage.setItem(key, value); } catch {} }
+};
+let names = {};
+// The last event seen, so polling shows only what is new.
+let last = null;
+const seen = (id) => { if (id && (!last || Number(id.slice(1)) > Number(last.slice(1)))) last = id; };
+
+$("world").value = store.get("aethrion.world", "guest-" + Math.random().toString(36).slice(2, 7));
+$("token").value = store.get("aethrion.token", "");
+
+function headers() {
+  const h = {"content-type": "application/json"};
+  if ($("token").value) h.authorization = "Bearer " + $("token").value;
+  return h;
+}
+
+async function call(method, path, body) {
+  const response = await fetch(path, {method, headers: headers(), body: body ? JSON.stringify(body) : undefined});
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error ? data.error.message : response.statusText);
+  return data;
+}
+
+function add(kind, text, who) {
+  const div = document.createElement("div");
+  div.className = kind === "me" || kind === "them" ? "msg " + kind : kind;
+  if (who) { const span = document.createElement("span"); span.className = "who"; span.textContent = who; div.append(span); }
+  div.append(document.createTextNode(text));
+  $("log").append(div);
+  $("log").scrollTop = $("log").scrollHeight;
+}
+
+function show(lines) {
+  for (const line of lines) {
+    const who = names[line.character_id] || line.character_id;
+    if (line.type === "character_interaction" || line.type === "combat") add("note", line.text);
+    else if (line.type === "ending_reached") add("note", "★ " + line.title + " — " + line.text);
+    else if (line.type === "milestone_reached") {
+      if (line.text) add("them", line.text, (names[line.character_id] || line.character_id) + (line.character_id === $("character").value ? "" : " (messaged you)"));
+      add("note", "♥ " + line.title + (line.description ? " — " + line.description : ""));
+    }
+    else if (line.to === "user" && line.character_id === $("character").value) add("them", line.text, who);
+    else if (line.to === "user") add("them", line.text, who + " (messaged you)");
+  }
+}
+
+function worldPath(suffix) { return "/worlds/" + encodeURIComponent($("world").value.trim()) + suffix; }
+
+async function load() {
+  store.set("aethrion.world", $("world").value.trim());
+  store.set("aethrion.token", $("token").value);
+  $("log").replaceChildren();
+  try {
+    const state = await call("GET", worldPath("/state"));
+    names = Object.fromEntries(state.characters.map((c) => [c.id, c.name]));
+    // Talk to someone on your side first: enemies (an "enemy" stat) go last.
+    const enemy = (c) => ((state.stats || {})[c.id] || {}).enemy > 0;
+    const ordered = [...state.characters.filter((c) => !enemy(c)), ...state.characters.filter(enemy)];
+    $("character").replaceChildren(...ordered.map((c) => new Option(c.name, c.id)));
+    await history();
+  } catch (error) { add("error", error.message); }
+}
+
+async function history() {
+  $("log").replaceChildren();
+  const character = $("character").value;
+  const data = await call("GET", worldPath("/conversation?character=" + encodeURIComponent(character)));
+  for (const turn of data.turns) {
+    // Deeds are the fight as a model reads it; the page showed the fight itself.
+    if (turn.kind === "deed") continue;
+    if (turn.from === "user") add("me", turn.kind === "gift" ? "(gives " + turn.text + ")" : turn.text, "You");
+    else add("them", turn.text, names[turn.from] || turn.from);
+    seen(turn.event_id);
+  }
+  const all = await call("GET", worldPath("/conversation"));
+  for (const turn of all.turns) seen(turn.event_id);
+  if (!last) last = "e0";
+  choices();
+}
+
+// Characters write on their own when time passes on the server.
+async function poll() {
+  if (!last) return;
+  try {
+    const data = await call("GET", worldPath("/conversation?after=" + last));
+    for (const turn of data.turns) {
+      seen(turn.event_id);
+      if (turn.from === "user" || turn.kind === "deed") continue;
+      const who = names[turn.from] || turn.from;
+      add("them", turn.text, turn.from === $("character").value ? who : who + " (messaged you)");
+    }
+  } catch {}
+}
+setInterval(poll, 5000);
+
+$("form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const text = $("text").value.trim();
+  if (!text) return;
+  $("text").value = "";
+  const to = $("character").value;
+  // Typed the way one talks: the server reads whether it is a move in a
+  // fight, a day spent on something, a gift, or just talk (Aethrion.Chat).
+  add("me", text, "You");
+  try {
+    const data = await call("POST", worldPath("/chat"), {to, text});
+    const as = data.interpreted && data.interpreted.as;
+    if (as === "activity") await dayPassed();
+    show(data.lines);
+    seen(data.last_event_id);
+  } catch (error) { add("error", error.message); }
+  choices();
+});
+
+// In a story that counts days, say which day it is.
+async function dayPassed() {
+  const s = await call("GET", worldPath("/story"));
+  if (s.deadline && !s.reached) add("note", "Day " + Math.floor(s.hour / 24) + " of " + Math.floor(s.deadline / 24));
+}
+
+async function story() {
+  const s = await call("GET", worldPath("/story"));
+  if (s.reached) return add("note", "★ " + s.reached.title + " — " + s.reached.description);
+  if (!s.endings.length) return add("note", "This world has no story endings.");
+  for (const e of s.endings) {
+    add("note", Math.round(e.closeness * 100) + "% " + e.title + (e.missing.length ? " — missing: " + e.missing.join("; ") : ""));
+  }
+}
+
+// Replies to pick, as a messenger game offers them; each is sent with its tone.
+async function choices() {
+  const box = $("choices");
+  box.replaceChildren();
+  try {
+    const to = $("character").value;
+    const data = await call("GET", worldPath("/replies?character=" + encodeURIComponent(to)));
+    for (const choice of data.replies) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = choice.text;
+      button.title = choice.tone;
+      button.addEventListener("click", async () => {
+        add("me", choice.text, "You");
+        box.replaceChildren();
+        try {
+          const step = await call("POST", worldPath("/events"), {type: "message_sent", from: "user", to, text: choice.text, tone: choice.tone});
+          show(step.lines);
+          seen(step.last_event_id);
+        } catch (error) { add("error", error.message); }
+        choices();
+      });
+      box.append(button);
+    }
+  } catch {}
+}
+
+// Which model reads the lines and writes the replies.
+fetch("/health").then((r) => r.json()).then((h) => {
+  $("model").textContent = h.model ? "Model: " + h.model : "No model: keyword rules (testing fallback). Start the server with --llm.";
+  $("model").style.color = h.model ? "" : "var(--bad)";
+}).catch(() => {});
+
+$("story").addEventListener("click", () => story().catch((e) => add("error", e.message)));
+
+$("later").addEventListener("click", async () => {
+  add("note", "A few hours pass…");
+  try {
+    const data = await call("POST", worldPath("/events"), {type: "time_tick", hours: 6, now: "later"});
+    show(data.lines);
+    seen(data.last_event_id);
+    if (!data.lines.length) add("note", "Nothing much happened.");
+  } catch (error) { add("error", error.message); }
+});
+
+$("character").addEventListener("change", () => history().catch((e) => add("error", e.message)));
+$("world").addEventListener("change", load);
+$("token").addEventListener("change", load);
+load();
+</script>
+</body>
+</html>

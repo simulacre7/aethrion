@@ -39,10 +39,16 @@ defmodule Aethrion.StubHTTPServer do
     request = %{method: method, path: path, headers: headers, body: body}
 
     send(owner, {:stub_request, request})
-    {status, response} = responder.(request)
+    # A responder may add headers: {status, body, [{"retry-after", "0"}]}.
+    {status, response, extra} =
+      case responder.(request) do
+        {status, response} -> {status, response, []}
+        {status, response, extra} -> {status, response, extra}
+      end
 
     :gen_tcp.send(client, [
       "HTTP/1.1 #{status} Stub\r\n",
+      Enum.map(extra, fn {key, value} -> "#{key}: #{value}\r\n" end),
       "content-type: application/json\r\n",
       "content-length: #{byte_size(response)}\r\n",
       "connection: close\r\n\r\n",

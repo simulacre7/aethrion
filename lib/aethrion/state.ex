@@ -25,7 +25,10 @@ defmodule Aethrion.State do
           seq: non_neg_integer(),
           cooldowns: %{optional(String.t()) => non_neg_integer()},
           tuning: Aethrion.Tuning.t(),
-          people: %{optional(String.t()) => String.t()}
+          people: %{optional(String.t()) => String.t()},
+          conversations: %{optional({String.t(), String.t()}) => [Aethrion.Conversation.turn()]},
+          stats: %{optional(String.t()) => %{optional(String.t()) => integer()}},
+          story: map()
         }
 
   @data_version 2
@@ -37,14 +40,20 @@ defmodule Aethrion.State do
             seq: 0,
             cooldowns: %{},
             tuning: %{},
-            people: %{}
+            people: %{},
+            conversations: %{},
+            stats: %{},
+            story: %{}
 
   @doc """
   Builds a runtime state from explicit characters and relationships.
 
   Options: `:characters`, `:relationships`, `:memories`, `:clock`, `:seq`,
   `:cooldowns`, `:tuning`, `:people` (display names for players: a map of id
-  to name; a character's own name always wins).
+  to name; a character's own name always wins), `:conversations` (see
+  `Aethrion.Conversation`), `:stats` (free-form numbers per actor, such as
+  `%{"user" => %{"hp" => 30}, "mina" => %{"charm" => 12}}`), `:story`
+  (activities and endings, see `Aethrion.Story`).
   """
   @spec new(keyword()) :: t()
   def new(opts \\ []) do
@@ -60,7 +69,11 @@ defmodule Aethrion.State do
       seq: Keyword.get(opts, :seq, 0),
       cooldowns: Map.new(Keyword.get(opts, :cooldowns, %{})),
       tuning: Map.new(Keyword.get(opts, :tuning, %{})),
-      people: Map.new(Keyword.get(opts, :people, %{}), fn {id, name} -> {to_string(id), name} end)
+      people:
+        Map.new(Keyword.get(opts, :people, %{}), fn {id, name} -> {to_string(id), name} end),
+      conversations: Map.new(Keyword.get(opts, :conversations, %{})),
+      stats: Map.new(Keyword.get(opts, :stats, %{})),
+      story: Map.new(Keyword.get(opts, :story, %{}))
     }
   end
 
@@ -73,6 +86,7 @@ defmodule Aethrion.State do
         id: "mina",
         name: "Mina",
         profile: "Warm, expressive, and easily moved by small gestures.",
+        voice: "Bubbly and open; says what she feels, exclamation marks, a little gushing.",
         traits: [:warm, :romantic],
         state: %CharacterState{mood: :neutral, loneliness: 12}
       },
@@ -80,6 +94,7 @@ defmodule Aethrion.State do
         id: "yuna",
         name: "Yuna",
         profile: "Sensitive, observant, and afraid of being forgotten.",
+        voice: "Quiet and careful; short, hesitant sentences, trailing off with ellipses.",
         traits: [:observant, :sensitive],
         state: %CharacterState{mood: :neutral, loneliness: 26}
       },
@@ -88,6 +103,7 @@ defmodule Aethrion.State do
         name: "Haru",
         profile:
           "Calm, playful, and usually outside the immediate drama. Quietly looks out for Yuna.",
+        voice: "Easygoing and dry; few words, light teasing, never dramatic.",
         traits: [:calm, :playful],
         state: %CharacterState{mood: :neutral, loneliness: 8}
       }
@@ -275,6 +291,19 @@ defmodule Aethrion.State do
     |> then(fn data ->
       if state.people == %{}, do: data, else: Map.put(data, "people", state.people)
     end)
+    |> then(fn data ->
+      if state.conversations == %{},
+        do: data,
+        else: Map.put(data, "conversations", Aethrion.Conversation.to_data(state.conversations))
+    end)
+    |> then(fn data ->
+      if state.stats == %{}, do: data, else: Map.put(data, "stats", state.stats)
+    end)
+    |> then(fn data ->
+      if state.story == %{},
+        do: data,
+        else: Map.put(data, "story", Aethrion.Story.to_data(state.story))
+    end)
   end
 
   @doc """
@@ -322,7 +351,10 @@ defmodule Aethrion.State do
       seq: Map.get(data, "seq", 0),
       cooldowns: cooldowns_from_data(data),
       tuning: tuning_from_data(data, Keyword.get(opts, :pipeline, Aethrion.Pipeline.default())),
-      people: Map.get(data, "people", %{})
+      people: Map.get(data, "people", %{}),
+      conversations: Aethrion.Conversation.from_data(Map.get(data, "conversations")),
+      stats: Map.get(data, "stats", %{}),
+      story: Aethrion.Story.from_data!(Map.get(data, "story"))
     )
   end
 
@@ -358,6 +390,9 @@ defmodule Aethrion.State do
       "traits" => Enum.map(character.traits, &atom_to_string/1),
       "state" => character_state_to_data(character.state)
     }
+    |> then(fn data ->
+      if character.voice in [nil, ""], do: data, else: Map.put(data, "voice", character.voice)
+    end)
   end
 
   @doc false
@@ -366,6 +401,7 @@ defmodule Aethrion.State do
       id: Map.fetch!(data, "id"),
       name: Map.fetch!(data, "name"),
       profile: Map.get(data, "profile", ""),
+      voice: Map.get(data, "voice", ""),
       traits: data |> Map.get("traits", []) |> Enum.map(&trait_from_data/1),
       state: data |> Map.get("state", %{}) |> character_state_from_data()
     }
@@ -481,12 +517,63 @@ defmodule Aethrion.State do
          :ok <- optional(data, "clock", &non_neg_integer?/1),
          :ok <- optional(data, "seq", &non_neg_integer?/1),
          :ok <- optional(data, "cooldowns", &cooldowns?/1),
-         :ok <- optional(data, "people", &names?/1) do
-      optional(data, "tuning", &is_map/1)
+         :ok <- optional(data, "people", &names?/1),
+         :ok <- optional(data, "conversations", &Aethrion.Conversation.valid_data?/1),
+         :ok <- optional(data, "tuning", &is_map/1),
+         :ok <- optional(data, "stats", &stats?/1),
+         :ok <- stat_numbers(data),
+         :ok <- dice_limits(data),
+         :ok <- validate_story(data) do
+      validate_cast(data)
     end
   end
 
   defp validate_data(_data), do: invalid([], "expected an object")
+
+  # Mistakes in hand-written casts that would otherwise pass silently: a
+  # second character with the same id replaces the first, and feelings
+  # belong to characters, about someone else.
+  defp validate_cast(data) do
+    ids = data |> Map.get("characters", []) |> Enum.map(& &1["id"])
+    duplicate = ids -- Enum.uniq(ids)
+
+    relationships = data |> Map.get("relationships", []) |> Enum.with_index()
+
+    cond do
+      duplicate != [] ->
+        invalid(
+          ["characters"],
+          "the id #{inspect(hd(duplicate))} is used by more than one character"
+        )
+
+      bad = Enum.find(relationships, fn {r, _i} -> r["from"] not in ids end) ->
+        {r, i} = bad
+
+        invalid(
+          ["relationships", i, "from"],
+          "#{inspect(r["from"])} is not a character in this cast"
+        )
+
+      bad = Enum.find(relationships, fn {r, _i} -> r["from"] == r["to"] end) ->
+        {r, i} = bad
+
+        invalid(
+          ["relationships", i, "to"],
+          "#{inspect(r["to"])} cannot have a relationship with themselves"
+        )
+
+      true ->
+        pairs = Enum.map(relationships, fn {r, _i} -> {r["from"], r["to"]} end)
+
+        case pairs -- Enum.uniq(pairs) do
+          [] ->
+            :ok
+
+          [{from, to} | _] ->
+            invalid(["relationships"], "#{from} -> #{to} is listed more than once")
+        end
+    end
+  end
 
   # v1 one-shot proactive records, migrated to cooldowns.
   defp validate_emitted(item) do
@@ -499,6 +586,7 @@ defmodule Aethrion.State do
     with :ok <- required(character, "id", &non_empty_string?/1),
          :ok <- required(character, "name", &is_binary/1),
          :ok <- optional(character, "profile", &is_binary/1),
+         :ok <- optional(character, "voice", &is_binary/1),
          :ok <- optional(character, "traits", &string_list?/1),
          :ok <- optional(character, "state", &is_map/1) do
       validate_character_state(Map.get(character, "state", %{}))
@@ -517,9 +605,14 @@ defmodule Aethrion.State do
   # The first of `fields` that is present and outside min..max.
   defp in_range(map, fields, min, max) do
     Enum.reduce_while(fields, :ok, fn field, :ok ->
-      case optional(map, field, &in_range?(&1, min, max)) do
-        :ok -> {:cont, :ok}
-        error -> {:halt, error}
+      case Map.fetch(map, field) do
+        {:ok, value} ->
+          if in_range?(value, min, max),
+            do: {:cont, :ok},
+            else: {:halt, invalid([field], "must be a whole number from #{min} to #{max}")}
+
+        :error ->
+          {:cont, :ok}
       end
     end)
   end
@@ -607,6 +700,117 @@ defmodule Aethrion.State do
 
   defp non_empty_string?(value), do: is_binary(value) and value != ""
   defp non_neg_integer?(value), do: is_integer(value) and value >= 0
+
+  defp stats?(value),
+    do:
+      is_map(value) and
+        Enum.all?(value, fn {id, stats} ->
+          is_binary(id) and is_map(stats) and
+            Enum.all?(stats, fn {k, v} -> is_binary(k) and k != "" and is_integer(v) end)
+        end)
+
+  # Stats, activity effects, and story thresholds are whole numbers within a
+  # billion either way: far beyond any game's, and small enough that the
+  # rules' arithmetic (a share of hp, how close an ending is) cannot
+  # overflow.
+  @number_limit 1_000_000_000
+
+  @doc false
+  def number?(value), do: is_integer(value) and abs(value) <= @number_limit
+
+  @doc false
+  def number_range, do: "must be from -#{@number_limit} to #{@number_limit}"
+
+  defp stat_numbers(data) do
+    data
+    |> Map.get("stats", %{})
+    |> Enum.flat_map(fn {id, stats} -> for {name, value} <- stats, do: {id, name, value} end)
+    |> Enum.sort()
+    |> Enum.find(fn {_id, _name, value} -> not number?(value) end)
+    |> case do
+      nil -> :ok
+      {id, name, _value} -> invalid(["stats", id, name], number_range())
+    end
+  end
+
+  # Dice a cast asks the rules to roll are bounded, so a cast cannot make
+  # one blow cost a billion rolls (a critical hit doubles the count).
+  @dice_limits %{
+    "damage_dice" => 20,
+    "heal_dice" => 20,
+    "damage_die" => 100,
+    "heal_die" => 100,
+    "potion_dice" => 20,
+    "potion_die" => 100
+  }
+
+  @doc false
+  def dice_limits, do: @dice_limits
+
+  defp dice_limits(data) do
+    stats =
+      for {id, stats} <- Map.get(data, "stats", %{}),
+          {name, value} <- stats,
+          do: {["stats", id, name], name, value}
+
+    tuning =
+      for {name, value} <- get_in(data, ["tuning", "combat"]) || %{},
+          do: {["tuning", "combat", name], name, value}
+
+    case Enum.find(stats ++ tuning, fn {_path, name, value} ->
+           limit = @dice_limits[name]
+           limit && is_integer(value) && value > limit
+         end) do
+      nil -> :ok
+      {path, name, _value} -> invalid(path, "#{name} must be at most #{@dice_limits[name]}")
+    end
+  end
+
+  defp validate_story(%{"story" => story} = data) do
+    case Aethrion.Story.parse(story) do
+      {:ok, story} -> validate_story_actors(story, data)
+      {:error, message, path} -> invalid(["story" | path], message)
+    end
+  end
+
+  defp validate_story(_data), do: :ok
+
+  # A story that tests someone the cast does not have (a typo, a renamed
+  # character) could never reach the ending it was written for.
+  defp validate_story_actors(story, data) do
+    characters = data |> Map.get("characters", []) |> Enum.map(& &1["id"])
+
+    actors =
+      ["user" | characters] ++
+        Map.keys(Map.get(data, "people", %{})) ++ Map.keys(Map.get(data, "stats", %{}))
+
+    case Enum.find(Aethrion.Story.actors(story), fn {id, kind} ->
+           id not in if(kind == :character, do: characters, else: actors)
+         end) do
+      nil ->
+        :ok
+
+      {id, :character} ->
+        invalid(["story"], "the story names #{inspect(id)}, who is not a character in this cast")
+
+      {id, :actor} ->
+        invalid(["story"], "the story names #{inspect(id)}, who is not in this cast")
+    end
+  end
+
+  @doc "An actor's stat (default 0)."
+  @spec stat(t(), String.t(), String.t()) :: integer()
+  def stat(%__MODULE__{stats: stats}, id, name), do: stats |> Map.get(id, %{}) |> Map.get(name, 0)
+
+  @doc "Whether an actor has a stat at all."
+  @spec stat?(t(), String.t(), String.t()) :: boolean()
+  def stat?(%__MODULE__{stats: stats}, id, name),
+    do: stats |> Map.get(id, %{}) |> Map.has_key?(name)
+
+  @doc "Whether an actor is knocked out: they have an hp stat and it is 0."
+  @spec down?(t(), String.t()) :: boolean()
+  def down?(%__MODULE__{} = state, id), do: stat?(state, id, "hp") and stat(state, id, "hp") <= 0
+
   defp in_range?(value, min, max), do: is_integer(value) and value >= min and value <= max
   defp string_list?(value), do: is_list(value) and Enum.all?(value, &is_binary/1)
 
@@ -624,8 +828,11 @@ defmodule Aethrion.State do
   # Traits and tags are descriptive. Values that match an existing atom (such
   # as the traits rules understand) become atoms; anything else stays a string,
   # so untrusted data cannot grow the atom table.
+  # The traits rules understand always become atoms, whether or not the
+  # modules that use them are loaded yet.
   defp trait_from_data(value) when is_binary(value) do
-    String.to_existing_atom(value)
+    Enum.find(Aethrion.Character.known_traits(), &(Atom.to_string(&1) == value)) ||
+      String.to_existing_atom(value)
   rescue
     ArgumentError -> value
   end

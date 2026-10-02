@@ -94,7 +94,7 @@ defmodule Aethrion.Rules.Companionship do
 
   defp available?(state, id) do
     case State.character(state, id) do
-      %Character{} = character -> Character.can_act?(character)
+      %Character{} = character -> Character.can_act?(character) and not State.down?(state, id)
       nil -> false
     end
   end

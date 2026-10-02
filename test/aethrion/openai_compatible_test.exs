@@ -39,7 +39,7 @@ defmodule Aethrion.LLM.OpenAICompatibleTest do
     body = Jason.decode!(request.body)
     assert body["model"] == "test-model"
     assert [%{"role" => "system"}, %{"role" => "user", "content" => context}] = body["messages"]
-    assert context =~ "Draft line: You looked happy with Mina earlier."
+    assert context =~ ~s(Draft line: "You looked happy with Mina earlier.)
     assert context =~ "yuna saw user give mina a flower."
     assert context =~ "mood: jealous"
   end
@@ -107,7 +107,7 @@ defmodule Aethrion.LLM.OpenAICompatibleTest do
     rendered =
       Expression.render(outputs,
         adapter: OpenAICompatible,
-        adapter_opts: [base_url: base_url, model: "m"]
+        adapter_opts: [base_url: base_url, model: "m", retries: 0]
       )
 
     for {before, output} <- Enum.zip(outputs, rendered), Aethrion.Output.expressive?(before) do

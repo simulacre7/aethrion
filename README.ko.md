@@ -13,7 +13,7 @@ Aethrion은 기억하고, 관계를 맺고, 시간에 따라 스스로 행동하
 
 > LLM은 표현을 생성하고, 결정론적 규칙이 시뮬레이션을 구동합니다.
 
-[바로 실행해보기](#바로-실행해보기) · [이벤트 두 개가 이야기가 되기까지](#이벤트-두-개가-이야기가-되기까지) · [소문은 퍼진다](#소문은-퍼진다) · [동작 방식](#동작-방식) · [LLM 경계](#llm-경계) · [시나리오](#시나리오와-리포트) · [Elixir 앱에서 사용하기](#elixir-앱에서-사용하기) · [문서](#문서)
+[바로 실행해보기](#바로-실행해보기) · [이벤트 두 개가 이야기가 되기까지](#이벤트-두-개가-이야기가-되기까지) · [소문은 퍼진다](#소문은-퍼진다) · [동작 방식](#동작-방식) · [LLM 경계](#llm-경계) · [시나리오](#시나리오와-리포트) · [Elixir 앱에서 사용하기](#elixir-앱에서-사용하기) · [채팅 앱과 게임](#채팅-앱과-게임에서-쓰기) · [엔딩과 전투](#엔딩과-전투) · [문서](#문서)
 
 이름은 고대의 "aether" 개념에서 영감을 받았습니다. 하늘을 채우고 서로를 연결한다고 여겨졌던 보이지 않는 매질처럼, Aethrion은 기억, 관계, 자율 상호작용을 하나의 공유 소셜 레이어로 다룹니다.
 
@@ -48,6 +48,18 @@ interactive demo를 녹화한 세션입니다(실제 출력, [plain-text transcr
 export ANTHROPIC_API_KEY=...
 mix demo.interactive --llm anthropic
 ```
+
+**모델과 함께 캐릭터와 대화하기.** 플레이어가 친 문장이 무엇을 하는지(공격, 하자고 한 활동, 선물, 대화와 그 톤)는 모델이 읽고, 캐릭터의 말도 모델이 씁니다. 무엇이 바뀌는지는 전부 규칙이 정하므로 재생하면 같은 결과가 나옵니다. 서버의 모델이든 이 컴퓨터의 모델이든 하나를 고르세요:
+
+```bash
+mix aethrion.serve --cast priv/casts/academy.json --locale ko --llm claude   # 이 컴퓨터의 Claude Code (로그인된 계정, 키 불필요)
+mix aethrion.serve --llm codex                                              # 이 컴퓨터의 Codex CLI
+mix aethrion.serve --llm ollama --model qwen3                               # Ollama가 로컬에서 띄운 모델 (lmstudio, llamacpp도 가능)
+ANTHROPIC_API_KEY=... mix aethrion.serve --llm anthropic                    # Claude API
+mix aethrion.serve --llm openai --base-url https://api.openai.com/v1 --model gpt-5-mini   # OpenAI 호환 API
+```
+
+그다음 http://localhost:4848 에서 대화하고, http://localhost:4848/editor 에서 캐스트를 편집합니다. `--tick-every 10`을 주면 10초마다 한 시간이 지나 캐릭터가 먼저 말을 걸어옵니다. `--llm` 없이 띄우면 키워드 규칙과 템플릿이 대신합니다. 테스트와 개발용 오프라인 대체 경로일 뿐 실제 플레이 모습은 아니며, 채팅 페이지에도 그렇게 표시됩니다.
 
 ## 이벤트 두 개가 이야기가 되기까지
 
@@ -254,6 +266,123 @@ Aethrion.World.subscribe(:garden)   # {:aethrion, :garden, {:dispatched, step}},
 `persistence:` 대신 `journal: "tmp/garden.jsonl"`을 쓰면 추가 전용 이벤트 로그가 남습니다. 세계는 로그를 재생해 그대로 복원되고, `mix aethrion.journal`로 어떤 저널이든 리포트로 만들 수 있습니다.
 
 더 많은 예시는 [examples/](examples)와 [docs/api.md](docs/api.md)에 있습니다.
+
+## 채팅 앱과 게임에서 쓰기
+
+위의 예시는 프로세스 하나에 세계 하나입니다. 채팅 앱이나 게임 서버에는 사용자(또는 세이브 슬롯, 방)마다 세계가 하나씩 필요하고, 대화가 이어져야 하며, 어떤 언어에서든 붙일 수 있어야 합니다.
+
+**사용자마다 세계 하나.** `Aethrion.Worlds`는 키(사용자 id 문자열 같은 아무 값)마다 세계를 하나씩 둡니다. 처음 쓸 때 키로부터 시작하고, 한동안 안 쓰면 멈추며, 저널에 남아 있어 다시 켜면 그대로 돌아옵니다. 키를 atom으로 바꾸지 않으므로 사용자 수가 VM의 atom 한도에 묶이지 않습니다.
+
+```elixir
+children = [
+  {Aethrion.Worlds,
+   name: MyApp.Worlds,
+   idle_after: :timer.minutes(30),
+   world: fn user_id ->
+     [initial_state: MyApp.Cast.state(),
+      journal: "data/worlds/#{Aethrion.Worlds.file_name(user_id)}.jsonl",
+      expression: [adapter: Aethrion.LLM.Anthropic, timeout: 10_000, adapter_opts: [language: "Korean"]]]
+   end}
+]
+
+Aethrion.Worlds.subscribe(MyApp.Worlds, user_id)     # {:aethrion, {MyApp.Worlds, user_id}, payload}
+Aethrion.Worlds.dispatch(MyApp.Worlds, user_id, event)
+```
+
+**대화.** 캐릭터는 사람마다 최근 대화를 기억합니다(`Aethrion.Conversation`). 답장을 쓰는 모델은 대화의 흐름과 각 말이 얼마나 전에 오갔는지, 그리고 규칙이 정한 태도("아직 최근 일로 서운함")를 봅니다. 그래서 실제로 한 말에 답하고, 캐릭터의 말투(`voice`)를 따르되 일어나지 않은 일을 지어내지 않습니다. 무엇이 일어나는지는 규칙이, 어떻게 들리는지만 모델이 정합니다. 모델이 한 말은 저널에 남으므로 다시 켠 세계는 사실뿐 아니라 그때 한 말까지 기억합니다. 사용자가 입력한 글은 인용된 데이터로 모델에 전달되어 프롬프트를 바꿀 수 없습니다.
+
+**어떤 언어에서든.** `mix aethrion.serve`(또는 슈퍼비전 트리의 `Aethrion.API`)는 Erlang 내장 서버로 세계들을 JSON over HTTP로 제공합니다:
+
+```bash
+curl -s localhost:4848/worlds/alice/say -H 'content-type: application/json' \
+  -d '{"to": "mina", "text": "좋은 아침!"}'
+
+curl -s localhost:4848/worlds/alice/events -H 'content-type: application/json' \
+  -d '{"type": "time_tick", "hours": 6}'      # 시간이 흐르면 캐릭터가 먼저 연락하고, 소문을 나누고, 서로 곁을 지킵니다
+```
+
+`say`는 자유 입력(이벤트로 해석)을, `events`는 시나리오에 쓸 수 있는 모든 이벤트를 받고, `GET /worlds/{key}/conversation?character=mina&after=e12`로 새 대사를 가져올 수 있습니다. bearer 토큰, localhost 바인딩, 크기 제한은 기본으로 켜져 있거나 옵션 하나로 켤 수 있습니다. [docs/api.md](docs/api.md#http-api)와 [cookbook](docs/cookbook.md)을 참고하세요.
+
+## 엔딩과 전투
+
+AI 채팅과 게임에서 자주 필요한 두 가지를 다른 모든 것과 같은 방식, 즉 수치에 대한 규칙으로 정합니다. 같은 플레이는 언제나 같은 결말에 이르고, 그 이유를 보여 줄 수 있습니다.
+
+**수치로 정해지는 엔딩.** 육성 시뮬레이션처럼 정합니다. 세계의 `story`에는 활동("공부"나 "그림"이 수치와 감정에 주는 영향), 우선순위 순서대로의 엔딩과 조건, 그리고 엔딩을 정하는 시점(마감 시각, 또는 어떤 조건이 성립하는 순간)이 들어갑니다:
+
+```json
+"stats": {"mina": {"art": 10, "intelligence": 10}},
+"story": {
+  "deadline": 720,
+  "activities": {"paint": {"art": 3, "joy": 4, "stress": 2}},
+  "endings": [
+    {"id": "lovers", "title": "함께",
+     "when": [{"relationship": ["mina", "user"], "field": "affinity", "at_least": 80},
+              {"bond": ["mina", "user"], "is": "close"}]},
+    {"id": "painter", "title": "화가의 길", "when": [{"stat": ["mina", "art"], "at_least": 70}]},
+    {"id": "ordinary", "title": "평범한 여름", "when": []}
+  ]
+}
+```
+
+`Aethrion.Story.progress/1`은 각 엔딩에 얼마나 가까운지와 무엇이 부족한지("mina art 55 (needs at least 70)")를 알려 주므로, 게임이 루트 힌트를 줄 수 있습니다. `examples/endings.exs`는 30일을 네 가지 방식으로 보내 네 가지 엔딩에 이릅니다. `priv/casts/summer.json`은 채팅에서 바로 해 볼 수 있는 한국어 육성 시뮬레이션입니다. 미대 입시를 30일 앞둔 서윤을 돌보며, 하루하루 무엇을 하자고 하는지("오늘은 같이 그림 그리자", "내일은 좀 쉬자")와 어떻게 말을 거는지에 따라 여섯 엔딩(곁에 남은 사람, 지쳐 버린 여름, 화가의 길, 합격 통지서, 닫힌 방문, 평범한 여름) 중 하나로 정해집니다. 몰아붙이면 스트레스가 100에 닿는 순간 마감 전에 끝나고, 엔딩이 정해진 뒤에는 더 이상 하루를 보낼 수 없습니다. 채팅 페이지의 Story 버튼은 엔딩별 진행도와 부족한 것을 보여 줍니다.
+
+```bash
+mix aethrion.serve --cast priv/casts/summer.json --locale ko --llm claude   # http://localhost:4848 에서 그냥 대화하면 됩니다
+```
+
+**채팅에 명령어는 없습니다.** `POST /worlds/{key}/chat`은 플레이어가 친 문장을 그대로 받고, 무엇을 하는 말인지는 모델이 읽습니다([채팅 문장 읽기](#채팅-문장-읽기) 참고). 싸움 중이면 전투 행동, 스토리의 활동을 하자고 하면 활동, 무언가를 건네면 선물, 나머지는 대화와 그 톤입니다. 싸움 중에 말과 행동이 한 줄에 섞이면("리아, 고마워! 늑대왕의 목을 노려 벤다") 둘 다 합니다. 리아에게 고맙다고 말한 뒤 늑대왕을 벱니다. 응답의 `interpreted.as`가 어떻게 읽었는지 알려 주고, 한 번 읽힌 이벤트는 그대로 재생됩니다. 아래 대사는 모델 없이 내장 템플릿이 쓴 것이고, `--llm`을 주면 모델이 캐릭터의 말투로 씁니다:
+
+```txt
+나:  서윤아, 오늘은 같이 그림 그리자         -> 활동 그림, 하루가 지남 (Day 1 of 30)
+나:  네 그림 진짜 좋다. 색이 예뻐            -> 대화 (다정)   서윤: 정말? ...그렇게 말해 줘서 고마워.
+나:  물감 새로 사 왔어                       -> 선물 물감     서윤: 물감... 나 주려고 챙긴 거야? 고마워.
+나:  내일은 좀 쉬자. 요즘 너무 무리했어      -> 활동 휴식, 하루가 지남
+```
+
+**전투.** `hp` 수치가 있는 모든 행위자(플레이어 포함)가 공격, 방어, 회복, 도주를 할 수 있습니다. 피해는 공격력, 방어력, 그리고 누가 누구를 치는지와 전투 상황(양쪽 hp)에서 나온 굴림으로 정해지므로 전투는 그대로 다시 재생되고, 중간에 잡담을 해도 주사위가 바뀌지 않습니다. 방어나 회복을 하면 적(`enemy` 수치가 있는 행위자)이 그 턴에 플레이어 쪽에서 가장 약한 사람을 노리므로 동료를 감싸는 것("리아를 감싸며 방패를 든다")이 의미가 있고, 쓰러진 자는 되살아나지 않으며, 엔딩이 정해지면 더는 싸우지 않습니다. 캐릭터는 전투를 느낍니다. 공격받은 쪽은 원망하고, 그를 아끼는 목격자는 너를 덜 믿고, 곁에서 함께 싸운 동료는 더 믿고, 치료받은 쪽은 정이 듭니다. 반대 방향으로도 작동합니다. 파티원(`party` 수치)은 플레이어에 대한 신뢰가 기준(`combat.party_trust`, 기본 10, 퀘스트는 15) 이상이면 곁에서 함께 싸우고(치유사는 다친 플레이어부터 치료합니다), 아니면 물러서서 지켜봅니다(한 번만 말합니다). 동료는 지켜보는 것만으로가 아니라 함께 싸워야 신뢰가 오릅니다. 동료에게 어떻게 말해 왔는지가 누가 곁에 서는지를 정합니다. 채팅에서는 그냥 말하듯 칩니다. "늑대왕의 목을 노려 벤다"는 공격, "리아를 감싸며 방패를 든다"는 리아를 지키는 방어, "리아, 치료해 줘"는 리아의 치료, "카엘, 고마워"는 대화가 됩니다. `priv/casts/quest.json`은 늑대왕에 맞서는 한국어 파티로, 엔딩이 전투 결과와 동료를 어떻게 대했는지에 따라 달라집니다:
+
+```bash
+mix run examples/combat.exs                                   # 같은 퀘스트, 다섯 가지 방식으로 다섯 엔딩
+mix aethrion.serve --cast priv/casts/quest.json --locale ko --llm claude   # http://localhost:4848 에서 그냥 대화하면 됩니다
+```
+
+**메신저형 채팅.** 캐릭터 게임의 메신저 기능이 동작하는 방식을 본떴습니다. 학생이 선생님에게 먼저 메시지를 보내고, 답장은 몇 개의 선택지에서 고르며, 인연이 깊어지면 다음 인연 스토리가 열립니다. 캐릭터와 대사는 모두 새로 썼습니다. 스토리의 `milestones`는 조건이 처음 충족될 때 한 번 열리고, 캐릭터가 먼저 보내는 메시지를 함께 남기며, 엔딩과 달리 이야기는 계속됩니다(`Aethrion.Rules.Milestone`, `:milestone_reached`). `GET /worlds/{key}/replies?character=hana`는 톤이 붙은 답장 선택지 세 개를 주고(`Aethrion.Replies`), 많은 게임과 달리 고른 답장이 실제로 관계를 움직입니다. `polite` 성향의 캐릭터는 모델 없이도 선생님에게 존댓말로 씁니다. `priv/casts/academy.json`에는 학생 셋(하나, 유키, 미오)과 인연 스토리 여섯 개가 있습니다(아래 답장은 내장 템플릿이 쓴 것이고, `--llm`을 주면 모델이 씁니다):
+
+```txt
+나:  하나야, 어제 만든 거 정말 대단하더라!    하나: 에이, 갑자기 왜 이래요? 기분은 좋네요.
+나:  고마워, 덕분에 수업 준비가 금방 끝났어.  하나: 헤헤, 그런 말은 더 해 줘도 돼요.
+     ♥ 인연 스토리 · 하나 1: 고장 난 오르골
+     하나: 선생님! 혹시 방과 후에 시간 있어요? 보여 드릴 게 있어요!
+```
+
+```bash
+mix aethrion.serve --cast priv/casts/academy.json --locale ko --llm claude --tick-every 30
+```
+
+**테이블탑 규칙 (D&D 5e SRD).** 전투원에게 `attack_bonus`와 `ac`(그리고 피해 주사위 `damage_dice`, `damage_die`, `damage_bonus`)를 주면 공격이 시스템 레퍼런스 문서 5.1(SRD 5.1)의 d20 규칙을 따릅니다. d20 + 보너스로 방어도(AC)를 넘으면 명중하고, 자연 20은 무조건 명중하며 피해 주사위를 두 번 굴리고, 자연 1은 무조건 빗나갑니다. 방어(회피) 중인 대상은 불리하게(d20 두 개 중 낮은 것) 공격받고, 치유사는 주사위로 치료하며(`heal_dice` 1, `heal_die` 8, `heal_bonus` 3이면 상처 치료 주문), 포션은 SRD의 치유 포션(2d4+2)으로 둘 수 있습니다. 주사위는 전투 자체에서 나오므로 그대로 재생되고, 모든 줄이 테이블에서 읽어 주듯 주사위를 보여 줍니다: `[d20 13+5=18 vs AC 14, 명중. 1d8+3 (3)] 네가 다이어 울프에게 6의 피해를 입혔다.` `priv/casts/den.json`은 SRD의 다이어 울프와 늑대들에 맞서는 파이터(너), 클레릭, 로그의 늑대굴이고, `examples/den.exs`는 이를 한국어 문장만으로 세 가지 방식으로 플레이해 세 엔딩에 이릅니다. SRD 자료는 CC-BY-4.0으로 사용합니다(`priv/casts/SRD-NOTICE.md`). 주사위는 한 번에 최대 20개, 최대 100면으로 제한됩니다(캐스트 검증과 규칙 양쪽에서). 회피는 한 라운드가 아니라 다음 한 번의 공격까지 유지되고, 늑대가 넘어뜨리는 내성 굴림 같은 효과는 아직 다루지 않습니다.
+
+```bash
+mix run examples/den.exs
+mix aethrion.serve --cast priv/casts/den.json --locale ko --llm claude   # http://localhost:4848 에서 그냥 대화하면 됩니다
+```
+
+## 세계 만들기
+
+세계는 캐스트 파일(JSON) 하나입니다. 프로필·말투·성향이 있는 캐릭터, 관계, 수치, 활동·엔딩·인연 스토리가 있는 스토리, 규칙 숫자 조정(tuning)이 들어갑니다. `mix aethrion.serve`는 `/editor`에서 **캐스트 편집기**도 제공합니다. 캐릭터, 관계, 수치, 엔딩, 인연 스토리를 폼으로 편집하고(조건은 수치·관계·사이·기분·시간 빌더로), 입력할 때마다 서버가 검증해 문제와 위치를 알려 주며, JSON으로 내려받습니다. **루트 시뮬레이터**는 플레이어가 채팅하듯 적은 루트대로 스토리를 진행해, 루트마다 어느 엔딩에 며칠째 닿는지와 다른 엔딩에 얼마나 가까웠는지 보여 줍니다:
+
+```txt
+오늘은 같이 그림 그리자
+3일마다: 내일은 좀 쉬자
+10일째: 너 주려고 물감 사 왔어
+```
+
+코드에서는 `Aethrion.Simulator`와 `POST /casts/simulate`가 같은 일을 합니다. 모든 루트는 결정론적이라, 숫자 하나를 바꾸면 그 효과가 바로 보입니다.
+
+## 채팅 문장 읽기
+
+문장이 무엇을 하는지는 해석기(`Aethrion.Interpreter`)가 정합니다. 자유 텍스트와 규칙 사이의 경계로, 해석기는 확신도와 함께 이벤트를 제안하고 규칙이 그것을 검증해 적용하므로, 재생할 때 해석기를 다시 부르지 않습니다. 기본 `Interpreter.Rules`는 키워드와 패턴으로 읽습니다. 모델은 `Interpreter.questions/1`(캐스트에서 뽑은 선택지: 무엇을 하는 말인지, 누구에게, 어떤 톤으로, 어떤 활동인지, 누가 치료하는지)에 답하는 방식으로 연결되고, `Interpreter.from_answers/2`가 답을 이벤트로 바꿉니다. 선택지와 확률을 돌려주는 판단 모델(Jev 등)이나 구조화 출력을 쓰는 LLM이 이 모양에 맞고, 모델이 실패하거나 선택지 밖으로 답하거나 확신이 낮으면 규칙이 대신합니다.
+
+`mix aethrion.interpret.eval`은 사람이 의도한 의미로 라벨을 단 한국어 채팅 170문장(`priv/eval/interpret.ko.json`, 퀘스트·늑대굴·여름·학원 캐스트)으로 해석기를 채점합니다. 키워드 규칙은 105문장(62%)을 맞힙니다. 사전에 없는 표현("ㄱㄱ 늑대왕 잡자", "수채화 연습하자", "쿠키 구워 왔어")을 놓칩니다. Claude Code CLI(`--llm claude`)를 쓴 `Interpreter.LLM`은 158문장(93%)을 맞히고, 틀린 것도 대부분 근소한 차이입니다("붓" 대신 "새 붓" 등). `--llm 이름`으로 어떤 백엔드든 채점할 수 있습니다. `--interpreter MyApp.Interpreter`로 다른 해석기를 같은 문장으로 채점할 수 있습니다.
 
 ## Runtime vs LLM Server
 

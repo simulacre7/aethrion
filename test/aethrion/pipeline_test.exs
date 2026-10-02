@@ -63,7 +63,13 @@ defmodule Aethrion.PipelineTest do
 
     assert [Rivalry | _] = pipeline.event_rules.gift_received
     # Custom reactive rules run before Bond, so their relationship changes are announced.
-    assert pipeline.reactive_rules == [Aethrion.Rules.Mood, Festival, Aethrion.Rules.Bond]
+    assert pipeline.reactive_rules == [
+             Aethrion.Rules.Mood,
+             Festival,
+             Aethrion.Rules.Bond,
+             Aethrion.Rules.Milestone,
+             Aethrion.Rules.Ending
+           ]
   end
 
   test "describe lists rules with ids and descriptions" do
@@ -72,7 +78,8 @@ defmodule Aethrion.PipelineTest do
     assert {:gift_received, [{:gift, _}, {:reply, _}, {:observation, _}]} =
              List.keyfind(description, :gift_received, 0)
 
-    assert {:reactive, [{:mood, _}, {:proactive, _}, {:bond, _}]} = List.last(description)
+    assert {:reactive, [{:mood, _}, {:proactive, _}, {:bond, _}, {:milestone, _}, {:ending, _}]} =
+             List.last(description)
   end
 
   test "transition helpers reject unknown fields" do

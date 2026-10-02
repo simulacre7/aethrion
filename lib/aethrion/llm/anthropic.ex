@@ -19,6 +19,10 @@ defmodule Aethrion.LLM.Anthropic do
   | `:max_tokens`| -                           | `1024`                       |
   | `:timeout`   | -                           | `30_000`                     |
   | `:fallbacks` | -                           | `true` (see below)           |
+  | `:retries`   | -                           | `2`                          |
+
+  Rate limits (429), overload (529), server errors, and failed connections
+  are retried `:retries` times with backoff, honoring `retry-after`.
 
   Lines are short, so requests run at `low` effort. For models that support
   it, the server-side refusal fallback (`fallbacks: "default"`) is enabled so a
@@ -43,7 +47,8 @@ defmodule Aethrion.LLM.Anthropic do
     effort: "low",
     max_tokens: 1024,
     timeout: 30_000,
-    fallbacks: true
+    fallbacks: true,
+    retries: 2
   ]
 
   @env %{
@@ -73,6 +78,11 @@ defmodule Aethrion.LLM.Anthropic do
          {:ok, text} <- create_message(config, system, content) do
       Prompt.decode_json_object(text)
     end
+  end
+
+  @impl true
+  def complete(system, user, opts \\ []) do
+    with {:ok, config} <- config(opts), do: create_message(config, system, user)
   end
 
   @doc "Returns true when an API key can be resolved."
@@ -120,7 +130,9 @@ defmodule Aethrion.LLM.Anthropic do
 
     url = String.trim_trailing(config.base_url, "/") <> "/v1/messages"
 
-    case HTTP.post_json(url, headers, request_body(config, system, content), config.timeout) do
+    case HTTP.post_json(url, headers, request_body(config, system, content), config.timeout,
+           retries: config.retries
+         ) do
       {:ok, %{"stop_reason" => "refusal"} = response} ->
         {:error, {:refusal, Map.get(response, "stop_details")}}
 

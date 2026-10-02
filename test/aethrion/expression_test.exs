@@ -98,7 +98,16 @@ defmodule Aethrion.ExpressionTest do
       Expression.build_request(state, :proactive_message, "yuna", "user", reason: :jealous)
 
     assert request.names["user"] == "you"
-    assert request.listener == %{id: "user", name: "you", profile: nil, traits: [], mood: nil}
+
+    assert request.listener == %{
+             id: "user",
+             name: "you",
+             profile: nil,
+             voice: nil,
+             traits: [],
+             mood: nil
+           }
+
     assert request.relationship == %{affinity: 38, trust: 20, tension: 0, bond: :friendly}
   end
 
@@ -165,7 +174,7 @@ defmodule Aethrion.ExpressionTest do
       assert Aethrion.Expression.Templates.Ko.render(back.context) == "오랜만이야! 고마워."
 
       {_system, context} = Aethrion.Expression.Prompt.render_parts(back.context)
-      assert context =~ "Listener just said (warm) (after 100 hours without talking): hi"
+      assert context =~ ~s|Listener just said (warm) (after 100 hours without talking): "hi"|
     end
 
     test "a strained bond or a darker mood speaks before a reunion" do

@@ -1,0 +1,448 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Aethrion Cast Editor</title>
+<style>
+:root{color-scheme:light;--page:#f6f5f2;--surface:#ffffff;--text:#151515;--muted:#6b6a66;--border:rgba(0,0,0,.12);--accent:#2a78d6;--accent-text:#fff;--good:#2f7d4f;--bad:#c23b3b;--note:#8a6d1f;--soft:#f0efeb}
+@media (prefers-color-scheme:dark){:root{color-scheme:dark;--page:#0f0f0f;--surface:#1a1a19;--text:#f2f2f0;--muted:#a3a29c;--border:rgba(255,255,255,.14);--accent:#3987e5;--accent-text:#fff;--good:#5bbf85;--bad:#e66767;--note:#d9b45a;--soft:#232321}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--page);color:var(--text);font:14px/1.5 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:1040px;margin:0 auto;padding:16px}
+header{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px}
+header h1{font-size:18px;margin:0 auto 0 0}
+input,select,button,textarea{font:inherit;color:inherit;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:5px 8px}
+textarea{width:100%;resize:vertical}
+button{cursor:pointer}
+button.primary{background:var(--accent);color:var(--accent-text);border-color:transparent}
+button.small{padding:2px 8px;font-size:12px}
+button.remove{color:var(--bad)}
+#status{position:sticky;top:0;z-index:5;padding:8px 12px;border-radius:10px;background:var(--surface);border:1px solid var(--border);margin-bottom:10px;font-size:13px}
+#status.ok{border-color:var(--good);color:var(--good)}
+#status.bad{border-color:var(--bad);color:var(--bad)}
+nav{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:10px}
+nav button{border-radius:999px}
+nav button[aria-selected="true"]{background:var(--accent);color:var(--accent-text);border-color:transparent}
+section{display:none}
+section.active{display:block}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:10px}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:6px}
+.row > label{display:flex;flex-direction:column;font-size:12px;color:var(--muted);gap:2px}
+.grow{flex:1;min-width:180px}
+.cond{display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:6px;border-radius:8px;background:var(--soft);margin-bottom:4px}
+.cond input[type=number]{width:72px}
+.hint{font-size:12px;color:var(--muted)}
+h2{font-size:15px;margin:14px 0 8px}
+h3{font-size:14px;margin:0}
+table{border-collapse:collapse;width:100%}
+td,th{padding:4px;text-align:left;font-size:13px}
+td input[type=number]{width:72px}
+.result{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:10px}
+.result .ending{font-size:15px;font-weight:600}
+.bar{height:6px;border-radius:3px;background:var(--soft);overflow:hidden;margin:2px 0 6px}
+.bar span{display:block;height:100%;background:var(--accent)}
+.problem{color:var(--bad);font-size:12px}
+details{font-size:12px;color:var(--muted)}
+@media (max-width:640px){main{padding:12px}.grow{min-width:120px}}
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Aethrion 캐스트 편집기</h1>
+    <button id="load-server" type="button" title="이 서버가 --cast로 띄운 캐스트">서버 캐스트 불러오기</button>
+    <label class="hint">파일 열기 <input id="file" type="file" accept=".json,application/json"></label>
+    <button id="download" type="button" class="primary">JSON 내려받기</button>
+    <label class="hint">Token <input id="token" type="password" size="8"></label>
+  </header>
+  <div id="status" role="status" aria-live="polite">캐스트를 불러오세요.</div>
+  <nav role="tablist">
+    <button type="button" data-tab="characters" aria-selected="true">캐릭터</button>
+    <button type="button" data-tab="relationships">관계</button>
+    <button type="button" data-tab="stats">수치</button>
+    <button type="button" data-tab="story">스토리</button>
+    <button type="button" data-tab="simulate">루트 시뮬레이터</button>
+    <button type="button" data-tab="json">JSON</button>
+  </nav>
+
+  <section id="characters" class="active"></section>
+  <section id="relationships"></section>
+  <section id="stats"></section>
+  <section id="story"></section>
+  <section id="simulate">
+    <p class="hint">플레이어가 채팅하듯 하루 일과를 적으면, 그대로 매일 반복해 어느 엔딩에 며칠째 닿는지 봅니다.
+      <code>3일마다: …</code>는 3일에 한 번, <code>10일째: …</code>는 그날만 말합니다. 활동이 시간을 쓰지 않은 날은 끝에 하루가 지납니다. 전투 캐스트는 하루가 한 라운드입니다.</p>
+    <div id="routes"></div>
+    <div class="row"><button id="add-route" type="button">루트 추가</button><button id="run" type="button" class="primary">모두 실행</button></div>
+    <div id="results"></div>
+  </section>
+  <section id="json">
+    <p class="hint">캐스트 전체입니다. 고친 뒤 "적용"을 누르면 폼에 반영됩니다.</p>
+    <textarea id="raw" rows="28" spellcheck="false"></textarea>
+    <div class="row"><button id="apply-json" type="button" class="primary">적용</button></div>
+  </section>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+const store = {
+  get(key, fallback) { try { return localStorage.getItem(key) ?? fallback; } catch { return fallback; } },
+  set(key, value) { try { localStorage.setItem(key, value); } catch {} }
+};
+const TRAITS = ["calm", "playful", "sensitive", "talkative", "polite"];
+const TRAIT_NAMES = {calm: "차분", playful: "장난스러움", sensitive: "예민", talkative: "수다", polite: "존댓말"};
+const FIELDS = {affinity: "호감", trust: "신뢰", tension: "긴장"};
+const FEELINGS = {joy: "기쁨", stress: "스트레스", loneliness: "외로움", jealousy: "질투", energy: "기력"};
+const BONDS = {estranged: "멀어진 사이", strained: "서먹한 사이", neutral: "보통 사이", friendly: "친한 사이", close: "가까운 사이"};
+const OPS = {at_least: "이상", at_most: "이하", equals: "같음"};
+
+let cast = {characters: [], relationships: [], stats: {}, story: {}};
+let routes = [];
+$("token").value = store.get("aethrion.token", "");
+
+async function call(method, path, body) {
+  const headers = {"content-type": "application/json"};
+  if ($("token").value) headers.authorization = "Bearer " + $("token").value;
+  const response = await fetch(path, {method, headers, body: body ? JSON.stringify(body) : undefined});
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error ? data.error.message : response.statusText);
+  return data;
+}
+
+// ---- small DOM helpers
+function el(tag, attrs = {}, ...children) {
+  const node = document.createElement(tag);
+  for (const [key, value] of Object.entries(attrs)) {
+    if (key.startsWith("on")) node.addEventListener(key.slice(2), value);
+    else if (key === "value") node.value = value;
+    else if (key === "checked") node.checked = value;
+    else node.setAttribute(key, value);
+  }
+  for (const child of children.flat()) if (child != null) node.append(child.nodeType ? child : document.createTextNode(child));
+  return node;
+}
+function field(label, input, cls) { return el("label", cls ? {class: cls} : {}, label, input); }
+function text(value, onInput, attrs = {}) { return el("input", {value: value ?? "", oninput: (e) => { onInput(e.target.value); changed(); }, ...attrs}); }
+function number(value, onInput) { return el("input", {type: "number", value: value ?? 0, oninput: (e) => { onInput(Number(e.target.value)); changed(); }}); }
+function area(value, onInput, rows = 2) { return el("textarea", {rows, oninput: (e) => { onInput(e.target.value); changed(); }}, value ?? ""); }
+function select(options, value, onChange) {
+  const node = el("select", {onchange: (e) => { onChange(e.target.value); changed(); }});
+  for (const [v, label] of options) node.append(el("option", {value: v}, label));
+  node.value = value ?? options[0]?.[0];
+  return node;
+}
+function actors() { return [["user", "플레이어 (user)"], ...cast.characters.map((c) => [c.id, `${c.name || c.id} (${c.id})`])]; }
+function characterOptions() { return cast.characters.map((c) => [c.id, `${c.name || c.id} (${c.id})`]); }
+
+// ---- tabs
+document.querySelectorAll("nav button").forEach((button) => button.addEventListener("click", () => {
+  document.querySelectorAll("nav button").forEach((b) => b.setAttribute("aria-selected", b === button));
+  document.querySelectorAll("section").forEach((s) => s.classList.toggle("active", s.id === button.dataset.tab));
+  if (button.dataset.tab === "json") $("raw").value = JSON.stringify(cast, null, 2);
+}));
+
+// ---- characters
+function renderCharacters() {
+  const box = $("characters");
+  box.replaceChildren();
+  cast.characters.forEach((c, i) => {
+    c.traits = c.traits || [];
+    const traits = el("div", {class: "row"}, TRAITS.map((t) => el("label", {class: "hint"},
+      el("input", {type: "checkbox", checked: c.traits.includes(t), onchange: (e) => {
+        c.traits = e.target.checked ? [...new Set([...c.traits, t])] : c.traits.filter((x) => x !== t); changed();
+      }}), TRAIT_NAMES[t])));
+    box.append(el("div", {class: "card"},
+      el("div", {class: "row"},
+        field("id", text(c.id, (v) => c.id = v, {size: 10})),
+        field("이름", text(c.name, (v) => c.name = v, {size: 12})),
+        el("span", {class: "grow"}),
+        el("button", {type: "button", class: "small remove", onclick: () => { cast.characters.splice(i, 1); renderAll(); changed(); }}, "삭제")),
+      el("div", {class: "row"}, field("프로필 (모델이 읽는 설정)", area(c.profile, (v) => c.profile = v), "grow")),
+      el("div", {class: "row"}, field("말투", area(c.voice, (v) => c.voice = v), "grow")),
+      el("div", {class: "hint"}, "성향"), traits));
+  });
+  box.append(el("button", {type: "button", onclick: () => {
+    cast.characters.push({id: "new" + (cast.characters.length + 1), name: "새 캐릭터", profile: "", voice: "", traits: []});
+    renderAll(); changed();
+  }}, "캐릭터 추가"));
+}
+
+// ---- relationships
+function renderRelationships() {
+  const box = $("relationships");
+  box.replaceChildren(el("p", {class: "hint"}, "캐릭터가 누군가에게 품은 마음입니다 (-100…100). 한 방향씩입니다."));
+  const table = el("table", {}, el("tr", {}, el("th", {}, "누가"), el("th", {}, "누구에게"), el("th", {}, "호감"), el("th", {}, "신뢰"), el("th", {}, "긴장"), el("th", {})));
+  (cast.relationships ||= []).forEach((r, i) => table.append(el("tr", {},
+    el("td", {}, select(characterOptions(), r.from, (v) => r.from = v)),
+    el("td", {}, select(actors(), r.to, (v) => r.to = v)),
+    el("td", {}, number(r.affinity, (v) => r.affinity = v)),
+    el("td", {}, number(r.trust, (v) => r.trust = v)),
+    el("td", {}, number(r.tension, (v) => r.tension = v)),
+    el("td", {}, el("button", {type: "button", class: "small remove", onclick: () => { cast.relationships.splice(i, 1); renderAll(); changed(); }}, "삭제")))));
+  box.append(el("div", {class: "card"}, table, el("button", {type: "button", onclick: () => {
+    const first = cast.characters[0]?.id || "";
+    cast.relationships.push({from: first, to: "user", affinity: 0, trust: 0, tension: 0}); renderAll(); changed();
+  }}, "관계 추가")));
+}
+
+// ---- stats
+function renderStats() {
+  const box = $("stats");
+  box.replaceChildren(el("p", {class: "hint"}, "자유 수치입니다: 체력(hp, max_hp), 전투(attack, defense, speed, attack_bonus, ac, damage_dice…), 파티(party), 적(enemy), 육성(art, intelligence…)."));
+  cast.stats ||= {};
+  for (const [id, stats] of Object.entries(cast.stats)) {
+    const rows = el("div");
+    for (const [name, value] of Object.entries(stats)) {
+      // The row's current key: renaming moves the value to it, and editing
+      // or deleting afterwards uses it. An empty or taken name is ignored.
+      let key = name;
+      const rename = (v) => {
+        v = v.trim();
+        if (!v || v === key || v in stats) return;
+        const val = stats[key]; delete stats[key]; stats[v] = val; key = v;
+      };
+      rows.append(el("div", {class: "row"},
+        text(name, rename, {size: 14}),
+        number(value, (v) => { stats[key] = v; }),
+        el("button", {type: "button", class: "small remove", onclick: () => { delete stats[key]; renderAll(); changed(); }}, "삭제")));
+    }
+    box.append(el("div", {class: "card"},
+      el("div", {class: "row"}, el("h3", {}, actors().find(([a]) => a === id)?.[1] || id), el("span", {class: "grow"}),
+        el("button", {type: "button", class: "small remove", onclick: () => { delete cast.stats[id]; renderAll(); changed(); }}, "이 행위자 수치 삭제")),
+      rows,
+      el("button", {type: "button", class: "small", onclick: () => { stats["new_stat"] = 0; renderAll(); changed(); }}, "수치 추가")));
+  }
+  const pick = select(actors(), "user", () => {});
+  box.append(el("div", {class: "row"}, pick, el("button", {type: "button", onclick: () => {
+    cast.stats[pick.value] ||= {}; renderAll(); changed();
+  }}, "행위자 수치 추가")));
+  box.append(el("h2", {}, "규칙 숫자 조정 (tuning)"), el("p", {class: "hint"}, "예: {\"combat\": {\"party_trust\": 15}}. 쓸 수 있는 숫자는 mix aethrion.rules 로 봅니다."),
+    jsonArea(() => cast.tuning || {}, (v) => { cast.tuning = v; }));
+}
+
+function jsonArea(get, set, rows = 4) {
+  // Small fields hold one line of JSON; bigger ones are indented.
+  const node = el("textarea", {rows, spellcheck: "false"}, rows > 2 ? JSON.stringify(get(), null, 1) : JSON.stringify(get()));
+  node.addEventListener("input", () => {
+    try { set(JSON.parse(node.value || "{}")); node.style.borderColor = ""; changed(); }
+    catch { node.style.borderColor = "var(--bad)"; }
+  });
+  return node;
+}
+
+// ---- conditions
+function kindOf(c) {
+  for (const k of ["stat", "relationship", "bond", "character", "clock"]) if (k in c) return k;
+  return "json";
+}
+function opOf(c) { return Object.keys(OPS).find((o) => o in c) || "at_least"; }
+function setOp(c, op, value) { for (const o of [...Object.keys(OPS), "is"]) delete c[o]; c[op] = value; }
+
+function conditionList(list, label) {
+  const box = el("div");
+  const draw = () => {
+    box.replaceChildren(el("div", {class: "hint"}, label));
+    list.forEach((c, i) => box.append(conditionRow(list, i, draw)));
+    box.append(el("button", {type: "button", class: "small", onclick: () => {
+      list.push({relationship: [cast.characters[0]?.id || "", "user"], field: "affinity", at_least: 50}); draw(); changed();
+    }}, "조건 추가"));
+  };
+  draw();
+  return box;
+}
+
+function conditionRow(list, i, redraw) {
+  const c = list[i];
+  const kind = kindOf(c);
+  const remove = el("button", {type: "button", class: "small remove", onclick: () => { list.splice(i, 1); redraw(); changed(); }}, "×");
+  const kindSelect = select([["stat", "수치"], ["relationship", "관계"], ["bond", "사이"], ["character", "기분"], ["clock", "시간(시)"], ["json", "고급(JSON)"]], kind, (v) => {
+    const first = cast.characters[0]?.id || "";
+    list[i] = {stat: {stat: [first, "hp"], at_least: 1}, relationship: {relationship: [first, "user"], field: "affinity", at_least: 50},
+      bond: {bond: [first, "user"], is: "friendly"}, character: {character: first, field: "joy", at_least: 50},
+      clock: {clock: true, at_least: 24}, json: {any: []}}[v];
+    redraw();
+  });
+  const op = () => select(Object.entries(OPS), opOf(c), (v) => setOp(c, v, c[opOf(c)]));
+  const value = () => number(c[opOf(c)], (v) => c[opOf(c)] = v);
+  const row = el("div", {class: "cond"}, kindSelect);
+  if (kind === "stat") row.append(select(actors(), c.stat[0], (v) => c.stat[0] = v), text(c.stat[1], (v) => c.stat[1] = v, {size: 10}), op(), value());
+  if (kind === "relationship") row.append(select(characterOptions(), c.relationship[0], (v) => c.relationship[0] = v), "→",
+    select(actors(), c.relationship[1], (v) => c.relationship[1] = v), select(Object.entries(FIELDS), c.field, (v) => c.field = v), op(), value());
+  if (kind === "bond") {
+    const bondOp = ["is", "at_least", "at_most"].find((o) => o in c) || "is";
+    row.append(select(characterOptions(), c.bond[0], (v) => c.bond[0] = v), "→", select(actors(), c.bond[1], (v) => c.bond[1] = v),
+      select(Object.entries(BONDS), c[bondOp], (v) => c[bondOp] = v),
+      select([["is", "정확히"], ["at_least", "이상"], ["at_most", "이하"]], bondOp, (v) => { const b = c[bondOp]; setOp(c, v, b); }));
+  }
+  if (kind === "character") row.append(select(characterOptions(), c.character, (v) => c.character = v), select(Object.entries(FEELINGS), c.field, (v) => c.field = v), op(), value());
+  if (kind === "clock") row.append(op(), value());
+  if (kind === "json") row.append(el("span", {class: "grow"}, jsonArea(() => c, (v) => { list[i] = v; }, 2)));
+  row.append(remove);
+  return row;
+}
+
+// ---- story
+function renderStory() {
+  const box = $("story");
+  const story = (cast.story ||= {});
+  box.replaceChildren();
+  box.append(el("div", {class: "card"},
+    el("div", {class: "row"},
+      field("마감 (시간, 720 = 30일)", number(story.deadline ?? "", (v) => { if (v) story.deadline = v; else delete story.deadline; })),
+      field("활동 하나가 쓰는 시간", number(story.activity_hours ?? "", (v) => { if (v) story.activity_hours = v; else delete story.activity_hours; }))),
+    el("div", {class: "hint"}, "엔딩을 바로 정하는 조건 (하나라도 성립하면 그때 엔딩이 정해집니다: 보스가 쓰러짐, 스트레스 100 …)"),
+    conditionList(story.decide_when ||= [], "")));
+
+  // activities
+  const acts = el("div", {class: "card"}, el("h3", {}, "활동"), el("p", {class: "hint"}, "효과는 수치나 기분 변화입니다: {\"art\": 4, \"stress\": 4}. 말투는 채팅에서 이 활동을 하자고 하는 표현입니다(쉼표로 구분)."));
+  story.activities ||= {}; story.phrases ||= {};
+  for (const name of Object.keys(story.activities)) {
+    let current = name;
+    acts.append(el("div", {class: "row"},
+      field("이름", text(name, (v) => {
+        story.activities[v] = story.activities[current]; delete story.activities[current];
+        if (story.phrases[current]) { story.phrases[v] = story.phrases[current]; delete story.phrases[current]; }
+        current = v;
+      }, {size: 8})),
+      field("효과", jsonArea(() => story.activities[current], (v) => story.activities[current] = v, 1), "grow"),
+      field("말투", text((story.phrases[current] || []).join(", "), (v) => {
+        const list = v.split(",").map((x) => x.trim()).filter(Boolean);
+        if (list.length) story.phrases[current] = list; else delete story.phrases[current];
+      }), "grow"),
+      el("button", {type: "button", class: "small remove", onclick: () => { delete story.activities[current]; delete story.phrases[current]; renderAll(); changed(); }}, "삭제")));
+  }
+  acts.append(el("button", {type: "button", class: "small", onclick: () => { story.activities["새 활동"] = {joy: 2}; renderAll(); changed(); }}, "활동 추가"));
+  box.append(acts);
+
+  // endings
+  box.append(el("h2", {}, "엔딩 (위에서부터 처음 맞는 엔딩이 선택됩니다)"));
+  (story.endings ||= []).forEach((e, i) => box.append(el("div", {class: "card"},
+    el("div", {class: "row"},
+      field("id", text(e.id, (v) => e.id = v, {size: 10})),
+      field("제목", text(e.title, (v) => e.title = v), "grow"),
+      el("button", {type: "button", class: "small", onclick: () => { if (i > 0) { [story.endings[i - 1], story.endings[i]] = [story.endings[i], story.endings[i - 1]]; renderAll(); changed(); } }}, "↑"),
+      el("button", {type: "button", class: "small", onclick: () => { if (i < story.endings.length - 1) { [story.endings[i + 1], story.endings[i]] = [story.endings[i], story.endings[i + 1]]; renderAll(); changed(); } }}, "↓"),
+      el("button", {type: "button", class: "small remove", onclick: () => { story.endings.splice(i, 1); renderAll(); changed(); }}, "삭제")),
+    el("div", {class: "row"}, field("설명", area(e.description, (v) => e.description = v), "grow")),
+    conditionList(e.when ||= [], "조건 (모두 성립해야 함, 비우면 나머지 모두가 받는 엔딩)"))));
+  box.append(el("button", {type: "button", onclick: () => { story.endings.push({id: "ending" + (story.endings.length + 1), title: "새 엔딩", description: "", when: []}); renderAll(); changed(); }}, "엔딩 추가"));
+
+  // milestones
+  box.append(el("h2", {}, "인연 스토리 (조건이 처음 성립할 때 한 번 열리고, 이야기는 계속됩니다)"));
+  (story.milestones ||= []).forEach((m, i) => box.append(el("div", {class: "card"},
+    el("div", {class: "row"},
+      field("id", text(m.id, (v) => m.id = v, {size: 10})),
+      field("제목", text(m.title, (v) => m.title = v), "grow"),
+      el("button", {type: "button", class: "small remove", onclick: () => { story.milestones.splice(i, 1); renderAll(); changed(); }}, "삭제")),
+    el("div", {class: "row"},
+      field("먼저 말 거는 캐릭터", select([["", "(없음)"], ...characterOptions()], m.from || "", (v) => { if (v) { m.from = v; m.says ||= "…"; } else { delete m.from; delete m.says; } renderAll(); })),
+      m.from ? field("보내는 메시지", text(m.says, (v) => m.says = v), "grow") : null),
+    el("div", {class: "row"}, field("설명", area(m.description, (v) => m.description = v), "grow")),
+    conditionList(m.when ||= [], "조건"))));
+  box.append(el("button", {type: "button", onclick: () => {
+    const first = cast.characters[0]?.id || "";
+    story.milestones.push({id: "story" + (story.milestones.length + 1), title: "새 인연 스토리", when: [{bond: [first, "user"], at_least: "friendly"}]});
+    renderAll(); changed();
+  }}, "인연 스토리 추가"));
+
+  box.append(el("h2", {}, "수치 이름 (힌트에 표시)"), jsonArea(() => story.labels || {}, (v) => { story.labels = v; }, 2));
+}
+
+// ---- simulator
+function renderRoutes() {
+  const box = $("routes");
+  box.replaceChildren();
+  routes.forEach((r, i) => box.append(el("div", {class: "card"},
+    el("div", {class: "row"},
+      field("이름", text(r.name, (v) => r.name = v, {size: 10})),
+      field("대상", select(characterOptions(), r.to, (v) => r.to = v)),
+      field("최대 날", number(r.days, (v) => r.days = v)),
+      el("span", {class: "grow"}),
+      el("button", {type: "button", class: "small remove", onclick: () => { routes.splice(i, 1); renderRoutes(); saveRoutes(); }}, "삭제")),
+    field("하루 일과 (한 줄에 한 마디)", area(r.script, (v) => r.script = v, 4), "grow"))));
+}
+function saveRoutes() { store.set("aethrion.routes", JSON.stringify(routes)); }
+function defaultRoutes() {
+  const to = cast.characters[0]?.id || "";
+  const acts = Object.keys(cast.story?.activities || {});
+  return [{name: "다정하게", to, days: 30, script: (acts[0] ? `오늘은 같이 ${acts[0]} 하자\n` : "") + "오늘도 고생했어. 고마워"},
+          {name: "차갑게", to, days: 30, script: "알아서 해\n3일마다: 넌 왜 맨날 그 모양이야"}];
+}
+$("add-route").addEventListener("click", () => { routes.push({name: "루트 " + (routes.length + 1), to: cast.characters[0]?.id || "", days: 30, script: ""}); renderRoutes(); saveRoutes(); });
+$("run").addEventListener("click", async () => {
+  saveRoutes();
+  const out = $("results");
+  out.replaceChildren(el("p", {class: "hint"}, "실행 중…"));
+  try {
+    const data = await call("POST", "/casts/simulate", {cast, routes});
+    out.replaceChildren(...data.routes.map((r) => el("div", {class: "result"},
+      el("div", {class: "ending"}, `${r.name}: `, r.ending ? `★ ${r.ending.title} (${r.day}일째)` : `엔딩 없음 (${r.day}일 동안)`),
+      r.ending?.description ? el("div", {class: "hint"}, r.ending.description) : null,
+      el("div", {class: "hint"}, `플레이어에 대한 마음: 호감 ${r.with_player.affinity} · 신뢰 ${r.with_player.trust} · 긴장 ${r.with_player.tension} · ${BONDS[r.with_player.bond] || r.with_player.bond}`),
+      Object.keys(r.stats).length ? el("div", {class: "hint"}, "수치: " + Object.entries(r.stats).map(([k, v]) => `${k} ${v}`).join(" · ")) : null,
+      r.milestones.length ? el("div", {class: "hint"}, "열린 인연 스토리: " + r.milestones.join(", ")) : null,
+      el("div", {class: "hint"}, "가장 가까운 엔딩"),
+      ...r.closest.map((e) => el("div", {},
+        el("div", {class: "hint"}, `${Math.round(e.closeness * 100)}% ${e.title}` + (e.missing.length ? ` — 부족: ${e.missing.join("; ")}` : "")),
+        el("div", {class: "bar"}, el("span", {style: `width:${Math.round(e.closeness * 100)}%`})))),
+      ...r.problems.map((p) => el("div", {class: "problem"}, p)),
+      el("details", {}, el("summary", {}, "마지막 기록"), ...r.log.map((l) => el("div", {}, l))))));
+  } catch (error) { out.replaceChildren(el("p", {class: "problem"}, error.message)); }
+});
+
+// ---- validation
+let timer = null;
+function changed() { clearTimeout(timer); timer = setTimeout(check, 350); store.set("aethrion.cast", JSON.stringify(cast)); }
+async function check() {
+  const status = $("status");
+  try {
+    const data = await call("POST", "/casts/check", {cast});
+    if (data.ok) {
+      const s = data.summary;
+      status.className = "ok";
+      status.textContent = `✓ 문제 없음 · 캐릭터 ${s.characters.length} · 엔딩 ${s.endings.length} · 인연 스토리 ${s.milestones.length} · 활동 ${s.activities.length}`;
+    } else {
+      status.className = "bad";
+      status.textContent = `✗ ${data.error.path.join(" › ") || "캐스트"}: ${data.error.message}`;
+    }
+  } catch (error) { status.className = "bad"; status.textContent = "✗ " + error.message; }
+}
+
+function renderAll() { renderCharacters(); renderRelationships(); renderStats(); renderStory(); renderRoutes(); }
+function load(data) {
+  cast = data;
+  for (const key of ["characters", "relationships"]) cast[key] ||= [];
+  cast.stats ||= {}; cast.story ||= {};
+  try { routes = JSON.parse(store.get("aethrion.routes", "null")) || defaultRoutes(); } catch { routes = defaultRoutes(); }
+  routes = routes.filter((r) => cast.characters.some((c) => c.id === r.to));
+  if (!routes.length) routes = defaultRoutes();
+  renderAll(); check();
+}
+
+$("load-server").addEventListener("click", async () => {
+  store.set("aethrion.token", $("token").value);
+  try { load((await call("GET", "/casts/current")).cast); } catch (error) { $("status").className = "bad"; $("status").textContent = "✗ " + error.message; }
+});
+$("file").addEventListener("change", async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  try { load(JSON.parse(await file.text())); } catch (error) { $("status").className = "bad"; $("status").textContent = "✗ JSON을 읽지 못했습니다: " + error.message; }
+});
+$("apply-json").addEventListener("click", () => {
+  try { load(JSON.parse($("raw").value)); } catch (error) { $("status").className = "bad"; $("status").textContent = "✗ JSON 오류: " + error.message; }
+});
+$("download").addEventListener("click", () => {
+  const blob = new Blob([JSON.stringify(cast, null, 2) + "\n"], {type: "application/json"});
+  const link = el("a", {href: URL.createObjectURL(blob), download: "cast.json"});
+  link.click();
+  URL.revokeObjectURL(link.href);
+});
+
+// Start from the server's cast, or what was being edited here last.
+(async () => {
+  try { load((await call("GET", "/casts/current")).cast); }
+  catch { try { load(JSON.parse(store.get("aethrion.cast", "null")) || cast); } catch { load(cast); } }
+})();
+</script>
+</body>
+</html>

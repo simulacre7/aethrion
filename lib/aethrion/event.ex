@@ -21,6 +21,11 @@ defmodule Aethrion.Event do
   | `:gossip_shared`   | rules (or host)         | a character tells another about a memory  |
   | `:comfort_offered` | rules (or host)         | someone comforts a character              |
   | `:time_spent_together` | rules (or host)     | two characters spend time together        |
+  | `:activity`        | host                    | a character spends time on a story activity (`Aethrion.Story`) |
+  | `:attack`          | host / rules            | one fighter attacks another (`Aethrion.Combat`) |
+  | `:defend`          | host                    | a fighter guards against the next blow    |
+  | `:heal`            | host                    | someone restores a fighter's hp           |
+  | `:flee`            | host                    | a fighter tries to get away from another  |
   """
 
   @tones [:warm, :neutral, :cold, :hostile]
@@ -32,7 +37,12 @@ defmodule Aethrion.Event do
     :time_tick,
     :gossip_shared,
     :comfort_offered,
-    :time_spent_together
+    :time_spent_together,
+    :activity,
+    :attack,
+    :defend,
+    :heal,
+    :flee
   ]
 
   @type t :: %{required(:type) => atom(), optional(atom()) => term()}
@@ -143,6 +153,75 @@ defmodule Aethrion.Event do
   end
 
   @doc """
+  `character` spends time on `activity`, one of the world's story activities
+  (`Aethrion.Story`): its effects change their stats and feelings.
+  """
+  @spec activity(String.t(), String.t(), keyword()) :: t()
+  def activity(character, activity, opts \\ []) do
+    %{
+      type: :activity,
+      character: character,
+      activity: activity,
+      at: Keyword.get(opts, :at, @unspecified)
+    }
+  end
+
+  @doc """
+  `from` attacks `to` (both fighters: actors with an `"hp"` stat). Options:
+  `:skill` (a name for narration), `:observed_by`, `:at`.
+  """
+  @spec attack(String.t(), String.t(), keyword()) :: t()
+  def attack(from, to, opts \\ []) do
+    %{
+      type: :attack,
+      from: from,
+      to: to,
+      skill: Keyword.get(opts, :skill),
+      observed_by: Keyword.get(opts, :observed_by, []),
+      at: Keyword.get(opts, :at, @unspecified)
+    }
+    |> then(&if(Keyword.get(opts, :counter), do: Map.put(&1, :counter, true), else: &1))
+  end
+
+  @doc """
+  `from` guards: the next blow they take is halved. With `to:`, they shield
+  someone else, and the next blow that one takes is halved.
+  """
+  @spec defend(String.t(), keyword()) :: t()
+  def defend(from, opts \\ []) do
+    event = %{type: :defend, from: from, at: Keyword.get(opts, :at, @unspecified)}
+
+    case Keyword.get(opts, :to) do
+      nil -> event
+      to -> Map.put(event, :to, to)
+    end
+  end
+
+  @doc """
+  `from` restores `to`'s hp, by `:amount` (default: `from`'s `"heal"` stat,
+  or 10). `:item` names what was used, for narration.
+  """
+  @spec heal(String.t(), String.t(), keyword()) :: t()
+  def heal(from, to, opts \\ []) do
+    %{
+      type: :heal,
+      from: from,
+      to: to,
+      amount: Keyword.get(opts, :amount),
+      item: Keyword.get(opts, :item),
+      at: Keyword.get(opts, :at, @unspecified)
+    }
+    |> then(
+      &if(asker = Keyword.get(opts, :asked_by), do: Map.put(&1, :asked_by, asker), else: &1)
+    )
+  end
+
+  @doc "`from` tries to get away from `to`."
+  @spec flee(String.t(), String.t(), keyword()) :: t()
+  def flee(from, to, opts \\ []),
+    do: %{type: :flee, from: from, to: to, at: Keyword.get(opts, :at, @unspecified)}
+
+  @doc """
   Fills optional fields that hosts may omit when building event maps by hand:
   `:at` (and `:now` for ticks) default to `"unspecified"`, `:observed_by` to
   `[]`, and `:tone` to `:neutral`. Unknown types pass through unchanged.
@@ -202,6 +281,22 @@ defmodule Aethrion.Event do
   def describe(%{type: :time_spent_together} = event, names) do
     "#{names.(event.from)} spends time with #{names.(event.to)}"
   end
+
+  def describe(%{type: :activity} = event, names),
+    do: "#{names.(event.character)} spends time on #{event.activity}"
+
+  def describe(%{type: :attack} = event, names) do
+    skill = if is_binary(event[:skill]), do: " with #{event.skill}", else: ""
+    "#{names.(event.from)} attacks #{names.(event.to)}#{skill}" <> observers_suffix(event, names)
+  end
+
+  def describe(%{type: :defend} = event, names), do: "#{names.(event.from)} guards"
+
+  def describe(%{type: :heal} = event, names),
+    do: "#{names.(event.from)} heals #{names.(event.to)}"
+
+  def describe(%{type: :flee} = event, names),
+    do: "#{names.(event.from)} tries to flee from #{names.(event.to)}"
 
   def describe(%{type: type}, _names), do: to_string(type)
 
@@ -322,6 +417,33 @@ defmodule Aethrion.Event do
 
   defp build(:comfort_offered, data) do
     comfort_offered(data["from"], data["to"], at: Map.get(data, "at", @unspecified))
+  end
+
+  defp build(:attack, data) do
+    attack(data["from"], data["to"],
+      skill: data["skill"],
+      observed_by: Map.get(data, "observed_by", []),
+      at: Map.get(data, "at", @unspecified)
+    )
+  end
+
+  defp build(:defend, data),
+    do: defend(data["from"], to: data["to"], at: Map.get(data, "at", @unspecified))
+
+  defp build(:heal, data) do
+    heal(data["from"], data["to"],
+      amount: data["amount"],
+      item: data["item"],
+      asked_by: data["asked_by"],
+      at: Map.get(data, "at", @unspecified)
+    )
+  end
+
+  defp build(:flee, data),
+    do: flee(data["from"], data["to"], at: Map.get(data, "at", @unspecified))
+
+  defp build(:activity, data) do
+    activity(data["character"], data["activity"], at: Map.get(data, "at", @unspecified))
   end
 
   defp build(:time_spent_together, data) do
