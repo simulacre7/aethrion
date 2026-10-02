@@ -16,7 +16,8 @@ defmodule Aethrion.Combat do
   Events: `Aethrion.Event.attack/3`, `defend/2`, `heal/3`, `flee/3` (or
   `{"type": "attack", "from": "user", "to": "goblin"}` in JSON). Outputs are
   `:combat` maps: `kind` (`:hit`, `:critical`, `:defeated`, `:guarded`,
-  `:healed`, `:fled`, `:caught`, `:holds_back`, and `:missed` under the d20
+  `:healed`, `:fled`, `:caught`, `:holds_back`, `:protected`, `:enraged`,
+  `:ignores`, and `:missed` under the d20
   rules), `character_id` (who acted),
   `to`,
   `subject` (whose hp is reported), `amount`, `hp`, `max_hp`, and an English
@@ -370,6 +371,19 @@ defmodule Aethrion.Combat do
   defp told(:en, :holds_back, %{character_id: by}, name, _hp),
     do: capitalize("#{name.(by)} #{verb(by, "hold")} back and #{verb(by, "watch", "watches")}.")
 
+  defp told(:en, :protected, %{character_id: by, to: to}, name, _hp),
+    do: capitalize("#{name.(by)} #{verb(by, "step")} in front of #{name.(to)}, taking the blow.")
+
+  defp told(:en, :enraged, %{character_id: by, to: to}, name, _hp) do
+    fall = if to == "user", do: "Your fall", else: "#{name.(to)}'s fall"
+    "#{fall} sends #{name.(by)} into a rage."
+  end
+
+  defp told(:en, :ignores, %{character_id: by, to: to}, name, _hp) do
+    wounds = if to == "user", do: "your wounds", else: "#{name.(to)}'s wounds"
+    capitalize("#{name.(by)} #{verb(by, "pass", "passes")} over #{wounds}.")
+  end
+
   defp told(:en, :fled, %{character_id: by, to: to}, name, _hp),
     do: capitalize("#{name.(by)} #{verb(by, "get")} away from #{name.(to)}.")
 
@@ -414,6 +428,21 @@ defmodule Aethrion.Combat do
       else: "#{Ko.with_particle(name.(by), :topic)} 팔짱을 낀 채 지켜보기만 했다."
   end
 
+  defp told(:ko, :protected, %{character_id: by, to: to}, name, _hp) do
+    whose = if to == "user", do: "네", else: "#{name.(to)}의"
+    "#{Ko.with_particle(name.(by), :topic)} #{whose} 앞을 막아섰다. 공격은 대신 받는다."
+  end
+
+  defp told(:ko, :enraged, %{character_id: by, to: to}, name, _hp) do
+    fell = if to == "user", do: "네가", else: Ko.subject(name.(to))
+    "#{fell} 쓰러지자 #{Ko.with_particle(name.(by), :topic)} 분노에 휩싸였다."
+  end
+
+  defp told(:ko, :ignores, %{character_id: by, to: to}, name, _hp) do
+    whose = if to == "user", do: "네", else: "#{name.(to)}의"
+    "#{Ko.with_particle(name.(by), :topic)} #{whose} 상처를 외면했다."
+  end
+
   defp told(:ko, :fled, %{character_id: by, to: to}, name, _hp),
     do: "#{Ko.with_particle(name.(by), :topic)} #{name.(to)}에게서 무사히 도망쳤다."
 
@@ -439,7 +468,7 @@ defmodule Aethrion.Combat do
 
     dice = if output.kind == :missed, do: "", else: " #{dice_text(output)}"
 
-    "[d20 #{roll}#{signed(bonus)}=#{d20 + bonus} vs AC #{ac}#{disadvantage(rolls, locale)}, " <>
+    "[d20 #{roll}#{signed(bonus)}=#{d20 + bonus} vs AC #{ac}#{two_dice(output, rolls, locale)}, " <>
       "#{verdict(output.kind, d20, locale)}#{dice}] "
   end
 
@@ -455,9 +484,11 @@ defmodule Aethrion.Combat do
   defp verdict(_hit, _d20, :ko), do: "명중."
   defp verdict(_hit, _d20, :en), do: "hit."
 
-  defp disadvantage([_one], _locale), do: ""
-  defp disadvantage(_two, :ko), do: " (불리)"
-  defp disadvantage(_two, :en), do: " (disadvantage)"
+  defp two_dice(_output, [_one], _locale), do: ""
+  defp two_dice(%{advantage: true}, _two, :ko), do: " (유리)"
+  defp two_dice(%{advantage: true}, _two, :en), do: " (advantage)"
+  defp two_dice(_output, _two, :ko), do: " (불리)"
+  defp two_dice(_output, _two, :en), do: " (disadvantage)"
 
   defp dice_text(%{dice: dice, dice_rolls: rolls}) when rolls != [],
     do: "#{dice} (#{Enum.join(rolls, ",")})"

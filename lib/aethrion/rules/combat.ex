@@ -33,6 +33,26 @@ defmodule Aethrion.Rules.Combat do
   - Once the story's ending is decided, no one fights; a blow queued in a
     cascade is dropped if its fighter or target has fallen.
 
+  How the fighters feel about each other changes the fight too:
+
+  - **protecting**: when an enemy goes for someone on the player's side
+    who is below `protect_below`% of their hp, a companion who cares about
+    them (affinity >= `protect_affinity`) and still has `protect_above`% of
+    their own steps in and takes the blow (`:protected`), once a round (a
+    round ends with the player's next move). The one saved grows fonder of
+    them and trusts them more.
+  - **fury**: when someone on the player's side falls, the companions who
+    cared about them (affinity >= `fury_affinity`) are enraged
+    (`:enraged`, a `"fury"` stat): `fury_bonus` on their attacks for the
+    rest of the story.
+  - **fighting together**: a companion joining a blow beside a player they
+    trust deeply (trust >= `team_trust`) attacks with advantage (two d20s,
+    the higher counts; a guard's disadvantage cancels it), as the SRD's
+    Help action gives.
+  - **grudges**: a healer passes over someone they resent (tension >=
+    `resent_tension`) until that one falls (`:ignores`, said once), and
+    among those equally hurt tends the one they care about most.
+
   Fighting is social too. A character who is attacked loses affinity and
   trust toward the attacker, gains tension, and remembers it; witnesses who
   care about them (affinity >= 30) trust the attacker less, and the others
@@ -56,6 +76,15 @@ defmodule Aethrion.Rules.Combat do
       fought_beside_trust: 2,
       healed_affinity: 5,
       healed_trust: 4,
+      protect_affinity: 50,
+      protect_below: 50,
+      protect_above: 50,
+      protected_affinity: 5,
+      protected_trust: 5,
+      fury_affinity: 50,
+      fury_bonus: 2,
+      team_trust: 40,
+      resent_tension: 50,
       default_heal: 10,
       potion_dice: 0,
       potion_die: 4,
@@ -72,7 +101,10 @@ defmodule Aethrion.Rules.Combat do
   def apply(%Transition{event: %{type: type} = event} = transition) when type in @actions do
     case problem(transition.state, event) do
       nil ->
-        transition |> Transition.adjust_stat(event.from, "turns", 1, log: false) |> act(event)
+        transition
+        |> new_round(event)
+        |> Transition.adjust_stat(event.from, "turns", 1, log: false)
+        |> act(event)
 
       reason ->
         Transition.note(transition, reason)
@@ -95,19 +127,32 @@ defmodule Aethrion.Rules.Combat do
     end
   end
 
+  # A round ends with the player's own move: companions may protect again.
+  defp new_round(%Transition{state: state} = transition, event) do
+    if player?(state, event.from) and not Map.get(event, :counter, false) do
+      state.cooldowns
+      |> Map.keys()
+      |> Enum.filter(&String.starts_with?(&1, "combat:protect:"))
+      |> Enum.reduce(transition, &Transition.clear_cooldown(&2, &1))
+    else
+      transition
+    end
+  end
+
   defp actors(%{type: :heal, from: from}), do: [from]
   defp actors(%{type: :defend, from: from} = event), do: [from | List.wrap(Map.get(event, :to))]
   defp actors(%{from: from, to: to}), do: [from, to]
 
   defp act(transition, %{type: :attack} = event) do
+    {transition, event} = protect(transition, event)
     state = transition.state
     guard = Combat.guard_key(event.to)
     guarded? = Map.has_key?(state.cooldowns, guard)
 
     {kind, damage, detail} =
       if d20?(state, event),
-        do: d20_attack(state, event, guarded?),
-        else: classic_attack(state, event, guarded?)
+        do: d20_attack(state, event, guarded?, fury(transition, event.from)),
+        else: classic_attack(state, event, guarded?, fury(transition, event.from))
 
     transition =
       transition
@@ -123,13 +168,14 @@ defmodule Aethrion.Rules.Combat do
     |> then(fn transition ->
       if hp == 0,
         do:
-          combat_output(
-            transition,
+          transition
+          |> combat_output(
             %{event | from: event.to, to: event.from},
             event.to,
             :defeated,
             0
-          ),
+          )
+          |> enraged(event),
         else: transition
     end)
     # The companions move before the enemy answers.
@@ -194,12 +240,13 @@ defmodule Aethrion.Rules.Combat do
       else: transition
   end
 
-  defp classic_attack(state, event, guarded?) do
+  defp classic_attack(state, event, guarded?, fury) do
     roll = Combat.roll(event, state)
 
     base =
       max(
-        State.stat(state, event.from, "attack") + roll - State.stat(state, event.to, "defense"),
+        State.stat(state, event.from, "attack") + fury + roll -
+          State.stat(state, event.to, "defense"),
         1
       )
 
@@ -217,15 +264,11 @@ defmodule Aethrion.Rules.Combat do
   # d20 + attack bonus against armor class; a natural 20 always hits and
   # rolls the damage dice twice, a natural 1 always misses. A target who
   # took the Dodge action (a guard) is attacked with disadvantage: two d20s,
-  # the lower counts.
-  defp d20_attack(state, event, guarded?) do
-    rolls =
-      if guarded?,
-        do: [Combat.die(event, state, 20, 0), Combat.die(event, state, 20, 1)],
-        else: [Combat.die(event, state, 20, 0)]
-
-    d20 = Enum.min(rolls)
-    bonus = State.stat(state, event.from, "attack_bonus")
+  # the lower counts; a companion fighting beside a player they trust has
+  # advantage, the higher counts; both at once cancel out.
+  defp d20_attack(state, event, guarded?, fury) do
+    {rolls, d20, advantage?} = d20_rolls(state, event, guarded?)
+    bonus = State.stat(state, event.from, "attack_bonus") + fury
     ac = State.stat(state, event.to, "ac")
     hit? = d20 == 20 or (d20 != 1 and d20 + bonus >= ac)
     critical? = d20 == 20
@@ -243,6 +286,8 @@ defmodule Aethrion.Rules.Combat do
       dice_rolls: if(hit?, do: dice, else: [])
     }
 
+    detail = if advantage?, do: Map.put(detail, :advantage, true), else: detail
+
     kind =
       cond do
         not hit? -> :missed
@@ -251,6 +296,18 @@ defmodule Aethrion.Rules.Combat do
       end
 
     {kind, damage, detail}
+  end
+
+  defp d20_rolls(state, event, guarded?) do
+    advantage? = Map.get(event, :advantage, false) and not guarded?
+    disadvantage? = guarded? and not Map.get(event, :advantage, false)
+
+    rolls =
+      if advantage? or disadvantage?,
+        do: [Combat.die(event, state, 20, 0), Combat.die(event, state, 20, 1)],
+        else: [Combat.die(event, state, 20, 0)]
+
+    {rolls, if(advantage?, do: Enum.max(rolls), else: Enum.min(rolls)), advantage?}
   end
 
   # Bounded here too, whatever the state holds (`State.dice_limits/0`).
@@ -428,8 +485,11 @@ defmodule Aethrion.Rules.Combat do
   # back says so once, until they fight beside the player again.
   defp join(%Transition{state: state} = transition, id, event, target_hp) do
     trust = State.get_relationship(state, id, event.from).trust
-    patient = most_hurt(state, event.from)
+    resent = Transition.param(transition, :resent_tension)
+    patient = most_hurt(state, event.from, id, resent)
     held = Combat.held_key(id)
+    transition = passed_over(transition, id, event, resent, patient)
+    state = transition.state
 
     cond do
       trust < Transition.param(transition, :party_trust) and Map.has_key?(state.cooldowns, held) ->
@@ -454,6 +514,7 @@ defmodule Aethrion.Rules.Combat do
           event.to
           |> then(&Event.attack(id, &1, at: event.at))
           |> Map.put(:assist, true)
+          |> Map.put(:advantage, trust >= Transition.param(transition, :team_trust))
         )
         |> fought_beside(id, event)
 
@@ -463,11 +524,131 @@ defmodule Aethrion.Rules.Combat do
   end
 
   # Who a healer tends: the most hurt of the player and the companions,
-  # below 60% of their hp; someone knocked out first.
-  defp most_hurt(state, leader) do
+  # below 60% of their hp, someone knocked out first; not someone the
+  # healer resents, unless they are down; among equals, the dearest.
+  defp most_hurt(state, leader, healer, resent \\ nil) do
     [leader | Combat.party(state)]
     |> Enum.filter(&(share(state, &1) < 60))
-    |> Enum.min_by(&share(state, &1), fn -> nil end)
+    |> Enum.reject(fn id ->
+      resent != nil and State.stat(state, id, "hp") > 0 and
+        State.get_relationship(state, healer, id).tension >= resent
+    end)
+    |> Enum.min_by(
+      &{share(state, &1), -State.get_relationship(state, healer, &1).affinity},
+      fn -> nil end
+    )
+  end
+
+  # A healer who would have tended someone they resent says so, once.
+  defp passed_over(%Transition{state: state} = transition, id, event, resent, patient) do
+    with true <- Combat.healer?(state, id),
+         wanted when wanted not in [nil, patient] <- most_hurt(state, event.from, id),
+         key = "combat:ignored:#{id}:#{wanted}",
+         false <- Map.has_key?(state.cooldowns, key),
+         true <- State.get_relationship(state, id, wanted).tension >= resent do
+      transition
+      |> Transition.put_cooldown(key)
+      |> combat_output(%{event | from: id, to: wanted}, wanted, :ignores, 0)
+    else
+      _other -> transition
+    end
+  end
+
+  # Someone on the player's side in danger, and a companion who cares about
+  # them and can take it: the blow lands on the companion.
+  defp protect(%Transition{state: state} = transition, %{to: to} = event) do
+    param = &Transition.param(transition, &1)
+
+    protector =
+      if State.stat(state, event.from, "enemy") > 0 and on_side?(state, to) and
+           not Map.has_key?(event, :protected) and State.stat?(state, to, "hp") and
+           share(state, to) < param.(:protect_below) do
+        state
+        |> State.sorted_characters()
+        |> Enum.map(& &1.id)
+        |> Enum.filter(fn id ->
+          State.stat(state, id, "party") > 0 and id not in [to, event.from] and
+            State.stat(state, id, "hp") > 0 and share(state, id) >= param.(:protect_above) and
+            State.get_relationship(state, id, to).affinity >= param.(:protect_affinity) and
+            not Map.has_key?(state.cooldowns, "combat:protect:#{id}")
+        end)
+        |> Enum.max_by(&State.get_relationship(state, &1, to).affinity, fn -> nil end)
+      end
+
+    if protector do
+      transition =
+        transition
+        |> Transition.put_cooldown("combat:protect:#{protector}")
+        |> combat_output(%{event | from: protector}, protector, :protected, 0)
+        |> saved(to, protector, event)
+
+      {transition, event |> Map.put(:to, protector) |> Map.put(:protected, to)}
+    else
+      {transition, event}
+    end
+  end
+
+  defp on_side?(state, id), do: player?(state, id) or State.stat(state, id, "party") > 0
+
+  defp saved(%Transition{state: state} = transition, saved, protector, event) do
+    if State.character?(state, saved) or player?(state, saved) do
+      transition
+      |> Transition.adjust_relationship(
+        saved,
+        protector,
+        :affinity,
+        Transition.param(transition, :protected_affinity)
+      )
+      |> Transition.adjust_relationship(
+        saved,
+        protector,
+        :trust,
+        Transition.param(transition, :protected_trust)
+      )
+      |> Transition.remember(
+        Memory.new(
+          id: "memory:#{protector}:protected:#{event.id}:#{saved}",
+          character_id: protector,
+          content: "#{protector} took a blow meant for #{saved}.",
+          importance: 65,
+          created_at: event.at,
+          related_characters: [saved],
+          kind: :experienced,
+          topic: "protect:#{event.id}",
+          data: %{"event" => "protect", "from" => protector, "to" => saved}
+        )
+      )
+    else
+      transition
+    end
+  end
+
+  # Those who cared about someone on the player's side who just fell.
+  defp enraged(%Transition{state: state} = transition, %{to: fallen} = event) do
+    if on_side?(state, fallen) do
+      state
+      |> State.sorted_characters()
+      |> Enum.map(& &1.id)
+      |> Enum.filter(fn id ->
+        State.stat(state, id, "party") > 0 and id != fallen and State.stat(state, id, "hp") > 0 and
+          State.stat(state, id, "fury") == 0 and
+          State.get_relationship(state, id, fallen).affinity >=
+            Transition.param(transition, :fury_affinity)
+      end)
+      |> Enum.reduce(transition, fn id, transition ->
+        transition
+        |> Transition.adjust_stat(id, "fury", 1, log: false)
+        |> combat_output(%{event | from: id, to: fallen}, id, :enraged, 0)
+      end)
+    else
+      transition
+    end
+  end
+
+  defp fury(transition, id) do
+    if State.stat(transition.state, id, "fury") > 0,
+      do: Transition.param(transition, :fury_bonus),
+      else: 0
   end
 
   # Trust is earned fighting side by side; behind a raised shield, half.
