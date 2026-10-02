@@ -429,11 +429,14 @@ defmodule Aethrion.Story do
   defp parse_activities(activities) when is_map(activities) do
     Enum.reduce_while(activities, {:ok, %{}}, fn {name, effects}, {:ok, acc} ->
       if is_binary(name) and is_map(effects) and
-           Enum.all?(effects, fn {k, v} -> is_binary(k) and k != "" and is_integer(v) end),
+           Enum.all?(effects, fn {k, v} ->
+             is_binary(k) and k != "" and Aethrion.State.number?(v)
+           end),
          do: {:cont, {:ok, Map.put(acc, name, effects)}},
          else:
            {:halt,
-            {:error, "an activity maps stat or field names to whole numbers",
+            {:error,
+             "an activity maps stat or field names to whole numbers (#{Aethrion.State.number_range()})",
              ["activities", name]}}
     end)
   end
@@ -695,8 +698,13 @@ defmodule Aethrion.Story do
 
   defp with_op(data, {subject, what}) do
     case Enum.find(~w(at_least at_most equals), &is_integer(data[&1])) do
-      nil -> {:error, "needs at_least, at_most, or equals with a whole number", []}
-      op -> {:ok, {subject, what, String.to_existing_atom(op), data[op]}}
+      nil ->
+        {:error, "needs at_least, at_most, or equals with a whole number", []}
+
+      op ->
+        if Aethrion.State.number?(data[op]),
+          do: {:ok, {subject, what, String.to_existing_atom(op), data[op]}},
+          else: {:error, "#{op} #{Aethrion.State.number_range()}", []}
     end
   end
 

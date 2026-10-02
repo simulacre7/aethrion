@@ -108,7 +108,8 @@ defmodule Aethrion.ReviewRegressionsTest do
 
     test "on timeout, the process and its children are gone", %{tmp_dir: dir} do
       {cli, pids} = slow_cli(dir)
-      assert {:error, :timeout} = CLI.complete("s", "u", command: cli, timeout: 500)
+      # Long enough for the script to start under load, and write its pids.
+      assert {:error, :timeout} = CLI.complete("s", "u", command: cli, timeout: 2_000)
       [shell, child] = read_pids(pids)
       assert eventually_dead?(shell)
       assert eventually_dead?(child)
@@ -265,6 +266,91 @@ defmodule Aethrion.ReviewRegressionsTest do
                })
 
       assert message =~ "ghost"
+    end
+
+    # Second review: it was a 503 (an ArithmeticError mid-fight).
+    test "a cast with a number too large to fight with", %{base: base} do
+      cast = cast_data("den") |> put_in(["stats", "user", "hp"], Integer.pow(10, 400))
+      route = %{"name" => "r", "to" => "sera", "days" => 1, "script" => "I defend"}
+
+      assert {400, %{"error" => %{"message" => message}}} =
+               post(base <> "/casts/simulate", %{"cast" => cast, "routes" => [route]})
+
+      assert message =~ "stats.user.hp"
+    end
+  end
+
+  describe "second review: a CLI model is waited for as long by the world as by the API" do
+    test "the world's line timeout is the API's render timeout" do
+      alias Mix.Tasks.Aethrion.Serve
+
+      for adapter <- [Aethrion.LLM.CLI, Aethrion.LLM.Anthropic] do
+        [expression: expression] = Serve.expression(adapter, [], nil)
+        api = Serve.reading(adapter, [], [], "model")
+        assert expression[:timeout] == api[:render_timeout]
+      end
+    end
+  end
+
+  describe "second review: a healer drinking a potion" do
+    test "heals by the potion's dice, not their own spell's" do
+      {:ok, den} =
+        "priv/casts/den.json" |> File.read!() |> Jason.decode!() |> Aethrion.State.parse()
+
+      den = %{
+        den
+        | stats: Map.update!(den.stats, "sera", &Map.merge(&1, %{"hp" => 5, "potions" => 1}))
+      }
+
+      {:ok, step} =
+        Aethrion.Runtime.step(den, Aethrion.Event.heal("sera", "sera", item: "potion"))
+
+      [healed | _] = for %{type: :combat, kind: :healed} = o <- step.outputs, do: o
+      assert healed.dice == "2d4+2"
+      assert Aethrion.State.stat(step.state, "sera", "potions") == 0
+
+      # Without an item, a healer's own healing is still her spell.
+      {:ok, den_hurt} =
+        {:ok, %{den | stats: Map.update!(den.stats, "doyun", &Map.put(&1, "hp", 5))}}
+
+      {:ok, step} = Aethrion.Runtime.step(den_hurt, Aethrion.Event.heal("sera", "doyun"))
+      [healed | _] = for %{type: :combat, kind: :healed} = o <- step.outputs, do: o
+      assert healed.dice == "1d8+3"
+    end
+  end
+
+  describe "second review: numbers too large to fight with" do
+    defp huge, do: Integer.pow(10, 400)
+
+    test "are refused when the cast is read, with where they are" do
+      {:ok, den} = "priv/casts/den.json" |> File.read!() |> Jason.decode!() |> then(&{:ok, &1})
+
+      data = put_in(den, ["stats", "user", "hp"], huge())
+      assert {:error, %{details: %{path: ["stats", "user", "hp"]}}} = Aethrion.State.parse(data)
+
+      data =
+        put_in(den, ["story", "decide_when"], [%{"stat" => ["user", "hp"], "at_most" => huge()}])
+
+      assert {:error, %{message: message}} = Aethrion.State.parse(data)
+      assert message =~ "at_most"
+
+      data = Map.put(den, "story", %{"activities" => %{"rest" => %{"hp" => huge()}}})
+      assert {:error, _error} = Aethrion.State.parse(data)
+    end
+
+    test "the largest allowed still fight" do
+      {:ok, den} =
+        "priv/casts/den.json"
+        |> File.read!()
+        |> Jason.decode!()
+        |> put_in(["stats", "user"], %{
+          "hp" => 1_000_000_000,
+          "max_hp" => 1_000_000_000,
+          "ac" => 16
+        })
+        |> Aethrion.State.parse()
+
+      assert {:ok, _step} = Aethrion.Runtime.step(den, Aethrion.Event.defend("user"))
     end
   end
 end
