@@ -84,7 +84,7 @@ defmodule Aethrion.BridgeEnsembleTest do
     assert note =~ "도윤 toward 세라: tension +"
     assert note =~ "Not there, and does not know: 하린"
     assert note =~ ~r/도윤 feels: jealousy \+\d+/
-    assert note =~ "도윤 told 하린"
+    assert note =~ "도윤 sent word of it to 하린, who is still away"
   end
 
   test "the status window shows what changed between characters this turn" do

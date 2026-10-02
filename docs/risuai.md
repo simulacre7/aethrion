@@ -64,7 +64,7 @@ In Settings → Bot Settings:
 
 Request model names (listed by `GET /v1/models`; foes are not listed):
 
-- `aethrion:CHARACTER_ID`: lines are read as said to that character.
+- `aethrion:CHARACTER_ID`: lines are read as said to that character at first; calling another by name moves the talk to them (section 6).
 - `aethrion`: the first character who is not a foe.
 - `aethrion-plain:CHARACTER_ID`: narration without the status block. Replies then carry no checkpoint ids: an untrimmed chat finds its checkpoints again from its lines, but a trimmed one is computed from what is left, and right after a change of character it may not tell itself apart from another chat on the server that began with the same words to someone else. `aethrion`, with status blocks, is exact.
 
@@ -100,12 +100,31 @@ Description, personality, and scenario become the profile; example messages the 
 - **Another character:** switching the request model to `aethrion:doyun` goes on from the checkpoints so far; lines from then on are read as said to Doyun.
 - **After editing the cast:** checkpoints remember their cast, so a changed cast is computed afresh from the chat.
 
+## 6. The Whole Cast
+
+One narrator card talks with every character in the cast; RisuAI's group chat is not used.
+
+- **Whom a line is for:** a line that starts by calling someone ("도윤, 왜 그렇게 조용해?", "하린아 고마워") is said to them; a line without a name goes to whoever was spoken to last. Someone given a gift or an apology is next in line too.
+- **Who sees it:** the characters there (not foes, not down, not `away`) witness what the player says and gives, so a gift for one can make another jealous, and harsh words disappoint the bystanders.
+- **Time and word getting around:** with `turn_hours` in the cast's story, that much time passes each turn. Meanwhile a character who is jealous or lonely confides in their most trusted friend, and that is how news spreads. An `away` stat is the hours until someone is back: it counts down, and at 0 they return.
+- **What the model hears:** who saw it, who was away and does not know, who told whom, how the characters now feel about each other, and who came back, as facts. The status window shows the changes between characters, such as `도윤 → 세라 · 긴장 +8`.
+- **In fights too:** a companion who cares about someone in danger takes the blow for them, those who loved someone who falls are enraged, a companion who trusts the player deeply attacks beside them with advantage, and a healer passes over someone they resent. A companion who is away does not fight.
+
+`priv/casts/campfire.json` (모닥불) shows all of it: night at camp, Sera and Doyun by the fire, Harin out scouting until three hours from now, goblins in the bushes.
+
+```bash
+mix aethrion.serve --cast priv/casts/campfire.json --llm claude --locale ko --port 4848
+curl -s 'localhost:4848/casts/card?name=Campfire' -o campfire.json
+```
+
+Give Sera a necklace and Doyun, who sees it, grows jealous and sends word to Harin, while Sera comes to care enough to take the goblins' blows for the player. Fight without the gift and she never does.
+
 ## Limits
 
 - Replies come whole; with `stream: true` they come as one server-sent event.
 - A CLI model (`--llm claude`) takes about 10-15 s a turn; API models are faster.
 - One request replays at most 300 lines; a longer chat without checkpoints is a 400 (`too_many_lines`).
-- Group chats are not supported yet; the model name says who the player talks to.
+- RisuAI's group chat is not used: one narrator card talks with the whole cast (section 6).
 - Checkpoints store the whole world (without the cast's lore) every turn, so the file grows with use. Deleting it is safe: the state is then recomputed from the transcript.
 
 ## SillyTavern

@@ -544,9 +544,15 @@ defmodule Aethrion.Bridge do
   defp told(%{type: :milestone_reached, title: title} = o, _state, _locale),
     do: "Unlocked: #{title}." <> if(o[:text], do: " #{o[:text]}", else: "")
 
-  defp told(%{type: :character_interaction, kind: :gossip} = o, state, _locale),
-    do:
-      "#{State.name(state, o.character_id)} told #{State.name(state, o.to)} about it, in private; now #{State.name(state, o.to)} knows."
+  defp told(%{type: :character_interaction, kind: :gossip} = o, state, _locale) do
+    {teller, listener} = {State.name(state, o.character_id), State.name(state, o.to)}
+
+    # Someone away hears it from afar; they are not back yet.
+    if State.stat(state, o.to, "away") > 0,
+      do:
+        "#{teller} sent word of it to #{listener}, who is still away and not back yet; now #{listener} knows.",
+      else: "#{teller} told #{listener} about it, in private; now #{listener} knows."
+  end
 
   defp told(%{type: :character_interaction, kind: :comfort} = o, state, _locale),
     do: "#{State.name(state, o.character_id)} comforted #{State.name(state, o.to)}."
