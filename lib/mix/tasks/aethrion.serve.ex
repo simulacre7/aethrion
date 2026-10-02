@@ -117,7 +117,8 @@ defmodule Mix.Tasks.Aethrion.Serve do
           allow_hosts: allow_hosts(opts[:allow_host] || System.get_env("AETHRION_ALLOW_HOSTS")),
           locale: if(opts[:locale] == "ko", do: :ko, else: :en),
           cast: cast,
-          card_name: card_name(opts[:cast])
+          card_name: card_name(opts[:cast]),
+          card_image: card_image(opts[:cast])
         ] ++
           reading(
             adapter,
@@ -137,6 +138,14 @@ defmodule Mix.Tasks.Aethrion.Serve do
   # "Campfire".
   defp card_name(nil), do: "Aethrion"
   defp card_name(path), do: path |> Path.basename(".json") |> String.capitalize()
+
+  # A cover image next to the cast file ("campfire.png"), for the card.
+  defp card_image(nil), do: nil
+
+  defp card_image(path) do
+    image = Path.rootname(path) <> ".png"
+    if File.regular?(image), do: image
+  end
 
   defp blank_to_nil(value) when value in [nil, ""], do: nil
   defp blank_to_nil(value), do: value

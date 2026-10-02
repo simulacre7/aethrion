@@ -70,6 +70,8 @@ defmodule Aethrion.API do
   - `:locale` (`:en` or `:ko`) - the language of combat lines
   - `:card_name` (default `"Aethrion"`) - the name of the card
     `GET /casts/card` exports when the request gives none
+  - `:card_image` - a PNG file the card goes into for
+    `GET /casts/card?format=png`
   """
 
   alias Aethrion.{Conversation, Error, Event, Intent, Output, State, Worlds}
@@ -126,6 +128,7 @@ defmodule Aethrion.API do
       max_text: Keyword.get(opts, :max_text, 2_000),
       locale: Keyword.get(opts, :locale, :en),
       card_name: Keyword.get(opts, :card_name, "Aethrion"),
+      card_image: Keyword.get(opts, :card_image),
       max_body: Keyword.get(opts, :max_body, 65_536),
       max_card: Keyword.get(opts, :max_card, 4_194_304)
     })
@@ -187,7 +190,10 @@ defmodule Aethrion.API do
          :ok <- small_enough(body, config, route) do
       run(config, route, query, body)
     end
-    |> respond()
+    |> case do
+      {:ok, 200, {:png, png}} -> {200, :png, png}
+      result -> respond(result)
+    end
   end
 
   defp small_enough(body, %{max_card: max}, :cast_import) when byte_size(body) > max,
@@ -334,7 +340,16 @@ defmodule Aethrion.API do
       [name: Map.get(query, "name", Map.get(config, :card_name, "Aethrion"))] ++
         if(g = query["greeting"], do: [greeting: g], else: [])
 
-    {:ok, 200, Aethrion.Card.from_cast(config.cast, opts)}
+    card = Aethrion.Card.from_cast(config.cast, opts)
+
+    with "png" <- query["format"],
+         path when is_binary(path) <- Map.get(config, :card_image),
+         {:ok, image} <- File.read(path),
+         {:ok, png} <- Aethrion.Card.to_png(card, image) do
+      {:ok, 200, {:png, png}}
+    else
+      _json -> {:ok, 200, card}
+    end
   end
 
   defp run(config, :openai_models, _query, _body) do
@@ -1275,38 +1290,7 @@ defmodule Aethrion.API do
       method = request |> mod(:method) |> to_string()
       config = Map.put(config, :emit, emitter(request, segments, config))
 
-      {status, content_type, json} =
-        try do
-          case Aethrion.API.handle(config, method, segments, query, headers, body) do
-            {status, :streamed, nil} -> {status, :streamed, nil}
-            {status, :html, html} -> {status, ~c"text/html; charset=utf-8", html}
-            {status, :json_v1, json} -> {status, ~c"application/json", json}
-            {status, :sse, events} -> {status, ~c"text/event-stream", events}
-            {status, :preflight, ""} -> {status, ~c"text/plain", ""}
-            {status, json} -> {status, ~c"application/json", json}
-          end
-        rescue
-          exception ->
-            require Logger
-
-            Logger.error(
-              "Aethrion.API request failed: " <>
-                Exception.format(:error, exception, __STACKTRACE__)
-            )
-
-            # Mid-stream, the status has gone: end the stream instead.
-            if Process.get(:aethrion_streaming) do
-              config.emit.(
-                {:chunk, ~s(data: {"error":{"code":"internal","message":"internal error"}}\n\n)}
-              )
-
-              config.emit.(:done)
-              {500, :streamed, nil}
-            else
-              {500, ~c"application/json",
-               ~s({"error":{"code":"internal","message":"internal error"}})}
-            end
-        end
+      {status, content_type, json} = answer(config, method, segments, query, headers, body)
 
       if content_type == :streamed do
         {:break, [response: {:already_sent, status, 0}]}
@@ -1314,6 +1298,40 @@ defmodule Aethrion.API do
         respond(request, segments, config, status, content_type, json)
       end
     end
+
+    defp answer(config, method, segments, query, headers, body) do
+      config
+      |> Aethrion.API.handle(method, segments, query, headers, body)
+      |> typed()
+    rescue
+      exception ->
+        require Logger
+
+        Logger.error(
+          "Aethrion.API request failed: " <> Exception.format(:error, exception, __STACKTRACE__)
+        )
+
+        # Mid-stream, the status has gone: end the stream instead.
+        if Process.get(:aethrion_streaming) do
+          config.emit.(
+            {:chunk, ~s(data: {"error":{"code":"internal","message":"internal error"}}\n\n)}
+          )
+
+          config.emit.(:done)
+          {500, :streamed, nil}
+        else
+          {500, ~c"application/json",
+           ~s({"error":{"code":"internal","message":"internal error"}})}
+        end
+    end
+
+    defp typed({status, :streamed, nil}), do: {status, :streamed, nil}
+    defp typed({status, :html, html}), do: {status, ~c"text/html; charset=utf-8", html}
+    defp typed({status, :png, png}), do: {status, ~c"image/png", png}
+    defp typed({status, :json_v1, json}), do: {status, ~c"application/json", json}
+    defp typed({status, :sse, events}), do: {status, ~c"text/event-stream", events}
+    defp typed({status, :preflight, ""}), do: {status, ~c"text/plain", ""}
+    defp typed({status, json}), do: {status, ~c"application/json", json}
 
     defp respond(_request, segments, config, status, content_type, json) do
       {:break,

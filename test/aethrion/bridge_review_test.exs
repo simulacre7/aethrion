@@ -429,6 +429,37 @@ defmodule Aethrion.BridgeReviewTest do
     assert API.default_talker(quiet) == first.id
   end
 
+  test "the card comes as a PNG with its cover when the server has one" do
+    {:ok, campfire} =
+      "priv/casts/campfire.json" |> File.read!() |> Jason.decode!() |> Aethrion.State.parse()
+
+    start_supervised!({Worlds, name: Worlds.Test.CardImage, world: fn _key -> [] end})
+
+    api =
+      start_supervised!(
+        {API,
+         worlds: Worlds.Test.CardImage,
+         port: 0,
+         cast: campfire,
+         card_name: "Campfire",
+         card_image: "priv/casts/campfire.png"},
+        id: :card_image
+      )
+
+    url = ~c"http://127.0.0.1:#{API.port(api)}/casts/card?format=png"
+
+    {:ok, {{_v, 200, _r}, headers, png}} =
+      :httpc.request(:get, {url, []}, [], body_format: :binary)
+
+    assert {~c"content-type", ~c"image/png"} in headers
+    assert {:ok, %{"name" => "Campfire"}} = Aethrion.Card.read(png)
+
+    # Without format=png, or without a cover, it is the JSON card.
+    json = ~c"http://127.0.0.1:#{API.port(api)}/casts/card"
+    {:ok, {{_v, 200, _r}, _h, body}} = :httpc.request(:get, {json, []}, [], body_format: :binary)
+    assert %{"data" => %{"name" => "Campfire"}} = Jason.decode!(body)
+  end
+
   describe "over HTTP" do
     setup do
       start_supervised!({Worlds, name: Worlds.Test.BridgeReview, world: fn _key -> [] end})

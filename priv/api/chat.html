@@ -284,15 +284,23 @@ for (const button of document.querySelectorAll("[data-copy]")) {
   });
 }
 
+// The card with its cover image when the cast has one, else as JSON.
 $("risu-card").addEventListener("click", async () => {
-  try {
-    const card = await call("GET", "/casts/card");
-    const blob = new Blob([JSON.stringify(card)], {type: "application/json"});
+  const save = (blob, name) => {
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
-    link.download = ((card.data && card.data.name) || "aethrion") + ".json";
+    link.download = name;
     link.click();
-    URL.revokeObjectURL(link.href);
+    setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+  };
+  try {
+    const card = await call("GET", "/casts/card");
+    const name = (card.data && card.data.name) || "aethrion";
+    const png = await fetch("/casts/card?format=png", {headers: headers()});
+    if (png.ok && (png.headers.get("content-type") || "").startsWith("image/png")) {
+      return save(await png.blob(), name + ".png");
+    }
+    save(new Blob([JSON.stringify(card)], {type: "application/json"}), name + ".json");
   } catch (error) { add("error", "Card: " + error.message); }
 });
 
