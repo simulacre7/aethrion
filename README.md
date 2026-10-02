@@ -9,7 +9,7 @@
 
 Aethrion keeps the facts of an AI role-play in deterministic rules: affinity and trust, HP and dice, who saw what, who told whom, and which ending you are heading for. Any model then narrates the result. Use it as the Custom API in RisuAI or SillyTavern, or put it behind your own chat app or game.
 
-<sub>Pronounced ay-three-on (에이트리온). Early alpha, MIT licensed.</sub>
+<sub>Pronounced ay-three-on (에이트리온). A personal project, not affiliated with RisuAI or SillyTavern. MIT licensed, early alpha.</sub>
 
 ## The Problem
 
@@ -27,7 +27,11 @@ Aethrion reads each line the player types, applies it with rules, and hands the 
 - a reroll changes the wording, never the outcome
 - an edited line is recomputed from that point on
 - characters know only what they saw or were told, and pass it on to the people they trust
-- every change has a reason you can ask for: which rule, which event
+- the status window shows what this turn changed (`Sera · affinity 50 (+10)`), and every change can be traced to the rule and the event behind it
+
+![The same scene rerolled three times. When the model writes the status window, its numbers change with each reroll; with Aethrion only the narration changes.](assets/demo/reroll.png)
+
+<sub>The same scene from the Korean campfire cast, rerolled three times with the same model (the Claude Code CLI) and the same starting values. Left: a plain card where the model updates the status window. Right: Aethrion. Raw outputs: [assets/demo/reroll.json](assets/demo/reroll.json)</sub>
 
 From a play of the bundled campfire cast, with the Claude Code CLI as the narrator. The prose is the model's; every number, and who did what, is the rules':
 
@@ -60,7 +64,7 @@ cp .env.example .env     # an access password, and your model: OpenRouter, the C
 docker compose up -d
 ```
 
-Then point RisuAI's Custom API at `http://localhost:4848/v1`, with the access password as its key ([step by step](docs/risuai.md#the-quick-way-docker)). Aethrion's own chat page and cast editor are at http://localhost:4848.
+Then open http://localhost:4848 and click **RisuAI**: it shows the values to copy and downloads the character card. Point RisuAI's Custom API at `http://localhost:4848/v1`, with the access password as its key ([step by step](docs/risuai.md#the-quick-way-docker)). Tested with RisuAI's desktop app 2026.8.250 on macOS.
 
 **With Elixir** (1.19+ and Erlang/OTP 28+; `brew install elixir` on macOS). No database or vector store is needed, and a model is optional.
 
