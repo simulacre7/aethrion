@@ -6,6 +6,10 @@ defmodule Aethrion.MixProject do
 
   @extras ~w(
     README.md
+    docs/risuai.md
+    docs/tour.md
+    docs/stories.md
+    docs/embedding.md
     docs/tutorial.md
     docs/tutorial.ko.md
     notebooks/tour.livemd
@@ -94,7 +98,13 @@ defmodule Aethrion.MixProject do
     [
       main: "readme",
       source_ref: "main",
-      skip_undefined_reference_warnings_on: ["README.md"],
+      skip_undefined_reference_warnings_on: [
+        "README.md",
+        "docs/risuai.md",
+        "docs/tour.md",
+        "docs/stories.md",
+        "docs/embedding.md"
+      ],
       extras: @extras,
       groups_for_modules: [
         Runtime: [
