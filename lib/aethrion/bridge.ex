@@ -699,7 +699,7 @@ defmodule Aethrion.Bridge do
 
         "#{character.name} · #{words.affinity} #{rel.affinity}#{change(was && was.affinity, rel.affinity)}" <>
           " · #{words.trust} #{rel.trust}#{change(was && was.trust, rel.trust)}" <>
-          hp_short(state, character.id, before)
+          hp_short(state, character.id, before) <> watched(state, character.id, before, locale)
       end
 
     foes =
@@ -729,7 +729,7 @@ defmodule Aethrion.Bridge do
           end)
       end)
 
-    lines = player ++ people ++ foes ++ between ++ events
+    lines = day(state, locale) ++ player ++ people ++ foes ++ between ++ events
 
     open = if turn[:id], do: ~s(<aethrion-status id="#{turn.id}">), else: "<aethrion-status>"
     open <> Enum.map_join(lines, "\n", &escape/1) <> "</aethrion-status>"
@@ -744,6 +744,51 @@ defmodule Aethrion.Bridge do
       ""
     end
   end
+
+  # The other numbers that matter for someone: stats the cast names in its
+  # labels or its story's conditions watch ("그림 실력 24"), and feelings the
+  # conditions watch ("스트레스 30"). HP has its own place.
+  defp watched(state, id, before, locale) do
+    story = state.story
+    labels = Map.get(story, :labels, %{})
+    watch = Aethrion.Story.watched(story)
+    stats = Map.get(state.stats, id, %{})
+
+    shown =
+      for {name, value} <- Enum.sort(stats),
+          name not in ["hp", "max_hp"],
+          Map.has_key?(labels, name) or {id, name} in watch.stats,
+          value != 0 or {id, name} in watch.stats,
+          do: {Map.get(labels, name, name), value, before && State.stat(before, id, name)}
+
+    feelings =
+      for {^id, field} <- watch.fields,
+          now = feeling(state, id, field),
+          now != nil,
+          do:
+            {Map.get(labels, field, Aethrion.Story.field_name(field, locale)), now,
+             before && feeling(before, id, field)}
+
+    Enum.map_join(shown ++ feelings, "", fn {label, now, was} ->
+      " · #{label} #{now}#{change(was, now)}"
+    end)
+  end
+
+  defp feeling(state, id, field) do
+    case Map.get(state.characters, id) do
+      nil -> nil
+      character -> Map.get(character.state, String.to_existing_atom(field))
+    end
+  end
+
+  # A story with a deadline counts days, the way a raising sim does.
+  defp day(%State{story: %{deadline: deadline}} = state, locale) when is_integer(deadline) do
+    passed = div(state.clock, 24)
+    total = div(deadline, 24)
+    if locale == :ko, do: ["#{passed}일째 / #{total}일"], else: ["Day #{passed} of #{total}"]
+  end
+
+  defp day(_state, _locale), do: []
 
   # What this turn changed, next to the number: "50 (+10)".
   defp change(nil, _now), do: ""

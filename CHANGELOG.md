@@ -8,6 +8,7 @@ Ready for chat apps and games: a world per user, conversations a model can follo
 
 ### Added
 
+- The status block shows what a story counts on: the day for a story with a deadline ("1일째 / 30일"), stats the cast names in `labels` or its conditions watch ("그림 실력 24 (+4)"), and feelings its endings watch ("스트레스 4 (+4)"). A raising sim such as `summer` used to show only affinity and trust. `Story.watched/1`.
 - `priv/casts/campfire_en.json`: the campfire cast in English, with the same numbers (a test keeps them equal) and its own cover. Card names come from the cast file in words: `campfire_en.json` is "Campfire (EN)".
 - Card covers: the bundled casts have cover images (`priv/casts/<cast>.png`, drawn by `scripts/cast_covers.py`), and `GET /casts/card?format=png` puts the card into the cover next to the cast file (`Card.to_png/2`, `ccv3` and `chara` chunks), so the card shows a picture in RisuAI's list. The chat page's RisuAI panel downloads the PNG card when there is one.
 - Streaming: with `stream: true`, `/v1/chat/completions` sends the narration as the model writes it (chunked server-sent events), the status block last; a model failing mid-stream ends it with an error event. `LLM.stream_chat/4`, with `stream_chat/3` in `OpenAICompatible`, `Anthropic`, and `CLI` (the Claude Code CLI's `stream-json`; Codex replies whole). `HTTP.stream_post/6` reads server-sent events on `:httpc`.

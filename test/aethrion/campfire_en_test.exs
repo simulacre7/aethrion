@@ -40,4 +40,24 @@ defmodule Aethrion.CampfireEnTest do
     assert status =~ ~r/Sera · affinity \d+ \(\+\d+\)/
     assert status =~ "Doyun → Sera · tension +"
   end
+
+  test "a raising sim's status shows the day, the stats, and the feelings its endings watch" do
+    {:ok, summer} = "priv/casts/summer.json" |> File.read!() |> Jason.decode!() |> State.parse()
+
+    read =
+      Bridge.reader(
+        [interpreter: Aethrion.Interpreter.Rules],
+        %{get: fn _key -> nil end, put: fn _key, _value -> :ok end}
+      )
+
+    messages = [%{"role" => "user", "content" => "서윤아, 오늘은 같이 그림 그리자"}]
+    {_all, chat} = Bridge.transcript(messages)
+    {before, now, turn} = Bridge.replay(summer, chat, read, to: "seoyun")
+    status = Bridge.status(now, turn, :ko, before)
+
+    assert status =~ "1일째 / 30일"
+    assert status =~ ~r/서윤 · 호감 \d+ · 신뢰 \d+ · 그림 실력 \d+ \(\+\d+\) · 성적 \d+ · 스트레스 \d+ \(\+\d+\)/
+    # Taeo's numbers are not watched by the story: only the relationship shows.
+    assert status =~ ~r/태오 · 호감 \d+ · 신뢰 \d+<\/aethrion-status>/
+  end
 end
