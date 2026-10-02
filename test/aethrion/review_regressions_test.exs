@@ -353,4 +353,31 @@ defmodule Aethrion.ReviewRegressionsTest do
       assert {:ok, _step} = Aethrion.Runtime.step(den, Aethrion.Event.defend("user"))
     end
   end
+
+  describe "second review, checked again" do
+    test "a heal's amount is bounded like any number" do
+      {:ok, den} =
+        "priv/casts/den.json" |> File.read!() |> Jason.decode!() |> Aethrion.State.parse()
+
+      den = %{den | stats: Map.update!(den.stats, "user", &Map.put(&1, "hp", 5))}
+
+      assert {:error, %{code: :invalid_event}} =
+               Aethrion.Runtime.step(
+                 den,
+                 Aethrion.Event.heal("sera", "user", amount: Integer.pow(10, 400))
+               )
+    end
+
+    test "a healer of her own does not reach for a potion unasked" do
+      {:ok, den} =
+        "priv/casts/den.json" |> File.read!() |> Jason.decode!() |> Aethrion.State.parse()
+
+      den = %{den | stats: Map.update!(den.stats, "sera", &Map.put(&1, "potions", 1))}
+      assert Aethrion.Combat.heal_item(den, "sera", "치료한다") == nil
+      assert Aethrion.Combat.heal_item(den, "sera", "포션을 마신다") == "potion"
+      # Someone with no healing of their own still does.
+      den = %{den | stats: Map.update!(den.stats, "doyun", &Map.put(&1, "potions", 1))}
+      assert Aethrion.Combat.heal_item(den, "doyun", "치료한다") == "potion"
+    end
+  end
 end
