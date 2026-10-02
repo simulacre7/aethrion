@@ -183,6 +183,8 @@ defmodule Aethrion.StreamingTest do
       {200, _headers, events} = stream(base, "실패해")
 
       assert events =~ ~s("code":"model_failed")
+      # RisuAI skips error events, so the reply itself says what happened.
+      assert Enum.join(contents(events)) =~ "모델이 답하지 않았습니다"
       refute events =~ "aethrion-status"
       assert String.ends_with?(events, "data: [DONE]\n\n")
     end

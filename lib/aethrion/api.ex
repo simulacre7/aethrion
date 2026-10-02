@@ -713,7 +713,7 @@ defmodule Aethrion.API do
       end
 
       if data["stream"] == true and is_function(config[:emit], 1) do
-        stream_turn(config.emit, data, {adapter, messages, opts}, status, finish)
+        stream_turn(config.emit, data, {adapter, messages, opts}, {status, locale}, finish)
       else
         replied = Aethrion.LLM.chat(adapter, messages, opts)
         finish.(replied)
@@ -740,7 +740,7 @@ defmodule Aethrion.API do
   # The reply as server-sent events while the model writes it, the status
   # block last. Once the first event is out, a failing model can only be
   # told as an error event: the status code has gone.
-  defp stream_turn(emit, data, {adapter, messages, opts}, status, done) do
+  defp stream_turn(emit, data, {adapter, messages, opts}, {status, locale}, done) do
     chunk = sse_chunker(data)
     emit.(:start)
     emit.({:chunk, chunk.(%{role: "assistant", content: ""}, nil)})
@@ -770,12 +770,21 @@ defmodule Aethrion.API do
           error: %{code: "model_failed", message: "the model did not answer: #{inspect(reason)}"}
         }
 
+        # Chat apps such as RisuAI skip an error event, so the reply says it too.
+        emit.({:chunk, chunk.(%{content: stream_failed(locale)}, "stop")})
         emit.({:chunk, "data: " <> Jason.encode!(error) <> "\n\ndata: [DONE]\n\n"})
     end
 
     emit.(:done)
     {:ok, 200, :streamed}
   end
+
+  defp stream_failed(:ko),
+    do: "\n\n(Aethrion: 모델이 답하지 않았습니다. 이번 턴은 반영되지 않았으니 다시 생성해 주세요.)"
+
+  defp stream_failed(_en),
+    do:
+      "\n\n(Aethrion: the model did not answer. This turn was not applied; regenerate to try again.)"
 
   defp sse_chunker(data) do
     id = "chatcmpl-" <> Base.encode16(:crypto.strong_rand_bytes(8), case: :lower)
