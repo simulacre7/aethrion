@@ -52,15 +52,15 @@ Aethrion은 AI 롤플레이에서 바뀌면 안 되는 사실들을 결정론적
 
 ## 빠르게 시작하기
 
-**Docker로 (Elixir 설치 불필요).** RisuAI와 Aethrion이 함께 뜨고, 이 컴퓨터에서만 접속할 수 있습니다.
+**Docker로 (Elixir 설치 불필요).** RisuAI 데스크톱 앱이나 SillyTavern에 연결됩니다(RisuAI 웹 버전은 내 컴퓨터의 서버에 닿지 못합니다).
 
 ```bash
 git clone https://github.com/simulacre7/aethrion && cd aethrion
-cp .env.example .env     # 모델 주소와 키: OpenRouter, Claude API, Ollama 등
+cp .env.example .env     # 접속 비밀번호, 그리고 모델: OpenRouter, Claude API, Ollama 등
 docker compose up -d
 ```
 
-http://localhost:6001 에서 RisuAI를 열고, Custom API를 `http://aethrion:4848/v1`로 연결하세요([자세한 순서](docs/risuai.ko.md#가장-쉬운-방법-docker)). Aethrion의 채팅 페이지와 캐스트 편집기는 http://localhost:4848 에 있습니다.
+RisuAI의 Custom API를 `http://localhost:4848/v1`로 연결하고 Key 칸에 접속 비밀번호를 넣으세요([자세한 순서](docs/risuai.ko.md#가장-쉬운-방법-docker)). Aethrion의 채팅 페이지와 캐스트 편집기는 http://localhost:4848 에 있습니다.
 
 **Elixir로** (Elixir 1.19 이상, Erlang/OTP 28 이상. macOS는 `brew install elixir`). 데이터베이스나 vector store는 필요 없고, 모델은 선택 사항입니다.
 

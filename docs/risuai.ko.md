@@ -30,37 +30,38 @@ RisuAI ◀──(이야기 + <aethrion-status>)──┘
 
 ## 가장 쉬운 방법: Docker
 
-Elixir를 설치할 필요가 없습니다. `compose.yaml` 하나로 RisuAI와 Aethrion이 함께 뜨고, 둘 다 이 컴퓨터에서만 접속할 수 있습니다.
+Elixir를 설치할 필요가 없습니다. RisuAI 데스크톱 앱이나 SillyTavern과 함께 쓰면 됩니다. RisuAI 웹 버전(risuai.xyz)은 내 컴퓨터의 서버에 닿지 못합니다([이유](#2-risuai-설치)).
 
 ```bash
 git clone https://github.com/simulacre7/aethrion && cd aethrion
-cp .env.example .env     # .env에 모델 주소와 키를 넣습니다
+cp .env.example .env     # AETHRION_TOKEN과 모델 주소·키를 넣습니다
 docker compose up -d
 ```
 
-이야기를 쓸 모델은 `.env.example`에 있는 셋 중에서 고르면 됩니다.
+`.env`에 넣을 것:
 
-- OpenAI 호환 API(OpenRouter 등)
-- Claude API
-- 이 컴퓨터에서 돌리는 모델(Ollama, LM Studio, llama.cpp)
+- **`AETHRION_TOKEN`**(필수): 내 Aethrion의 접속 비밀번호입니다. 모델 사용량을 세는 토큰이 아니라서 비용이 들지 않습니다. 아무 긴 무작위 문자열이면 됩니다. 예를 들어 `openssl rand -hex 16`의 출력을 쓰면 됩니다. RisuAI가 요청마다 이 토큰을 보내고, 브라우저에 열린 다른 사이트가 이 서버와 그 뒤의 모델을 쓰지 못하게 막아 줍니다.
+- **이야기를 쓸 모델**: OpenAI 호환 API(OpenRouter 등), Claude API, 이 컴퓨터에서 돌리는 모델(Ollama, LM Studio, llama.cpp) 중에서 고릅니다. 각각의 설정 예시는 `.env.example`에 있습니다.
+- **`AETHRION_CAST`**: 캐스트를 고릅니다. 기본값은 `campfire`(모닥불)입니다.
 
-캐스트는 `AETHRION_CAST`로 고르고, 기본값은 `campfire`(모닥불)입니다.
+그다음:
 
-그다음 순서는 이렇습니다.
+1. RisuAI에서 [3. 모델 설정](#3-모델-설정)대로 설정하되, URL은 `http://localhost:4848/v1`, Key/Password는 `AETHRION_TOKEN`의 값으로 넣습니다.
+2. 모닥불 카드를 저장한 뒤 [4. 캐릭터 카드](#4-캐릭터-카드)대로 가져옵니다.
 
-1. http://localhost:6001 에서 RisuAI를 엽니다.
-2. [3. 모델 설정](#3-모델-설정)대로 설정하되, URL은 `http://aethrion:4848/v1`로 넣습니다.
-3. [4. 캐릭터 카드](#4-캐릭터-카드)대로 카드를 가져옵니다. 카드는 http://localhost:4848/casts/card?name=Campfire 에서 받을 수 있습니다.
+   ```bash
+   curl -H "Authorization: Bearer $(grep '^AETHRION_TOKEN=' .env | cut -d= -f2)" \
+     'http://localhost:4848/casts/card?name=Campfire' -o campfire.json
+   ```
 
-`docker compose logs aethrion`으로 Aethrion이 하는 일을 볼 수 있고, `docker compose down`이면 둘 다 멈춥니다.
-
-이미 RisuAI를 쓰고 계시면 `docker compose up -d aethrion`으로 Aethrion만 띄우고, URL은 `http://host.docker.internal:4848/v1`을 쓰세요.
+`docker compose logs aethrion`으로 Aethrion이 하는 일을 볼 수 있고, `docker compose down`이면 멈춥니다. 포트는 이 컴퓨터에만 열립니다.
 
 이 아래는 Elixir를 설치해서 직접 설정하는 방법입니다.
 
 ## 1. Aethrion 서버 실행
 
 ```bash
+export AETHRION_TOKEN=$(openssl rand -hex 16)   # 접속 비밀번호. RisuAI의 Key/Password에 넣습니다
 mix aethrion.serve --cast priv/casts/den.json --llm claude --locale ko --port 4848
 ```
 
@@ -68,7 +69,11 @@ mix aethrion.serve --cast priv/casts/den.json --llm claude --locale ko --port 48
 
 ## 2. RisuAI 설치
 
-시험한 방법은 직접 띄운 RisuAI(Docker)입니다. 데스크톱 앱도 같은 요청을 보냅니다. 웹 버전(risuai.xyz)은 대부분의 요청을 RisuAI 쪽 서버를 거쳐 보내지만, `localhost`·`127.0.0.1` 주소는 브라우저에서 바로 요청하므로 `http://localhost:4848/v1`에 닿을 수 있습니다. 이때 Aethrion을 `--token`과 함께 띄우고 그 값을 키로 넣어야 합니다. 토큰이 없으면 이 기기의 이름(`localhost`, `127.0.0.1`, `host.docker.internal` 등)으로 온 요청만 받고, 다른 출처(웹 사이트)에서 온 요청은 403으로 거절합니다. 그렇지 않으면 사용자가 연 아무 사이트나 이 서버와 그 뒤의 모델을 쓸 수 있기 때문입니다. 또 브라우저의 사전 요청(OPTIONS)에 답하려면 Erlang/OTP 29 이상이 필요합니다(그 전의 `:httpd`는 OPTIONS를 501로 거절합니다). 브라우저가 로컬 네트워크 접근을 허용할지 물을 수도 있고, 이 경로는 시험하지 않았습니다.
+**데스크톱 앱**을 쓰세요([릴리스](https://github.com/kwaroran/RisuAI/releases)). 데스크톱 앱은 `http://localhost:4848/v1`로 바로 요청을 보냅니다.
+
+- **웹 버전(risuai.xyz)은 내 컴퓨터의 Aethrion에 닿지 못합니다.** 로컬 주소(localhost, 127.0.0.1, 사설망 주소, `.local` 이름)는 앱이 직접 막고 "You are trying local request on web version" 오류를 냅니다. 그 밖의 주소는 RisuAI 쪽 서버를 거쳐 나가는데, 그 서버에서는 내 컴퓨터가 보이지 않습니다.
+- **접속 비밀번호.** Aethrion을 토큰(`--token` 또는 `AETHRION_TOKEN`)과 함께 띄우고, 같은 값을 RisuAI의 Key/Password 칸에 넣으세요. 이 토큰은 내 Aethrion 서버의 비밀번호일 뿐, 모델 사용량을 세는 토큰이 아니라서 비용이 들지 않습니다. 토큰이 없으면 Aethrion은 이 기기의 이름(`localhost`, `127.0.0.1`, `host.docker.internal` 등)으로 온 요청만 받고, 다른 출처에서 온 요청은 403으로 거절합니다. 그렇지 않으면 브라우저에 열린 아무 사이트나 이 서버와 그 뒤의 모델을 쓸 수 있기 때문입니다.
+- **직접 띄운 RisuAI**도 서버가 요청을 보내므로 됩니다. 다만 공식 이미지(`ghcr.io/kwaroran/risuai`)는 `VITE_RISU_LEGAL_CONFIGURED` 없이 빌드돼 있어서, 법적 문서 안내 화면에서 멈춥니다. RisuAI 안내문에는 개인 용도의 셀프호스팅이라면 이 값을 `TRUE`로 두고 이미지를 직접 빌드해도 된다고 적혀 있습니다. 안내문을 읽고 직접 판단하세요.
 
 ```bash
 git clone https://github.com/kwaroran/RisuAI
@@ -105,10 +110,10 @@ Docker 안의 RisuAI에서 내 컴퓨터의 Aethrion은 `http://host.docker.inte
 Aethrion 캐스트를 내레이터 카드로 내보내 RisuAI에 가져옵니다.
 
 ```bash
-curl -s 'localhost:4848/casts/card?name=늑대굴' -o 늑대굴.json
+curl -s -H "Authorization: Bearer $AETHRION_TOKEN" 'localhost:4848/casts/card?name=늑대굴' -o 늑대굴.json
 ```
 
-RisuAI에서 캐릭터 임포트로 이 파일을 엽니다. 카드에는 등장인물 소개, 첫 메시지(적이 아닌 캐릭터의 `greeting`), 로어북, 그리고 상태창 정규식이 들어 있어서, 따로 설정하지 않아도 상태창이 그려집니다.
+RisuAI에서 캐릭터 임포트로 이 파일을 엽니다. 파일 선택 창이 뜨지 않으면(macOS 데스크톱 앱에서는 뜨지 않습니다) 파일을 RisuAI 창에 끌어다 놓으면 됩니다. 카드에는 등장인물 소개, 첫 메시지(적이 아닌 캐릭터의 `greeting`), 로어북, 그리고 상태창 정규식이 들어 있어서, 따로 설정하지 않아도 상태창이 그려집니다.
 
 이미 쓰던 카드를 쓰려면 상태창 모듈만 가져옵니다. 설정 → 모듈 → 모듈 임포트에서 [`priv/risu/aethrion-status.json`](../priv/risu/aethrion-status.json)을 열고 그 카드에서 켭니다. 모듈은 `<aethrion-status>` 블록을 표시할 때만 바꾸는 정규식(디스플레이 수정) 하나입니다.
 
@@ -156,7 +161,7 @@ mix aethrion.card 내카드.png --player 선생님 --out casts/my.json
 
 ```bash
 mix aethrion.serve --cast priv/casts/campfire.json --llm claude --locale ko --port 4848
-curl -s 'localhost:4848/casts/card?name=모닥불' -o 모닥불.json
+curl -s -H "Authorization: Bearer $AETHRION_TOKEN" 'localhost:4848/casts/card?name=모닥불' -o 모닥불.json
 ```
 
 세라에게 목걸이를 주면 그것을 본 도윤이 질투해 하린에게 소식을 전하고, 세라는 고블린의 공격을 플레이어 대신 받아 줄 만큼 마음이 커집니다. 선물 없이 싸우면 세라는 한 번도 막아서지 않습니다.

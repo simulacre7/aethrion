@@ -1,16 +1,17 @@
-# RisuAI with Aethrion keeping the numbers, in one command:
+# Aethrion for RisuAI's desktop app or SillyTavern, with no Elixir to install.
+# (RisuAI's web app cannot reach a server on your computer; see docs/risuai.md.)
 #
-#   cp .env.example .env    # then put your model's address and key in .env
+#   cp .env.example .env    # set AETHRION_TOKEN and your model's address and key
 #   docker compose up -d
 #
-# RisuAI:                      http://localhost:6001
-#   Settings -> Bot Settings -> Model: Custom API, URL: http://aethrion:4848/v1,
-#   Request Model: aethrion, Format: OpenAI Compatible (docs/risuai.md)
-# Aethrion's chat and editor:  http://localhost:4848
+# Then in RisuAI: Settings -> Bot Settings -> Model: Custom API,
+#   URL: http://localhost:4848/v1, Key/Password: your AETHRION_TOKEN (an access
+#   password for this server, not a model token: it costs nothing),
+#   Request Model: aethrion, Format: OpenAI Compatible (docs/risuai.md).
+# Aethrion's own chat page and cast editor: http://localhost:4848
 #
-# Only this computer can reach either port. Already running RisuAI? Run just
-# Aethrion with `docker compose up -d aethrion` and use
-# http://host.docker.internal:4848/v1 as the URL instead.
+# Only this computer can reach the port. The token keeps other websites you
+# open in the browser from using the server and the model behind it.
 name: aethrion
 
 services:
@@ -21,9 +22,7 @@ services:
     ports:
       - "127.0.0.1:${AETHRION_PORT:-4848}:4848"
     environment:
-      # RisuAI's server calls Aethrion by its service name.
-      AETHRION_ALLOW_HOSTS: aethrion
-      AETHRION_TOKEN: ${AETHRION_TOKEN:-}
+      AETHRION_TOKEN: ${AETHRION_TOKEN:?set AETHRION_TOKEN in .env (any long random string)}
       AETHRION_LLM_BASE_URL: ${AETHRION_LLM_BASE_URL:-}
       AETHRION_LLM_API_KEY: ${AETHRION_LLM_API_KEY:-}
       AETHRION_LLM_MODEL: ${AETHRION_LLM_MODEL:-}
@@ -38,14 +37,5 @@ services:
     volumes:
       - aethrion-data:/data
 
-  risuai:
-    image: ghcr.io/kwaroran/risuai:latest
-    restart: unless-stopped
-    ports:
-      - "127.0.0.1:${RISUAI_PORT:-6001}:6001"
-    volumes:
-      - risuai-save:/app/save
-
 volumes:
   aethrion-data:
-  risuai-save:

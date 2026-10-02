@@ -52,15 +52,15 @@ Doyun saw the necklace, so he grows jealous and sends word to Harin, who is out 
 
 ## Quick Start
 
-**With Docker, no Elixir needed.** RisuAI and Aethrion together, reachable only from this computer:
+**With Docker, no Elixir needed.** It works with RisuAI's desktop app or SillyTavern (RisuAI's web app cannot reach a server on your computer):
 
 ```bash
 git clone https://github.com/simulacre7/aethrion && cd aethrion
-cp .env.example .env     # your model's address and key: OpenRouter, the Claude API, Ollama, ...
+cp .env.example .env     # an access password, and your model: OpenRouter, the Claude API, Ollama, ...
 docker compose up -d
 ```
 
-Open RisuAI at http://localhost:6001 and point its Custom API at `http://aethrion:4848/v1` ([step by step](docs/risuai.md#the-quick-way-docker)). Aethrion's own chat page and cast editor are at http://localhost:4848.
+Then point RisuAI's Custom API at `http://localhost:4848/v1`, with the access password as its key ([step by step](docs/risuai.md#the-quick-way-docker)). Aethrion's own chat page and cast editor are at http://localhost:4848.
 
 **With Elixir** (1.19+ and Erlang/OTP 28+; `brew install elixir` on macOS). No database or vector store is needed, and a model is optional.
 

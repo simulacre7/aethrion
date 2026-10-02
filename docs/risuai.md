@@ -30,25 +30,38 @@ RisuAI ◀──(narration + <aethrion-status>)──┘
 
 ## The Quick Way: Docker
 
-No Elixir needed. `compose.yaml` runs RisuAI and Aethrion together, both reachable only from this computer:
+No Elixir needed, and it works with RisuAI's desktop app or SillyTavern. The RisuAI web app (risuai.xyz) cannot reach a server on your computer ([why](#2-install-risuai)).
 
 ```bash
 git clone https://github.com/simulacre7/aethrion && cd aethrion
-cp .env.example .env     # put your model's address and key in .env
+cp .env.example .env     # set AETHRION_TOKEN, and your model's address and key
 docker compose up -d
 ```
 
-`.env.example` shows the choices for the model that narrates: any OpenAI-compatible API (OpenRouter, for one), the Claude API, or a model served on this computer (Ollama, LM Studio, llama.cpp). `AETHRION_CAST` picks the cast (`campfire` by default).
+In `.env`:
 
-Open RisuAI at http://localhost:6001, then set up the model as in [section 3](#3-set-the-model) with the URL `http://aethrion:4848/v1`, and import a card as in [section 4](#4-character-cards). The card comes from http://localhost:4848/casts/card?name=Campfire. `docker compose logs aethrion` shows what Aethrion is doing, and `docker compose down` stops both.
+- **`AETHRION_TOKEN`** is required. It is an access password for your Aethrion, not a model token, and costs nothing. Use any long random string, such as the output of `openssl rand -hex 16`. RisuAI sends it with every request, and it keeps other websites open in your browser from using the server and the model behind it.
+- **The narrating model** is your choice: any OpenAI-compatible API (OpenRouter, for one), the Claude API, or a model served on this computer (Ollama, LM Studio, llama.cpp). `.env.example` shows each.
+- **`AETHRION_CAST`** picks the cast. The default is `campfire`.
 
-Already running RisuAI? Start only Aethrion with `docker compose up -d aethrion`, and use `http://host.docker.internal:4848/v1` as the URL.
+Then:
+
+1. In RisuAI, set up the model as in [section 3](#3-set-the-model), with the URL `http://localhost:4848/v1` and your `AETHRION_TOKEN` as the Key/Password.
+2. Save the campfire card, then import it as in [section 4](#4-character-cards):
+
+   ```bash
+   curl -H "Authorization: Bearer $(grep '^AETHRION_TOKEN=' .env | cut -d= -f2)" \
+     'http://localhost:4848/casts/card?name=Campfire' -o campfire.json
+   ```
+
+`docker compose logs aethrion` shows what Aethrion is doing, and `docker compose down` stops it. The port is published only to this computer.
 
 The rest of this page sets things up by hand, with Elixir installed.
 
 ## 1. Run Aethrion
 
 ```bash
+export AETHRION_TOKEN=$(openssl rand -hex 16)   # the access password; put it in RisuAI's Key/Password
 mix aethrion.serve --cast priv/casts/den.json --llm claude --locale ko --port 4848
 ```
 
@@ -56,7 +69,11 @@ mix aethrion.serve --cast priv/casts/den.json --llm claude --locale ko --port 48
 
 ## 2. Install RisuAI
 
-The tested setup is a self-hosted RisuAI (Docker); the desktop app sends the same requests. The web version (risuai.xyz) sends most requests through RisuAI's servers, but calls `localhost` and `127.0.0.1` from the browser directly, so it can reach `http://localhost:4848/v1`. For that, run Aethrion with `--token` and put the token in as the key: without a token, Aethrion answers only requests naming this machine (`localhost`, `127.0.0.1`, `host.docker.internal`, ...) and refuses other origins (403), since any site the user opens could otherwise use the server and the model behind it. Answering the browser's preflight (OPTIONS) needs Erlang/OTP 29 or later (older `:httpd` refuses OPTIONS with 501). The browser may also ask before allowing local network access, and this path is untested.
+Use the **desktop app** ([releases](https://github.com/kwaroran/RisuAI/releases)): it calls `http://localhost:4848/v1` directly.
+
+- **The web app (risuai.xyz) cannot reach Aethrion on your computer.** It refuses local addresses itself (localhost, 127.0.0.1, LAN addresses, `.local` names) with "You are trying local request on web version", and sends other addresses through RisuAI's own servers, which cannot see your computer.
+- **The access password.** Run Aethrion with a token (`--token`, or `AETHRION_TOKEN`) and put the same value in RisuAI's Key/Password field. The token is a password for your Aethrion server, not a model token: it costs nothing. Without one, Aethrion answers only requests naming this machine (`localhost`, `127.0.0.1`, `host.docker.internal`, ...) and refuses other origins (403), since any site open in a browser could otherwise use the server and the model behind it.
+- **A self-hosted RisuAI** also works, since its server makes the request. The official image (`ghcr.io/kwaroran/risuai`) is built without `VITE_RISU_LEGAL_CONFIGURED`, though, so it stops at a notice about legal documents. RisuAI's notice says that a personal self-hosted instance may set it to `TRUE` and build the image itself. Read the notice and decide for yourself.
 
 ```bash
 git clone https://github.com/kwaroran/RisuAI
@@ -93,10 +110,10 @@ Request model names (listed by `GET /v1/models`; foes are not listed):
 Export an Aethrion cast as a narrator card and import it into RisuAI:
 
 ```bash
-curl -s 'localhost:4848/casts/card?name=Wolf%20Den' -o den.json
+curl -s -H "Authorization: Bearer $AETHRION_TOKEN" 'localhost:4848/casts/card?name=Wolf%20Den' -o den.json
 ```
 
-Import it with Import Character. The card holds the cast, the first message (the `greeting` of a character who is not a foe), the lorebook, and the status window's regex script, so the status window works with nothing else to set.
+Import it with Import Character. If that opens no file picker (it does not in the macOS desktop app), drag the file onto the RisuAI window instead. The card holds the cast, the first message (the `greeting` of a character who is not a foe), the lorebook, and the status window's regex script, so the status window works with nothing else to set.
 
 To keep using a card you already have, import just the status module: Settings → Modules → Import Module, open [`priv/risu/aethrion-status.json`](../priv/risu/aethrion-status.json), and enable it for that card. It is one display-only regex for the `<aethrion-status>` block.
 
@@ -132,7 +149,7 @@ One narrator card talks with every character in the cast; RisuAI's group chat is
 
 ```bash
 mix aethrion.serve --cast priv/casts/campfire.json --llm claude --locale ko --port 4848
-curl -s 'localhost:4848/casts/card?name=Campfire' -o campfire.json
+curl -s -H "Authorization: Bearer $AETHRION_TOKEN" 'localhost:4848/casts/card?name=Campfire' -o campfire.json
 ```
 
 Give Sera a necklace and Doyun, who sees it, grows jealous and sends word to Harin, while Sera comes to care enough to take the goblins' blows for the player. Fight without the gift and she never does.
