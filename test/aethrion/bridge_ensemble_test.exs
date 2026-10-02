@@ -65,6 +65,24 @@ defmodule Aethrion.BridgeEnsembleTest do
     assert to_of(turn) == ["sera"]
   end
 
+  test "whom the player was talking to comes back with a checkpoint, from the JSON kept" do
+    read = Bridge.reader([interpreter: Aethrion.Interpreter.Rules], no_cache())
+    checkpoints = Aethrion.Bridge.Store.cache(Aethrion.Bridge.Checkpoints)
+    first = [%{"role" => "user", "content" => "도윤, 괜찮아?"}]
+    {_all, chat} = Bridge.transcript(first)
+    {_before, now, turn} = Bridge.replay(camp(), chat, read, to: "sera", checkpoints: checkpoints)
+    _ = :sys.get_state(Aethrion.Bridge.Checkpoints)
+
+    # The app trimmed the line away; the reply's checkpoint remains.
+    reply = %{"role" => "assistant", "content" => "…\n\n" <> Bridge.status(now, turn, :ko)}
+    {_all, chat} = Bridge.transcript([reply, %{"role" => "user", "content" => "고마워"}])
+
+    {_before, _now, turn} =
+      Bridge.replay(camp(), chat, read, to: "sera", checkpoints: checkpoints)
+
+    assert to_of(turn) == ["doyun"]
+  end
+
   test "those present see what the player does; someone away does not" do
     {before, now, _turn} = play(camp(), ["세라, 목걸이 사 왔어. 선물이야"])
 

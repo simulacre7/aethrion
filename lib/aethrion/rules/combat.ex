@@ -338,16 +338,24 @@ defmodule Aethrion.Rules.Combat do
     |> grateful(event, healed)
   end
 
-  # How much: the event's amount; else a healer's dice ("heal_dice" d
-  # "heal_die" + "heal_bonus", like a Cure Wounds); a potion's dice
-  # (`potion_dice` d `potion_die` + `potion_bonus`: 2d4+2 is the SRD's
-  # Potion of Healing); else the healer's "heal" stat or `default_heal`.
+  # How much: the event's amount; else what an item does, whoever uses it
+  # (a potion's dice, `potion_dice` d `potion_die` + `potion_bonus`: 2d4+2
+  # is the SRD's Potion of Healing; another item `default_heal`); else, with
+  # no item, the healer's own healing: their dice ("heal_dice" d "heal_die"
+  # + "heal_bonus", like a Cure Wounds), or their "heal" stat, or
+  # `default_heal`.
   defp heal_amount(%Transition{state: state} = transition, event) do
     param = &Transition.param(transition, &1)
 
     cond do
       event.amount != nil ->
         {event.amount, %{}}
+
+      event.item == "potion" and param.(:potion_dice) > 0 ->
+        rolled(event, state, param.(:potion_dice), param.(:potion_die), param.(:potion_bonus))
+
+      event.item != nil ->
+        {param.(:default_heal), %{}}
 
       State.stat(state, event.from, "heal_dice") > 0 ->
         rolled(
@@ -357,9 +365,6 @@ defmodule Aethrion.Rules.Combat do
           stat_or(state, event.from, "heal_die", 8),
           State.stat(state, event.from, "heal_bonus")
         )
-
-      event.item == "potion" and param.(:potion_dice) > 0 ->
-        rolled(event, state, param.(:potion_dice), param.(:potion_die), param.(:potion_bonus))
 
       true ->
         {stat_or(state, event.from, "heal", param.(:default_heal)), %{}}

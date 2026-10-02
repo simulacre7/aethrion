@@ -527,6 +527,7 @@ defmodule Aethrion.State do
          :ok <- optional(data, "conversations", &Aethrion.Conversation.valid_data?/1),
          :ok <- optional(data, "tuning", &is_map/1),
          :ok <- optional(data, "stats", &stats?/1),
+         :ok <- stat_numbers(data),
          :ok <- dice_limits(data),
          :ok <- validate_story(data) do
       validate_cast(data)
@@ -714,6 +715,30 @@ defmodule Aethrion.State do
           is_binary(id) and is_map(stats) and
             Enum.all?(stats, fn {k, v} -> is_binary(k) and k != "" and is_integer(v) end)
         end)
+
+  # Stats, activity effects, and story thresholds are whole numbers within a
+  # billion either way: far beyond any game's, and small enough that the
+  # rules' arithmetic (a share of hp, how close an ending is) cannot
+  # overflow.
+  @number_limit 1_000_000_000
+
+  @doc false
+  def number?(value), do: is_integer(value) and abs(value) <= @number_limit
+
+  @doc false
+  def number_range, do: "must be from -#{@number_limit} to #{@number_limit}"
+
+  defp stat_numbers(data) do
+    data
+    |> Map.get("stats", %{})
+    |> Enum.flat_map(fn {id, stats} -> for {name, value} <- stats, do: {id, name, value} end)
+    |> Enum.sort()
+    |> Enum.find(fn {_id, _name, value} -> not number?(value) end)
+    |> case do
+      nil -> :ok
+      {id, name, _value} -> invalid(["stats", id, name], number_range())
+    end
+  end
 
   # Dice a cast asks the rules to roll are bounded, so a cast cannot make
   # one blow cost a billion rolls (a critical hit doubles the count).

@@ -135,14 +135,26 @@ defmodule Mix.Tasks.Aethrion.Serve do
 
   defp scheduler(_seconds), do: Mix.raise("--tick-every must be a positive number of seconds")
 
+  @doc false
   # A model when given; Korean templates for --locale ko without one.
-  defp expression(nil, _adapter_opts, "ko"),
+  def expression(nil, _adapter_opts, "ko"),
     do: [expression: [adapter: Aethrion.LLM.FakeAdapter, adapter_opts: [locale: :ko]]]
 
-  defp expression(nil, _adapter_opts, _locale), do: []
+  def expression(nil, _adapter_opts, _locale), do: []
 
-  defp expression(adapter, adapter_opts, _locale),
-    do: [expression: [adapter: adapter, adapter_opts: adapter_opts]]
+  def expression(adapter, adapter_opts, _locale),
+    do: [
+      expression: [
+        adapter: adapter,
+        adapter_opts: adapter_opts,
+        timeout: render_timeout(adapter)
+      ]
+    ]
+
+  # How long a world waits for a model's line, and the API for the world: a
+  # CLI takes seconds a call.
+  defp render_timeout(Aethrion.LLM.CLI), do: 60_000
+  defp render_timeout(_adapter), do: 15_000
 
   defp cast!(nil), do: Aethrion.Runtime.demo_state()
 
@@ -158,14 +170,14 @@ defmodule Mix.Tasks.Aethrion.Serve do
     end
   end
 
+  @doc false
   # Who reads chat lines and their tone: the model, or the keyword rules.
-  defp reading(nil, _adapter_opts, _backend_opts, _label),
+  def reading(nil, _adapter_opts, _backend_opts, _label),
     do: [interpreter: Aethrion.Interpreter.Rules]
 
-  defp reading(adapter, adapter_opts, backend_opts, label),
+  def reading(adapter, adapter_opts, backend_opts, label),
     do: [
-      # A CLI takes seconds a call; wait longer for its lines.
-      render_timeout: if(adapter == Aethrion.LLM.CLI, do: 60_000, else: 15_000),
+      render_timeout: render_timeout(adapter),
       intent: [adapter: adapter, adapter_opts: adapter_opts],
       interpreter: Aethrion.Interpreter.LLM,
       interpreter_opts: [adapter: adapter, adapter_opts: backend_opts],

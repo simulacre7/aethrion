@@ -7,6 +7,9 @@ defmodule Aethrion.Bridge.Store do
   lines) and `Aethrion.Bridge.Checkpoints` (the world after each turn, so a
   chat the app has trimmed goes on from where it was).
 
+  Values are JSON: what is kept is what comes back, in this VM or a fresh
+  one, whatever modules it has loaded (no atoms to restore).
+
       {Aethrion.Bridge.Store, name: Aethrion.Bridge.Readings, path: "data/bridge-readings.jsonl"}
   """
 
@@ -24,6 +27,43 @@ defmodule Aethrion.Bridge.Store do
   """
   def cache(name), do: %{get: &get(name, &1), put: &put(name, &1, &2)}
 
+  @doc """
+  The store as a cache whose puts are held back until `commit` (or dropped
+  by `discard`): `{cache, commit, discard}`. What is put is found again by
+  the same cache at once. For work that counts only if it ends well, such
+  as a turn whose reply may fail. Call all three from the same process.
+  """
+  def staged(name) do
+    ref = make_ref()
+    keys = {ref, :keys}
+
+    get = fn key ->
+      case Process.get({ref, key}) do
+        nil -> get(name, key)
+        value -> value
+      end
+    end
+
+    put = fn key, value ->
+      if Process.get({ref, key}) == nil, do: Process.put(keys, [key | Process.get(keys, [])])
+      Process.put({ref, key}, normalize(value))
+      :ok
+    end
+
+    discard = fn ->
+      for key <- Process.get(keys, []), do: Process.delete({ref, key})
+      Process.delete(keys)
+      :ok
+    end
+
+    commit = fn ->
+      for key <- Enum.reverse(Process.get(keys, [])), do: put(name, key, Process.get({ref, key}))
+      discard.()
+    end
+
+    {%{get: get, put: put}, commit, discard}
+  end
+
   def get(name, key) do
     case :ets.whereis(name) != :undefined and :ets.lookup(name, key) do
       [{^key, value}] -> value
@@ -32,9 +72,12 @@ defmodule Aethrion.Bridge.Store do
   end
 
   def put(name, key, value) do
-    if :ets.whereis(name) != :undefined, do: GenServer.cast(name, {:put, key, value})
+    if :ets.whereis(name) != :undefined, do: GenServer.cast(name, {:put, key, normalize(value)})
     :ok
   end
+
+  # As it would come back from the file.
+  defp normalize(value), do: value |> Jason.encode!() |> Jason.decode!()
 
   @impl true
   def init(opts) do
@@ -51,9 +94,7 @@ defmodule Aethrion.Bridge.Store do
       :ets.insert(state.table, {key, value})
 
       if state.path do
-        line =
-          Jason.encode!(%{"key" => key, "value" => Base.encode64(:erlang.term_to_binary(value))})
-
+        line = Jason.encode!(%{"key" => key, "value" => value})
         File.write!(state.path, line <> "\n", [:append])
       end
     end
@@ -61,25 +102,21 @@ defmodule Aethrion.Bridge.Store do
     {:noreply, state}
   end
 
-  # Terms come back only with atoms that already exist; a line that cannot
-  # be read is skipped.
+  # A line that cannot be read (or was written in an older format) is
+  # skipped.
   defp load(table, path) do
     if File.exists?(path) do
       path
       |> File.stream!()
       |> Enum.each(fn line ->
-        with {:ok, %{"key" => key, "value" => data}} <- Jason.decode(line),
-             {:ok, binary} <- Base.decode64(data),
-             {:ok, value} <- safe_term(binary) do
-          :ets.insert(table, {key, value})
+        case Jason.decode(line) do
+          {:ok, %{"key" => key, "value" => value}} when is_binary(key) ->
+            :ets.insert(table, {key, value})
+
+          _other ->
+            :ok
         end
       end)
     end
-  end
-
-  defp safe_term(binary) do
-    {:ok, :erlang.binary_to_term(binary, [:safe])}
-  rescue
-    ArgumentError -> :error
   end
 end
