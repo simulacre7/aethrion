@@ -83,6 +83,16 @@ defmodule Aethrion.LLM.OpenAICompatible do
     end
   end
 
+  @doc "A reply to a whole conversation, sent as it is."
+  def chat(messages, opts \\ []) do
+    with {:ok, config} <- config(opts) do
+      chat(config, Enum.map(messages, &%{role: &1["role"], content: &1["content"]}),
+        temperature: Keyword.get(opts, :temperature, config.temperature),
+        max_tokens: Keyword.get(opts, :max_tokens, 1_200)
+      )
+    end
+  end
+
   @doc """
   Returns true when `:base_url` and `:model` can be resolved.
   """

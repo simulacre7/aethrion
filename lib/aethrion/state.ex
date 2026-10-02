@@ -393,6 +393,11 @@ defmodule Aethrion.State do
     |> then(fn data ->
       if character.voice in [nil, ""], do: data, else: Map.put(data, "voice", character.voice)
     end)
+    |> then(fn data ->
+      if character.greeting in [nil, ""],
+        do: data,
+        else: Map.put(data, "greeting", character.greeting)
+    end)
   end
 
   @doc false
@@ -402,6 +407,7 @@ defmodule Aethrion.State do
       name: Map.fetch!(data, "name"),
       profile: Map.get(data, "profile", ""),
       voice: Map.get(data, "voice", ""),
+      greeting: Map.get(data, "greeting", ""),
       traits: data |> Map.get("traits", []) |> Enum.map(&trait_from_data/1),
       state: data |> Map.get("state", %{}) |> character_state_from_data()
     }
@@ -587,6 +593,7 @@ defmodule Aethrion.State do
          :ok <- required(character, "name", &is_binary/1),
          :ok <- optional(character, "profile", &is_binary/1),
          :ok <- optional(character, "voice", &is_binary/1),
+         :ok <- optional(character, "greeting", &is_binary/1),
          :ok <- optional(character, "traits", &string_list?/1),
          :ok <- optional(character, "state", &is_map/1) do
       validate_character_state(Map.get(character, "state", %{}))

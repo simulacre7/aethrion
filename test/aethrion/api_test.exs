@@ -263,6 +263,36 @@ defmodule Aethrion.APITest do
     assert {404, _error} = request(:get, base <> "/casts/current")
   end
 
+  test "a character card becomes a cast, or joins one", %{base: base} do
+    card = %{
+      "spec" => "chara_card_v3",
+      "data" => %{
+        "name" => "Lumi",
+        "description" => "Keeps the lighthouse café.",
+        "first_mes" => "Morning!"
+      }
+    }
+
+    assert {200,
+            %{
+              "cast" => %{"characters" => [%{"id" => "lumi", "greeting" => "Morning!"}]},
+              "notes" => []
+            }} =
+             request(:post, base <> "/casts/import-card", %{
+               "file" => Base.encode64(Jason.encode!(card))
+             })
+
+    summer = "priv/casts/summer.json" |> File.read!() |> Jason.decode!()
+
+    assert {200, %{"cast" => %{"characters" => characters}}} =
+             request(:post, base <> "/casts/import-card", %{"card" => card, "into" => summer})
+
+    assert Enum.map(characters, & &1["id"]) == ["seoyun", "taeo", "lumi"]
+
+    assert {400, %{"error" => %{"code" => "invalid_card"}}} =
+             request(:post, base <> "/casts/import-card", %{"file" => Base.encode64("not a card")})
+  end
+
   test "mistakes are errors with a status", %{base: base} do
     assert {400, %{"error" => %{"code" => "invalid_key"}}} =
              request(:post, base <> "/worlds/..%2Fetc/say", %{"to" => "mina", "text" => "hi"})

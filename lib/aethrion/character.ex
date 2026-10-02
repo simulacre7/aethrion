@@ -18,12 +18,21 @@ defmodule Aethrion.Character do
           name: String.t(),
           profile: String.t(),
           voice: String.t(),
+          greeting: String.t(),
           traits: [atom()],
           state: CharacterState.t()
         }
 
   @enforce_keys [:id, :name]
-  defstruct [:id, :name, profile: "", voice: "", traits: [], state: %CharacterState{}]
+  defstruct [
+    :id,
+    :name,
+    profile: "",
+    voice: "",
+    greeting: "",
+    traits: [],
+    state: %CharacterState{}
+  ]
 
   @doc """
   Traits the built-in rules read. Custom rules may read others; persisted

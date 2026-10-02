@@ -85,6 +85,39 @@ defmodule Aethrion.LLM.Anthropic do
     with {:ok, config} <- config(opts), do: create_message(config, system, user)
   end
 
+  @doc """
+  A reply to a whole conversation: system messages become the system
+  prompt, and turns of the same role are joined, as the API wants them
+  alternating and starting with the user.
+  """
+  def chat(messages, opts \\ []) do
+    {system, rest} = Enum.split_with(messages, &(&1["role"] == "system"))
+
+    turns =
+      rest
+      |> Enum.map(
+        &%{
+          role: if(&1["role"] == "assistant", do: "assistant", else: "user"),
+          content: &1["content"]
+        }
+      )
+      |> Enum.chunk_by(& &1.role)
+      |> Enum.map(fn [first | _] = same ->
+        %{first | content: Enum.map_join(same, "\n\n", & &1.content)}
+      end)
+      |> then(fn
+        [%{role: "assistant"} | _] = turns ->
+          [%{role: "user", content: "(the conversation starts)"} | turns]
+
+        turns ->
+          turns
+      end)
+
+    with {:ok, config} <- config(opts) do
+      create_message(config, Enum.map_join(system, "\n\n", & &1["content"]), turns)
+    end
+  end
+
   @doc "Returns true when an API key can be resolved."
   def configured?(opts \\ []), do: match?({:ok, _config}, config(opts))
 
@@ -116,7 +149,8 @@ defmodule Aethrion.LLM.Anthropic do
       model: config.model,
       max_tokens: config.max_tokens,
       system: system,
-      messages: [%{role: "user", content: content}],
+      # One user turn, or a whole conversation (`chat/2`).
+      messages: if(is_list(content), do: content, else: [%{role: "user", content: content}]),
       output_config: %{effort: config.effort}
     }
 

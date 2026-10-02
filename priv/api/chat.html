@@ -57,6 +57,7 @@ const store = {
   set(key, value) { try { localStorage.setItem(key, value); } catch {} }
 };
 let names = {};
+let greetings = {};
 // The last event seen, so polling shows only what is new.
 let last = null;
 const seen = (id) => { if (id && (!last || Number(id.slice(1)) > Number(last.slice(1)))) last = id; };
@@ -109,6 +110,7 @@ async function load() {
   try {
     const state = await call("GET", worldPath("/state"));
     names = Object.fromEntries(state.characters.map((c) => [c.id, c.name]));
+    greetings = Object.fromEntries(state.characters.filter((c) => c.greeting).map((c) => [c.id, c.greeting]));
     // Talk to someone on your side first: enemies (an "enemy" stat) go last.
     const enemy = (c) => ((state.stats || {})[c.id] || {}).enemy > 0;
     const ordered = [...state.characters.filter((c) => !enemy(c)), ...state.characters.filter(enemy)];
@@ -121,6 +123,9 @@ async function history() {
   $("log").replaceChildren();
   const character = $("character").value;
   const data = await call("GET", worldPath("/conversation?character=" + encodeURIComponent(character)));
+  // A character with a greeting opens a new conversation with it.
+  const greeting = greetings[character];
+  if (!data.turns.length && greeting) add("them", greeting, names[character] || character);
   for (const turn of data.turns) {
     // Deeds are the fight as a model reads it; the page showed the fight itself.
     if (turn.kind === "deed") continue;

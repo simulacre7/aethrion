@@ -58,6 +58,20 @@
             "phrases": {"type": "object", "additionalProperties": {"type": "array", "items": {"type": "string"}, "minItems": 1}},
             "activity_hours": {"type": "integer", "minimum": 1},
             "labels": {"type": "object", "additionalProperties": {"type": "string"}},
+            "lore": {
+              "type": "array",
+              "maxItems": 500,
+              "items": {
+                "type": "object",
+                "required": ["content"],
+                "additionalProperties": false,
+                "properties": {
+                  "keys": {"type": "array", "items": {"type": "string", "minLength": 1}},
+                  "content": {"type": "string"},
+                  "constant": {"type": "boolean"}
+                }
+              }
+            },
             "milestones": {
               "type": "array",
               "items": {
@@ -106,6 +120,7 @@
               "name": {"type": "string"},
               "profile": {"type": "string"},
               "voice": {"type": "string", "description": "How the character talks, for models that phrase their lines."},
+              "greeting": {"type": "string", "description": "The character's first message when a chat opens (a character card's first message)."},
               "traits": {
                 "type": "array",
                 "items": {"type": "string"},

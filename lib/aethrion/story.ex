@@ -14,6 +14,8 @@ defmodule Aethrion.Story do
   - `phrases` - how a player says each activity in a chat (`"그림": ["그림
     그리자", "스케치하자"]`), so `Aethrion.Chat` can tell "let's paint" from
     "your painting is lovely".
+  - `lore` - world notes, `[{"keys": ["왕국"], "content": "..."}]` (a card's
+    lorebook): shown to the model when a key comes up (`lore_for/3`).
   - `labels` - what stats are called in hints (`"art": "그림 실력"`).
   - `activity_hours` - how long an activity takes: with `24`, each one is a
     day, and the clock moves on by itself, the way a raising sim counts days.
@@ -321,13 +323,14 @@ defmodule Aethrion.Story do
     with :ok <-
            known_keys(
              data,
-             ~w(activities phrases activity_hours labels milestones endings deadline decide_when),
+             ~w(activities phrases activity_hours labels lore milestones endings deadline decide_when),
              []
            ),
          {:ok, activities} <- parse_activities(Map.get(data, "activities", %{})),
          {:ok, phrases} <- parse_phrases(Map.get(data, "phrases", %{}), activities),
          {:ok, hours} <- parse_hours(Map.get(data, "activity_hours")),
          {:ok, labels} <- parse_labels(Map.get(data, "labels", %{})),
+         {:ok, lore} <- parse_lore(Map.get(data, "lore", [])),
          {:ok, endings} <- parse_endings(Map.get(data, "endings", [])),
          {:ok, milestones} <- parse_milestones(Map.get(data, "milestones", [])),
          {:ok, deadline} <- parse_deadline(Map.get(data, "deadline")),
@@ -339,6 +342,7 @@ defmodule Aethrion.Story do
          phrases: phrases,
          activity_hours: hours,
          labels: labels,
+         lore: lore,
          milestones: milestones,
          endings: endings,
          deadline: deadline,
@@ -411,6 +415,7 @@ defmodule Aethrion.Story do
     |> put_if("phrases", story[:phrases])
     |> put_if("activity_hours", story[:activity_hours])
     |> put_if("labels", story[:labels])
+    |> put_if("lore", story[:lore] && Enum.map(story.lore, &lore_to_data/1))
     |> put_if(
       "milestones",
       story[:milestones] && Enum.map(story.milestones, &milestone_to_data/1)
@@ -471,6 +476,60 @@ defmodule Aethrion.Story do
   end
 
   defp parse_labels(_labels), do: {:error, "must be an object", ["labels"]}
+
+  # World notes (a card's lorebook): shown to the model when one of their
+  # keys comes up in what is said, or always when constant.
+  defp parse_lore(entries) when is_list(entries) and length(entries) <= 500 do
+    entries
+    |> Enum.with_index()
+    |> Enum.reduce_while({:ok, []}, fn
+      {%{"content" => content} = entry, i}, {:ok, acc} when is_binary(content) ->
+        keys = Map.get(entry, "keys", [])
+
+        cond do
+          not (is_list(keys) and Enum.all?(keys, &(is_binary(&1) and &1 != ""))) ->
+            {:halt, {:error, "keys must be a list of words", ["lore", i, "keys"]}}
+
+          keys == [] and entry["constant"] != true ->
+            {:halt, {:error, "a note needs keys, or constant: true", ["lore", i]}}
+
+          true ->
+            {:cont,
+             {:ok, [%{keys: keys, content: content, constant: entry["constant"] == true} | acc]}}
+        end
+
+      {_entry, i}, _acc ->
+        {:halt, {:error, "a note needs content (text)", ["lore", i]}}
+    end)
+    |> case do
+      {:ok, lore} -> {:ok, Enum.reverse(lore)}
+      error -> error
+    end
+  end
+
+  defp parse_lore(_entries), do: {:error, "must be a list of at most 500 notes", ["lore"]}
+
+  defp lore_to_data(%{keys: keys, content: content, constant: constant}),
+    do:
+      %{"keys" => keys, "content" => content}
+      |> then(&if(constant, do: Map.put(&1, "constant", true), else: &1))
+
+  @doc """
+  The world notes that `texts` (what was just said) bring up: constant
+  ones, and those whose keys appear, case-insensitively; at most `limit`.
+  """
+  @spec lore_for(State.t(), [String.t()], pos_integer()) :: [String.t()]
+  def lore_for(%State{story: story}, texts, limit \\ 6) do
+    said = texts |> Enum.filter(&is_binary/1) |> Enum.join("\n") |> String.downcase()
+
+    story
+    |> Map.get(:lore, [])
+    |> Enum.filter(fn note ->
+      note.constant or Enum.any?(note.keys, &String.contains?(said, String.downcase(&1)))
+    end)
+    |> Enum.take(limit)
+    |> Enum.map(& &1.content)
+  end
 
   defp parse_hours(nil), do: {:ok, nil}
   defp parse_hours(hours) when is_integer(hours) and hours > 0, do: {:ok, hours}

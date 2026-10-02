@@ -77,6 +77,7 @@ defmodule Aethrion.Expression.Request do
     now: nil,
     sequence: nil,
     conversation: [],
+    lore: [],
     fallback_text: nil
   ]
 

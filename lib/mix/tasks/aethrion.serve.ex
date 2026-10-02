@@ -42,6 +42,10 @@ defmodule Mix.Tasks.Aethrion.Serve do
     show up when a client polls `conversation`); by default time passes
     only when a client sends a `time_tick`
 
+  With `--llm`, the server is also an OpenAI-compatible model at
+  `/v1/chat/completions` for chat apps such as RisuAI (`Aethrion.Bridge`,
+  docs/risuai.md); what it remembers for that is kept under `--data`.
+
   See `Aethrion.API` for the endpoints.
   """
 
@@ -88,6 +92,15 @@ defmodule Mix.Tasks.Aethrion.Serve do
             expression ++ scheduler(opts[:tick_every])
         end
       )
+
+    # For the OpenAI-compatible route: what chat lines were read as, and the
+    # world after each turn.
+    for {name, file} <- [
+          {Aethrion.Bridge.Readings, "bridge-readings.jsonl"},
+          {Aethrion.Bridge.Checkpoints, "bridge-checkpoints.jsonl"}
+        ] do
+      {:ok, _store} = Aethrion.Bridge.Store.start_link(name: name, path: Path.join(data, file))
+    end
 
     token = opts[:token] || System.get_env("AETHRION_TOKEN")
 

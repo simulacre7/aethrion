@@ -13,7 +13,7 @@ Aethrion은 기억하고, 관계를 맺고, 시간에 따라 스스로 행동하
 
 > LLM은 표현을 생성하고, 결정론적 규칙이 시뮬레이션을 구동합니다.
 
-[바로 실행해보기](#바로-실행해보기) · [이벤트 두 개가 이야기가 되기까지](#이벤트-두-개가-이야기가-되기까지) · [소문은 퍼진다](#소문은-퍼진다) · [동작 방식](#동작-방식) · [LLM 경계](#llm-경계) · [시나리오](#시나리오와-리포트) · [Elixir 앱에서 사용하기](#elixir-앱에서-사용하기) · [채팅 앱과 게임](#채팅-앱과-게임에서-쓰기) · [엔딩과 전투](#엔딩과-전투) · [문서](#문서)
+[바로 실행해보기](#바로-실행해보기) · [이벤트 두 개가 이야기가 되기까지](#이벤트-두-개가-이야기가-되기까지) · [소문은 퍼진다](#소문은-퍼진다) · [동작 방식](#동작-방식) · [LLM 경계](#llm-경계) · [시나리오](#시나리오와-리포트) · [Elixir 앱에서 사용하기](#elixir-앱에서-사용하기) · [채팅 앱과 게임](#채팅-앱과-게임에서-쓰기) · [RisuAI](#risuaisillytavern에서-쓰기) · [엔딩과 전투](#엔딩과-전투) · [문서](#문서)
 
 이름은 고대의 "aether" 개념에서 영감을 받았습니다. 하늘을 채우고 서로를 연결한다고 여겨졌던 보이지 않는 매질처럼, Aethrion은 기억, 관계, 자율 상호작용을 하나의 공유 소셜 레이어로 다룹니다.
 
@@ -384,6 +384,18 @@ mix aethrion.serve --cast priv/casts/den.json --locale ko --llm claude   # http:
 
 `mix aethrion.interpret.eval`은 사람이 의도한 의미로 라벨을 단 한국어 채팅 170문장(`priv/eval/interpret.ko.json`, 퀘스트·늑대굴·여름·학원 캐스트)으로 해석기를 채점합니다. 키워드 규칙은 105문장(62%)을 맞힙니다. 사전에 없는 표현("ㄱㄱ 늑대왕 잡자", "수채화 연습하자", "쿠키 구워 왔어")을 놓칩니다. Claude Code CLI(`--llm claude`)를 쓴 `Interpreter.LLM`은 158문장(93%)을 맞히고, 틀린 것도 대부분 근소한 차이입니다("붓" 대신 "새 붓" 등). `--llm 이름`으로 어떤 백엔드든 채점할 수 있습니다. `--interpreter MyApp.Interpreter`로 다른 해석기를 같은 문장으로 채점할 수 있습니다.
 
+## RisuAI·SillyTavern에서 쓰기
+
+RisuAI나 SillyTavern 같은 앱에서는 이미 긴 롤플레이·시뮬레이션 채팅을 하고 있고, 숫자는 대개 카드가 모델에게 맡깁니다. 응답마다 상태창을 출력하게 하는 식입니다. 그러면 리롤할 때 같은 행동이 두 번 적용되고, 채팅이 길어지면 숫자가 흐트러집니다. `mix aethrion.serve`는 OpenAI 호환 모델(`POST /v1/chat/completions`)로도 응답하므로, 이런 앱의 "Custom API"를 Aethrion으로 돌릴 수 있습니다. 요청마다 플레이어의 문장을 규칙으로 다시 재생하고, 모델은 규칙이 정한 결과를 보고 이야기하며, 응답 끝의 상태 블록은 앱에서 상태창으로 그려집니다.
+
+```txt
+나 · HP 20/28
+세라 · 호감 29 · 신뢰 18 · HP 21/21
+다이어 울프 · HP 23/37
+```
+
+리롤하면 같은 판정이 나오고, 고친 문장은 다시 계산되며, 앱이 컨텍스트에 맞추려고 앞부분을 잘라도 응답마다 남긴 체크포인트에서 이어집니다. `GET /casts/card`는 캐스트를 상태창까지 들어 있는 내레이터 카드로 내보내고, 반대로 `mix aethrion.card`는 공유된 캐릭터 카드(V1/V2/V3 PNG, JSON, CHARX)를 캐스트로 가져와 수치와 엔딩을 붙일 수 있게 합니다. 설정 방법: [docs/risuai.ko.md](docs/risuai.ko.md).
+
 ## Runtime vs LLM Server
 
 Aethrion은 BEAM 내부에서 모델 추론을 실행하지 않으며, 대부분의 런타임 이벤트는 LLM을 호출하지 않습니다.
@@ -473,6 +485,7 @@ flowchart TD
 - [docs/expression.md](docs/expression.md) - LLM 경계와 adapter
 - [docs/scenarios.md](docs/scenarios.md) - 시나리오 형식
 - [docs/api.md](docs/api.md) - 공개 API
+- [docs/risuai.ko.md](docs/risuai.ko.md) - RisuAI·SillyTavern에서 Aethrion을 모델로 쓰기
 - [docs/cookbook.md](docs/cookbook.md) - 컴패니언 앱, 게임 NPC, 여러 사람이 있는 세계, 직접 만든 규칙 패턴 (영문)
 - [docs/architecture.md](docs/architecture.md) - 내부 구조 (기여자용, 영문)
 - [docs/faq.md](docs/faq.md) - 왜 LLM이 아닌 규칙인가, 왜 캐릭터당 프로세스가 아닌가, 규모 (영문)

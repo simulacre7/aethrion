@@ -53,6 +53,7 @@ details{font-size:12px;color:var(--muted)}
     <h1>Aethrion 캐스트 편집기</h1>
     <button id="load-server" type="button" title="이 서버가 --cast로 띄운 캐스트">서버 캐스트 불러오기</button>
     <label class="hint">파일 열기 <input id="file" type="file" accept=".json,application/json"></label>
+    <label class="hint" title="RisuAI·SillyTavern 캐릭터 카드(PNG, JSON, CHARX)를 이 캐스트에 추가합니다">캐릭터 카드 가져오기 <input id="card" type="file" accept=".png,.json,.charx"></label>
     <button id="download" type="button" class="primary">JSON 내려받기</button>
     <label class="hint">Token <input id="token" type="password" size="8"></label>
   </header>
@@ -159,6 +160,7 @@ function renderCharacters() {
         el("button", {type: "button", class: "small remove", onclick: () => { cast.characters.splice(i, 1); renderAll(); changed(); }}, "삭제")),
       el("div", {class: "row"}, field("프로필 (모델이 읽는 설정)", area(c.profile, (v) => c.profile = v), "grow")),
       el("div", {class: "row"}, field("말투", area(c.voice, (v) => c.voice = v), "grow")),
+      el("div", {class: "row"}, field("첫인사 (대화를 시작할 때 캐릭터가 먼저 하는 말)", area(c.greeting, (v) => { if (v) c.greeting = v; else delete c.greeting; }), "grow")),
       el("div", {class: "hint"}, "성향"), traits));
   });
   box.append(el("button", {type: "button", onclick: () => {
@@ -428,6 +430,22 @@ $("file").addEventListener("change", async (e) => {
   if (!file) return;
   try { load(JSON.parse(await file.text())); } catch (error) { $("status").className = "bad"; $("status").textContent = "✗ JSON을 읽지 못했습니다: " + error.message; }
 });
+// A character card: its bytes go to the server, which reads PNG, JSON, or
+// CHARX and adds the character, its relationship, and its lore to this cast.
+$("card").addEventListener("change", async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  try {
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    let binary = "";
+    for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+    const data = await call("POST", "/casts/import-card", {file: btoa(binary), into: cast});
+    load(data.cast);
+    if (data.notes.length) $("status").textContent += " · 가져오지 않은 것: " + data.notes.join(", ");
+  } catch (error) { $("status").className = "bad"; $("status").textContent = "✗ 카드를 읽지 못했습니다: " + error.message; }
+  e.target.value = "";
+});
+
 $("apply-json").addEventListener("click", () => {
   try { load(JSON.parse($("raw").value)); } catch (error) { $("status").className = "bad"; $("status").textContent = "✗ JSON 오류: " + error.message; }
 });

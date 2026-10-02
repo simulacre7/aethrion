@@ -13,7 +13,7 @@ Aethrion is a persistent social simulation runtime for AI characters that rememb
 
 > LLMs generate expression; deterministic rules drive the simulation.
 
-[Try it](#try-it) · [Two events in, a story out](#two-events-in-a-story-out) · [Word gets around](#word-gets-around) · [How it works](#how-it-works) · [The LLM boundary](#the-llm-boundary) · [Scenarios](#scenarios-and-reports) · [Embedding](#embedding-aethrion) · [Chat apps and games](#chat-apps-and-games) · [Endings and fights](#endings-and-fights) · [Docs](#documentation)
+[Try it](#try-it) · [Two events in, a story out](#two-events-in-a-story-out) · [Word gets around](#word-gets-around) · [How it works](#how-it-works) · [The LLM boundary](#the-llm-boundary) · [Scenarios](#scenarios-and-reports) · [Embedding](#embedding-aethrion) · [Chat apps and games](#chat-apps-and-games) · [RisuAI](#in-risuai-and-sillytavern) · [Endings and fights](#endings-and-fights) · [Docs](#documentation)
 
 Inspired by the ancient idea of aether, Aethrion treats memory, relationships, and autonomous interaction as a shared social layer where persistent agents can live, change, and respond to each other.
 
@@ -392,6 +392,18 @@ What a line does is decided by an interpreter (`Aethrion.Interpreter`), the seam
 
 `mix aethrion.interpret.eval` scores an interpreter on 170 Korean chat lines labeled with what a person means (`priv/eval/interpret.ko.json`, quest, den, summer, and academy casts). The keyword rules read 105 of them right (62%): they miss phrasings they have no words for ("ㄱㄱ 늑대왕 잡자", "수채화 연습하자", "쿠키 구워 왔어"). `Interpreter.LLM` with the Claude Code CLI (`--llm claude`) reads 158 (93%); most of what it misses is close ("새 붓" for "붓", or a farewell read as warm). `--llm NAME` scores any backend. `--interpreter MyApp.Interpreter` scores another one on the same lines.
 
+## In RisuAI And SillyTavern
+
+People already play long role-play and simulation chats in apps like RisuAI and SillyTavern, with character cards that ask the model to keep the numbers: a status window printed at the end of every reply. A reroll then applies a move twice, and over a long chat the numbers drift. `mix aethrion.serve` also answers as an OpenAI-compatible model (`POST /v1/chat/completions`), so such an app can use Aethrion as its "Custom API": the player's lines are replayed through the rules on every request, the model narrates with the rules' result in front of it, and the reply ends with a status block the app draws as a status window.
+
+```txt
+나 · HP 20/28
+세라 · 호감 29 · 신뢰 18 · HP 21/21
+다이어 울프 · HP 23/37
+```
+
+A reroll gets the same outcome, an edited line is recomputed, and a chat the app trims to fit its context goes on from checkpoints kept with each reply. `GET /casts/card` exports a cast as a narrator card that brings the status window into RisuAI; `mix aethrion.card` goes the other way, turning a shared character card (V1/V2/V3 PNG, JSON, CHARX) into a cast to add numbers and endings to. Setup: [docs/risuai.md](docs/risuai.md) ([한국어](docs/risuai.ko.md)).
+
 ## Runtime vs LLM Server
 
 Aethrion does not run model inference inside the BEAM, and most runtime events do not call an LLM.
@@ -481,6 +493,7 @@ Recommended local versions:
 - [docs/expression.md](docs/expression.md) - the LLM boundary and adapters
 - [docs/scenarios.md](docs/scenarios.md) - the scenario format
 - [docs/api.md](docs/api.md) - the public API
+- [docs/risuai.md](docs/risuai.md) - Aethrion as the model in RisuAI or SillyTavern
 - [docs/cookbook.md](docs/cookbook.md) - patterns for companion apps, game NPCs, multiplayer worlds, custom rules
 - [docs/architecture.md](docs/architecture.md) - how it is built, for contributors
 - [docs/faq.md](docs/faq.md) - why rules and not the LLM, why not a process per character, scale
