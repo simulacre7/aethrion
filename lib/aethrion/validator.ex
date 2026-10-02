@@ -184,7 +184,11 @@ defmodule Aethrion.Validator do
           :ok
 
         amount when is_integer(amount) and amount > 0 ->
-          :ok
+          if Aethrion.State.number?(amount),
+            do: :ok,
+            else:
+              {:error,
+               error(:invalid_event, "amount #{Aethrion.State.number_range()}", %{field: :amount})}
 
         _other ->
           {:error,

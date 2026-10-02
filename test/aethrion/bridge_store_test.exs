@@ -51,6 +51,14 @@ defmodule Aethrion.BridgeStoreTest do
     assert cache.get.("b") == nil
   end
 
+  test "what was kept first stays: an answered turn is not rewritten by a racing one" do
+    pid = start_supervised!({Store, name: :first_test})
+    Store.put(:first_test, "a", 1)
+    Store.put(:first_test, "a", 2)
+    _ = :sys.get_state(pid)
+    assert Store.get(:first_test, "a") == 1
+  end
+
   test "a store that is not running finds nothing and keeps nothing" do
     cache = Store.cache(:not_started)
     assert cache.put.("a", 1) == :ok

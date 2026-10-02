@@ -309,7 +309,7 @@ defmodule Aethrion.Combat do
     cond do
       String.contains?(words, ["potion", "포션", "물약"]) -> "potion"
       String.contains?(words, ["bandage", "붕대"]) -> "bandage"
-      State.stat(state, from, "heal") == 0 and State.stat(state, from, "potions") > 0 -> "potion"
+      not healer?(state, from) and State.stat(state, from, "potions") > 0 -> "potion"
       true -> nil
     end
   end

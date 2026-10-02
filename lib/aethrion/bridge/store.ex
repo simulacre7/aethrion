@@ -89,10 +89,10 @@ defmodule Aethrion.Bridge.Store do
 
   @impl true
   def handle_cast({:put, key, value}, state) do
-    # A reroll puts the same thing again; the file gets it once.
-    if :ets.lookup(state.table, key) != [{key, value}] do
-      :ets.insert(state.table, {key, value})
-
+    # What was kept first stays: a reroll puts the same thing again, and
+    # two requests racing for one turn cannot leave the world of a reply
+    # someone saw behind the other's. The file gets each key once.
+    if :ets.insert_new(state.table, {key, value}) do
       if state.path do
         line = Jason.encode!(%{"key" => key, "value" => value})
         File.write!(state.path, line <> "\n", [:append])
@@ -103,7 +103,7 @@ defmodule Aethrion.Bridge.Store do
   end
 
   # A line that cannot be read (or was written in an older format) is
-  # skipped.
+  # skipped; a key written twice keeps its first value.
   defp load(table, path) do
     if File.exists?(path) do
       path
@@ -111,7 +111,7 @@ defmodule Aethrion.Bridge.Store do
       |> Enum.each(fn line ->
         case Jason.decode(line) do
           {:ok, %{"key" => key, "value" => value}} when is_binary(key) ->
-            :ets.insert(table, {key, value})
+            :ets.insert_new(table, {key, value})
 
           _other ->
             :ok
