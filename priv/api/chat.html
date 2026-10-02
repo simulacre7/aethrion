@@ -29,6 +29,13 @@ form input{flex:1;min-width:0}
 .hint{font-size:12px;color:var(--muted);margin:6px 2px 0}
   .choices { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
   .choices button { font-size: 0.85rem; padding: 4px 10px; border-radius: 14px; }
+#risu{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:12px;font-size:14px}
+#risu h2{font-size:15px;margin:0 0 8px}
+#risu dl{display:grid;grid-template-columns:max-content 1fr;gap:6px 12px;margin:0 0 10px;align-items:center}
+#risu dt{color:var(--muted)}
+#risu dd{margin:0;display:flex;gap:6px;align-items:center;flex-wrap:wrap;min-width:0}
+#risu code{background:var(--page);border:1px solid var(--border);border-radius:6px;padding:2px 6px;overflow-wrap:anywhere}
+#risu p{margin:6px 0 0;color:var(--muted);font-size:13px}
 </style>
 </head>
 <body>
@@ -40,8 +47,22 @@ form input{flex:1;min-width:0}
     <label>Token <input id="token" type="password" size="8" aria-label="Bearer token"></label>
     <button id="later" type="button" title="Let a few hours pass in the world">Time passes</button>
     <button id="story" type="button" title="How close each ending is, and what is missing">Story</button>
+    <button id="risu-toggle" type="button" title="How to play this cast in RisuAI or SillyTavern" aria-expanded="false" aria-controls="risu">RisuAI</button>
     <span id="model" class="hint"></span>
   </header>
+  <section id="risu" hidden aria-label="Connect RisuAI or SillyTavern">
+    <h2>Play this cast in RisuAI or SillyTavern</h2>
+    <dl>
+      <dt>Model</dt><dd>Custom API (SillyTavern: Chat Completion, Custom OpenAI-compatible)</dd>
+      <dt>URL</dt><dd><code id="risu-url"></code><button type="button" data-copy="risu-url">Copy</button></dd>
+      <dt>Key/Password</dt><dd id="risu-key"></dd>
+      <dt>Request model</dt><dd><select id="risu-model" aria-label="Request model"></select><button type="button" data-copy="risu-model">Copy</button></dd>
+      <dt>Format</dt><dd>OpenAI Compatible</dd>
+    </dl>
+    <button id="risu-card" class="primary" type="button">Download the RisuAI card</button>
+    <p>Then drag the card file onto the RisuAI window (or use Import Character). It brings the cast, its lorebook, and the status window.</p>
+    <p>Use RisuAI's desktop app: the web app at risuai.xyz cannot reach a server on this computer. Leave the auxiliary model as it is, not Custom API.</p>
+  </section>
   <div id="log" aria-live="polite"></div>
   <div id="choices" class="choices" aria-label="Reply choices"></div>
   <form id="form">
@@ -233,9 +254,51 @@ $("later").addEventListener("click", async () => {
   } catch (error) { add("error", error.message); }
 });
 
+// How to point RisuAI or SillyTavern at this server, and its card.
+async function risu() {
+  $("risu-url").textContent = location.origin + "/v1";
+  $("risu-key").textContent = $("token").value
+    ? "the same password as in Token above (AETHRION_TOKEN)"
+    : "the server's AETHRION_TOKEN: put it in Token above too";
+  try {
+    const models = await call("GET", "/v1/models");
+    $("risu-model").replaceChildren(...models.data.map((m) => new Option(m.id, m.id)));
+    // "aethrion" talks to the character who greets on the card.
+    $("risu-model").value = "aethrion";
+  } catch (error) { $("risu-model").replaceChildren(new Option("(enter the Token first)", "")); }
+}
+
+$("risu-toggle").addEventListener("click", () => {
+  const open = $("risu").hidden;
+  $("risu").hidden = !open;
+  $("risu-toggle").setAttribute("aria-expanded", String(open));
+  if (open) risu();
+});
+
+for (const button of document.querySelectorAll("[data-copy]")) {
+  button.addEventListener("click", async () => {
+    const el = $(button.dataset.copy);
+    const text = el.tagName === "SELECT" ? el.value : el.textContent;
+    try { await navigator.clipboard.writeText(text); button.textContent = "Copied"; } catch { button.textContent = "Select it"; }
+    setTimeout(() => { button.textContent = "Copy"; }, 1500);
+  });
+}
+
+$("risu-card").addEventListener("click", async () => {
+  try {
+    const card = await call("GET", "/casts/card");
+    const blob = new Blob([JSON.stringify(card)], {type: "application/json"});
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = ((card.data && card.data.name) || "aethrion") + ".json";
+    link.click();
+    URL.revokeObjectURL(link.href);
+  } catch (error) { add("error", "Card: " + error.message); }
+});
+
 $("character").addEventListener("change", () => history().catch((e) => add("error", e.message)));
 $("world").addEventListener("change", load);
-$("token").addEventListener("change", load);
+$("token").addEventListener("change", () => { load(); if (!$("risu").hidden) risu(); });
 load();
 </script>
 </body>

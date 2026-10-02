@@ -47,12 +47,7 @@ In `.env`:
 Then:
 
 1. In RisuAI, set up the model as in [section 3](#3-set-the-model), with the URL `http://localhost:4848/v1` and your `AETHRION_TOKEN` as the Key/Password.
-2. Save the campfire card, then import it as in [section 4](#4-character-cards):
-
-   ```bash
-   curl -H "Authorization: Bearer $(grep '^AETHRION_TOKEN=' .env | cut -d= -f2)" \
-     'http://localhost:4848/casts/card?name=Campfire' -o campfire.json
-   ```
+2. Get the card: open http://localhost:4848, put your `AETHRION_TOKEN` in Token, click **RisuAI**, then **Download the RisuAI card**. The same panel shows the URL and request model to copy. Import the card as in [section 4](#4-character-cards). By drag and drop, in the macOS desktop app.
 
 `docker compose logs aethrion` shows what Aethrion is doing, and `docker compose down` stops it. The port is published only to this computer.
 
@@ -94,13 +89,13 @@ In Settings → Bot Settings:
 | Model | `Custom API` |
 | URL | `http://host.docker.internal:4848/v1` (desktop app: `http://localhost:4848/v1`) |
 | Key/Password | the `--token` or `AETHRION_TOKEN` value (blank when none) |
-| Request Model | `aethrion:sera` (the player talks to Sera) |
+| Request Model | `aethrion` (talks to whoever greets on the card; `aethrion:sera` names one) |
 | Format | `OpenAI Compatible` |
 
 Request model names (listed by `GET /v1/models`; foes are not listed):
 
 - `aethrion:CHARACTER_ID`: lines are read as said to that character at first; calling another by name moves the talk to them (section 6).
-- `aethrion`: the first character who is not a foe.
+- `aethrion`: the character who greets the player on the cast's card (the first who is not a foe and has a `greeting`), else the first who is not a foe.
 - `aethrion-plain:CHARACTER_ID`: narration without the status block. Replies then carry no checkpoint ids: an untrimmed chat finds its checkpoints again from its lines, but a trimmed one is computed from what is left, and right after a change of character it may not tell itself apart from another chat on the server that began with the same words to someone else. `aethrion`, with status blocks, is exact.
 
 **Do not set the auxiliary model to Custom API.** RisuAI hands summaries, emotion images, and translation to the auxiliary model; sent to Aethrion, the text to summarize would be read as the player's words.
@@ -156,15 +151,16 @@ Give Sera a necklace and Doyun, who sees it, grows jealous and sends word to Har
 
 ## Limits
 
-- Replies come whole; with `stream: true` they come as one server-sent event.
-- A CLI model (`--llm claude`) takes about 10-15 s a turn; API models are faster.
+- **Streaming:** turn on Response Streaming in RisuAI (Settings → Bot Settings) to see the narration as it is written. The status block comes last. An OpenAI-compatible API, the Claude API, and the Claude Code CLI stream; the Codex CLI sends the reply whole.
+- **Time:** a new line is first read by the model (a few seconds; a line already read is cached, so a reroll skips this), then narrated. With the Claude Code CLI a turn takes 15-40 s, depending on how long the narration is. API models are faster.
+- **The server console** shows one line per turn: the line, the time the rules and the model took, and whether the model answered. If nothing shows up, RisuAI did not reach Aethrion.
 - One request replays at most 300 lines; a longer chat without checkpoints is a 400 (`too_many_lines`).
 - RisuAI's group chat is not used: one narrator card talks with the whole cast (section 6).
 - Checkpoints store the whole world (without the cast's lore) every turn, so the file grows with use. Deleting it is safe: the state is then recomputed from the transcript.
 
 ## SillyTavern
 
-SillyTavern connects the same way: API Chat Completion → Custom (OpenAI-compatible), endpoint `http://localhost:4848/v1`, model `aethrion:sera`. Draw the status window with a script in the Regex extension:
+SillyTavern connects the same way: API Chat Completion → Custom (OpenAI-compatible), endpoint `http://localhost:4848/v1`, model `aethrion`. Draw the status window with a script in the Regex extension:
 
 - Find Regex: `/<aethrion-status[^>]*>([\s\S]*?)<\/aethrion-status>/g`
 - Replace With: `<div style="white-space:pre-line">$1</div>`

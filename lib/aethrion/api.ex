@@ -68,6 +68,8 @@ defmodule Aethrion.API do
   - `:max_text` (characters, default 2_000) - the longest `say` text; each
     one may become a model call
   - `:locale` (`:en` or `:ko`) - the language of combat lines
+  - `:card_name` (default `"Aethrion"`) - the name of the card
+    `GET /casts/card` exports when the request gives none
   """
 
   alias Aethrion.{Conversation, Error, Event, Intent, Output, State, Worlds}
@@ -123,6 +125,7 @@ defmodule Aethrion.API do
       render_timeout: Keyword.get(opts, :render_timeout, 15_000),
       max_text: Keyword.get(opts, :max_text, 2_000),
       locale: Keyword.get(opts, :locale, :en),
+      card_name: Keyword.get(opts, :card_name, "Aethrion"),
       max_body: Keyword.get(opts, :max_body, 65_536),
       max_card: Keyword.get(opts, :max_card, 4_194_304)
     })
@@ -173,6 +176,7 @@ defmodule Aethrion.API do
     end
     |> case do
       {:ok, 200, {:sse, events}} -> {200, :sse, events}
+      {:ok, 200, :streamed} -> {200, :streamed, nil}
       result -> result |> respond() |> then(fn {status, json} -> {status, :json_v1, json} end)
     end
   end
@@ -327,7 +331,7 @@ defmodule Aethrion.API do
   # Non-enemy characters' greetings open the card; ?name= and ?greeting= override.
   defp run(config, :cast_card, query, _body) do
     opts =
-      [name: Map.get(query, "name", "Aethrion")] ++
+      [name: Map.get(query, "name", Map.get(config, :card_name, "Aethrion"))] ++
         if(g = query["greeting"], do: [greeting: g], else: [])
 
     {:ok, 200, Aethrion.Card.from_cast(config.cast, opts)}
@@ -683,29 +687,124 @@ defmodule Aethrion.API do
         turn_opts.readings
       )
 
+    started = System.monotonic_time(:millisecond)
+
     with {:ok, {before, now, turn}} <-
            replay_chat(cast, chat, read, turn_opts.to, turn_opts.checkpoints) do
+      replayed = System.monotonic_time(:millisecond)
       note = %{"role" => "system", "content" => Aethrion.Bridge.note(before, now, turn, locale)}
-      replied = Aethrion.LLM.chat(adapter, all ++ [note], adapter_opts ++ generation_opts(data))
-      if match?({:ok, _text}, replied), do: turn_opts.commit.()
+      messages = all ++ [note]
+      opts = adapter_opts ++ generation_opts(data)
 
-      case replied do
-        # A reply to a request to continue one adds to it: no new turn, no
-        # second status block.
-        {:ok, text} when turn_opts.status? and turn.line != nil ->
-          completion(
-            data,
-            String.trim(text) <> "\n\n" <> Aethrion.Bridge.status(now, turn, locale)
-          )
+      status =
+        if turn_opts.status? and turn.line != nil, do: Aethrion.Bridge.status(now, turn, locale)
 
-        {:ok, text} ->
-          completion(data, String.trim(text))
+      # A turn is kept once the model has answered.
+      finish = fn replied ->
+        if match?({:ok, _text}, replied), do: turn_opts.commit.()
 
-        {:error, reason} ->
-          {:error, 502, Error.new(:model_failed, "the model did not answer: #{inspect(reason)}")}
+        log_turn(
+          turn,
+          replied,
+          replayed - started,
+          System.monotonic_time(:millisecond) - replayed
+        )
+      end
+
+      if data["stream"] == true and is_function(config[:emit], 1) do
+        stream_turn(config.emit, data, {adapter, messages, opts}, status, finish)
+      else
+        replied = Aethrion.LLM.chat(adapter, messages, opts)
+        finish.(replied)
+        reply(data, replied, status)
       end
     end
   end
+
+  defp reply(data, replied, status) do
+    case replied do
+      # A reply to a request to continue one adds to it: no new turn, no
+      # second status block.
+      {:ok, text} when status != nil ->
+        completion(data, String.trim(text) <> "\n\n" <> status)
+
+      {:ok, text} ->
+        completion(data, String.trim(text))
+
+      {:error, reason} ->
+        {:error, 502, Error.new(:model_failed, "the model did not answer: #{inspect(reason)}")}
+    end
+  end
+
+  # The reply as server-sent events while the model writes it, the status
+  # block last. Once the first event is out, a failing model can only be
+  # told as an error event: the status code has gone.
+  defp stream_turn(emit, data, {adapter, messages, opts}, status, done) do
+    chunk = sse_chunker(data)
+    emit.(:start)
+    emit.({:chunk, chunk.(%{role: "assistant", content: ""}, nil)})
+
+    # Leading blank lines are left out, as a whole reply is trimmed.
+    started = :atomics.new(1, [])
+
+    on_delta = fn delta ->
+      delta = if :atomics.get(started, 1) == 0, do: String.trim_leading(delta), else: delta
+
+      if delta != "" do
+        :atomics.put(started, 1, 1)
+        emit.({:chunk, chunk.(%{content: delta}, nil)})
+      end
+    end
+
+    replied = Aethrion.LLM.stream_chat(adapter, messages, opts, on_delta)
+    done.(replied)
+
+    case replied do
+      {:ok, _text} ->
+        if status, do: emit.({:chunk, chunk.(%{content: "\n\n" <> status}, nil)})
+        emit.({:chunk, chunk.(%{}, "stop") <> "data: [DONE]\n\n"})
+
+      {:error, reason} ->
+        error = %{
+          error: %{code: "model_failed", message: "the model did not answer: #{inspect(reason)}"}
+        }
+
+        emit.({:chunk, "data: " <> Jason.encode!(error) <> "\n\ndata: [DONE]\n\n"})
+    end
+
+    emit.(:done)
+    {:ok, 200, :streamed}
+  end
+
+  defp sse_chunker(data) do
+    id = "chatcmpl-" <> Base.encode16(:crypto.strong_rand_bytes(8), case: :lower)
+    model = to_string(data["model"] || "aethrion")
+    created = System.system_time(:second)
+
+    fn delta, finish ->
+      "data: " <>
+        Jason.encode!(%{
+          id: id,
+          object: "chat.completion.chunk",
+          created: created,
+          model: model,
+          choices: [%{index: 0, delta: delta, finish_reason: finish}]
+        }) <> "\n\n"
+    end
+  end
+
+  # One line per turn on the server's console, so a player can see that the
+  # app reached Aethrion and where the time went.
+  defp log_turn(turn, replied, read_ms, model_ms) do
+    line = if turn.line, do: inspect(String.slice(turn.line, 0, 60)), else: "(continue)"
+    outcome = if match?({:ok, _}, replied), do: "replied", else: "model failed"
+
+    Logger.info(
+      "Aethrion turn: #{line} · rules #{seconds(read_ms)} · model #{seconds(model_ms)} · #{outcome}"
+    )
+  end
+
+  defp seconds(ms), do: :erlang.float_to_binary(ms / 1000, decimals: 1) <> "s"
 
   # At most this many lines are replayed in one request (with a model
   # reading them, each new one is a call).
@@ -733,9 +832,22 @@ defmodule Aethrion.API do
   defp talkers(cast),
     do: Enum.filter(State.sorted_characters(cast), &(State.stat(cast, &1.id, "enemy") == 0))
 
+  # Whom a model name without a character talks to: the one who greets the
+  # player on the card (Aethrion.Card picks the same), else the first who is
+  # not a foe.
+  @doc false
+  def default_talker(cast) do
+    talkers = talkers(cast)
+
+    case Enum.find(talkers, &(&1.greeting not in [nil, ""])) || List.first(talkers) do
+      nil -> nil
+      talker -> talker.id
+    end
+  end
+
   # "aethrion" or "aethrion-plain" (no status block), optionally
-  # ":character" for whom the player talks to; by default the first one
-  # who is not a foe.
+  # ":character" for whom the player talks to; by default the one who
+  # greets on the card.
   defp bridge_model(_cast, model) when not is_binary(model) and model != nil,
     do: {:error, 400, Error.new(:invalid_request, "model must be a string")}
 
@@ -746,7 +858,7 @@ defmodule Aethrion.API do
         [base] -> {base, nil}
       end
 
-    to = character || cast |> talkers() |> List.first() |> then(&(&1 && &1.id))
+    to = character || default_talker(cast)
 
     if to == nil or not State.character?(cast, to) do
       {:error, 400,
@@ -779,17 +891,7 @@ defmodule Aethrion.API do
     created = System.system_time(:second)
 
     if data["stream"] == true do
-      chunk = fn delta, finish ->
-        "data: " <>
-          Jason.encode!(%{
-            id: id,
-            object: "chat.completion.chunk",
-            created: created,
-            model: model,
-            choices: [%{index: 0, delta: delta, finish_reason: finish}]
-          }) <>
-          "\n\n"
-      end
+      chunk = sse_chunker(data)
 
       {:ok, 200,
        {:sse,
@@ -1161,10 +1263,12 @@ defmodule Aethrion.API do
         end
 
       method = request |> mod(:method) |> to_string()
+      config = Map.put(config, :emit, emitter(request, segments, config))
 
       {status, content_type, json} =
         try do
           case Aethrion.API.handle(config, method, segments, query, headers, body) do
+            {status, :streamed, nil} -> {status, :streamed, nil}
             {status, :html, html} -> {status, ~c"text/html; charset=utf-8", html}
             {status, :json_v1, json} -> {status, ~c"application/json", json}
             {status, :sse, events} -> {status, ~c"text/event-stream", events}
@@ -1180,10 +1284,28 @@ defmodule Aethrion.API do
                 Exception.format(:error, exception, __STACKTRACE__)
             )
 
-            {500, ~c"application/json",
-             ~s({"error":{"code":"internal","message":"internal error"}})}
+            # Mid-stream, the status has gone: end the stream instead.
+            if Process.get(:aethrion_streaming) do
+              config.emit.(
+                {:chunk, ~s(data: {"error":{"code":"internal","message":"internal error"}}\n\n)}
+              )
+
+              config.emit.(:done)
+              {500, :streamed, nil}
+            else
+              {500, ~c"application/json",
+               ~s({"error":{"code":"internal","message":"internal error"}})}
+            end
         end
 
+      if content_type == :streamed do
+        {:break, [response: {:already_sent, status, 0}]}
+      else
+        respond(request, segments, config, status, content_type, json)
+      end
+    end
+
+    defp respond(_request, segments, config, status, content_type, json) do
       {:break,
        [
          response:
@@ -1194,6 +1316,38 @@ defmodule Aethrion.API do
               content_length: Integer.to_charlist(byte_size(json))
             ] ++ cors(segments, config), :erlang.binary_to_list(json)}
        ]}
+    end
+
+    # Sends a streamed answer as it is written: the headers, then chunks.
+    # HTTP/1.0 clients get the bytes as they come and a closed connection.
+    defp emitter(request, segments, config) do
+      chunked? = mod(request, :http_version) == ~c"HTTP/1.1"
+      disable? = not chunked?
+
+      fn
+        :start ->
+          Process.put(:aethrion_streaming, true)
+
+          :httpd_response.send_header(
+            request,
+            200,
+            [
+              {~c"content-type", ~c"text/event-stream"},
+              {~c"cache-control", ~c"no-cache"}
+            ] ++
+              if(chunked?,
+                do: [{~c"transfer-encoding", ~c"chunked"}],
+                else: [{~c"connection", ~c"close"}]
+              ) ++ cors(segments, config)
+          )
+
+        {:chunk, data} ->
+          :httpd_response.send_chunk(request, data, disable?)
+
+        :done ->
+          Process.delete(:aethrion_streaming)
+          :httpd_response.send_final_chunk(request, disable?)
+      end
     end
 
     # Only the OpenAI-compatible routes answer other origins (a chat app in

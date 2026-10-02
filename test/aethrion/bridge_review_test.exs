@@ -405,6 +405,30 @@ defmodule Aethrion.BridgeReviewTest do
     end
   end
 
+  test "a model name without a character talks to the one who greets on the card" do
+    campfire = "priv/casts/campfire.json" |> File.read!() |> Jason.decode!()
+    {:ok, campfire} = Aethrion.State.parse(campfire)
+    greeter = Enum.find(Aethrion.State.sorted_characters(campfire), &(&1.greeting != ""))
+    assert API.default_talker(campfire) == greeter.id
+
+    card = Aethrion.Card.from_cast(campfire, name: "Campfire")
+    assert card["data"]["first_mes"] == greeter.greeting
+
+    # Without greetings: the first who is not a foe.
+    quiet = %{
+      campfire
+      | characters: Map.new(campfire.characters, fn {id, c} -> {id, %{c | greeting: ""}} end)
+    }
+
+    first =
+      Enum.find(
+        Aethrion.State.sorted_characters(quiet),
+        &(Aethrion.State.stat(quiet, &1.id, "enemy") == 0)
+      )
+
+    assert API.default_talker(quiet) == first.id
+  end
+
   describe "over HTTP" do
     setup do
       start_supervised!({Worlds, name: Worlds.Test.BridgeReview, world: fn _key -> [] end})

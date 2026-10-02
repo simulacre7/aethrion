@@ -97,14 +97,7 @@ defmodule Mix.Tasks.Aethrion.Serve do
         end
       )
 
-    # For the OpenAI-compatible route: what chat lines were read as, and the
-    # world after each turn.
-    for {name, file} <- [
-          {Aethrion.Bridge.Readings, "bridge-readings.jsonl"},
-          {Aethrion.Bridge.Checkpoints, "bridge-checkpoints.jsonl"}
-        ] do
-      {:ok, _store} = Aethrion.Bridge.Store.start_link(name: name, path: Path.join(data, file))
-    end
+    start_bridge_stores(data)
 
     # An empty AETHRION_TOKEN (as Compose passes an unset one) means no token.
     token = blank_to_nil(opts[:token] || System.get_env("AETHRION_TOKEN"))
@@ -118,21 +111,20 @@ defmodule Mix.Tasks.Aethrion.Serve do
           token: token,
           allow_hosts: allow_hosts(opts[:allow_host] || System.get_env("AETHRION_ALLOW_HOSTS")),
           locale: if(opts[:locale] == "ko", do: :ko, else: :en),
-          cast: cast
+          cast: cast,
+          card_name: card_name(opts[:cast])
         ] ++ reading(adapter, adapter_opts, backend_opts, label)
       )
 
-    notes =
-      ["#{map_size(cast.characters)} characters", "journals in #{data}"] ++
-        if(token, do: ["bearer token required"], else: []) ++ [model_note(label)]
-
-    Mix.shell().info(
-      "Aethrion API on http://#{opts[:bind] || "127.0.0.1"}:#{Aethrion.API.port(api)} " <>
-        "(#{Enum.join(notes, ", ")})"
-    )
+    announce(Aethrion.API.port(api), opts[:bind] || "127.0.0.1", cast, data, token, label)
 
     unless iex_running?(), do: Process.sleep(:infinity)
   end
+
+  # The cast's file name, for the card RisuAI imports: "campfire.json" is
+  # "Campfire".
+  defp card_name(nil), do: "Aethrion"
+  defp card_name(path), do: path |> Path.basename(".json") |> String.capitalize()
 
   defp blank_to_nil(value) when value in [nil, ""], do: nil
   defp blank_to_nil(value), do: value
@@ -145,6 +137,36 @@ defmodule Mix.Tasks.Aethrion.Serve do
       |> String.split(",", trim: true)
       |> Enum.map(&String.trim/1)
       |> Enum.reject(&(&1 == ""))
+
+  # For the OpenAI-compatible route: what chat lines were read as, and the
+  # world after each turn.
+  defp start_bridge_stores(data) do
+    for {name, file} <- [
+          {Aethrion.Bridge.Readings, "bridge-readings.jsonl"},
+          {Aethrion.Bridge.Checkpoints, "bridge-checkpoints.jsonl"}
+        ] do
+      {:ok, _store} = Aethrion.Bridge.Store.start_link(name: name, path: Path.join(data, file))
+    end
+  end
+
+  defp announce(port, bind, cast, data, token, label) do
+    notes =
+      ["#{map_size(cast.characters)} characters", "journals in #{data}"] ++
+        if(token, do: ["bearer token required"], else: []) ++ [model_note(label)]
+
+    Mix.shell().info("Aethrion API on http://#{bind}:#{port} (#{Enum.join(notes, ", ")})")
+    if label, do: chat_app_hint(port, token)
+  end
+
+  # How to point a chat app at the server.
+  defp chat_app_hint(port, token) do
+    Mix.shell().info(
+      "RisuAI (desktop app) or SillyTavern: Custom API at http://localhost:#{port}/v1, " <>
+        "model \"aethrion\"" <>
+        if(token, do: ", the token as the key", else: "") <>
+        "; the card and these settings are under RisuAI on http://localhost:#{port}"
+    )
+  end
 
   defp scheduler(nil), do: []
 
