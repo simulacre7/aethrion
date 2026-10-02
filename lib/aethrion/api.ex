@@ -697,7 +697,8 @@ defmodule Aethrion.API do
       opts = adapter_opts ++ generation_opts(data)
 
       status =
-        if turn_opts.status? and turn.line != nil, do: Aethrion.Bridge.status(now, turn, locale)
+        if turn_opts.status? and turn.line != nil,
+          do: Aethrion.Bridge.status(now, turn, locale, before)
 
       # A turn is kept once the model has answered.
       finish = fn replied ->

@@ -688,25 +688,28 @@ defmodule Aethrion.Bridge do
   checkpoint id.
   """
   @spec status(State.t(), map(), :ko | :en) :: String.t()
-  def status(%State{} = state, turn, locale \\ :ko) do
+  def status(%State{} = state, turn, locale \\ :ko, before \\ nil) do
     words = words(locale)
 
     people =
       for character <- State.sorted_characters(state),
           State.stat(state, character.id, "enemy") == 0,
           rel = State.get_relationship(state, character.id, "user") do
-        "#{character.name} · #{words.affinity} #{rel.affinity} · #{words.trust} #{rel.trust}" <>
-          hp_short(state, character.id)
+        was = before && State.get_relationship(before, character.id, "user")
+
+        "#{character.name} · #{words.affinity} #{rel.affinity}#{change(was && was.affinity, rel.affinity)}" <>
+          " · #{words.trust} #{rel.trust}#{change(was && was.trust, rel.trust)}" <>
+          hp_short(state, character.id, before)
       end
 
     foes =
       for id <- Enum.sort(Map.keys(state.stats)), State.stat(state, id, "enemy") > 0 do
-        "#{State.name(state, id)}" <> hp_short(state, id)
+        "#{State.name(state, id)}" <> hp_short(state, id, before)
       end
 
     player =
       if State.stat?(state, "user", "hp"),
-        do: ["#{words.you}" <> hp_short(state, "user")],
+        do: ["#{words.you}" <> hp_short(state, "user", before)],
         else: []
 
     events =
@@ -732,11 +735,21 @@ defmodule Aethrion.Bridge do
     open <> Enum.map_join(lines, "\n", &escape/1) <> "</aethrion-status>"
   end
 
-  defp hp_short(state, id) do
-    if State.stat?(state, id, "hp"),
-      do: " · HP #{State.stat(state, id, "hp")}/#{State.stat(state, id, "max_hp")}",
-      else: ""
+  defp hp_short(state, id, before) do
+    if State.stat?(state, id, "hp") do
+      hp = State.stat(state, id, "hp")
+      was = if before && State.stat?(before, id, "hp"), do: State.stat(before, id, "hp")
+      " · HP #{hp}/#{State.stat(state, id, "max_hp")}#{change(was, hp)}"
+    else
+      ""
+    end
   end
+
+  # What this turn changed, next to the number: "50 (+10)".
+  defp change(nil, _now), do: ""
+  defp change(was, was), do: ""
+  defp change(was, now) when now > was, do: " (+#{now - was})"
+  defp change(was, now), do: " (#{now - was})"
 
   defp words(:ko), do: %{affinity: "호감", trust: "신뢰", tension: "긴장", you: "나"}
   defp words(_en), do: %{affinity: "affinity", trust: "trust", tension: "tension", you: "You"}

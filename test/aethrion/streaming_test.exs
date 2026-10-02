@@ -173,7 +173,9 @@ defmodule Aethrion.StreamingTest do
       {200, headers, events} = stream(base, "다이어 울프를 벤다")
 
       assert headers["content-type"] =~ "text/event-stream"
-      assert ["늑대가 ", "으르렁거린다.", "\n\n<aethrion-status" <> _] = contents(events)
+      assert ["늑대가 ", "으르렁거린다.", "\n\n<aethrion-status" <> _ = status] = contents(events)
+      # What the turn changed stands next to the number.
+      assert status =~ ~r/다이어 울프 · HP \d+\/37 \(-\d+\)/
       assert String.ends_with?(events, "data: [DONE]\n\n")
     end
 
