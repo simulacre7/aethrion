@@ -275,6 +275,13 @@ defmodule Aethrion.CombatBondsTest do
     end
   end
 
+  test "an enemy who is away is not the one a blow goes for" do
+    state = party(%{}, %{"wolf" => %{"away" => 3}})
+    assert Combat.foe(state) == nil
+    {_state, outputs} = run(party(), [Event.attack("user", "wolf")])
+    assert outputs != []
+  end
+
   test "the new moments are told in both languages" do
     state = party()
 

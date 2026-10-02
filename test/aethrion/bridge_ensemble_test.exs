@@ -189,6 +189,44 @@ defmodule Aethrion.BridgeEnsembleTest do
     assert note =~ ~r/목걸이 사 왔어[^\n]*Seen by: 도윤, 하린/
   end
 
+  describe "a recheck of the review fixes" do
+    test "words to someone away are said to them from afar, not kept from them" do
+      {before, now, turn} = play(camp(), ["하린, 보고 싶어"], "harin")
+      note = Bridge.note(before, now, turn, :ko)
+      refute note =~ "Not there, and does not know: 하린"
+    end
+
+    test "what the rules refused is said, with names" do
+      {:ok, state} =
+        "priv/casts/campfire.json"
+        |> File.read!()
+        |> Jason.decode!()
+        |> put_in(["stats", "sera", "away"], 2)
+        |> put_in(["stats", "user", "hp"], 5)
+        |> State.parse()
+
+      {before, now, turn} = play(state, ["세라, 치료해 줘"])
+      assert Bridge.note(before, now, turn, :ko) =~ "Did not happen: 세라 is away"
+    end
+
+    test "several lines are quoted on one line each, cut with an ellipsis" do
+      long = "세라, " <> String.duplicate("정말 ", 20) <> "\"고마워\""
+
+      {_all, chat} =
+        Bridge.transcript([
+          %{"role" => "user", "content" => "세라,\n안녕"},
+          %{"role" => "user", "content" => long}
+        ])
+
+      read = Bridge.reader([interpreter: Aethrion.Interpreter.Rules], no_cache())
+      {before, now, turn} = Bridge.replay(camp(), chat, read, to: "sera")
+      note = Bridge.note(before, now, turn, :ko)
+      assert note =~ ~s(- "세라, 안녕": Seen by)
+      assert note =~ "…\": Seen by"
+      refute note =~ ~s("고마워")
+    end
+  end
+
   test "without turn_hours, time stands still in a chat" do
     {_before, now, _turn} = play(camp(%{}), ["세라, 목걸이 사 왔어. 선물이야", "세라, 어때?"])
     assert now.clock == 0

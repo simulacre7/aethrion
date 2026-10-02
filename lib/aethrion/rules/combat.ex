@@ -448,6 +448,7 @@ defmodule Aethrion.Rules.Combat do
   defp enemies(state) do
     for id <- Enum.sort(Map.keys(state.stats)),
         State.stat(state, id, "enemy") > 0 and State.stat(state, id, "hp") > 0,
+        State.stat(state, id, "away") == 0,
         do: id
   end
 

@@ -182,11 +182,11 @@ defmodule Aethrion.Bridge do
     readings = read.(state, line, prev, talking)
     seen_by = present(state)
 
-    {after_line, outputs} =
-      Enum.reduce(readings, {state, []}, fn %{event: event}, {state, outputs} ->
+    {after_line, outputs, refused} =
+      Enum.reduce(readings, {state, [], []}, fn %{event: event}, {state, outputs, refused} ->
         case Runtime.step(state, witnessed(event, seen_by)) do
-          {:ok, step} -> {step.state, outputs ++ step.outputs}
-          {:error, _rejected} -> {state, outputs}
+          {:ok, step} -> {step.state, outputs ++ step.outputs, refused}
+          {:error, error} -> {state, outputs, refused ++ [error.message]}
         end
       end)
 
@@ -208,8 +208,10 @@ defmodule Aethrion.Bridge do
         line: line,
         targets: targets,
         seen_by: seen_by -- targets,
-        away: away,
-        back: Enum.filter(away, &(State.stat(after_line, &1, "away") == 0))
+        # Words to someone away reach them from afar.
+        away: away -- targets,
+        back: Enum.filter(away, &(State.stat(after_line, &1, "away") == 0)),
+        refused: refused
       }
     }
   end
@@ -534,11 +536,31 @@ defmodule Aethrion.Bridge do
         cond do
           witnessed == [] -> []
           length(scenes) == 1 -> Enum.map(witnessed, &("- " <> &1))
-          true -> ["- \"#{String.slice(scene.line, 0, 40)}\": " <> Enum.join(witnessed, " ")]
+          true -> ["- \"#{quoted(scene.line)}\": " <> Enum.join(witnessed, " ")]
         end
 
-      said ++ for(id <- scene.back, do: "- #{State.name(state, id)} is back.")
+      refused =
+        for reason <- Map.get(scene, :refused, []),
+            do: "- Did not happen: #{named(state, reason)}."
+
+      said ++ refused ++ for(id <- scene.back, do: "- #{State.name(state, id)} is back.")
     end)
+  end
+
+  # A line as a short quote on one line of the note.
+  defp quoted(line) do
+    line = line |> String.replace(~r/\s+/u, " ") |> String.replace("\"", "'") |> String.trim()
+    if String.length(line) > 40, do: String.slice(line, 0, 40) <> "…", else: line
+  end
+
+  # The rules' reasons name ids ("sera is away"); the note names people.
+  defp named(state, reason) do
+    state
+    |> State.sorted_characters()
+    |> Enum.reduce(String.trim_trailing(reason, "."), fn c, text ->
+      String.replace(text, ~r/\b#{Regex.escape(c.id)}\b/, c.name)
+    end)
+    |> String.replace(~r/\buser\b/, "the player")
   end
 
   defp between_lines(state, turn) do

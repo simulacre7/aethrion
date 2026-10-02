@@ -239,7 +239,10 @@ defmodule Aethrion.Combat do
     stats
     |> Map.keys()
     |> Enum.sort()
-    |> Enum.find(&(State.stat(state, &1, "enemy") > 0 and State.stat(state, &1, "hp") > 0))
+    |> Enum.find(
+      &(State.stat(state, &1, "enemy") > 0 and State.stat(state, &1, "hp") > 0 and
+          State.stat(state, &1, "away") == 0)
+    )
   end
 
   @doc """
