@@ -153,6 +153,7 @@ Give Sera a necklace and Doyun, who sees it, grows jealous and sends word to Har
 
 - **Streaming:** turn on Response Streaming in RisuAI (Settings → Bot Settings) to see the narration as it is written. The status block comes last. An OpenAI-compatible API, the Claude API, and the Claude Code CLI stream; the Codex CLI sends the reply whole.
 - **Time:** a new line is first read by the model (a few seconds; a line already read is cached, so a reroll skips this), then narrated. With the Claude Code CLI a turn takes 15-40 s, depending on how long the narration is. API models are faster.
+- **Cost:** each new line costs two model calls, one to read it and one to narrate. `--read-model NAME` (or `AETHRION_READ_MODEL`) reads with a smaller model of the same API. With the Claude Code CLI it does not make a turn faster, since starting the CLI takes most of a reading.
 - **The server console** shows one line per turn: the line, the time the rules and the model took, and whether the model answered. If nothing shows up, RisuAI did not reach Aethrion.
 - One request replays at most 300 lines; a longer chat without checkpoints is a 400 (`too_many_lines`).
 - RisuAI's group chat is not used: one narrator card talks with the whole cast (section 6).

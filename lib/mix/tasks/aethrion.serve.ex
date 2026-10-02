@@ -37,6 +37,10 @@ defmodule Mix.Tasks.Aethrion.Serve do
     templates write them: an offline fallback for testing, not the way to
     play
   - `--model NAME`, `--base-url URL` - for the chosen backend
+  - `--read-model NAME` - a model of the same backend for reading what each
+    line does (a short choice, so a smaller, faster model does), while
+    `--model` narrates (default: the `AETHRION_READ_MODEL` environment
+    variable, else `--model`)
   - `--locale ko` - lines in Korean: with `--llm` the model writes them,
     otherwise the built-in Korean templates do
   - `--idle MINUTES` - stop worlds unused for this long (default 30)
@@ -63,6 +67,7 @@ defmodule Mix.Tasks.Aethrion.Serve do
     allow_host: :string,
     llm: :string,
     model: :string,
+    read_model: :string,
     base_url: :string,
     locale: :string,
     idle: :integer,
@@ -70,7 +75,7 @@ defmodule Mix.Tasks.Aethrion.Serve do
   ]
 
   @usage "mix aethrion.serve [--cast FILE] [--data DIR] [--port N] [--bind ADDRESS] " <>
-           "[--token TOKEN] [--allow-host NAMES] [--llm anthropic|openai] [--locale ko] [--idle MINUTES] [--tick-every SECONDS]"
+           "[--token TOKEN] [--allow-host NAMES] [--read-model NAME] [--llm anthropic|openai] [--locale ko] [--idle MINUTES] [--tick-every SECONDS]"
 
   @impl Mix.Task
   def run(args) do
@@ -113,7 +118,14 @@ defmodule Mix.Tasks.Aethrion.Serve do
           locale: if(opts[:locale] == "ko", do: :ko, else: :en),
           cast: cast,
           card_name: card_name(opts[:cast])
-        ] ++ reading(adapter, adapter_opts, backend_opts, label)
+        ] ++
+          reading(
+            adapter,
+            adapter_opts,
+            backend_opts,
+            label,
+            blank_to_nil(opts[:read_model] || System.get_env("AETHRION_READ_MODEL"))
+          )
       )
 
     announce(Aethrion.API.port(api), opts[:bind] || "127.0.0.1", cast, data, token, label)
@@ -212,16 +224,22 @@ defmodule Mix.Tasks.Aethrion.Serve do
 
   @doc false
   # Who reads chat lines and their tone: the model, or the keyword rules.
-  def reading(nil, _adapter_opts, _backend_opts, _label),
+  def reading(adapter, adapter_opts, backend_opts, label, read_model \\ nil)
+
+  def reading(nil, _adapter_opts, _backend_opts, _label, _read_model),
     do: [interpreter: Aethrion.Interpreter.Rules]
 
-  def reading(adapter, adapter_opts, backend_opts, label),
+  def reading(adapter, adapter_opts, backend_opts, label, read_model),
     do: [
       render_timeout: render_timeout(adapter),
       intent: [adapter: adapter, adapter_opts: adapter_opts],
       interpreter: Aethrion.Interpreter.LLM,
-      interpreter_opts: [adapter: adapter, adapter_opts: backend_opts],
-      model: label
+      interpreter_opts: [
+        adapter: adapter,
+        adapter_opts:
+          if(read_model, do: Keyword.put(backend_opts, :model, read_model), else: backend_opts)
+      ],
+      model: if(read_model, do: label <> ", reading with #{read_model}", else: label)
     ]
 
   defp model_note(nil),
