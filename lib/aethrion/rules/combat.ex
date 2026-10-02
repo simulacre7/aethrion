@@ -127,9 +127,12 @@ defmodule Aethrion.Rules.Combat do
     end
   end
 
-  # A round ends with the player's own move: companions may protect again.
+  # A round ends with the player's own move (asking a companion to heal is
+  # one): companions may protect again. Time passing ends one too (see
+  # `protect/2`).
   defp new_round(%Transition{state: state} = transition, event) do
-    if player?(state, event.from) and not Map.get(event, :counter, false) do
+    if player?(state, Map.get(event, :asked_by) || event.from) and
+         not Map.get(event, :counter, false) do
       state.cooldowns
       |> Map.keys()
       |> Enum.filter(&String.starts_with?(&1, "combat:protect:"))
@@ -488,8 +491,6 @@ defmodule Aethrion.Rules.Combat do
     resent = Transition.param(transition, :resent_tension)
     patient = most_hurt(state, event.from, id, resent)
     held = Combat.held_key(id)
-    transition = passed_over(transition, id, event, resent, patient)
-    state = transition.state
 
     cond do
       trust < Transition.param(transition, :party_trust) and Map.has_key?(state.cooldowns, held) ->
@@ -503,12 +504,14 @@ defmodule Aethrion.Rules.Combat do
       Combat.healer?(state, id) and patient != nil and
           (target_hp > 0 or Combat.foe(state) != nil) ->
         transition
+        |> passed_over(id, event, resent, patient)
         |> Transition.clear_cooldown(held)
         |> Transition.enqueue(Event.heal(id, patient, at: event.at))
         |> fought_beside(id, event)
 
       target_hp > 0 ->
         transition
+        |> passed_over(id, event, resent, patient)
         |> Transition.clear_cooldown(held)
         |> Transition.enqueue(
           event.to
@@ -558,22 +561,7 @@ defmodule Aethrion.Rules.Combat do
   # them and can take it: the blow lands on the companion.
   defp protect(%Transition{state: state} = transition, %{to: to} = event) do
     param = &Transition.param(transition, &1)
-
-    protector =
-      if State.stat(state, event.from, "enemy") > 0 and on_side?(state, to) and
-           not Map.has_key?(event, :protected) and State.stat?(state, to, "hp") and
-           share(state, to) < param.(:protect_below) do
-        state
-        |> State.sorted_characters()
-        |> Enum.map(& &1.id)
-        |> Enum.filter(fn id ->
-          in_party?(state, id) and id not in [to, event.from] and
-            State.stat(state, id, "hp") > 0 and share(state, id) >= param.(:protect_above) and
-            State.get_relationship(state, id, to).affinity >= param.(:protect_affinity) and
-            not Map.has_key?(state.cooldowns, "combat:protect:#{id}")
-        end)
-        |> Enum.max_by(&State.get_relationship(state, &1, to).affinity, fn -> nil end)
-      end
+    protector = if in_danger?(state, event, param), do: protector(state, event, param)
 
     if protector do
       transition =
@@ -586,6 +574,31 @@ defmodule Aethrion.Rules.Combat do
     else
       {transition, event}
     end
+  end
+
+  # An enemy's blow at someone on the player's side, below `protect_below`
+  # and not behind a raised guard.
+  defp in_danger?(state, %{to: to} = event, param),
+    do:
+      State.stat(state, event.from, "enemy") > 0 and on_side?(state, to) and
+        not Map.has_key?(event, :protected) and State.stat?(state, to, "hp") and
+        not Map.has_key?(state.cooldowns, Combat.guard_key(to)) and
+        share(state, to) < param.(:protect_below)
+
+  # The companion who cares most about the one in danger, of those standing
+  # well enough, and not yet this round (since the player's last move, at
+  # this hour).
+  defp protector(state, %{to: to} = event, param) do
+    state
+    |> State.sorted_characters()
+    |> Enum.map(& &1.id)
+    |> Enum.filter(fn id ->
+      in_party?(state, id) and id not in [to, event.from] and
+        State.stat(state, id, "hp") > 0 and share(state, id) >= param.(:protect_above) and
+        State.get_relationship(state, id, to).affinity >= param.(:protect_affinity) and
+        Map.get(state.cooldowns, "combat:protect:#{id}") != state.clock
+    end)
+    |> Enum.max_by(&State.get_relationship(state, &1, to).affinity, fn -> nil end)
   end
 
   defp on_side?(state, id), do: player?(state, id) or State.stat(state, id, "party") > 0
@@ -629,7 +642,7 @@ defmodule Aethrion.Rules.Combat do
 
   # Those who cared about someone on the player's side who just fell.
   defp enraged(%Transition{state: state} = transition, %{to: fallen} = event) do
-    if on_side?(state, fallen) do
+    if on_side?(state, fallen) and State.stat(state, event.from, "enemy") > 0 do
       state
       |> State.sorted_characters()
       |> Enum.map(& &1.id)

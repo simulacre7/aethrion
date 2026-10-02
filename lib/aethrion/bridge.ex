@@ -216,6 +216,7 @@ defmodule Aethrion.Bridge do
   end
 
   @witnessed [:message_sent, :gift_received, :apology_offered]
+  @between_max 8
 
   defp witnessed(%{type: type} = event, seen_by) when type in @witnessed do
     if Map.get(event, :observed_by, []) != [],
@@ -252,7 +253,9 @@ defmodule Aethrion.Bridge do
   end
 
   # How the characters' feelings toward each other moved (not toward the
-  # player): `[{from, to, field, delta}]`.
+  # player): `[{from, to, field, delta}]`, without the drift of passing time
+  # (tension eases 2 a day between everyone), largest first, at most
+  # `@between_max`.
   defp between(before, now) do
     ids = Enum.map(people(now), & &1.id)
 
@@ -262,8 +265,12 @@ defmodule Aethrion.Bridge do
         was = State.get_relationship(before, from, to),
         is = State.get_relationship(now, from, to),
         field <- [:affinity, :trust, :tension],
-        Map.get(is, field) != Map.get(was, field),
-        do: {from, to, field, Map.get(is, field) - Map.get(was, field)}
+        delta = Map.get(is, field) - Map.get(was, field),
+        abs(delta) > 2 do
+      {from, to, field, delta}
+    end
+    |> Enum.sort_by(fn {from, to, field, delta} -> {-abs(delta), from, to, field} end)
+    |> Enum.take(@between_max)
   end
 
   # The cast's lore is the same in every world of the cast: it is left out

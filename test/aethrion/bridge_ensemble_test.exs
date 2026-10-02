@@ -105,6 +105,26 @@ defmodule Aethrion.BridgeEnsembleTest do
     assert note =~ "하린 is back"
   end
 
+  test "the note and status leave out the daily easing of tension, and stay short" do
+    {:ok, crowd} =
+      State.parse(%{
+        "characters" => for(i <- 1..12, do: %{"id" => "c#{i}", "name" => "인물#{i}"}),
+        "relationships" =>
+          for(
+            i <- 1..12,
+            j <- 1..12,
+            i != j,
+            do: %{"from" => "c#{i}", "to" => "c#{j}", "tension" => 30}
+          ),
+        "story" => %{"turn_hours" => 24}
+      })
+
+    {before, now, turn} = play(crowd, ["인물1, 선물이야"], "c1")
+    assert turn.between == []
+    assert String.length(Bridge.note(before, now, turn, :ko)) < 3_000
+    assert Bridge.status(now, turn, :ko) |> String.split("\n") |> length() <= 20
+  end
+
   test "without turn_hours, time stands still in a chat" do
     {_before, now, _turn} = play(camp(%{}), ["세라, 목걸이 사 왔어. 선물이야", "세라, 어때?"])
     assert now.clock == 0

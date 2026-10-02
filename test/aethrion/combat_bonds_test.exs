@@ -213,6 +213,68 @@ defmodule Aethrion.CombatBondsTest do
     refute Enum.any?(combat(outputs), &(&1.kind == :protected))
   end
 
+  describe "from a review" do
+    test "asking a companion to heal is the player's move: a new round" do
+      state =
+        party(%{{"sera", "doyun"} => %{"affinity" => 60}}, %{
+          "doyun" => %{"hp" => 5},
+          "user" => %{"hp" => 20}
+        })
+
+      {state, outputs} = run(state, [Event.attack("wolf", "doyun", counter: true)])
+      assert Enum.any?(combat(outputs), &(&1.kind == :protected))
+
+      # The wolf answers the asking; Sera may step in again.
+      {_state, outputs} = run(state, [Event.heal("sera", "user", asked_by: "user")])
+      assert Enum.any?(combat(outputs), &(&1.kind == :protected))
+    end
+
+    test "a round is also over once time has passed" do
+      state = party(%{{"sera", "doyun"} => %{"affinity" => 60}}, %{"doyun" => %{"hp" => 5}})
+      {state, _outputs} = run(state, [Event.attack("wolf", "doyun", counter: true)])
+      {state, _outputs} = run(state, [Event.time_tick("later", hours: 1)])
+      {_state, outputs} = run(state, [Event.attack("wolf", "doyun", counter: true)])
+      assert Enum.any?(combat(outputs), &(&1.kind == :protected))
+    end
+
+    test "no one rages over a companion the player struck down" do
+      state =
+        party(%{{"sera", "doyun"} => %{"affinity" => 60}}, %{
+          "doyun" => %{"hp" => 1},
+          "sera" => %{"hp" => 9}
+        })
+
+      {state, outputs} = run(state, [Event.attack("user", "doyun")])
+      assert hp(state, "doyun") == 0
+      refute Enum.any?(combat(outputs), &(&1.kind == :enraged))
+    end
+
+    test "no one steps in front of someone behind a raised guard" do
+      state = party(%{{"sera", "doyun"} => %{"affinity" => 60}}, %{"doyun" => %{"hp" => 5}})
+      # The wolf answers the guard, going for the weakest: Doyun, guarded.
+      {_state, outputs} = run(state, [Event.defend("user", to: "doyun")])
+
+      assert Enum.any?(
+               combat(outputs),
+               &match?(%{character_id: "wolf", to: "doyun", guarded: true}, &1)
+             )
+
+      refute Enum.any?(combat(outputs), &(&1.kind == :protected))
+    end
+
+    test "a healer who holds back does not also pass anyone over" do
+      state =
+        party(%{{"sera", "user"} => %{"trust" => 0}, {"sera", "doyun"} => %{"tension" => 60}}, %{
+          "doyun" => %{"hp" => 5}
+        })
+
+      {_state, outputs} = run(state, [Event.attack("user", "wolf")])
+      kinds = combat(outputs)
+      assert Enum.any?(kinds, &(&1.kind == :holds_back))
+      refute Enum.any?(kinds, &(&1.kind == :ignores))
+    end
+  end
+
   test "the new moments are told in both languages" do
     state = party()
 
