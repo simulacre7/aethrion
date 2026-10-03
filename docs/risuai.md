@@ -141,6 +141,7 @@ You: 고블린 척후를 벤다   (I strike the goblin scout)
 
 The scout is down, and Doyun, fighting beside you, took its blow. Doyun and Sera, who fought with you, trust you a little more (호감 is affinity, 신뢰 trust).
 
+- **This turn's rulings:** under the status window, a folded section shows how the line was read, who saw it and who was away, every roll against armor class, and gossip or comfort between characters.
 - **Reroll:** the same history, the same outcome; only the narration is new.
 - **Edit:** the last line or an earlier one, everything from the edited line is recomputed.
 - **Long chats:** trimmed history goes on from the checkpoints. Deleting a reply's status block loses that turn's checkpoint; the replay starts from the one before.
