@@ -100,9 +100,6 @@ defmodule Aethrion.Bridge.AutoCast do
       casts.put.(key(card), data)
       casts.put.("root:" <> Bridge.root(state), data)
       {:ok, state}
-    else
-      {:error, reason} -> {:error, reason}
-      other -> {:error, other}
     end
   end
 

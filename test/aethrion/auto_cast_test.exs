@@ -229,6 +229,16 @@ defmodule Aethrion.AutoCastTest do
       assert card_reads() == 2
     end
 
+    test "the name is matched in any letter case", %{base: base} do
+      # A settings field may capitalize what is typed into it.
+      {200, reply} = ask(base, [user("세라, 고마워.")], model: "Aethrion-auto")
+      assert reply =~ "세라 · 호감"
+      refute reply =~ "울프"
+
+      {200, plain} = ask(base, [user("세라, 고마워.")], model: "Aethrion-Auto-Plain")
+      assert plain == "세라가 고개를 끄덕인다."
+    end
+
     test "is listed among the models", %{base: base} do
       {:ok, {{_v, 200, _r}, _headers, body}} =
         :httpc.request(:get, {String.to_charlist(base <> "/v1/models"), []}, [],

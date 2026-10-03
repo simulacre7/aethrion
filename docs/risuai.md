@@ -98,6 +98,7 @@ Request model names (listed by `GET /v1/models`; foes are not listed):
 - `aethrion:CHARACTER_ID`: lines are read as said to that character at first; calling another by name moves the talk to them (section 6).
 - `aethrion`: the character who greets the player on the cast's card (the first who is not a foe and has a `greeting`), else the first who is not a foe.
 - `aethrion-plain:CHARACTER_ID`: narration without the status block. Replies then carry no checkpoint ids: an untrimmed chat finds its checkpoints again from its lines, but a trimmed one is computed from what is left, and right after a change of character it may not tell itself apart from another chat on the server that began with the same words to someone else. `aethrion`, with status blocks, is exact.
+- `aethrion-auto`: instead of the server's cast, the card in the request is read and used as the cast ([Keep The Card You Already Use](#keep-the-card-you-already-use)). `aethrion-auto-plain` answers without the status block.
 
 **Do not set the auxiliary model to Custom API.** RisuAI hands summaries, emotion images, and translation to the auxiliary model; sent to Aethrion, the text to summarize would be read as the player's words.
 
@@ -120,6 +121,22 @@ mix aethrion.card mycard.png --player Teacher --out casts/my.json
 ```
 
 Description, personality, and scenario become the profile; example messages the voice; the first message the greeting; the lorebook world notes. Cards hold no game numbers: add stats, endings, and bond stories in `/editor`. RisuAI regex and trigger scripts, and lore built from macros (`{{getvar}}` and the like), are not run; the import says what it left out.
+
+## Keep The Card You Already Use
+
+A card can be played as it is in RisuAI, without importing it into Aethrion. In [3. Set The Model](#3-set-the-model), set the request model to `aethrion-auto`. Whatever cast the server was started with, the card that comes in the request is the cast.
+
+- **Reading the card.** On a new card's first reply the model reads the card's prompt and first message once, and settles who the player meets (six at most) and each one's affinity and trust at the start. That is kept, so the same card is not read again. The server's console prints `Aethrion read a new card: ...`.
+- **Finding the chat again.** RisuAI's prompt changes from turn to turn as lorebook entries come and go. So the cast is found by the checkpoint in a reply's status block, not by the prompt, and before the first reply by the card's first message.
+- **The card's status window.** A card that prints a status window of its own keeps it. Where it shows something Aethrion tracks (trust, say), the model is told to use the number the rules computed. The rest is still the model's.
+- **Aethrion's status window.** Without the status module, the numbers and this turn's rulings show as plain lines at the end of the reply. For the box and the fold, import the status module from [4. Character Cards](#4-character-cards) and turn it on.
+- **Letter case.** On macOS the settings field may rewrite the name as `Aethrion-auto`. Case does not matter.
+
+Checked in the RisuAI desktop app 2026.8.250 with a raising-sim card that has its own status window and assets. Limits:
+
+- A narrator card where people turn up as the story goes follows only the people read at the start. A card with no fixed characters is read as one character named after the card.
+- What you get is affinity, trust, memories, and who saw what. There is no HP, fight, activity, or ending. For those, import the card as below, add them at `/editor`, and play with the request model `aethrion`.
+- `aethrion-auto-plain`, with no status block, reads the card again when the chat has been trimmed past its first message and the prompt has changed.
 
 ## 5. Play
 

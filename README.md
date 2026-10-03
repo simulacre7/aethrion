@@ -55,11 +55,40 @@ A real play in RisuAI's desktop app (Korean cast). The narration streams in as i
 
 <img src="assets/demo/risuai-campfire.jpg" alt="The campfire cast in RisuAI: narration, then a status window with this turn's changes in brackets" width="720">
 
+## Keep The Card You Already Use
+
+A card you already play in RisuAI needs no editing and no import. Set the request model to `aethrion-auto`.
+
+- On a new card's first reply, Aethrion reads the card once and takes the people in it and how each feels about the player at the start: an old friend starts high, a stranger at 0.
+- From then on the rules keep affinity, trust, memories, and who saw what. A reroll leaves the numbers alone.
+- The card's prompt, lorebook, assets, and its own status window work as before. Where the card's window shows something Aethrion tracks (trust, say), it shows the number the rules computed.
+
+Below is a raising-sim card published on RisuRealm, played unchanged in the RisuAI desktop app. Only the request model name was changed. The card's text and art are its maker's, so they are not shown, and the character's name is left out.
+
+```txt
+You:  It's all right, eat slowly. Nobody will take it from you.
+      the card's window   Trust 2% · Anger 10% · Awakening 10%
+      Aethrion            affinity 4 (+4) · trust 2 (+2)      read · said warmly
+You:  Why are you so slow? Hurry up.
+      the card's window   Trust 0% · Anger 12% · Awakening 10%
+      Aethrion            affinity -4 (-8) · trust -4 (-6)    read · said with hostility
+```
+
+The card's Trust follows Aethrion's trust (the card shows nothing below 0%). Anger and Awakening are not tracked by Aethrion, so the model still decides them. The lines were played in Korean and are translated here.
+
+Checked with a one-on-one card, a dating-sim card with a fixed set of people, and a raising-sim card with its own status window. Not there yet:
+
+- A narrator card where people turn up as the story goes (an open-world RPG, say) follows only the people read at the start.
+- What comes by itself is affinity, trust, and memories. HP, fights, and endings need [a cast made in the editor](docs/stories.md#building-a-world).
+- A new card's first turn costs one more model call, to read the card.
+
+More in the [RisuAI guide](docs/risuai.md#keep-the-card-you-already-use).
+
 ## Who It Is For
 
 | You are | Start here |
 | --- | --- |
-| A RisuAI or SillyTavern player or card maker | [Use Aethrion as a Custom API](docs/risuai.md): the status window comes with it, and your existing cards can be imported |
+| A RisuAI or SillyTavern player or card maker | [Use Aethrion as a Custom API](docs/risuai.md): keep your card with the request model `aethrion-auto`, or import it to add stats and endings |
 | Building a character chat app or a game | [Run it as an HTTP server](docs/embedding.md#chat-apps-and-games): one world per user, from any language |
 | An Elixir developer | [Embed the runtime](docs/embedding.md#embedding-aethrion) and write your own rules |
 

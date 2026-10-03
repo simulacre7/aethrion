@@ -723,8 +723,15 @@ defmodule Aethrion.API do
     end
   end
 
+  # A chat app's settings field may capitalize what is typed into it
+  # ("Aethrion-auto"), so the name is matched whatever its case.
   defp auto_model?(model) when is_binary(model),
-    do: model |> String.split(":", parts: 2) |> hd() |> String.starts_with?("aethrion-auto")
+    do:
+      model
+      |> String.split(":", parts: 2)
+      |> hd()
+      |> String.downcase()
+      |> String.starts_with?("aethrion-auto")
 
   defp auto_model?(_model), do: false
 
@@ -949,7 +956,7 @@ defmodule Aethrion.API do
          "model names a character the cast does not have: #{inspect(model)}"
        )}
     else
-      {:ok, to, not String.ends_with?(base, "-plain")}
+      {:ok, to, not String.ends_with?(String.downcase(base), "-plain")}
     end
   end
 
