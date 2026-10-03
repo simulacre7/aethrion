@@ -27,7 +27,7 @@ defmodule Aethrion.Bridge do
   which is taken out of the history the app sends back.
   """
 
-  alias Aethrion.{Combat, Event, Interpreter, Runtime, State}
+  alias Aethrion.{Combat, Event, Interpreter, Memories, Runtime, State}
 
   @status ~r/\s*<aethrion-status[^>]*>.*?<\/aethrion-status>\s*/s
   @checkpoint ~r/<aethrion-status id="([0-9a-f]{8,64})"/
@@ -513,7 +513,35 @@ defmodule Aethrion.Bridge do
       told ++
       changes(before, now) ++
       between_lines(now, turn) ++
-      moods(before, now)
+      moods(before, now) ++
+      remembered(before, now)
+  end
+
+  # What each character remembers about the player from before this turn,
+  # so the narration can recall it: what they lived through, saw, or heard,
+  # and the impressions faded memories left. The memories hold ids; the
+  # note names people.
+  defp remembered(before, now) do
+    for c <- people(now),
+        known = MapSet.new(Memories.for_character(before, c.id, include_faded: true), & &1.id),
+        memories =
+          now
+          |> Memories.relevant(c.id, focus: ["user"], limit: 3)
+          |> Enum.filter(&(&1.id in known and "user" in &1.related_characters)),
+        memories != [] do
+      "- #{c.name} remembers: " <> Enum.map_join(memories, "; ", &recalled(now, &1))
+    end
+  end
+
+  defp recalled(state, memory) do
+    how =
+      if memory.source,
+        do: "heard from #{State.name(state, memory.source)}",
+        else: to_string(memory.kind)
+
+    hours = max(state.clock - memory.created_tick, 0)
+    age = if hours == 0, do: "", else: ", #{hours} hours ago"
+    "#{named(state, String.trim(memory.content))} (#{how}#{age})"
   end
 
   # Line by line: who saw the player's words and gifts, who was not there
