@@ -472,7 +472,8 @@ defmodule Aethrion.Bridge do
 
   # The chain starts from the cast; a checkpoint keeps its root, so another
   # cast's checkpoints are never used.
-  defp root(state),
+  @doc false
+  def root(state),
     do:
       state
       |> State.to_data()
@@ -485,13 +486,25 @@ defmodule Aethrion.Bridge do
   @doc """
   The note for the model: what the rules decided this turn, and where things
   stand, as facts to narrate and not to change.
+
+  Options: `:card_status` (default false). A card the rules were not made
+  for (`Aethrion.Bridge.AutoCast`) may print a status window of its own;
+  with `card_status: true` the note leaves it to the card, and asks only
+  that what the rules track shows the rules' numbers there.
   """
-  @spec note(State.t(), State.t(), map(), :ko | :en) :: String.t()
-  def note(%State{} = before, %State{} = now, turn, locale \\ :ko) do
+  @spec note(State.t(), State.t(), map(), :ko | :en, keyword()) :: String.t()
+  def note(%State{} = before, %State{} = now, turn, locale \\ :ko, opts \\ []) do
     happened = happened(before, now, turn, locale)
 
+    window =
+      if Keyword.get(opts, :card_status, false),
+        do:
+          "and do not invent hits, heals, or endings beyond these. If the card asks for a status window or a format of its own, keep it as the card says; where it shows something listed here (how a character feels about the player), it shows these numbers, fitted to the card's scale. A separate window shows these rules' numbers, so do not print them a second time on your own.",
+        else:
+          "do not invent hits, heals, or endings beyond these, and do not print a status window: it is shown separately."
+
     """
-    [Aethrion: the game's rules, not the story, decide these. Narrate the next reply so it agrees with them; do not change any number, do not invent hits, heals, or endings beyond these, and do not print a status window: it is shown separately.]
+    [Aethrion: the game's rules, not the story, decide these. Narrate the next reply so it agrees with them; do not change any number, #{window}]
     #{if happened == [], do: "This turn: nothing the rules track changed.", else: "This turn:\n" <> Enum.join(happened, "\n")}
     Now:
     #{Enum.join(standing(now, locale), "\n")}
