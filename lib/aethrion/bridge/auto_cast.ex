@@ -125,7 +125,7 @@ defmodule Aethrion.Bridge.AutoCast do
         List the characters the player meets and talks to in this card, the main one first, at most #{@max_people}. The player (the user, {{user}}, or the persona the card describes as the player) is not one of them. Do not list characters only mentioned in passing. If the card is a narrator or a world with no fixed characters, list none.
 
         Answer as JSON:
-        {"title": "the card's name", "characters": [{"name": "as the card writes it", "profile": "one or two sentences: who they are and how they treat the player", "affinity": 0, "trust": 0}]}
+        {"title": "the card's name", "characters": [{"name": "as the first message writes it, or when it does not name them, as the card does", "profile": "one or two sentences, in the first message's language: who they are and how they treat the player", "affinity": 0, "trust": 0}]}
 
         affinity and trust are how the character feels about the player when the story starts, 0 to 100: 0 a stranger, 30 an acquaintance, 50 a close friend, 80 a lover or someone devoted. Use what the card says; when it does not say, 0.
         """
