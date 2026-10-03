@@ -128,15 +128,17 @@ A card can be played as it is in RisuAI, without importing it into Aethrion. In 
 
 - **Reading the card.** On a new card's first reply the model reads the card's prompt and first message once, and settles who the player meets (six at most) and each one's affinity and trust at the start. That is kept, so the same card is not read again. The server's console prints `Aethrion read a new card: ...`.
 - **Finding the chat again.** RisuAI's prompt changes from turn to turn as lorebook entries come and go. So the cast is found by the checkpoint in a reply's status block, not by the prompt, and before the first reply by the card's first message.
+- **People coming and going.** The model ends each reply with a line naming who is with the player now. Aethrion takes that line out of the reply, keeps it in the status block's opening tag (it is not shown), and reads the next line in that scene. Someone new joins the cast with affinity 0 and trust 0; someone not named is away and does not see what the player does. The status window lists who is there now. The cast grows to sixteen people at most.
 - **The card's status window.** A card that prints a status window of its own keeps it. Where it shows something Aethrion tracks (trust, say), the model is told to use the number the rules computed. The rest is still the model's.
 - **Aethrion's status window.** Without the status module, the numbers and this turn's rulings show as plain lines at the end of the reply. For the box and the fold, import the status module from [4. Character Cards](#4-character-cards) and turn it on.
 - **Letter case.** On macOS the settings field may rewrite the name as `Aethrion-auto`. Case does not matter.
 
 Checked in the RisuAI desktop app 2026.8.250 with a raising-sim card that has its own status window and assets. Limits:
 
-- A narrator card where people turn up as the story goes follows only the people read at the start. A card with no fixed characters is read as one character named after the card.
+- A line said on the turn someone first appears is not read as said to them; from the turn after the model has named them, it is. A card with no fixed characters starts with no one.
+- Who comes in depends on the line the model writes. When the model leaves it out, the scene stays as it was.
 - What you get is affinity, trust, memories, and who saw what. There is no HP, fight, activity, or ending. For those, import the card as below, add them at `/editor`, and play with the request model `aethrion`.
-- `aethrion-auto-plain`, with no status block, reads the card again when the chat has been trimmed past its first message and the prompt has changed.
+- `aethrion-auto-plain`, with no status block, has nowhere to carry the scene, so no one joins; and it reads the card again when the chat has been trimmed past its first message and the prompt has changed.
 
 ## 5. Play
 

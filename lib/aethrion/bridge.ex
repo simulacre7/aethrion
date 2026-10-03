@@ -128,7 +128,8 @@ defmodule Aethrion.Bridge do
     to = Keyword.get(opts, :to, "")
     checkpoints = opts |> Keyword.get(:checkpoints) |> as_json()
     root = root(state)
-    turns = turns(chat, Keyword.get(opts, :scenes, false))
+    scenes? = Keyword.get(opts, :scenes, false)
+    turns = turns(chat, scenes?)
 
     {pending, from, id, talking} =
       with {index, id, %{state: {:data, data}} = checkpoint} <-
@@ -156,7 +157,7 @@ defmodule Aethrion.Bridge do
             acc
 
           %{line: _line} = turn, {state, prev, talking} ->
-            played = line_step(state, turn, prev, talking, read, put)
+            played = line_step(state, turn, prev, talking, read, put, scenes?)
             {played.state, played.id, played.talking}
         end)
 
@@ -165,7 +166,7 @@ defmodule Aethrion.Bridge do
       {after_all, turn, _talking} =
         Enum.reduce(unanswered, {now, turn, talking}, fn %{line: line} = said,
                                                          {state, turn, talking} ->
-          played = line_step(state, said, turn.id, talking, read, put)
+          played = line_step(state, said, turn.id, talking, read, put, scenes?)
 
           {played.state,
            %{
@@ -184,7 +185,7 @@ defmodule Aethrion.Bridge do
   # One line of the player's: read as said to whoever they are talking to,
   # seen by whoever is there, then the turn's hours pass. Who they talk to
   # next is whoever the line called.
-  defp line_step(state, %{line: line} = said, prev, talking, read, put) do
+  defp line_step(state, %{line: line} = said, prev, talking, read, put, scenes?) do
     {state, chain, talking} = in_scene(state, Map.get(said, :scene), prev, talking)
     # With no one in the cast yet there is nothing to read the line as.
     readings = if people(state) == [], do: [], else: read.(state, line, chain, talking)
@@ -216,8 +217,9 @@ defmodule Aethrion.Bridge do
         line: line,
         targets: targets,
         seen_by: seen_by -- targets,
-        # Words to someone away reach them from afar.
-        away: away -- targets,
+        # Words to someone away reach them from afar. A story told in
+        # scenes leaves most of its people behind, so they are not listed.
+        away: if(scenes?, do: [], else: away -- targets),
         back: Enum.filter(away, &(State.stat(after_line, &1, "away") == 0)),
         refused: refused
       }

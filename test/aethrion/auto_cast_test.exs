@@ -298,8 +298,7 @@ defmodule Aethrion.AutoCastTest do
         ask(base, [first, reply(one), second, reply(two), third, reply(three), fourth], card)
 
       assert four =~ ~r/켄지 · 호감 \d+ \(\+\d+\)/
-      refute four =~ "하루카 · 호감"
-      assert four =~ "모름 · 하루카 (자리에 없음)"
+      refute status(four) =~ "하루카"
       assert card_reads() == 1
     end
 

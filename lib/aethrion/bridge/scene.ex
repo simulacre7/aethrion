@@ -27,6 +27,8 @@ defmodule Aethrion.Bridge.Scene do
   @max_people 16
   @max_name 40
   @max_profile 160
+  # The player is not someone in the scene, whatever the model calls them.
+  @player ["user", "{{user}}", "the user", "player", "the player", "you", "나", "플레이어", "유저"]
 
   @typedoc "Someone in a scene: a name, and for someone new a few words on who they are."
   @type entry :: %{name: String.t(), profile: String.t()}
@@ -152,7 +154,7 @@ defmodule Aethrion.Bridge.Scene do
 
       %{name: clean(name, @max_name), profile: clean(profile, @max_profile)}
     end)
-    |> Enum.reject(&(&1.name == ""))
+    |> Enum.reject(&(&1.name == "" or key(&1.name) in @player))
     |> Enum.uniq_by(&key(&1.name))
     |> Enum.take(@max_entries)
   end

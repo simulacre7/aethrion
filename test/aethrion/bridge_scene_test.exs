@@ -35,6 +35,11 @@ defmodule Aethrion.BridgeSceneTest do
                Scene.take("The bus stops.\n<aethrion-scene>Haruka")
     end
 
+    test "the player is not someone in the scene" do
+      assert {"", [%{name: "Haruka"}]} =
+               Scene.take("<aethrion-scene>{{user}}\nThe Player\n나\nHaruka</aethrion-scene>")
+    end
+
     test "an empty line is a scene with no one; no line is no scene" do
       assert Scene.take("Alone.<aethrion-scene></aethrion-scene>") == {"Alone.", []}
       assert Scene.take("Alone.") == {"Alone.", nil}
