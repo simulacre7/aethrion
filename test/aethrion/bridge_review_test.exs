@@ -537,6 +537,24 @@ defmodule Aethrion.BridgeReviewTest do
       assert get.("localhost:4848", "") == 200
       # RisuAI in Docker calls the host by this name.
       assert get.("host.docker.internal:4848", "") == 200
+      # A Compose service name is not this machine's unless the server allows it.
+      assert get.("aethrion:4848", "") == 403
+    end
+
+    test "a name the server allows reaches it without a token" do
+      allowed =
+        start_supervised!(
+          {API,
+           worlds: Worlds.Test.BridgeReview, port: 0, cast: den(), allow_hosts: ["Aethrion"]},
+          id: :allowed
+        )
+
+      base = "http://127.0.0.1:#{API.port(allowed)}"
+      get = &raw(base, "GET /v1/models HTTP/1.1\r\nHost: #{&1}\r\nConnection: close\r\n\r\n")
+
+      assert get.("aethrion:4848") == 200
+      assert get.("localhost:4848") == 200
+      assert get.("risuai:6001") == 403
     end
 
     test "a card added with a story of null, or an id the cast cannot have, is not a 500", %{

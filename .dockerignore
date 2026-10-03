@@ -1,0 +1,13 @@
+_build
+deps
+cover
+doc
+tmp
+bench
+notebooks
+assets
+.git
+.github
+.elixir_ls
+erl_crash.dump
+.env

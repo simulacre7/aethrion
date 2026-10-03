@@ -1,0 +1,41 @@
+# Aethrion for RisuAI's desktop app or SillyTavern, with no Elixir to install.
+# (RisuAI's web app cannot reach a server on your computer; see docs/risuai.md.)
+#
+#   cp .env.example .env    # set AETHRION_TOKEN and your model's address and key
+#   docker compose up -d
+#
+# Then in RisuAI: Settings -> Bot Settings -> Model: Custom API,
+#   URL: http://localhost:4848/v1, Key/Password: your AETHRION_TOKEN (an access
+#   password for this server, not a model token: it costs nothing),
+#   Request Model: aethrion, Format: OpenAI Compatible (docs/risuai.md).
+# Aethrion's own chat page and cast editor: http://localhost:4848
+#
+# Only this computer can reach the port. The token keeps other websites you
+# open in the browser from using the server and the model behind it.
+name: aethrion
+
+services:
+  aethrion:
+    image: ghcr.io/simulacre7/aethrion:latest
+    build: .
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${AETHRION_PORT:-4848}:4848"
+    environment:
+      AETHRION_TOKEN: ${AETHRION_TOKEN:?set AETHRION_TOKEN in .env (any long random string)}
+      AETHRION_LLM_BASE_URL: ${AETHRION_LLM_BASE_URL:-}
+      AETHRION_LLM_API_KEY: ${AETHRION_LLM_API_KEY:-}
+      AETHRION_LLM_MODEL: ${AETHRION_LLM_MODEL:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    command:
+      - --cast
+      - priv/casts/${AETHRION_CAST:-campfire}.json
+      - --locale
+      - ${AETHRION_LOCALE:-ko}
+      - --llm
+      - ${AETHRION_LLM:-openai}
+    volumes:
+      - aethrion-data:/data
+
+volumes:
+  aethrion-data:

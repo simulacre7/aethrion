@@ -52,16 +52,25 @@ Doyun saw the necklace, so he grows jealous and sends word to Harin, who is out 
 
 ## Quick Start
 
-You need Elixir 1.19+ and Erlang/OTP 28+ (`brew install elixir` on macOS). No database or vector store is needed, and a model is optional.
+**With Docker, no Elixir needed.** It works with RisuAI's desktop app or SillyTavern (RisuAI's web app cannot reach a server on your computer):
 
 ```bash
 git clone https://github.com/simulacre7/aethrion && cd aethrion
+cp .env.example .env     # an access password, and your model: OpenRouter, the Claude API, Ollama, ...
+docker compose up -d
+```
+
+Then point RisuAI's Custom API at `http://localhost:4848/v1`, with the access password as its key ([step by step](docs/risuai.md#the-quick-way-docker)). Aethrion's own chat page and cast editor are at http://localhost:4848.
+
+**With Elixir** (1.19+ and Erlang/OTP 28+; `brew install elixir` on macOS). No database or vector store is needed, and a model is optional.
+
+```bash
 mix deps.get
 mix demo.drama      # two events in, a small social drama out; no model needed
 mix aethrion.serve --cast priv/casts/campfire.json --locale ko --llm claude
 ```
 
-Then open http://localhost:4848 to chat, or http://localhost:4848/editor to edit the cast. To play in RisuAI instead, point it at `http://localhost:4848/v1` ([setup](docs/risuai.md)).
+Then open http://localhost:4848 to chat, or http://localhost:4848/editor to edit the cast, or point RisuAI at `http://localhost:4848/v1` ([setup](docs/risuai.md)).
 
 `--llm` picks the narrator:
 

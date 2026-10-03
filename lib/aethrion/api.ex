@@ -59,6 +59,8 @@ defmodule Aethrion.API do
   - `:port` (default 4848; 0 picks a free port, see `port/1`)
   - `:bind` (default `"127.0.0.1"`) - the address to listen on
   - `:token` - when set, requests need `Authorization: Bearer <token>`
+  - `:allow_hosts` - names besides this machine's that may reach the server
+    without a token, such as a Docker Compose service name (`["aethrion"]`)
   - `:intent` - options for interpreting `say` text (`:adapter`,
     `:adapter_opts`), default `Aethrion.LLM.FakeAdapter`
   - `:render_timeout` (ms, default 15_000)
@@ -112,6 +114,7 @@ defmodule Aethrion.API do
       worlds: worlds,
       bind: bind,
       token: Keyword.get(opts, :token),
+      allow_hosts: opts |> Keyword.get(:allow_hosts, []) |> Enum.map(&String.downcase/1),
       intent: Keyword.get(opts, :intent, []),
       interpreter: Keyword.get(opts, :interpreter, Aethrion.Interpreter.Rules),
       interpreter_opts: Keyword.get(opts, :interpreter_opts, []),
@@ -249,7 +252,8 @@ defmodule Aethrion.API do
     name = URI.parse("http://" <> host).host || ""
 
     name in @local_names or String.ends_with?(name, ".localhost") or
-      loopback?(name) or name == address(Map.get(config, :bind))
+      loopback?(name) or name == address(Map.get(config, :bind)) or
+      String.downcase(name) in Map.get(config, :allow_hosts, [])
   end
 
   defp route("GET", ["health"]), do: {:ok, :health}

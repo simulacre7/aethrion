@@ -24,3 +24,6 @@ aethrion-*.tar
 
 # Generated intermediate demo render.
 /assets/demo/interactive-demo.gif
+
+# Local settings for compose.yaml (model keys).
+.env
