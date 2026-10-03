@@ -68,7 +68,7 @@ cp .env.example .env     # an access password, and your model: OpenRouter, the C
 docker compose up -d
 ```
 
-Then open http://localhost:4848 and click **RisuAI**: it shows the values to copy and downloads the character card. Point RisuAI's Custom API at `http://localhost:4848/v1`, with the access password as its key ([step by step](docs/risuai.md#the-quick-way-docker)). Tested with RisuAI's desktop app 2026.8.250 on macOS.
+Then open http://localhost:4848 and click **RisuAI**: it shows the values to copy and downloads the character card. Point RisuAI's Custom API at `http://localhost:4848/v1`, with the access password as its key ([step by step](docs/risuai.md#the-quick-way-docker)). Tested with RisuAI's desktop app 2026.8.250 on macOS and SillyTavern 1.19.0.
 
 **With Elixir** (1.19+ and Erlang/OTP 28+; `brew install elixir` on macOS). No database or vector store is needed, and a model is optional.
 
