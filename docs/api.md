@@ -364,7 +364,7 @@ How fighters feel about each other changes the fight (`combat` tuning in parenth
 | `POST` | `/casts/simulate` | `{"cast", "routes": [{"name", "to", "days", "script"}]}`; 1 to 8 routes of 1 to 120 days; at most 2 at once (429), 10 s each (503) | `{"routes": [...]}` |
 | `POST` | `/casts/import-card` | `{"file": base64}` (PNG, JSON, CHARX, or RisuRealm JPEG bytes) or `{"card": {...}}`, with `"into"` (a cast to add it to; it and the result must be valid casts, else 400 `invalid_cast`), `"player"`, `"id"`; up to 4 MiB, and a CHARX's `card.json` up to 16 MB unpacked | `{"cast", "notes"}` (`Aethrion.Card`) |
 | `GET` | `/casts/card` | `name`, `greeting`? | the server's cast as a V3 narrator card, with the status window's RisuAI regex script |
-| `POST` | `/v1/chat/completions` | an OpenAI chat request: `model` (`aethrion`, `aethrion-plain`, or either with `:character`), `messages`, `max_tokens`?, `temperature`?, `stream`? | an OpenAI chat completion, or one server-sent event with `[DONE]`; see below |
+| `POST` | `/v1/chat/completions` | an OpenAI chat request: `model` (`aethrion`, `aethrion-plain`, or either with `:character`; `aethrion-auto` and `aethrion-auto-plain` read the cast from the card in the request), `messages`, `max_tokens`?, `temperature`?, `stream`? | an OpenAI chat completion, or one server-sent event with `[DONE]`; see below |
 | `GET` | `/v1/models` | | the model names, one per character who is not a foe |
 | `GET` | `/worlds/{key}/replies` | `character`, `person`? | `{"replies": [{"text", "tone"}]}` |
 | `GET` | `/worlds/{key}/story` | | `{"reached": ending \| null, "endings": progress}` |

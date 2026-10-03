@@ -168,12 +168,13 @@ defmodule Mix.Tasks.Aethrion.Serve do
       |> Enum.map(&String.trim/1)
       |> Enum.reject(&(&1 == ""))
 
-  # For the OpenAI-compatible route: what chat lines were read as, and the
-  # world after each turn.
+  # For the OpenAI-compatible route: what chat lines were read as, the
+  # world after each turn, and the casts read from cards (`aethrion-auto`).
   defp start_bridge_stores(data) do
     for {name, file} <- [
           {Aethrion.Bridge.Readings, "bridge-readings.jsonl"},
-          {Aethrion.Bridge.Checkpoints, "bridge-checkpoints.jsonl"}
+          {Aethrion.Bridge.Checkpoints, "bridge-checkpoints.jsonl"},
+          {Aethrion.Bridge.Casts, "bridge-casts.jsonl"}
         ] do
       {:ok, _store} = Aethrion.Bridge.Store.start_link(name: name, path: Path.join(data, file))
     end

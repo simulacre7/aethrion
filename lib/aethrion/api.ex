@@ -358,6 +358,9 @@ defmodule Aethrion.API do
           character <- [nil | Enum.map(talkers(config.cast || %State{}), & &1.id)],
           do: if(character, do: model <> ":" <> character, else: model)
 
+    # The cast read from the card in each request.
+    ids = ids ++ ["aethrion-auto", "aethrion-auto-plain"]
+
     {:ok, 200,
      %{object: "list", data: Enum.map(ids, &%{id: &1, object: "model", owned_by: "aethrion"})}}
   end
@@ -365,30 +368,39 @@ defmodule Aethrion.API do
   defp run(config, :openai_chat, _query, body) do
     with {:ok, data} <- decode(body),
          {:ok, messages} <- chat_messages(data),
-         {:ok, cast} <- bridge_cast(config),
-         {:ok, adapter, adapter_opts} <- generator(config),
-         {:ok, to, status?} <- bridge_model(cast, data["model"]) do
+         {:ok, adapter, adapter_opts} <- generator(config) do
       # What this turn reads and reaches is kept only once its reply has
       # gone out: a turn that was answered then replays the same, whatever
       # the model would read now, and a failed one leaves nothing behind.
-      {readings, commit_readings, discard_readings} =
-        Aethrion.Bridge.Store.staged(Aethrion.Bridge.Readings)
+      staged =
+        for name <- [
+              Aethrion.Bridge.Readings,
+              Aethrion.Bridge.Checkpoints,
+              Aethrion.Bridge.Casts
+            ],
+            do: Aethrion.Bridge.Store.staged(name)
 
-      {checkpoints, commit_checkpoints, discard_checkpoints} =
-        Aethrion.Bridge.Store.staged(Aethrion.Bridge.Checkpoints)
+      [readings, checkpoints, casts] = Enum.map(staged, &elem(&1, 0))
 
       try do
-        bridge_turn(config, data, messages, cast, %{
-          to: to,
-          status?: status?,
-          generator: {adapter, adapter_opts},
-          readings: readings,
-          checkpoints: checkpoints,
-          commit: fn -> Enum.each([commit_readings, commit_checkpoints], & &1.()) end
-        })
+        with {:ok, cast} <-
+               bridge_cast(config, data, messages, {adapter, adapter_opts}, %{
+                 casts: casts,
+                 checkpoints: checkpoints
+               }),
+             {:ok, to, status?} <- bridge_model(cast, data["model"]) do
+          bridge_turn(config, data, messages, cast, %{
+            to: to,
+            status?: status?,
+            generator: {adapter, adapter_opts},
+            readings: readings,
+            checkpoints: checkpoints,
+            commit: fn -> Enum.each(staged, &elem(&1, 1).()) end
+          })
+        end
       after
         # Whatever was not committed (a failed reply, an error) is dropped.
-        Enum.each([discard_readings, discard_checkpoints], & &1.())
+        Enum.each(staged, &elem(&1, 2).())
       end
     end
   end
@@ -672,10 +684,56 @@ defmodule Aethrion.API do
   defp chat_messages(_data),
     do: {:error, 400, Error.new(:invalid_request, "messages is required")}
 
-  defp bridge_cast(%{cast: %State{} = cast}), do: {:ok, cast}
+  # The cast a request plays: the server's, or for `aethrion-auto` the one
+  # read from the card in the request (`Aethrion.Bridge.AutoCast`), once
+  # for each card.
+  defp bridge_cast(config, data, messages, {adapter, adapter_opts}, stores) do
+    if auto_model?(data["model"]) do
+      {all, chat} = Aethrion.Bridge.transcript(messages)
+      card = Aethrion.Bridge.AutoCast.card(all, chat)
 
-  defp bridge_cast(_config),
-    do: {:error, 400, Error.new(:no_cast, "start the server with --cast to use it as a model")}
+      case Aethrion.Bridge.AutoCast.find(chat, card, stores) do
+        %State{} = cast ->
+          {:ok, cast}
+
+        nil ->
+          started = System.monotonic_time(:millisecond)
+          opts = adapter_opts ++ [locale: config.locale, max_tokens: 1_500]
+
+          case Aethrion.Bridge.AutoCast.read(card, stores.casts, adapter, opts) do
+            {:ok, cast} ->
+              names = Enum.map_join(State.sorted_characters(cast), ", ", & &1.name)
+              took = seconds(System.monotonic_time(:millisecond) - started)
+              Logger.info("Aethrion read a new card: #{names} · #{took}")
+              {:ok, cast}
+
+            {:error, reason} ->
+              {:error, 502,
+               Error.new(:model_failed, "the model could not read the card: #{inspect(reason)}")}
+          end
+      end
+    else
+      case config do
+        %{cast: %State{} = cast} ->
+          {:ok, cast}
+
+        _config ->
+          {:error, 400, Error.new(:no_cast, "start the server with --cast to use it as a model")}
+      end
+    end
+  end
+
+  # A chat app's settings field may capitalize what is typed into it
+  # ("Aethrion-auto"), so the name is matched whatever its case.
+  defp auto_model?(model) when is_binary(model),
+    do:
+      model
+      |> String.split(":", parts: 2)
+      |> hd()
+      |> String.downcase()
+      |> String.starts_with?("aethrion-auto")
+
+  defp auto_model?(_model), do: false
 
   defp generator(%{intent: intent}) when is_list(intent) do
     case Keyword.get(intent, :adapter) do
@@ -707,7 +765,13 @@ defmodule Aethrion.API do
     with {:ok, {before, now, turn}} <-
            replay_chat(cast, chat, read, turn_opts.to, turn_opts.checkpoints) do
       replayed = System.monotonic_time(:millisecond)
-      note = %{"role" => "system", "content" => Aethrion.Bridge.note(before, now, turn, locale)}
+      # A card read on the way in keeps its own status window.
+      note = %{
+        "role" => "system",
+        "content" =>
+          Aethrion.Bridge.note(before, now, turn, locale, card_status: auto_model?(data["model"]))
+      }
+
       messages = all ++ [note]
       opts = adapter_opts ++ generation_opts(data)
 
@@ -892,7 +956,7 @@ defmodule Aethrion.API do
          "model names a character the cast does not have: #{inspect(model)}"
        )}
     else
-      {:ok, to, base != "aethrion-plain"}
+      {:ok, to, not String.ends_with?(String.downcase(base), "-plain")}
     end
   end
 
