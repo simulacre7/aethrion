@@ -180,10 +180,17 @@ curl -s -H "Authorization: Bearer $AETHRION_TOKEN" 'localhost:4848/casts/card?na
 
 ## SillyTavern
 
-SillyTavern도 같은 방식으로 붙습니다. API를 Chat Completion → Custom (OpenAI-compatible)으로 두고, 엔드포인트 `http://localhost:4848/v1`, 모델 `aethrion`을 입력합니다. 상태창은 Regex 확장에 스크립트를 하나 추가해 그립니다.
+SillyTavern 1.19.0에서 확인했습니다. 표지와 로어북이 들어간 카드, 스트리밍, 상태창이 모두 되고, 스와이프해도 숫자가 그대로입니다.
 
-- Find Regex: `/<aethrion-status[^>]*>([\s\S]*?)<\/aethrion-status>/g`
-- Replace With: `<div style="white-space:pre-line">$1</div>`
-- Affects: AI Output, Other Options: Alter Chat Display
+1. **연결:** API Connections → API: Chat Completion → Chat Completion Source: Custom (OpenAI-compatible)로 두고 아래를 넣습니다.
+   - Custom Endpoint: `http://localhost:4848/v1`
+   - Custom API Key: 접속 비밀번호
+   - Model ID: `aethrion`
+   - Connect를 누릅니다. "Valid"가 뜨고 모델 목록이 나오면 Aethrion에 닿은 것입니다.
+2. **카드:** 채팅 페이지의 **RisuAI** 패널에서 PNG 카드를 받아 캐릭터로 가져옵니다(Import Character, 또는 `data/default-user/characters/`에 파일을 넣기). 포함된 로어북을 가져올지 물으면 예를 누릅니다.
+3. **상태창:** Regex 확장에서 전역 스크립트를 하나 추가합니다.
+   - Find Regex: `/<aethrion-status[^>]*>([\s\S]*?)<\/aethrion-status>/g`
+   - Replace With: `<div style="white-space:pre-line;border:1px solid rgba(127,127,127,.35);border-radius:10px;padding:8px 12px;margin-top:10px">$1</div>`
+   - Affects: AI Output, Other Options: Alter Chat Display
 
-SillyTavern 연결은 OpenAI 호환 요청 형식만 맞춘 것으로, RisuAI만큼 시험하지는 않았습니다.
+SillyTavern의 Chat Completion은 기본으로 스트리밍이 켜져 있습니다.

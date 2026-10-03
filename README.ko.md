@@ -68,7 +68,7 @@ cp .env.example .env     # 접속 비밀번호, 그리고 모델: OpenRouter, Cl
 docker compose up -d
 ```
 
-그다음 http://localhost:4848 을 열고 **RisuAI** 버튼을 누르면 연결에 필요한 값과 캐릭터 카드가 나옵니다. RisuAI의 Custom API를 `http://localhost:4848/v1`로 두고, Key 칸에 접속 비밀번호를 넣으면 됩니다([자세한 순서](docs/risuai.ko.md#가장-쉬운-방법-docker)). 검증한 환경은 macOS의 RisuAI 데스크톱 2026.8.250입니다.
+그다음 http://localhost:4848 을 열고 **RisuAI** 버튼을 누르면 연결에 필요한 값과 캐릭터 카드가 나옵니다. RisuAI의 Custom API를 `http://localhost:4848/v1`로 두고, Key 칸에 접속 비밀번호를 넣으면 됩니다([자세한 순서](docs/risuai.ko.md#가장-쉬운-방법-docker)). 검증한 환경은 macOS의 RisuAI 데스크톱 2026.8.250과 SillyTavern 1.19.0입니다.
 
 **Elixir로** (Elixir 1.19 이상, Erlang/OTP 28 이상. macOS는 `brew install elixir`). 데이터베이스는 필요 없습니다.
 

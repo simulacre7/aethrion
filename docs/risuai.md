@@ -180,10 +180,17 @@ Give Sera a necklace and Doyun, who sees it, grows jealous and sends word to Har
 
 ## SillyTavern
 
-SillyTavern connects the same way: API Chat Completion → Custom (OpenAI-compatible), endpoint `http://localhost:4848/v1`, model `aethrion`. Draw the status window with a script in the Regex extension:
+Tested with SillyTavern 1.19.0: the card with its cover and lorebook, streaming, the status window, and swipes, which keep the numbers.
 
-- Find Regex: `/<aethrion-status[^>]*>([\s\S]*?)<\/aethrion-status>/g`
-- Replace With: `<div style="white-space:pre-line">$1</div>`
-- Affects: AI Output; Other Options: Alter Chat Display
+1. **Connect.** API Connections → API: Chat Completion → Chat Completion Source: Custom (OpenAI-compatible).
+   - Custom Endpoint `http://localhost:4848/v1`
+   - Custom API Key: the access password
+   - Model ID `aethrion`
+   - Click Connect. "Valid" and the model list mean it reached Aethrion.
+2. **The card.** Download the PNG card from the chat page's **RisuAI** panel, and import it as a character (Import Character, or drop the file into `data/default-user/characters/`). When SillyTavern asks to import the embedded lorebook, say yes.
+3. **The status window.** In the Regex extension, add a global script:
+   - Find Regex: `/<aethrion-status[^>]*>([\s\S]*?)<\/aethrion-status>/g`
+   - Replace With: `<div style="white-space:pre-line;border:1px solid rgba(127,127,127,.35);border-radius:10px;padding:8px 12px;margin-top:10px">$1</div>`
+   - Affects: AI Output; Other Options: Alter Chat Display
 
-The SillyTavern side follows the OpenAI-compatible request format and has not been tested as RisuAI has.
+Streaming is on by default in SillyTavern's Chat Completion settings.
