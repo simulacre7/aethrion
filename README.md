@@ -9,9 +9,9 @@
 
 Aethrion keeps the facts of an AI role-play in deterministic rules: affinity and trust, HP and dice, who saw what, who told whom, and which ending you are heading for. Any model then narrates the result. Use it as the Custom API in RisuAI or SillyTavern, or put it behind your own chat app or game.
 
-![The same attack rerolled three times in SillyTavern: the narration changes, the status window and this turn's dice rolls do not](assets/demo/swipes.gif)
+![One turn rerolled three times in RisuAI: the narration changes, the status window and this turn's dice rolls do not](assets/demo/swipes.gif)
 
-<sub>One turn of the Korean campfire cast, swiped (regenerated) three times in SillyTavern. The last frame unfolds "this turn's rulings" under the status window.</sub>
+<sub>One turn of the Korean campfire cast, rerolled three times in the RisuAI desktop app. The last frame unfolds "this turn's rulings" under the status window.</sub>
 
 <sub>Pronounced ay-three-on (에이트리온). A personal project, not affiliated with RisuAI or SillyTavern. MIT licensed, early alpha.</sub>
 
