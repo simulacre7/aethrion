@@ -688,25 +688,28 @@ defmodule Aethrion.Bridge do
   checkpoint id.
   """
   @spec status(State.t(), map(), :ko | :en) :: String.t()
-  def status(%State{} = state, turn, locale \\ :ko) do
+  def status(%State{} = state, turn, locale \\ :ko, before \\ nil) do
     words = words(locale)
 
     people =
       for character <- State.sorted_characters(state),
           State.stat(state, character.id, "enemy") == 0,
           rel = State.get_relationship(state, character.id, "user") do
-        "#{character.name} · #{words.affinity} #{rel.affinity} · #{words.trust} #{rel.trust}" <>
-          hp_short(state, character.id)
+        was = before && State.get_relationship(before, character.id, "user")
+
+        "#{character.name} · #{words.affinity} #{rel.affinity}#{change(was && was.affinity, rel.affinity)}" <>
+          " · #{words.trust} #{rel.trust}#{change(was && was.trust, rel.trust)}" <>
+          hp_short(state, character.id, before) <> watched(state, character.id, before, locale)
       end
 
     foes =
       for id <- Enum.sort(Map.keys(state.stats)), State.stat(state, id, "enemy") > 0 do
-        "#{State.name(state, id)}" <> hp_short(state, id)
+        "#{State.name(state, id)}" <> hp_short(state, id, before)
       end
 
     player =
       if State.stat?(state, "user", "hp"),
-        do: ["#{words.you}" <> hp_short(state, "user")],
+        do: ["#{words.you}" <> hp_short(state, "user", before)],
         else: []
 
     events =
@@ -726,17 +729,72 @@ defmodule Aethrion.Bridge do
           end)
       end)
 
-    lines = player ++ people ++ foes ++ between ++ events
+    lines = day(state, locale) ++ player ++ people ++ foes ++ between ++ events
 
     open = if turn[:id], do: ~s(<aethrion-status id="#{turn.id}">), else: "<aethrion-status>"
     open <> Enum.map_join(lines, "\n", &escape/1) <> "</aethrion-status>"
   end
 
-  defp hp_short(state, id) do
-    if State.stat?(state, id, "hp"),
-      do: " · HP #{State.stat(state, id, "hp")}/#{State.stat(state, id, "max_hp")}",
-      else: ""
+  defp hp_short(state, id, before) do
+    if State.stat?(state, id, "hp") do
+      hp = State.stat(state, id, "hp")
+      was = if before && State.stat?(before, id, "hp"), do: State.stat(before, id, "hp")
+      " · HP #{hp}/#{State.stat(state, id, "max_hp")}#{change(was, hp)}"
+    else
+      ""
+    end
   end
+
+  # The other numbers that matter for someone: stats the cast names in its
+  # labels or its story's conditions watch ("그림 실력 24"), and feelings the
+  # conditions watch ("스트레스 30"). HP has its own place.
+  defp watched(state, id, before, locale) do
+    story = state.story
+    labels = Map.get(story, :labels, %{})
+    watch = Aethrion.Story.watched(story)
+    stats = Map.get(state.stats, id, %{})
+
+    shown =
+      for {name, value} <- Enum.sort(stats),
+          name not in ["hp", "max_hp"],
+          Map.has_key?(labels, name) or {id, name} in watch.stats,
+          value != 0 or {id, name} in watch.stats,
+          do: {Map.get(labels, name, name), value, before && State.stat(before, id, name)}
+
+    feelings =
+      for {^id, field} <- watch.fields,
+          now = feeling(state, id, field),
+          now != nil,
+          do:
+            {Map.get(labels, field, Aethrion.Story.field_name(field, locale)), now,
+             before && feeling(before, id, field)}
+
+    Enum.map_join(shown ++ feelings, "", fn {label, now, was} ->
+      " · #{label} #{now}#{change(was, now)}"
+    end)
+  end
+
+  defp feeling(state, id, field) do
+    case Map.get(state.characters, id) do
+      nil -> nil
+      character -> Map.get(character.state, String.to_existing_atom(field))
+    end
+  end
+
+  # A story with a deadline counts days, the way a raising sim does.
+  defp day(%State{story: %{deadline: deadline}} = state, locale) when is_integer(deadline) do
+    passed = div(state.clock, 24)
+    total = div(deadline, 24)
+    if locale == :ko, do: ["#{passed}일째 / #{total}일"], else: ["Day #{passed} of #{total}"]
+  end
+
+  defp day(_state, _locale), do: []
+
+  # What this turn changed, next to the number: "50 (+10)".
+  defp change(nil, _now), do: ""
+  defp change(was, was), do: ""
+  defp change(was, now) when now > was, do: " (+#{now - was})"
+  defp change(was, now), do: " (#{now - was})"
 
   defp words(:ko), do: %{affinity: "호감", trust: "신뢰", tension: "긴장", you: "나"}
   defp words(_en), do: %{affinity: "affinity", trust: "trust", tension: "tension", you: "You"}

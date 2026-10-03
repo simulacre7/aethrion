@@ -91,6 +91,71 @@ defmodule Aethrion.LLM.Anthropic do
   alternating and starting with the user.
   """
   def chat(messages, opts \\ []) do
+    {system, turns} = conversation(messages)
+    with {:ok, config} <- config(opts), do: create_message(config, system, turns)
+  end
+
+  @doc """
+  Like `chat/2`, streamed: `on_delta` gets each piece of text as the API
+  sends it. Returns the whole reply.
+  """
+  def stream_chat(messages, opts, on_delta) do
+    {system, turns} = conversation(messages)
+
+    with {:ok, config} <- config(opts) do
+      body = config |> request_body(system, turns) |> Map.put(:stream, true)
+
+      read = fn data, acc ->
+        case Jason.decode(data) do
+          {:ok,
+           %{
+             "type" => "content_block_delta",
+             "delta" => %{"type" => "text_delta", "text" => text}
+           }}
+          when is_binary(text) ->
+            on_delta.(text)
+            %{acc | text: [acc.text, text]}
+
+          {:ok, %{"type" => "message_delta", "delta" => %{"stop_reason" => "refusal"}}} ->
+            %{acc | error: {:refusal, nil}}
+
+          {:ok, %{"type" => "error", "error" => %{"type" => type} = error}} ->
+            %{acc | error: {:api_error, 200, type, Map.get(error, "message")}}
+
+          _other ->
+            acc
+        end
+      end
+
+      case HTTP.stream_post(
+             url(config),
+             headers(config),
+             body,
+             config.timeout,
+             %{text: [], error: nil},
+             read
+           ) do
+        {:ok, %{error: error}, _body} when error != nil ->
+          {:error, error}
+
+        {:ok, %{text: text}, _body} ->
+          case IO.iodata_to_binary(text) do
+            "" -> {:error, :empty_response}
+            text -> {:ok, text}
+          end
+
+        {:error, {:http_status, status, %{"error" => %{"type" => type} = error}}} ->
+          {:error, {:api_error, status, type, Map.get(error, "message")}}
+
+        {:error, reason} ->
+          {:error, reason}
+      end
+    end
+  end
+
+  # System messages become the system prompt, and turns of the same role
+  # are joined, as the API wants them alternating and starting with the user.
+  defp conversation(messages) do
     {system, rest} = Enum.split_with(messages, &(&1["role"] == "system"))
 
     turns =
@@ -113,9 +178,7 @@ defmodule Aethrion.LLM.Anthropic do
           turns
       end)
 
-    with {:ok, config} <- config(opts) do
-      create_message(config, Enum.map_join(system, "\n\n", & &1["content"]), turns)
-    end
+    {Enum.map_join(system, "\n\n", & &1["content"]), turns}
   end
 
   @doc "Returns true when an API key can be resolved."
@@ -157,14 +220,17 @@ defmodule Aethrion.LLM.Anthropic do
     if fallbacks?(config), do: Map.put(body, :fallbacks, "default"), else: body
   end
 
-  defp create_message(config, system, content) do
-    headers =
+  defp headers(config),
+    do:
       [{"x-api-key", config.api_key}, {"anthropic-version", @api_version}] ++
-        if fallbacks?(config), do: [{"anthropic-beta", @fallback_beta}], else: []
+        if(fallbacks?(config), do: [{"anthropic-beta", @fallback_beta}], else: [])
 
-    url = String.trim_trailing(config.base_url, "/") <> "/v1/messages"
+  defp url(config), do: String.trim_trailing(config.base_url, "/") <> "/v1/messages"
 
-    case HTTP.post_json(url, headers, request_body(config, system, content), config.timeout,
+  defp create_message(config, system, content) do
+    body = request_body(config, system, content)
+
+    case HTTP.post_json(url(config), headers(config), body, config.timeout,
            retries: config.retries
          ) do
       {:ok, %{"stop_reason" => "refusal"} = response} ->

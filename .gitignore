@@ -27,3 +27,4 @@ aethrion-*.tar
 
 # Local settings for compose.yaml (model keys).
 .env
+.DS_Store

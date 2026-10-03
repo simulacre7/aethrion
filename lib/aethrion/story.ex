@@ -395,6 +395,29 @@ defmodule Aethrion.Story do
     (Enum.flat_map(conditions, &named/1) ++ senders) |> Enum.uniq()
   end
 
+  @doc false
+  # The numbers a story's conditions watch, for a status window to show:
+  # stats as {actor, name} and character fields as {id, field}.
+  def watched(story) do
+    conditions =
+      Enum.flat_map(Map.get(story, :endings, []) ++ Map.get(story, :milestones, []), & &1.when) ++
+        Map.get(story, :decide_when, [])
+
+    found = Enum.flat_map(conditions, &watches/1) |> Enum.uniq()
+    %{stats: for({:stat, w} <- found, do: w), fields: for({:field, w} <- found, do: w)}
+  end
+
+  defp watches({:any, list}), do: Enum.flat_map(list, &watches/1)
+  defp watches({:all, list}), do: Enum.flat_map(list, &watches/1)
+  defp watches({:not, condition}), do: watches(condition)
+  defp watches({:stat, {actor, name}, _op, _want}), do: [{:stat, {actor, name}}]
+  defp watches({:character, {id, field}, _op, _want}), do: [{:field, {id, field}}]
+  defp watches(_other), do: []
+
+  @doc false
+  def field_name(field, :ko), do: Map.get(@ko_fields, field, field)
+  def field_name(field, _locale), do: field
+
   defp named({:any, list}), do: Enum.flat_map(list, &named/1)
   defp named({:all, list}), do: Enum.flat_map(list, &named/1)
   defp named({:not, condition}), do: named(condition)

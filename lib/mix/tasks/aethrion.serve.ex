@@ -37,6 +37,10 @@ defmodule Mix.Tasks.Aethrion.Serve do
     templates write them: an offline fallback for testing, not the way to
     play
   - `--model NAME`, `--base-url URL` - for the chosen backend
+  - `--read-model NAME` - a model of the same backend for reading what each
+    line does (a short choice, so a smaller, faster model does), while
+    `--model` narrates (default: the `AETHRION_READ_MODEL` environment
+    variable, else `--model`)
   - `--locale ko` - lines in Korean: with `--llm` the model writes them,
     otherwise the built-in Korean templates do
   - `--idle MINUTES` - stop worlds unused for this long (default 30)
@@ -63,6 +67,7 @@ defmodule Mix.Tasks.Aethrion.Serve do
     allow_host: :string,
     llm: :string,
     model: :string,
+    read_model: :string,
     base_url: :string,
     locale: :string,
     idle: :integer,
@@ -70,7 +75,7 @@ defmodule Mix.Tasks.Aethrion.Serve do
   ]
 
   @usage "mix aethrion.serve [--cast FILE] [--data DIR] [--port N] [--bind ADDRESS] " <>
-           "[--token TOKEN] [--allow-host NAMES] [--llm anthropic|openai] [--locale ko] [--idle MINUTES] [--tick-every SECONDS]"
+           "[--token TOKEN] [--allow-host NAMES] [--read-model NAME] [--llm anthropic|openai] [--locale ko] [--idle MINUTES] [--tick-every SECONDS]"
 
   @impl Mix.Task
   def run(args) do
@@ -97,14 +102,7 @@ defmodule Mix.Tasks.Aethrion.Serve do
         end
       )
 
-    # For the OpenAI-compatible route: what chat lines were read as, and the
-    # world after each turn.
-    for {name, file} <- [
-          {Aethrion.Bridge.Readings, "bridge-readings.jsonl"},
-          {Aethrion.Bridge.Checkpoints, "bridge-checkpoints.jsonl"}
-        ] do
-      {:ok, _store} = Aethrion.Bridge.Store.start_link(name: name, path: Path.join(data, file))
-    end
+    start_bridge_stores(data)
 
     # An empty AETHRION_TOKEN (as Compose passes an unset one) means no token.
     token = blank_to_nil(opts[:token] || System.get_env("AETHRION_TOKEN"))
@@ -118,20 +116,44 @@ defmodule Mix.Tasks.Aethrion.Serve do
           token: token,
           allow_hosts: allow_hosts(opts[:allow_host] || System.get_env("AETHRION_ALLOW_HOSTS")),
           locale: if(opts[:locale] == "ko", do: :ko, else: :en),
-          cast: cast
-        ] ++ reading(adapter, adapter_opts, backend_opts, label)
+          cast: cast,
+          card_name: card_name(opts[:cast]),
+          card_image: card_image(opts[:cast])
+        ] ++
+          reading(
+            adapter,
+            adapter_opts,
+            backend_opts,
+            label,
+            blank_to_nil(opts[:read_model] || System.get_env("AETHRION_READ_MODEL"))
+          )
       )
 
-    notes =
-      ["#{map_size(cast.characters)} characters", "journals in #{data}"] ++
-        if(token, do: ["bearer token required"], else: []) ++ [model_note(label)]
-
-    Mix.shell().info(
-      "Aethrion API on http://#{opts[:bind] || "127.0.0.1"}:#{Aethrion.API.port(api)} " <>
-        "(#{Enum.join(notes, ", ")})"
-    )
+    announce(Aethrion.API.port(api), opts[:bind] || "127.0.0.1", cast, data, token, label)
 
     unless iex_running?(), do: Process.sleep(:infinity)
+  end
+
+  # The cast's file name, for the card RisuAI imports: "campfire.json" is
+  # "Campfire", "campfire_en.json" "Campfire (EN)".
+  defp card_name(nil), do: "Aethrion"
+
+  defp card_name(path) do
+    case path |> Path.basename(".json") |> String.split(~r/[_.-]/, trim: true) do
+      [name, lang] when byte_size(lang) == 2 ->
+        String.capitalize(name) <> " (#{String.upcase(lang)})"
+
+      words ->
+        Enum.map_join(words, " ", &String.capitalize/1)
+    end
+  end
+
+  # A cover image next to the cast file ("campfire.png"), for the card.
+  defp card_image(nil), do: nil
+
+  defp card_image(path) do
+    image = Path.rootname(path) <> ".png"
+    if File.regular?(image), do: image
   end
 
   defp blank_to_nil(value) when value in [nil, ""], do: nil
@@ -145,6 +167,36 @@ defmodule Mix.Tasks.Aethrion.Serve do
       |> String.split(",", trim: true)
       |> Enum.map(&String.trim/1)
       |> Enum.reject(&(&1 == ""))
+
+  # For the OpenAI-compatible route: what chat lines were read as, and the
+  # world after each turn.
+  defp start_bridge_stores(data) do
+    for {name, file} <- [
+          {Aethrion.Bridge.Readings, "bridge-readings.jsonl"},
+          {Aethrion.Bridge.Checkpoints, "bridge-checkpoints.jsonl"}
+        ] do
+      {:ok, _store} = Aethrion.Bridge.Store.start_link(name: name, path: Path.join(data, file))
+    end
+  end
+
+  defp announce(port, bind, cast, data, token, label) do
+    notes =
+      ["#{map_size(cast.characters)} characters", "journals in #{data}"] ++
+        if(token, do: ["bearer token required"], else: []) ++ [model_note(label)]
+
+    Mix.shell().info("Aethrion API on http://#{bind}:#{port} (#{Enum.join(notes, ", ")})")
+    if label, do: chat_app_hint(port, token)
+  end
+
+  # How to point a chat app at the server.
+  defp chat_app_hint(port, token) do
+    Mix.shell().info(
+      "RisuAI (desktop app) or SillyTavern: Custom API at http://localhost:#{port}/v1, " <>
+        "model \"aethrion\"" <>
+        if(token, do: ", the token as the key", else: "") <>
+        "; the card and these settings are under RisuAI on http://localhost:#{port}"
+    )
+  end
 
   defp scheduler(nil), do: []
 
@@ -190,16 +242,22 @@ defmodule Mix.Tasks.Aethrion.Serve do
 
   @doc false
   # Who reads chat lines and their tone: the model, or the keyword rules.
-  def reading(nil, _adapter_opts, _backend_opts, _label),
+  def reading(adapter, adapter_opts, backend_opts, label, read_model \\ nil)
+
+  def reading(nil, _adapter_opts, _backend_opts, _label, _read_model),
     do: [interpreter: Aethrion.Interpreter.Rules]
 
-  def reading(adapter, adapter_opts, backend_opts, label),
+  def reading(adapter, adapter_opts, backend_opts, label, read_model),
     do: [
       render_timeout: render_timeout(adapter),
       intent: [adapter: adapter, adapter_opts: adapter_opts],
       interpreter: Aethrion.Interpreter.LLM,
-      interpreter_opts: [adapter: adapter, adapter_opts: backend_opts],
-      model: label
+      interpreter_opts: [
+        adapter: adapter,
+        adapter_opts:
+          if(read_model, do: Keyword.put(backend_opts, :model, read_model), else: backend_opts)
+      ],
+      model: if(read_model, do: label <> ", reading with #{read_model}", else: label)
     ]
 
   defp model_note(nil),

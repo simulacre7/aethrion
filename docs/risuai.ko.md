@@ -12,7 +12,7 @@ RisuAI 커뮤니티의 시뮬레이션·RPG 카드는 대개 상태를 모델에
 - **모델이 숫자를 흘립니다.** 긴 채팅에서 HP가 슬그머니 회복되거나, 앞에서 정한 수치를 잊습니다.
 - **판정이 모델 기분에 달려 있습니다.** 같은 행동이 어떤 때는 명중하고 어떤 때는 빗나갑니다.
 
-Aethrion은 상태를 대화 기록에서 결정론적으로 다시 계산합니다. 같은 기록이면 같은 결과가 나오므로 리롤해도 한 번만 적용되고, 앞의 문장을 고치면 그 문장대로 다시 계산됩니다.
+Aethrion은 상태를 대화 기록에서 정해진 규칙으로 다시 계산합니다. 같은 기록이면 언제나 같은 결과가 나오므로, 리롤해도 한 번만 적용되고 앞의 문장을 고치면 고친 대로 다시 계산됩니다.
 
 ## 동작 방식
 
@@ -47,12 +47,7 @@ docker compose up -d
 그다음:
 
 1. RisuAI에서 [3. 모델 설정](#3-모델-설정)대로 설정하되, URL은 `http://localhost:4848/v1`, Key/Password는 `AETHRION_TOKEN`의 값으로 넣습니다.
-2. 모닥불 카드를 저장한 뒤 [4. 캐릭터 카드](#4-캐릭터-카드)대로 가져옵니다.
-
-   ```bash
-   curl -H "Authorization: Bearer $(grep '^AETHRION_TOKEN=' .env | cut -d= -f2)" \
-     'http://localhost:4848/casts/card?name=Campfire' -o campfire.json
-   ```
+2. 카드 받기: http://localhost:4848 을 열고 Token 칸에 `AETHRION_TOKEN`을 넣은 뒤 **RisuAI** → **Download the RisuAI card**를 누릅니다. 같은 패널에서 URL과 요청 모델도 복사할 수 있습니다. 받은 카드는 [4. 캐릭터 카드](#4-캐릭터-카드)대로 가져옵니다. macOS 데스크톱 앱에서는 창에 끌어다 놓으면 됩니다.
 
 `docker compose logs aethrion`으로 Aethrion이 하는 일을 볼 수 있고, `docker compose down`이면 멈춥니다. 포트는 이 컴퓨터에만 열립니다.
 
@@ -87,27 +82,27 @@ Docker 안의 RisuAI에서 내 컴퓨터의 Aethrion은 `http://host.docker.inte
 
 ## 3. 모델 설정
 
-설정 → 봇 설정에서:
+설정 → 채팅 봇 → 모델 탭에서:
 
 | 항목 | 값 |
 | --- | --- |
 | 모델 | `Custom API` |
-| URL | `http://host.docker.internal:4848/v1` (데스크톱 앱이면 `http://localhost:4848/v1`) |
-| 키/패스워드 | `--token`이나 `AETHRION_TOKEN`으로 정한 값 (없으면 비워 둠) |
-| 요청 모델 | `aethrion:sera` (대화 상대가 세라) |
+| URL | `http://localhost:4848/v1` (Docker 안에서 띄운 RisuAI라면 `http://host.docker.internal:4848/v1`) |
+| 키/패스워드 | 접속 비밀번호(`--token`이나 `AETHRION_TOKEN`으로 정한 값) |
+| 요청 모델 | `aethrion` (카드에서 첫 인사를 하는 캐릭터와 대화. `aethrion:sera`처럼 직접 지정할 수도 있음) |
 | 포맷 | `OpenAI Compatible` |
 
 요청 모델은 다음 중에서 고릅니다. 목록은 `GET /v1/models`로 볼 수 있고, 적(enemy)은 대화 상대 목록에 나오지 않습니다.
 
 - `aethrion:캐릭터id`: 처음에는 그 캐릭터에게 말을 거는 것으로 읽습니다. 다른 캐릭터의 이름을 부르면 그때부터는 그 캐릭터에게 갑니다(아래 6절).
-- `aethrion`: 적이 아닌 첫 캐릭터를 대화 상대로 씁니다.
+- `aethrion`: 캐스트 카드에서 첫 인사를 하는 캐릭터(적이 아니고 `greeting`이 있는 첫 캐릭터)를 대화 상대로 씁니다. 그런 캐릭터가 없으면 적이 아닌 첫 캐릭터입니다.
 - `aethrion-plain:캐릭터id`: 상태 블록 없이 이야기만 돌려줍니다. 응답에 체크포인트 id가 없으므로, 잘리지 않은 대화는 문장들로 체크포인트를 다시 찾지만, 잘린 대화는 남은 기록만으로 계산합니다. 또 대화 상대를 바꾼 직후에는, 같은 서버의 다른 대화가 같은 첫 문장을 다른 캐릭터에게 했을 때 둘을 구분하지 못할 수 있습니다. 상태 블록을 쓰는 `aethrion`이 더 정확합니다.
 
 **보조 모델은 Custom API로 두지 마세요.** RisuAI는 요약, 감정 이미지, 번역 같은 일을 보조 모델에 맡기는데, 그 요청이 Aethrion으로 오면 요약할 글을 플레이어의 말로 읽습니다.
 
 ## 4. 캐릭터 카드
 
-Aethrion 캐스트를 내레이터 카드로 내보내 RisuAI에 가져옵니다.
+Aethrion 캐스트를 내레이터 카드로 내보내 RisuAI에 가져옵니다. http://localhost:4848 을 열고 Token 칸에 접속 비밀번호를 넣은 뒤 **RisuAI** → **Download the RisuAI card**를 누르면 됩니다. 터미널에서 받으려면 이렇게 합니다.
 
 ```bash
 curl -s -H "Authorization: Bearer $AETHRION_TOKEN" 'localhost:4848/casts/card?name=늑대굴' -o 늑대굴.json
@@ -127,17 +122,24 @@ mix aethrion.card 내카드.png --player 선생님 --out casts/my.json
 
 ## 5. 플레이
 
-```txt
-나: 세라, 고마워. 다이어 울프에게 롱소드를 휘두른다!
+모닥불 캐스트에서 목걸이를 준 다음 턴에 고블린을 공격했을 때의 상태창입니다. 괄호 안은 이번 턴에 바뀐 만큼입니다.
 
-(모델의 이야기)
+```txt
+나: 고블린 척후를 벤다
+
+(모델의 서술)
 ┌──────────────────────────────────────
-│ 나 · HP 20/28
-│ 도윤 · 호감 35 · 신뢰 15 · HP 14/20
-│ 세라 · 호감 29 · 신뢰 18 · HP 21/21
-│ 다이어 울프 · HP 23/37
+│ 나 · HP 28/28
+│ 도윤 · 호감 45 · 신뢰 22 (+2) · HP 13/20 (-7)
+│ 하린 · 호감 25 · 신뢰 20 · HP 24/24
+│ 세라 · 호감 50 · 신뢰 44 (+2) · HP 21/21
+│ 고블린 척후 · HP 0/7 (-7)
+│ 고블린 궁수 · HP 7/7
+│ 고블린 두목 · HP 21/21
 └──────────────────────────────────────
 ```
+
+척후는 쓰러졌고, 반격은 함께 싸운 도윤이 맞았습니다. 같이 싸운 도윤과 세라는 플레이어를 조금 더 믿게 됐습니다.
 
 - **리롤:** 같은 기록이므로 같은 판정이 나옵니다. 이야기만 새로 씁니다.
 - **수정:** 마지막 문장이든 앞의 문장이든, 고친 문장부터 다시 계산합니다.
@@ -166,17 +168,19 @@ curl -s -H "Authorization: Bearer $AETHRION_TOKEN" 'localhost:4848/casts/card?na
 
 세라에게 목걸이를 주면 그것을 본 도윤이 질투해 하린에게 소식을 전하고, 세라는 고블린의 공격을 플레이어 대신 받아 줄 만큼 마음이 커집니다. 선물 없이 싸우면 세라는 한 번도 막아서지 않습니다.
 
-## 한계
+## 알아 둘 것과 한계
 
-- 응답은 한 번에 옵니다. `stream: true`면 서버 전송 이벤트 한 덩어리로 보냅니다.
-- CLI 모델(`--llm claude`)은 한 턴에 10~15초쯤 걸립니다. API 모델이 더 빠릅니다.
+- **스트리밍:** RisuAI 설정 → 채팅 봇에서 Response 스트리밍을 켜면, 서술이 써지는 대로 보입니다. 상태창은 맨 끝에 붙습니다. OpenAI 호환 API, Claude API, Claude Code CLI는 스트리밍되고, Codex CLI는 한 번에 옵니다.
+- **걸리는 시간:** 새 문장은 먼저 모델이 무슨 행동인지 읽고(몇 초. 이미 읽은 문장은 저장돼 있어서 리롤할 때는 건너뜁니다), 그다음 서술을 씁니다. Claude Code CLI로는 서술 길이에 따라 한 턴에 15~40초쯤 걸립니다. API 모델이 더 빠릅니다.
+- **비용:** 새 문장 하나에 모델 호출이 두 번 듭니다. 문장을 읽는 호출과 서술하는 호출입니다. `--read-model NAME`(또는 `AETHRION_READ_MODEL`)을 주면 같은 API의 더 작은 모델로 읽어서 비용을 줄일 수 있습니다. Claude Code CLI에서는 CLI를 띄우는 시간이 대부분이라 빨라지지는 않습니다.
+- **서버 콘솔**에는 턴마다 한 줄씩 남습니다. 플레이어가 쓴 문장, 규칙과 모델이 걸린 시간, 모델이 답했는지가 나옵니다. 아무것도 안 나오면 RisuAI가 Aethrion에 닿지 못한 것입니다.
 - 한 요청에서 다시 계산하는 문장은 300개까지입니다. 체크포인트 없이 그보다 긴 대화를 보내면 400(`too_many_lines`)을 돌려줍니다.
 - RisuAI의 그룹 채팅 기능은 쓰지 않습니다. 내레이터 카드 한 장으로 여러 캐릭터와 대화합니다(6절).
 - 체크포인트 파일은 턴마다 세계 전체(캐스트의 로어는 빼고)를 저장하므로 오래 쓰면 커집니다. 지워도 동작하며, 그때는 대화 기록에서 다시 계산합니다.
 
 ## SillyTavern
 
-SillyTavern도 같은 방식으로 붙습니다. API를 Chat Completion → Custom (OpenAI-compatible)으로 두고, 엔드포인트 `http://localhost:4848/v1`, 모델 `aethrion:sera`를 입력합니다. 상태창은 Regex 확장에 스크립트를 하나 추가해 그립니다.
+SillyTavern도 같은 방식으로 붙습니다. API를 Chat Completion → Custom (OpenAI-compatible)으로 두고, 엔드포인트 `http://localhost:4848/v1`, 모델 `aethrion`을 입력합니다. 상태창은 Regex 확장에 스크립트를 하나 추가해 그립니다.
 
 - Find Regex: `/<aethrion-status[^>]*>([\s\S]*?)<\/aethrion-status>/g`
 - Replace With: `<div style="white-space:pre-line">$1</div>`

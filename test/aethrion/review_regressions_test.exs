@@ -292,6 +292,28 @@ defmodule Aethrion.ReviewRegressionsTest do
     end
   end
 
+  describe "a smaller model for reading lines" do
+    test "--read-model reads with its model and narrates with --model" do
+      alias Mix.Tasks.Aethrion.Serve
+
+      api =
+        Serve.reading(
+          Aethrion.LLM.CLI,
+          [model: "big"],
+          [model: "big"],
+          "Claude Code CLI",
+          "haiku"
+        )
+
+      assert api[:interpreter_opts][:adapter_opts][:model] == "haiku"
+      assert api[:intent][:adapter_opts][:model] == "big"
+      assert api[:model] =~ "reading with haiku"
+
+      plain = Serve.reading(Aethrion.LLM.CLI, [model: "big"], [model: "big"], "Claude Code CLI")
+      assert plain[:interpreter_opts][:adapter_opts][:model] == "big"
+    end
+  end
+
   describe "second review: a healer drinking a potion" do
     test "heals by the potion's dice, not their own spell's" do
       {:ok, den} =

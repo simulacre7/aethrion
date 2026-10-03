@@ -64,6 +64,51 @@ defmodule Aethrion.Card do
   defp check(%{"name" => name} = data) when is_binary(name) and name != "", do: {:ok, data}
   defp check(_data), do: {:error, :no_name}
 
+  @doc """
+  A card inside a PNG image, the way chat apps share cards: the card JSON,
+  base64, in `tEXt` chunks `ccv3` and `chara` before the image's end. Any
+  card the image already carried is replaced.
+  """
+  @spec to_png(map(), binary()) :: {:ok, binary()} | {:error, :not_a_png}
+  def to_png(card, <<@png, chunks::binary>>) do
+    text = card |> Jason.encode!() |> Base.encode64()
+
+    embedded =
+      for keyword <- ["ccv3", "chara"],
+          into: <<>>,
+          do: png_chunk("tEXt", keyword <> <<0>> <> text)
+
+    case split_iend(chunks, <<>>) do
+      {:ok, before, iend} -> {:ok, @png <> before <> embedded <> iend}
+      :error -> {:error, :not_a_png}
+    end
+  end
+
+  def to_png(_card, _image), do: {:error, :not_a_png}
+
+  defp png_chunk(type, data),
+    do: <<byte_size(data)::32, type::binary, data::binary, :erlang.crc32(type <> data)::32>>
+
+  # The chunks before IEND, without card text, and IEND itself.
+  defp split_iend(<<length::32, type::binary-size(4), rest::binary>> = all, acc)
+       when byte_size(rest) >= length + 4 do
+    <<data::binary-size(^length), _crc::32, next::binary>> = rest
+    chunk = binary_part(all, 0, length + 12)
+
+    cond do
+      type == "IEND" ->
+        {:ok, acc, chunk}
+
+      type == "tEXt" and match?([k, _] when k in ["ccv3", "chara"], :binary.split(data, <<0>>)) ->
+        split_iend(next, acc)
+
+      true ->
+        split_iend(next, acc <> chunk)
+    end
+  end
+
+  defp split_iend(_bytes, _acc), do: :error
+
   # PNG chunks: V3 ("ccv3") wins over V2 ("chara") when a card has both.
   defp png_text(bytes, found \\ %{})
 

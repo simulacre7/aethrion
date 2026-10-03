@@ -63,7 +63,7 @@
   },
   "story": {
     "turn_hours": 1,
-    "labels": {"hp": "체력", "away": "돌아오기까지 남은 시간", "fury": "분노"},
+    "labels": {"hp": "체력", "away": "복귀까지(시간)", "fury": "분노"},
     "decide_when": [
       {"all": [
         {"stat": ["goblin_boss", "hp"], "at_most": 0},

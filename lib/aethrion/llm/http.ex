@@ -42,6 +42,88 @@ defmodule Aethrion.LLM.HTTP do
     attempt(request, retry, 0)
   end
 
+  @doc """
+  POSTs `body` as JSON and reads the answer as server-sent events, folding
+  each event's data into `acc` with `fun.(data, acc)` as it arrives.
+  Returns `{:ok, acc, body}`, where `body` is everything received (a server
+  that answers whole instead of streaming leaves its JSON there), or the
+  same errors as `post_json/5`. `timeout` bounds the whole stream. Nothing
+  is retried: part of the answer may already have been passed on.
+  """
+  def stream_post(url, headers, body, timeout, acc, fun) do
+    {:ok, _apps} = Application.ensure_all_started([:inets, :ssl])
+
+    headers =
+      [{~c"accept", ~c"text/event-stream"}] ++
+        Enum.map(headers, fn {key, value} ->
+          {String.to_charlist(key), String.to_charlist(value)}
+        end)
+
+    request = {String.to_charlist(url), headers, ~c"application/json", Jason.encode!(body)}
+    http_options = [timeout: timeout, connect_timeout: min(timeout, 10_000)] ++ ssl_options(url)
+
+    case :httpc.request(:post, request, http_options,
+           sync: false,
+           stream: :self,
+           body_format: :binary
+         ) do
+      {:ok, ref} -> receive_stream(ref, %{buffer: "", body: [], acc: acc}, now() + timeout, fun)
+      {:error, reason} -> {:error, {:http_error, reason}}
+    end
+  end
+
+  defp receive_stream(ref, s, deadline, fun) do
+    wait = max(deadline - now(), 0)
+
+    receive do
+      {:http, {^ref, :stream_start, _headers}} ->
+        receive_stream(ref, s, deadline, fun)
+
+      {:http, {^ref, :stream, part}} ->
+        {events, rest} = sse_events(s.buffer <> part)
+        acc = Enum.reduce(events, s.acc, fun)
+        receive_stream(ref, %{s | buffer: rest, body: [s.body, part], acc: acc}, deadline, fun)
+
+      {:http, {^ref, :stream_end, _headers}} ->
+        {events, _rest} = sse_events(s.buffer <> "\n\n")
+        {:ok, Enum.reduce(events, s.acc, fun), IO.iodata_to_binary(s.body)}
+
+      # Not streamed: an error status, or a server that answered whole.
+      {:http, {^ref, {{_version, status, _reason}, _headers, response_body}}}
+      when status in 200..299 ->
+        {:ok, s.acc, response_body}
+
+      {:http, {^ref, {{_version, status, _reason}, _headers, response_body}}} ->
+        {:error, {:http_status, status, decode(response_body)}}
+
+      {:http, {^ref, {:error, reason}}} ->
+        {:error, {:http_error, reason}}
+    after
+      wait ->
+        :httpc.cancel_request(ref)
+        {:error, {:http_error, :timeout}}
+    end
+  end
+
+  @doc false
+  # Complete events in `text`, as the joined `data:` lines of each, and
+  # what is left of an event still arriving.
+  def sse_events(text) do
+    blocks = text |> String.replace("\r\n", "\n") |> String.split("\n\n")
+    {complete, [rest]} = Enum.split(blocks, -1)
+
+    events =
+      for block <- complete,
+          lines = for("data:" <> data <- String.split(block, "\n"), do: trim_space(data)),
+          lines != [],
+          do: Enum.join(lines, "\n")
+
+    {events, rest}
+  end
+
+  defp trim_space(" " <> data), do: data
+  defp trim_space(data), do: data
+
   @least_attempt_ms 1_000
 
   defp attempt(request, retry, tried) do

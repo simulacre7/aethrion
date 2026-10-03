@@ -48,6 +48,80 @@ defmodule Aethrion.LLM.CLI do
     end
   end
 
+  @doc """
+  A reply to a conversation, streamed: with the Claude Code CLI, `on_delta`
+  gets each piece of text as it is written (`--output-format stream-json`).
+  The Codex CLI replies whole, in one piece.
+  """
+  def stream_chat(messages, opts, on_delta) do
+    {system, user} = Aethrion.LLM.transcript(messages)
+    command = Keyword.get(opts, :command, "claude")
+
+    case {command, System.find_executable(command)} do
+      {_command, nil} ->
+        {:error, {:command_not_found, command}}
+
+      {"claude", path} ->
+        stream_claude(path, system, user, opts, on_delta)
+
+      _codex ->
+        with {:ok, text} <- complete(system, user, opts) do
+          on_delta.(text)
+          {:ok, text}
+        end
+    end
+  end
+
+  defp stream_claude(path, system, user, opts, on_delta) do
+    dir = Path.join(System.tmp_dir!(), "aethrion-cli")
+    File.mkdir_p!(dir)
+    model = if m = Keyword.get(opts, :model), do: ["--model", m], else: []
+
+    args =
+      ["-p", user, "--output-format", "stream-json", "--verbose", "--include-partial-messages"] ++
+        ["--tools", "", "--no-session-persistence", "--system-prompt", system] ++ model
+
+    # stdout is JSON lines; a line may arrive in pieces.
+    on_data = fn data, {pending, text} ->
+      [rest | lines] = (pending <> data) |> String.split("\n") |> Enum.reverse()
+
+      text =
+        lines
+        |> Enum.reverse()
+        |> Enum.reduce(text, fn line, text ->
+          case Jason.decode(line) do
+            {:ok,
+             %{
+               "type" => "stream_event",
+               "event" => %{"type" => "content_block_delta", "delta" => %{"text" => delta}}
+             }}
+            when is_binary(delta) ->
+              on_delta.(delta)
+              [text, delta]
+
+            _other ->
+              text
+          end
+        end)
+
+      {rest, text}
+    end
+
+    case execute(path, args, dir, Keyword.get(opts, :timeout, 60_000), {on_data, {"", []}}) do
+      {:ok, {_pending, text}, 0} ->
+        case IO.iodata_to_binary(text) do
+          "" -> {:error, :empty_response}
+          text -> {:ok, text}
+        end
+
+      {:ok, _state, status} ->
+        {:error, {:exit, status}}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
   @doc "Whether the command is installed."
   def configured?(opts \\ []),
     do: System.find_executable(Keyword.get(opts, :command, "claude")) != nil
@@ -96,7 +170,7 @@ defmodule Aethrion.LLM.CLI do
   # about it; the prompt is in the arguments, each its own word). On a
   # timeout, or if the caller goes away first, the tool and every process it
   # started are stopped.
-  defp execute(path, args, dir, timeout) do
+  defp execute(path, args, dir, timeout, reader \\ nil) do
     port =
       Port.open({:spawn_executable, "/bin/sh"}, [
         :binary,
@@ -117,7 +191,11 @@ defmodule Aethrion.LLM.CLI do
     reaper = spawn(fn -> reap(caller, os_pid) end)
 
     try do
-      collect(port, [], System.monotonic_time(:millisecond) + timeout)
+      collect(
+        port,
+        reader || {fn data, acc -> [acc, data] end, []},
+        System.monotonic_time(:millisecond) + timeout
+      )
     after
       send(reaper, :done)
     end
@@ -125,15 +203,16 @@ defmodule Aethrion.LLM.CLI do
     error in ErlangError -> {:error, {:spawn_failed, Exception.message(error)}}
   end
 
-  defp collect(port, acc, deadline) do
+  # Output goes through `read`; by default it is gathered as one text.
+  defp collect(port, {read, acc}, deadline) do
     wait = max(deadline - System.monotonic_time(:millisecond), 0)
 
     receive do
       {^port, {:data, data}} ->
-        collect(port, [acc, data], deadline)
+        collect(port, {read, read.(data, acc)}, deadline)
 
       {^port, {:exit_status, status}} ->
-        {:ok, IO.iodata_to_binary(acc), status}
+        {:ok, if(is_list(acc), do: IO.iodata_to_binary(acc), else: acc), status}
     after
       wait ->
         case Port.info(port, :os_pid) do

@@ -159,4 +159,24 @@ defmodule Aethrion.CardTest do
     # It reads back as a card.
     assert {:ok, _card} = Card.normalize(card)
   end
+
+  test "a cast's card goes into its cover image, and reads back from it" do
+    {:ok, campfire} =
+      "priv/casts/campfire.json" |> File.read!() |> Jason.decode!() |> Aethrion.State.parse()
+
+    card = Card.from_cast(campfire, name: "Campfire")
+    cover = File.read!("priv/casts/campfire.png")
+
+    assert {:ok, png} = Card.to_png(card, cover)
+    assert {:ok, %{"name" => "Campfire", "first_mes" => greeting}} = Card.read(png)
+    assert greeting == card["data"]["first_mes"]
+
+    # A card already in the image is replaced, not doubled.
+    renamed = put_in(card, ["data", "name"], "모닥불")
+    assert {:ok, again} = Card.to_png(renamed, png)
+    assert {:ok, %{"name" => "모닥불"}} = Card.read(again)
+    assert byte_size(again) - byte_size(png) < 200
+
+    assert {:error, :not_a_png} = Card.to_png(card, "not an image")
+  end
 end

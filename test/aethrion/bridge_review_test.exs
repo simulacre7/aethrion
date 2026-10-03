@@ -405,6 +405,61 @@ defmodule Aethrion.BridgeReviewTest do
     end
   end
 
+  test "a model name without a character talks to the one who greets on the card" do
+    campfire = "priv/casts/campfire.json" |> File.read!() |> Jason.decode!()
+    {:ok, campfire} = Aethrion.State.parse(campfire)
+    greeter = Enum.find(Aethrion.State.sorted_characters(campfire), &(&1.greeting != ""))
+    assert API.default_talker(campfire) == greeter.id
+
+    card = Aethrion.Card.from_cast(campfire, name: "Campfire")
+    assert card["data"]["first_mes"] == greeter.greeting
+
+    # Without greetings: the first who is not a foe.
+    quiet = %{
+      campfire
+      | characters: Map.new(campfire.characters, fn {id, c} -> {id, %{c | greeting: ""}} end)
+    }
+
+    first =
+      Enum.find(
+        Aethrion.State.sorted_characters(quiet),
+        &(Aethrion.State.stat(quiet, &1.id, "enemy") == 0)
+      )
+
+    assert API.default_talker(quiet) == first.id
+  end
+
+  test "the card comes as a PNG with its cover when the server has one" do
+    {:ok, campfire} =
+      "priv/casts/campfire.json" |> File.read!() |> Jason.decode!() |> Aethrion.State.parse()
+
+    start_supervised!({Worlds, name: Worlds.Test.CardImage, world: fn _key -> [] end})
+
+    api =
+      start_supervised!(
+        {API,
+         worlds: Worlds.Test.CardImage,
+         port: 0,
+         cast: campfire,
+         card_name: "Campfire",
+         card_image: "priv/casts/campfire.png"},
+        id: :card_image
+      )
+
+    url = ~c"http://127.0.0.1:#{API.port(api)}/casts/card?format=png"
+
+    {:ok, {{_v, 200, _r}, headers, png}} =
+      :httpc.request(:get, {url, []}, [], body_format: :binary)
+
+    assert {~c"content-type", ~c"image/png"} in headers
+    assert {:ok, %{"name" => "Campfire"}} = Aethrion.Card.read(png)
+
+    # Without format=png, or without a cover, it is the JSON card.
+    json = ~c"http://127.0.0.1:#{API.port(api)}/casts/card"
+    {:ok, {{_v, 200, _r}, _h, body}} = :httpc.request(:get, {json, []}, [], body_format: :binary)
+    assert %{"data" => %{"name" => "Campfire"}} = Jason.decode!(body)
+  end
+
   describe "over HTTP" do
     setup do
       start_supervised!({Worlds, name: Worlds.Test.BridgeReview, world: fn _key -> [] end})
