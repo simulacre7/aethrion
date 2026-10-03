@@ -95,7 +95,11 @@ function headers() {
 async function call(method, path, body) {
   const response = await fetch(path, {method, headers: headers(), body: body ? JSON.stringify(body) : undefined});
   const data = await response.json();
-  if (!response.ok) throw new Error(data.error ? data.error.message : response.statusText);
+  if (!response.ok) {
+    const error = new Error(data.error ? data.error.message : response.statusText);
+    error.status = response.status;
+    throw error;
+  }
   return data;
 }
 
@@ -137,7 +141,7 @@ async function load() {
     const ordered = [...state.characters.filter((c) => !enemy(c)), ...state.characters.filter(enemy)];
     $("character").replaceChildren(...ordered.map((c) => new Option(c.name, c.id)));
     await history();
-  } catch (error) { add("error", error.message); }
+  } catch (error) { add("error", explain(error)); }
 }
 
 async function history() {
@@ -254,6 +258,15 @@ $("later").addEventListener("click", async () => {
   } catch (error) { add("error", error.message); }
 });
 
+// A missing or wrong password says what to do, and points at the field.
+function explain(error) {
+  if (error.status !== 401) return error.message;
+  $("token").focus();
+  $("token").style.outline = "2px solid var(--bad)";
+  return "Put the access password (AETHRION_TOKEN in .env) in Token at the top, then try again. "
+    + "맨 위 Token 칸에 접속 비밀번호(.env의 AETHRION_TOKEN)를 넣고 다시 눌러 주세요.";
+}
+
 // How to point RisuAI or SillyTavern at this server, and its card.
 async function risu() {
   $("risu-url").textContent = location.origin + "/v1";
@@ -301,12 +314,16 @@ $("risu-card").addEventListener("click", async () => {
       return save(await png.blob(), name + ".png");
     }
     save(new Blob([JSON.stringify(card)], {type: "application/json"}), name + ".json");
-  } catch (error) { add("error", "Card: " + error.message); }
+  } catch (error) { add("error", "Card: " + explain(error)); }
 });
 
 $("character").addEventListener("change", () => history().catch((e) => add("error", e.message)));
 $("world").addEventListener("change", load);
-$("token").addEventListener("change", () => { load(); if (!$("risu").hidden) risu(); });
+$("token").addEventListener("change", () => {
+  $("token").style.outline = "";
+  load();
+  if (!$("risu").hidden) risu();
+});
 load();
 </script>
 </body>
