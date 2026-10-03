@@ -43,6 +43,7 @@ docker compose up -d
 - **`AETHRION_TOKEN`**(필수): 내 Aethrion의 접속 비밀번호입니다. 모델 사용량을 세는 토큰이 아니라서 비용이 들지 않습니다. 아무 긴 무작위 문자열이면 됩니다. 예를 들어 `openssl rand -hex 16`의 출력을 쓰면 됩니다. RisuAI가 요청마다 이 토큰을 보내고, 브라우저에 열린 다른 사이트가 이 서버와 그 뒤의 모델을 쓰지 못하게 막아 줍니다.
 - **이야기를 쓸 모델**: OpenAI 호환 API(OpenRouter 등), Claude API, 이 컴퓨터에서 돌리는 모델(Ollama, LM Studio, llama.cpp) 중에서 고릅니다. 각각의 설정 예시는 `.env.example`에 있습니다.
 - **`AETHRION_CAST`**: 캐스트를 고릅니다. 기본값은 `campfire`(모닥불)입니다.
+- **`AETHRION_CAST_FILE`**: 내가 만든 캐스트로 플레이합니다. http://localhost:4848/editor 에서 편집하고, JSON을 `casts` 폴더에 내려받은 뒤, `AETHRION_CAST_FILE=/casts/my.json`으로 적고 `docker compose up -d`를 다시 실행합니다.
 
 그다음:
 

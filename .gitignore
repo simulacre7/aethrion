@@ -28,3 +28,7 @@ aethrion-*.tar
 # Local settings for compose.yaml (model keys).
 .env
 .DS_Store
+
+# Your own casts for compose.yaml (AETHRION_CAST_FILE).
+/casts/*
+!/casts/.gitkeep
