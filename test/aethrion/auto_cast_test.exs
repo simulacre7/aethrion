@@ -27,7 +27,7 @@ defmodule Aethrion.AutoCastTest do
       assert sera["name"] == "세라"
       assert doyun["name"] == "Doyun"
 
-      data = AutoCast.cast_data(people, %{prompt: @card, greeting: @greeting}, :ko)
+      data = AutoCast.cast_data(people, %{prompt: @card, greeting: @greeting})
       assert {:ok, state} = State.parse(data)
 
       assert [%{name: "세라", greeting: @greeting}, %{name: "Doyun", greeting: ""}] =
@@ -40,15 +40,12 @@ defmodule Aethrion.AutoCastTest do
       assert API.default_talker(state) == hd(data["characters"])["id"]
     end
 
-    test "a card with no fixed characters gets one named after it" do
+    test "a card with no fixed characters starts with no one" do
       assert {:ok, people} = AutoCast.people(~s({"title": "Isekai RPG", "characters": []}))
-      data = AutoCast.cast_data(people, %{prompt: "", greeting: nil}, :en)
-      assert [%{"name" => "Isekai RPG"}] = data["characters"]
-
-      assert {:ok, untitled} = AutoCast.people(~s({"characters": []}))
-
-      assert [%{"name" => "이야기"}] =
-               AutoCast.cast_data(untitled, %{prompt: "", greeting: nil}, :ko)["characters"]
+      data = AutoCast.cast_data(people, %{prompt: "", greeting: nil})
+      assert data == %{"characters" => [], "relationships" => []}
+      assert {:ok, state} = State.parse(data)
+      assert State.sorted_characters(state) == []
     end
 
     test "an answer that is not the JSON asked for is refused" do
@@ -81,12 +78,36 @@ defmodule Aethrion.AutoCastTest do
         Enum.any?(messages, &(&1["content"] =~ "FAILING CARD")) ->
           {:error, :boom}
 
+        hd(messages)["content"] =~ "You read a role-play character card" and
+            Enum.any?(messages, &(&1["content"] =~ "NARRATOR CARD")) ->
+          {:ok, ~s({"title": "Isekai", "characters": []})}
+
+        Enum.any?(messages, &(&1["content"] =~ "NARRATOR CARD")) ->
+          {:ok, narration(messages)}
+
         hd(messages)["content"] =~ "You read a role-play character card" ->
           {:ok,
            ~s({"title": "Campfire", "characters": [{"name": "세라", "profile": "조용한 치유사.", "affinity": 30, "trust": 20}, {"name": "도윤", "profile": "방패수.", "affinity": 10, "trust": 10}]})}
 
         true ->
           {:ok, "세라가 고개를 끄덕인다."}
+      end
+    end
+
+    def stream_chat(messages, opts, on_delta) do
+      {:ok, text} = chat(messages, opts)
+      # In pieces that cut the scene line's tag in two.
+      for piece <- Regex.scan(~r/.{1,7}/su, text), do: on_delta.(hd(piece))
+      {:ok, text}
+    end
+
+    # A narrator: Haruka is there from the first reply, Kenji joins when
+    # the player has spoken twice, and then Haruka leaves.
+    defp narration(messages) do
+      case Enum.count(messages, &(&1["role"] == "user")) do
+        1 -> "버스가 멈춘다. 옆자리의 하루카가 고개를 든다.\n<aethrion-scene>\n하루카 | 조용한 도서부원\n</aethrion-scene>"
+        2 -> "켄지가 다가온다.\n\n<aethrion-scene>하루카\n- 켄지 | 운동부 주장</aethrion-scene>"
+        _more -> "하루카는 먼저 내렸다. <가방>만 남았다.\n<aethrion-scene>켄지</aethrion-scene>"
       end
     end
   end
@@ -237,6 +258,81 @@ defmodule Aethrion.AutoCastTest do
 
       {200, plain} = ask(base, [user("세라, 고마워.")], model: "Aethrion-Auto-Plain")
       assert plain == "세라가 고개를 끄덕인다."
+    end
+
+    test "a narrator card: people join as the story brings them in", %{base: base} do
+      card = [card: "NARRATOR CARD: an isekai world. You narrate."]
+      first = user("주변을 둘러본다. 가장 가까운 사람에게 말을 건다.")
+      {200, one} = ask(base, [first], card)
+
+      # No one to track yet; the scene line is taken out of the reply and
+      # kept in the status block's tag.
+      assert one =~
+               ~r/\A버스가 멈춘다. 옆자리의 하루카가 고개를 든다.\n\n<aethrion-status id="[0-9a-f]+" scene="하루카\|조용한 도서부원">/
+
+      refute one =~ "<aethrion-scene"
+      refute one =~ "호감"
+
+      # The next line is said to Haruka, who is now in the cast.
+      second = user("고마워요, 하루카. 덕분에 살았어요.")
+      {200, two} = ask(base, [first, reply(one), second], card)
+      assert two =~ ~r/하루카 · 호감 \d+ \(\+\d+\)/
+      assert two =~ ~s(scene="하루카;켄지|운동부 주장")
+
+      # A reroll: the same numbers.
+      {200, again} = ask(base, [first, reply(one), second], card)
+      assert status(again) == status(two)
+
+      # Kenji is there for the third line, and sees it; then Haruka leaves.
+      third = user("하루카, 이거 받아요. 선물이에요.")
+      {200, three} = ask(base, [first, reply(one), second, reply(two), third], card)
+      assert three =~ "켄지 · 호감 0 · 신뢰 0"
+      assert three =~ "목격 · 켄지"
+      assert three =~ ~s(scene="켄지">)
+      assert three =~ "<가방>만 남았다."
+
+      # Haruka is away: she is not listed, and does not see what Kenji is told.
+      fourth = user("켄지, 고마워.")
+
+      {200, four} =
+        ask(base, [first, reply(one), second, reply(two), third, reply(three), fourth], card)
+
+      assert four =~ ~r/켄지 · 호감 \d+ \(\+\d+\)/
+      refute four =~ "하루카 · 호감"
+      assert four =~ "모름 · 하루카 (자리에 없음)"
+      assert card_reads() == 1
+    end
+
+    test "the scene line is held back from a reply as it is streamed", %{base: base} do
+      body =
+        Jason.encode!(%{
+          "model" => "aethrion-auto",
+          "stream" => true,
+          "messages" => [
+            %{"role" => "system", "content" => "NARRATOR CARD: an isekai world."},
+            user("주변을 둘러본다.")
+          ]
+        })
+
+      {:ok, {{_v, 200, _r}, _headers, events}} =
+        :httpc.request(
+          :post,
+          {String.to_charlist(base <> "/v1/chat/completions"), [], ~c"application/json", body},
+          [],
+          body_format: :binary
+        )
+
+      text =
+        for "data: " <> data <- String.split(events, "\n\n", trim: true),
+            data != "[DONE]",
+            %{"choices" => [%{"delta" => %{"content" => content}}]} <- [Jason.decode!(data)],
+            into: "",
+            do: content
+
+      assert text =~
+               ~r/\A버스가 멈춘다. 옆자리의 하루카가 고개를 든다.\s+<aethrion-status id="[0-9a-f]+" scene="하루카\|조용한 도서부원">/
+
+      refute text =~ "<aethrion-scene"
     end
 
     test "is listed among the models", %{base: base} do

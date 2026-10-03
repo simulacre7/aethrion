@@ -51,7 +51,8 @@ defmodule Aethrion.Bridge do
   comes after the app's `[Start a new chat]` marker (example dialogues come
   before it), or after the leading system messages. In the chat proper, a
   reply that carried a status block keeps its checkpoint id as
-  `"checkpoint"`.
+  `"checkpoint"`, and the scene it named (`Aethrion.Bridge.Scene`) as
+  `"scene"`.
   """
   @spec transcript([map()]) :: {[map()], [map()]}
   def transcript(messages) do
@@ -66,7 +67,8 @@ defmodule Aethrion.Bridge do
             case Regex.run(@checkpoint, content) do
               [_, id] -> id
               nil -> nil
-            end
+            end,
+          "scene" => Aethrion.Bridge.Scene.marked(content)
         }
       end)
 
@@ -79,7 +81,7 @@ defmodule Aethrion.Bridge do
         from_end -> length(chat) - from_end
       end
 
-    {Enum.map(chat, &Map.delete(&1, "checkpoint")), Enum.drop(chat, start)}
+    {Enum.map(chat, &Map.drop(&1, ["checkpoint", "scene"])), Enum.drop(chat, start)}
   end
 
   @doc """
@@ -107,7 +109,10 @@ defmodule Aethrion.Bridge do
   (`%{get: fun, put: fun}`, see `Aethrion.Bridge.Store`), which keeps the
   world after each line under an id chaining the cast, the character, and
   every line so far; `:max_lines`, the most lines one call may replay
-  (more is `{:error, :too_many_lines}`). The replay starts after the latest
+  (more is `{:error, :too_many_lines}`); `:scenes` (default false), for a
+  cast read from a card: each line is read in the scene the reply before it
+  named (`Aethrion.Bridge.Scene`), so people the story brought in join the
+  cast and those not there are away. The replay starts after the latest
   reply whose checkpoint comes from this cast and whose chain matches the
   lines still in the chat, so an edited line is replayed with everything
   after it, and lines the app left out are not lost.
@@ -123,7 +128,7 @@ defmodule Aethrion.Bridge do
     to = Keyword.get(opts, :to, "")
     checkpoints = opts |> Keyword.get(:checkpoints) |> as_json()
     root = root(state)
-    turns = turns(chat)
+    turns = turns(chat, Keyword.get(opts, :scenes, false))
 
     {pending, from, id, talking} =
       with {index, id, %{state: {:data, data}} = checkpoint} <-
@@ -150,16 +155,17 @@ defmodule Aethrion.Bridge do
           %{line: nil}, acc ->
             acc
 
-          %{line: line}, {state, prev, talking} ->
-            played = line_step(state, line, prev, talking, read, put)
+          %{line: _line} = turn, {state, prev, talking} ->
+            played = line_step(state, turn, prev, talking, read, put)
             {played.state, played.id, played.talking}
         end)
 
       turn = %{line: nil, readings: [], outputs: [], id: id, scenes: []}
 
       {after_all, turn, _talking} =
-        Enum.reduce(unanswered, {now, turn, talking}, fn %{line: line}, {state, turn, talking} ->
-          played = line_step(state, line, turn.id, talking, read, put)
+        Enum.reduce(unanswered, {now, turn, talking}, fn %{line: line} = said,
+                                                         {state, turn, talking} ->
+          played = line_step(state, said, turn.id, talking, read, put)
 
           {played.state,
            %{
@@ -178,8 +184,10 @@ defmodule Aethrion.Bridge do
   # One line of the player's: read as said to whoever they are talking to,
   # seen by whoever is there, then the turn's hours pass. Who they talk to
   # next is whoever the line called.
-  defp line_step(state, line, prev, talking, read, put) do
-    readings = read.(state, line, prev, talking)
+  defp line_step(state, %{line: line} = said, prev, talking, read, put) do
+    {state, chain, talking} = in_scene(state, Map.get(said, :scene), prev, talking)
+    # With no one in the cast yet there is nothing to read the line as.
+    readings = if people(state) == [], do: [], else: read.(state, line, chain, talking)
     seen_by = present(state)
 
     {after_line, outputs, refused} =
@@ -191,7 +199,7 @@ defmodule Aethrion.Bridge do
       end)
 
     {after_line, outputs} = pass_time(after_line, outputs)
-    id = checkpoint_id(prev, talking, line)
+    id = checkpoint_id(chain, talking, line)
     talking = addressee(after_line, readings) || talking
     put.(id, prev, line, after_line, talking)
 
@@ -214,6 +222,24 @@ defmodule Aethrion.Bridge do
         refused: refused
       }
     }
+  end
+
+  # The scene the reply before a line named: its people are there (someone
+  # new joins the cast), the others away. The chain of ids takes the scene
+  # in, so a line after a rerolled reply is not mistaken for the same line
+  # after the first one. The player talks to someone who is there.
+  defp in_scene(state, nil, prev, talking), do: {state, prev, talking}
+
+  defp in_scene(state, scene, prev, talking) do
+    state = Aethrion.Bridge.Scene.enter(state, scene)
+    here = present(state)
+
+    chain =
+      [prev, 0, "scene", 0, :erlang.term_to_binary(scene, [:deterministic])]
+      |> sha()
+      |> binary_part(0, 24)
+
+    {state, chain, if(talking in here, do: talking, else: List.first(here) || talking)}
   end
 
   # The characters in the story who are not foes.
@@ -327,22 +353,28 @@ defmodule Aethrion.Bridge do
   # The player's lines, each with whether a reply came after it and that
   # reply's checkpoint id. A chat the app trimmed may begin with a reply: it
   # is kept, with no line, for its checkpoint.
-  defp turns(chat) do
-    chat
-    |> Enum.reduce([], fn
-      %{"role" => "user", "content" => text}, turns ->
-        if String.trim(text) == "",
-          do: turns,
-          else: [%{line: text, id: nil, replied: false} | turns]
+  defp turns(chat, scenes?) do
+    {turns, _scene} =
+      Enum.reduce(chat, {[], nil}, fn
+        %{"role" => "user", "content" => text}, {turns, scene} ->
+          if String.trim(text) == "",
+            do: {turns, scene},
+            else: {[%{line: text, id: nil, replied: false, scene: scene} | turns], nil}
 
-      %{"role" => "assistant"} = reply, [%{replied: false} = turn | turns] ->
-        [%{turn | id: reply["checkpoint"], replied: true} | turns]
+        %{"role" => "assistant"} = reply, {[%{replied: false} = turn | turns], _scene} ->
+          {[%{turn | id: reply["checkpoint"], replied: true} | turns], scenes? && reply["scene"]}
 
-      %{"role" => "assistant", "checkpoint" => id}, [] when is_binary(id) ->
-        [%{line: nil, id: id, replied: true}]
+        %{"role" => "assistant", "checkpoint" => id} = reply, {[], _scene} when is_binary(id) ->
+          {[%{line: nil, id: id, replied: true}], scenes? && reply["scene"]}
 
-      _other, turns ->
-        turns
+        _other, acc ->
+          acc
+      end)
+
+    turns
+    |> Enum.map(fn
+      %{scene: false} = turn -> %{turn | scene: nil}
+      turn -> turn
     end)
     |> Enum.reverse()
   end
@@ -490,7 +522,9 @@ defmodule Aethrion.Bridge do
   Options: `:card_status` (default false). A card the rules were not made
   for (`Aethrion.Bridge.AutoCast`) may print a status window of its own;
   with `card_status: true` the note leaves it to the card, and asks only
-  that what the rules track shows the rules' numbers there.
+  that what the rules track shows the rules' numbers there. `:scene`
+  (default false): the note says who is away, and asks the model to end its
+  reply with who is with the player (`Aethrion.Bridge.Scene`).
   """
   @spec note(State.t(), State.t(), map(), :ko | :en, keyword()) :: String.t()
   def note(%State{} = before, %State{} = now, turn, locale \\ :ko, opts \\ []) do
@@ -503,11 +537,14 @@ defmodule Aethrion.Bridge do
         else:
           "do not invent hits, heals, or endings beyond these, and do not print a status window: it is shown separately."
 
+    scene? = Keyword.get(opts, :scene, false)
+    standing = standing(now, locale, scene?)
+
     """
-    [Aethrion: the game's rules, not the story, decide these. Narrate the next reply so it agrees with them; do not change any number, #{window}]
+    [Aethrion: the game's rules, not the story, decide these. Narrate the next reply so it agrees with them; do not change any number, #{window}#{if scene?, do: " " <> Aethrion.Bridge.Scene.instruction()}]
     #{if happened == [], do: "This turn: nothing the rules track changed.", else: "This turn:\n" <> Enum.join(happened, "\n")}
     Now:
-    #{Enum.join(standing(now, locale), "\n")}
+    #{if standing == [], do: "- No one the rules know of yet.", else: Enum.join(standing, "\n")}
     """
     |> String.trim()
   end
@@ -688,14 +725,19 @@ defmodule Aethrion.Bridge do
     end
   end
 
-  defp standing(state, locale) do
+  defp standing(state, locale, scene?) do
     people =
       for character <- State.sorted_characters(state),
           rel = State.get_relationship(state, character.id, "user"),
           not State.stat?(state, character.id, "enemy") or
             State.stat(state, character.id, "enemy") == 0 do
         "- #{character.name}: affinity #{rel.affinity}, trust #{rel.trust}, tension #{rel.tension}, " <>
-          "#{Aethrion.Rules.Bond.derive(rel, state)}" <> hp(state, character.id)
+          "#{Aethrion.Rules.Bond.derive(rel, state)}" <>
+          hp(state, character.id) <>
+          if(scene? and State.stat(state, character.id, "away") > 0,
+            do: " (not with the player)",
+            else: ""
+          )
       end
 
     fighters =
@@ -728,14 +770,14 @@ defmodule Aethrion.Bridge do
   status window (`priv/risu/aethrion-status.json`), opened with the turn's
   checkpoint id.
   """
-  @spec status(State.t(), map(), :ko | :en) :: String.t()
-  def status(%State{} = state, turn, locale \\ :ko, before \\ nil) do
+  @spec status(State.t(), map(), :ko | :en, State.t() | nil, keyword()) :: String.t()
+  def status(%State{} = state, turn, locale \\ :ko, before \\ nil, opts \\ []) do
     words = words(locale)
 
     lines =
       day(state, locale) ++
         player_line(state, before, words) ++
-        people_lines(state, before, words, locale) ++
+        people_lines(state, before, words, locale, Keyword.get(opts, :scene, false)) ++
         foe_lines(state, before) ++ between_status(state, turn, words) ++ story_events(turn)
 
     open = if turn[:id], do: ~s(<aethrion-status id="#{turn.id}">), else: "<aethrion-status>"
@@ -751,16 +793,29 @@ defmodule Aethrion.Bridge do
       else: []
   end
 
-  defp people_lines(state, before, words, locale) do
+  # In a scene (`Aethrion.Bridge.Scene`), only who is there, or whose
+  # feelings moved this turn: a story that has met many people would
+  # otherwise list them all.
+  defp people_lines(state, before, words, locale, scene?) do
     for character <- State.sorted_characters(state),
         State.stat(state, character.id, "enemy") == 0,
-        rel = State.get_relationship(state, character.id, "user") do
+        rel = State.get_relationship(state, character.id, "user"),
+        shown?(state, before, character.id, rel, scene?) do
       was = before && State.get_relationship(before, character.id, "user")
 
       "#{character.name} · #{words.affinity} #{rel.affinity}#{change(was && was.affinity, rel.affinity)}" <>
         " · #{words.trust} #{rel.trust}#{change(was && was.trust, rel.trust)}" <>
         hp_short(state, character.id, before) <> watched(state, character.id, before, locale)
     end
+  end
+
+  defp shown?(_state, _before, _id, _rel, false), do: true
+
+  defp shown?(state, before, id, rel, true) do
+    was = before && State.get_relationship(before, id, "user")
+
+    State.stat(state, id, "away") == 0 or
+      (was != nil and {was.affinity, was.trust} != {rel.affinity, rel.trust})
   end
 
   defp foe_lines(state, before) do
