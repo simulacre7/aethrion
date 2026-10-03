@@ -11,3 +11,4 @@ assets
 .elixir_ls
 erl_crash.dump
 .env
+casts

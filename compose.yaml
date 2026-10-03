@@ -30,13 +30,16 @@ services:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
     command:
       - --cast
-      - priv/casts/${AETHRION_CAST:-campfire}.json
+      - ${AETHRION_CAST_FILE:-priv/casts/${AETHRION_CAST:-campfire}.json}
       - --locale
       - ${AETHRION_LOCALE:-ko}
       - --llm
       - ${AETHRION_LLM:-openai}
     volumes:
       - aethrion-data:/data
+      # Your own casts: save the editor's JSON in ./casts, then set
+      # AETHRION_CAST_FILE=/casts/<name>.json in .env.
+      - ./casts:/casts:ro
 
 volumes:
   aethrion-data:

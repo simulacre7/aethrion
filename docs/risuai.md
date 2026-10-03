@@ -43,6 +43,7 @@ In `.env`:
 - **`AETHRION_TOKEN`** is required. It is an access password for your Aethrion, not a model token, and costs nothing. Use any long random string, such as the output of `openssl rand -hex 16`. RisuAI sends it with every request, and it keeps other websites open in your browser from using the server and the model behind it.
 - **The narrating model** is your choice: any OpenAI-compatible API (OpenRouter, for one), the Claude API, or a model served on this computer (Ollama, LM Studio, llama.cpp). `.env.example` shows each.
 - **`AETHRION_CAST`** picks the cast. The default is `campfire`, in Korean. For the English campfire, set `AETHRION_CAST=campfire_en` and `AETHRION_LOCALE=en`.
+- **`AETHRION_CAST_FILE`** plays a cast of your own. Edit one at http://localhost:4848/editor, download its JSON into the `casts` folder, set `AETHRION_CAST_FILE=/casts/my.json`, and run `docker compose up -d` again.
 
 Then:
 
