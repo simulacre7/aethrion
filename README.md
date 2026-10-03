@@ -46,6 +46,10 @@ From a play of the bundled campfire cast, with the Claude Code CLI as the narrat
 
 Doyun saw the necklace, so he grows jealous and sends word to Harin, who is out scouting. The gift lifts Sera's care for you just past the line where she takes the goblins' blows for you. Fight without giving it and she never does.
 
+A real play in RisuAI's desktop app (Korean cast). The narration streams in as it is written, and the status window comes last:
+
+<img src="assets/demo/risuai-campfire.jpg" alt="The campfire cast in RisuAI: narration, then a status window with this turn's changes in brackets" width="720">
+
 ## Who It Is For
 
 | You are | Start here |
