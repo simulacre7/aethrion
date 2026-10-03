@@ -9,11 +9,38 @@
 
 Aethrion keeps the facts of an AI role-play in deterministic rules: affinity and trust, HP and dice, who saw what, who told whom, and which ending you are heading for. Any model then narrates the result. Use it as the Custom API in RisuAI or SillyTavern, or put it behind your own chat app or game.
 
-![One turn rerolled three times in RisuAI: the narration changes, the status window and this turn's dice rolls do not](assets/demo/swipes.gif)
+![The public card Sinmarked, played unchanged, with one turn rerolled three times: the narration changes, the status window and this turn's rulings do not](assets/demo/card.en.gif)
 
-<sub>One turn of the Korean campfire cast, rerolled three times in the RisuAI desktop app. The last frame unfolds "this turn's rulings" under the status window.</sub>
+<sub>The card [Sinmarked](https://realm.risuai.net/character/387a703e-8122-4d7a-8e34-069ebb26d0bc) from RisuRealm (by ieungieung, CC BY-SA 4.0), played unchanged in SillyTavern. Only the request model name was set, to `aethrion-auto`. One turn is rerolled three times, and the last frame unfolds "this turn" under the status window.</sub>
 
 <sub>Pronounced ay-three-on (에이트리온). A personal project, not affiliated with RisuAI or SillyTavern. MIT licensed, early alpha.</sub>
+
+## Keep The Card You Already Use
+
+A card you already play in RisuAI or SillyTavern needs no editing and no import. Set the request model to `aethrion-auto`.
+
+[Sinmarked](https://realm.risuai.net/character/387a703e-8122-4d7a-8e34-069ebb26d0bc), above, is an ensemble card with five prisoners. The player, their new jailer, hands a waterskin to one of them, Lucien, and that turn is rerolled three times. The narration differs each time; the rulings do not.
+
+```txt
+You:  I pass the waterskin through the bars. "Lucien, take it. It's yours."
+      Lucien · affinity 14 (+10) · trust 2
+      Selma · affinity 0 · trust 0        (Eveline, Johann, and Maren the same)
+      Read · a gift for Lucien: waterskin
+      Seen by · Eveline, Johann, Maren, Selma
+```
+
+- **The card is read once.** On a new card's first reply, Aethrion reads the card and takes the people in it and how each feels about the player at the start: an old friend starts high, a stranger at 0.
+- **Then the rules keep count.** Affinity, trust, memories, and who saw what are the rules'. A reroll leaves the numbers alone.
+- **People may turn up as the story goes.** With a narrator card (an open-world RPG, say) the model says, with each reply, who is with the player. Someone new joins the cast and has numbers from the next turn, and someone who has left does not see what the player does.
+- **The card works as before.** Its prompt, lorebook, assets, and its own status window stay. Where the card's window shows something Aethrion tracks, it shows the number the rules computed: with a raising-sim card that prints its own window, the card's Trust followed Aethrion's trust. What Aethrion does not track, such as that card's Anger, is still the model's.
+
+Checked with an ensemble card (Sinmarked), a one-on-one card, a dating-sim card with a fixed set of people, a raising-sim card with its own status window, and two narrator RPG cards. Not there yet:
+
+- A line said on the turn someone first appears is not read as said to them. From the next turn it is.
+- What comes by itself is affinity, trust, and memories. HP, fights, and endings need [a cast made in the editor](docs/stories.md#building-a-world).
+- A new card's first turn costs one more model call, to read the card.
+
+More in the [RisuAI guide](docs/risuai.md#keep-the-card-you-already-use).
 
 ## The Problem
 
@@ -34,57 +61,32 @@ Aethrion reads each line the player types, applies it with rules, and hands the 
 - the status window shows what this turn changed (`Sera · affinity 50 (+10)`)
 - under it, this turn's rulings show the rules' work: how the line was read, who saw it, and every dice roll (`[d20 6+5=11 vs AC 15, miss.]`), proof that the numbers are computed, not written by the model
 
-![The same scene rerolled three times. When the model writes the status window, its numbers change with each reroll; with Aethrion only the narration changes.](assets/demo/reroll.png)
+![One turn of the bundled campfire cast rerolled three times in SillyTavern: the narration changes, the status window and this turn's dice rolls do not](assets/demo/swipes.en.gif)
 
-<sub>The same scene from the Korean campfire cast, rerolled three times with the same model (the Claude Code CLI) and the same starting values. Left: a plain card where the model updates the status window. Right: Aethrion. Raw outputs: [assets/demo/reroll.json](assets/demo/reroll.json)</sub>
+<sub>The bundled campfire cast in SillyTavern, one turn rerolled three times. A cast made for Aethrion has HP and dice in the rules too. The last frame unfolds "this turn" under the status window.</sub>
+
+![The same scene rerolled three times. When the model writes the status window, its numbers change with each reroll; with Aethrion only the narration changes.](assets/demo/reroll.en.png)
+
+<sub>The same scene from the campfire cast, rerolled three times with the same model (the Claude Code CLI) and the same starting values. Left: a plain card where the model updates the status window. Right: Aethrion. Raw outputs: [assets/demo/reroll.en.json](assets/demo/reroll.en.json)</sub>
 
 From a play of the bundled campfire cast, with the Claude Code CLI as the narrator. The prose is the model's; every number, and who did what, is the rules':
 
 ```txt
-나:   세라, 목걸이 사 왔어. 선물이야
-      …그 모습을 지켜보던 도윤은 "와, 형, 나는 육포 한 조각도 안 사 왔으면서~" 하고 낄낄 웃었지만,
-      세라 쪽으로 향한 눈길은 어딘가 비뚜름했다. …
-      세라 · 호감 50 · 신뢰 42   도윤 → 하린 · 호감 +3 · 신뢰 +7   도윤 → 세라 · 긴장 +8
-나:   고블린 척후를 벤다
-      …세라는 새벽의 신께 짧게 기도하며 네 옆구리의 상처에 다시 빛을 얹고는 곧바로 네 앞을 막아섰고, …
+You:  Sera, I bought you a necklace. It's a gift.
+      …On the far side of the fire, Doyun has gone very still. He saw all of it. He looks at the
+      necklace, then at Sera, and his jaw tightens before he turns away. …
+      Sera · affinity 50 (+10) · trust 42   Doyun → Harin · trust +7 · affinity +3   Doyun → Sera · tension +8
+You:  I slash at the goblin scout.
+      …She slips around the edge of the firelight with the necklace chain looped tight around her
+      knuckles, finds the opening you and Doyun have made, and strikes once, cleanly. …
+      [d20 15/17→17+4=21 vs AC 15 (advantage), hit. 1d6+2 (5)] Sera hits Goblin Scout for 7.
 ```
 
 Doyun saw the necklace, so he grows jealous and sends word to Harin, who is out scouting. The gift lifts Sera's care for you just past the line where she takes the goblins' blows for you. Fight without giving it and she never does.
 
-A real play in RisuAI's desktop app (Korean cast). The narration streams in as it is written, and the status window comes last:
+A real play in SillyTavern. The narration streams in as it is written, and the status window comes last:
 
-<img src="assets/demo/risuai-campfire.jpg" alt="The campfire cast in RisuAI: narration, then a status window with this turn's changes in brackets" width="720">
-
-## Keep The Card You Already Use
-
-A card you already play in RisuAI needs no editing and no import. Set the request model to `aethrion-auto`.
-
-- On a new card's first reply, Aethrion reads the card once and takes the people in it and how each feels about the player at the start: an old friend starts high, a stranger at 0.
-- From then on the rules keep affinity, trust, memories, and who saw what. A reroll leaves the numbers alone.
-- The card's prompt, lorebook, assets, and its own status window work as before. Where the card's window shows something Aethrion tracks (trust, say), it shows the number the rules computed.
-
-Below is a raising-sim card published on RisuRealm, played unchanged in the RisuAI desktop app. Only the request model name was changed. The card's text and art are its maker's, so they are not shown, and the character's name is left out.
-
-```txt
-You:  It's all right, eat slowly. Nobody will take it from you.
-      the card's window   Trust 2% · Anger 10% · Awakening 10%
-      Aethrion            affinity 4 (+4) · trust 2 (+2)      read · said warmly
-You:  Why are you so slow? Hurry up.
-      the card's window   Trust 0% · Anger 12% · Awakening 10%
-      Aethrion            affinity -4 (-8) · trust -4 (-6)    read · said with hostility
-```
-
-The card's Trust follows Aethrion's trust (the card shows nothing below 0%). Anger and Awakening are not tracked by Aethrion, so the model still decides them. The lines were played in Korean and are translated here.
-
-A narrator card where people turn up as the story goes (an open-world RPG, say) works too. With each reply the model says who is with the player; someone new joins the cast and has numbers from the next turn, and someone who has left does not see what the player does.
-
-Checked with a one-on-one card, a dating-sim card with a fixed set of people, a raising-sim card with its own status window, and two narrator RPG cards. Not there yet:
-
-- A line said on the turn someone first appears is not read as said to them. From the next turn it is.
-- What comes by itself is affinity, trust, and memories. HP, fights, and endings need [a cast made in the editor](docs/stories.md#building-a-world).
-- A new card's first turn costs one more model call, to read the card.
-
-More in the [RisuAI guide](docs/risuai.md#keep-the-card-you-already-use).
+<img src="assets/demo/sillytavern-campfire.en.png" alt="The campfire cast in SillyTavern: narration, then a status window with this turn's changes in brackets" width="720">
 
 ## Who It Is For
 

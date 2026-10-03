@@ -133,7 +133,7 @@ A card can be played as it is in RisuAI, without importing it into Aethrion. In 
 - **Aethrion's status window.** Without the status module, the numbers and this turn's rulings show as plain lines at the end of the reply. For the box and the fold, import the status module from [4. Character Cards](#4-character-cards) and turn it on.
 - **Letter case.** On macOS the settings field may rewrite the name as `Aethrion-auto`. Case does not matter.
 
-Checked in the RisuAI desktop app 2026.8.250 with a raising-sim card that has its own status window and assets. Limits:
+Checked in the RisuAI desktop app 2026.8.250 with a raising-sim card that has its own status window and assets, and in SillyTavern 1.19.0 with an ensemble card. Limits:
 
 - A line said on the turn someone first appears is not read as said to them; from the turn after the model has named them, it is. A card with no fixed characters starts with no one.
 - Who comes in depends on the line the model writes. When the model leaves it out, the scene stays as it was.
@@ -216,5 +216,7 @@ Tested with SillyTavern 1.19.0: the card with its cover and lorebook, streaming,
    - The window alone, for a turn with nothing to rule on:
      - Find Regex: `/<aethrion-status[^>]*>([\s\S]*?)<\/aethrion-status>/g`
      - Replace With: `<div style="white-space:pre-line;border:1px solid rgba(127,127,127,.35);border-radius:10px;padding:8px 12px;margin-top:10px">$1</div>`
+
+To keep a card you already use, set the Model ID to `aethrion-auto` ([Keep The Card You Already Use](#keep-the-card-you-already-use)). The card stays as it is in SillyTavern; only the two Regex scripts above are needed. Checked with the RisuRealm card [Sinmarked](https://realm.risuai.net/character/387a703e-8122-4d7a-8e34-069ebb26d0bc) (by ieungieung, CC BY-SA 4.0), imported and played unchanged: swipes keep the numbers and the rulings. Import the card's embedded lorebook when SillyTavern asks.
 
 Streaming is on by default in SillyTavern's Chat Completion settings.

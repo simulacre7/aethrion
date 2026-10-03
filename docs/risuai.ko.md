@@ -133,7 +133,7 @@ mix aethrion.card 내카드.png --player 선생님 --out casts/my.json
 - **Aethrion의 상태창.** 카드에 상태창 모듈이 없어도 수치와 이번 턴 판정이 응답 끝에 글자로 보입니다. 상자와 접기로 보려면 [4. 캐릭터 카드](#4-캐릭터-카드)의 상태창 모듈을 가져와 켭니다.
 - **이름의 대소문자.** macOS에서는 설정 칸이 `Aethrion-auto`로 바꿔 적기도 합니다. 대소문자는 구분하지 않으니 그대로 두어도 됩니다.
 
-RisuAI 데스크톱 앱 2026.8.250에서, 자체 상태창과 에셋이 있는 육성 시뮬 카드로 확인했습니다. 한계는 다음과 같습니다.
+RisuAI 데스크톱 앱 2026.8.250에서 자체 상태창과 에셋이 있는 육성 시뮬 카드로, SillyTavern 1.19.0에서 군상극 카드로 확인했습니다. 한계는 다음과 같습니다.
 
 - 인물이 처음 등장하는 턴에 한 말은 그 인물에게 한 것으로 읽지 못합니다. 모델이 그 인물을 알려 준 다음 턴부터 읽습니다. 고정 인물이 없는 카드는 아무도 없는 상태로 시작합니다.
 - 인물의 등장은 모델이 적어 주는 줄에 달려 있습니다. 모델이 그 줄을 빼먹으면 장면은 직전 그대로입니다.
@@ -216,5 +216,7 @@ SillyTavern 1.19.0에서 확인했습니다. 표지와 로어북이 들어간 �
    - 판정할 게 없는 턴의 상태창:
      - Find Regex: `/<aethrion-status[^>]*>([\s\S]*?)<\/aethrion-status>/g`
      - Replace With: `<div style="white-space:pre-line;border:1px solid rgba(127,127,127,.35);border-radius:10px;padding:8px 12px;margin-top:10px">$1</div>`
+
+쓰던 카드를 그대로 쓰려면 Model ID를 `aethrion-auto`로 둡니다([쓰던 카드 그대로 쓰기](#쓰던-카드-그대로-쓰기)). 카드는 SillyTavern에 있는 그대로 두고, 위의 Regex 스크립트 두 개만 있으면 됩니다. RisuRealm의 카드 [Sinmarked](https://realm.risuai.net/character/387a703e-8122-4d7a-8e34-069ebb26d0bc)(ieungieung, CC BY-SA 4.0)를 가져와 그대로 플레이하고, 스와이프해도 숫자와 판정이 같은 것을 확인했습니다. 카드에 든 로어북은 가져올지 물을 때 가져오면 됩니다.
 
 SillyTavern의 Chat Completion은 기본으로 스트리밍이 켜져 있습니다.
