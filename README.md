@@ -76,9 +76,11 @@ You:  Why are you so slow? Hurry up.
 
 The card's Trust follows Aethrion's trust (the card shows nothing below 0%). Anger and Awakening are not tracked by Aethrion, so the model still decides them. The lines were played in Korean and are translated here.
 
-Checked with a one-on-one card, a dating-sim card with a fixed set of people, and a raising-sim card with its own status window. Not there yet:
+A narrator card where people turn up as the story goes (an open-world RPG, say) works too. With each reply the model says who is with the player; someone new joins the cast and has numbers from the next turn, and someone who has left does not see what the player does.
 
-- A narrator card where people turn up as the story goes (an open-world RPG, say) follows only the people read at the start.
+Checked with a one-on-one card, a dating-sim card with a fixed set of people, a raising-sim card with its own status window, and two narrator RPG cards. Not there yet:
+
+- A line said on the turn someone first appears is not read as said to them. From the next turn it is.
 - What comes by itself is affinity, trust, and memories. HP, fights, and endings need [a cast made in the editor](docs/stories.md#building-a-world).
 - A new card's first turn costs one more model call, to read the card.
 

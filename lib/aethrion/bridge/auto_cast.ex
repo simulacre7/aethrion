@@ -12,6 +12,9 @@ defmodule Aethrion.Bridge.AutoCast do
   of a reply still in the chat, whatever the app has since changed in its
   prompt, or, before the first reply, by the card's first message.
 
+  A card that narrates a world may have no one in it at first; people join
+  as the story brings them in (`Aethrion.Bridge.Scene`).
+
   Such a cast has relationships and memories, no stats, fights, or endings:
   those are added in the editor, and played with the model name `aethrion`.
   """
@@ -86,16 +89,13 @@ defmodule Aethrion.Bridge.AutoCast do
   @doc """
   Reads the card with the model and keeps the cast: `{:ok, state}`. A model
   that fails or answers something else gives `{:error, reason}`, and
-  nothing is kept. Options: `:locale` (`:ko` or `:en`, the language of the
-  fallback name), and the adapter's own.
+  nothing is kept. Options are the adapter's.
   """
   @spec read(map(), map(), module(), keyword()) :: {:ok, State.t()} | {:error, term()}
   def read(card, casts, adapter, opts \\ []) do
-    {locale, opts} = Keyword.pop(opts, :locale, :en)
-
     with {:ok, answer} <- Aethrion.LLM.chat(adapter, question(card), opts),
          {:ok, people} <- people(answer),
-         data = cast_data(people, card, locale),
+         data = cast_data(people, card),
          {:ok, state} <- State.parse(data) do
       casts.put.(key(card), data)
       casts.put.("root:" <> Bridge.root(state), data)
@@ -155,20 +155,9 @@ defmodule Aethrion.Bridge.AutoCast do
   defp title(_other), do: ""
 
   @doc false
-  # Cast data for the characters read. A card with no fixed characters gets
-  # one, named after the card: the one the player talks to.
-  def cast_data(%{title: title, characters: []}, card, locale) do
-    name =
-      cond do
-        title != "" -> String.slice(title, 0, 40)
-        locale == :ko -> "이야기"
-        true -> "Story"
-      end
-
-    cast_data(%{title: title, characters: [%{"name" => name}]}, card, locale)
-  end
-
-  def cast_data(%{characters: characters}, card, _locale) do
+  # Cast data for the characters read. A card with no fixed characters
+  # starts with no one: the story brings them in (`Aethrion.Bridge.Scene`).
+  def cast_data(%{characters: characters}, card) do
     {people, relationships} =
       characters
       |> Enum.with_index()

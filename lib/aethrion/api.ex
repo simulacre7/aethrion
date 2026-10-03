@@ -388,7 +388,8 @@ defmodule Aethrion.API do
                  casts: casts,
                  checkpoints: checkpoints
                }),
-             {:ok, to, status?} <- bridge_model(cast, data["model"]) do
+             {:ok, to, status?} <-
+               bridge_model(cast, data["model"], auto_model?(data["model"])) do
           bridge_turn(config, data, messages, cast, %{
             to: to,
             status?: status?,
@@ -687,39 +688,47 @@ defmodule Aethrion.API do
   # The cast a request plays: the server's, or for `aethrion-auto` the one
   # read from the card in the request (`Aethrion.Bridge.AutoCast`), once
   # for each card.
-  defp bridge_cast(config, data, messages, {adapter, adapter_opts}, stores) do
-    if auto_model?(data["model"]) do
-      {all, chat} = Aethrion.Bridge.transcript(messages)
-      card = Aethrion.Bridge.AutoCast.card(all, chat)
+  defp bridge_cast(config, data, messages, generator, stores) do
+    cond do
+      auto_model?(data["model"]) ->
+        card_cast(messages, generator, stores)
 
-      case Aethrion.Bridge.AutoCast.find(chat, card, stores) do
-        %State{} = cast ->
-          {:ok, cast}
+      match?(%State{}, config.cast) ->
+        {:ok, config.cast}
 
-        nil ->
-          started = System.monotonic_time(:millisecond)
-          opts = adapter_opts ++ [locale: config.locale, max_tokens: 1_500]
+      true ->
+        {:error, 400, Error.new(:no_cast, "start the server with --cast to use it as a model")}
+    end
+  end
 
-          case Aethrion.Bridge.AutoCast.read(card, stores.casts, adapter, opts) do
-            {:ok, cast} ->
-              names = Enum.map_join(State.sorted_characters(cast), ", ", & &1.name)
-              took = seconds(System.monotonic_time(:millisecond) - started)
-              Logger.info("Aethrion read a new card: #{names} · #{took}")
-              {:ok, cast}
+  defp card_cast(messages, {adapter, adapter_opts}, stores) do
+    {all, chat} = Aethrion.Bridge.transcript(messages)
+    card = Aethrion.Bridge.AutoCast.card(all, chat)
 
-            {:error, reason} ->
-              {:error, 502,
-               Error.new(:model_failed, "the model could not read the card: #{inspect(reason)}")}
+    case Aethrion.Bridge.AutoCast.find(chat, card, stores) do
+      %State{} = cast -> {:ok, cast}
+      nil -> read_card(card, stores.casts, adapter, adapter_opts ++ [max_tokens: 1_500])
+    end
+  end
+
+  defp read_card(card, casts, adapter, opts) do
+    started = System.monotonic_time(:millisecond)
+
+    case Aethrion.Bridge.AutoCast.read(card, casts, adapter, opts) do
+      {:ok, cast} ->
+        names =
+          case State.sorted_characters(cast) do
+            [] -> "no one yet"
+            people -> Enum.map_join(people, ", ", & &1.name)
           end
-      end
-    else
-      case config do
-        %{cast: %State{} = cast} ->
-          {:ok, cast}
 
-        _config ->
-          {:error, 400, Error.new(:no_cast, "start the server with --cast to use it as a model")}
-      end
+        took = seconds(System.monotonic_time(:millisecond) - started)
+        Logger.info("Aethrion read a new card: #{names} · #{took}")
+        {:ok, cast}
+
+      {:error, reason} ->
+        {:error, 502,
+         Error.new(:model_failed, "the model could not read the card: #{inspect(reason)}")}
     end
   end
 
@@ -762,14 +771,17 @@ defmodule Aethrion.API do
 
     started = System.monotonic_time(:millisecond)
 
+    # A cast read from a card: the story may bring people in.
+    auto? = auto_model?(data["model"])
+
     with {:ok, {before, now, turn}} <-
-           replay_chat(cast, chat, read, turn_opts.to, turn_opts.checkpoints) do
+           replay_chat(cast, chat, read, turn_opts.to, turn_opts.checkpoints, auto?) do
       replayed = System.monotonic_time(:millisecond)
       # A card read on the way in keeps its own status window.
       note = %{
         "role" => "system",
         "content" =>
-          Aethrion.Bridge.note(before, now, turn, locale, card_status: auto_model?(data["model"]))
+          Aethrion.Bridge.note(before, now, turn, locale, card_status: auto?, scene: auto?)
       }
 
       messages = all ++ [note]
@@ -777,7 +789,7 @@ defmodule Aethrion.API do
 
       status =
         if turn_opts.status? and turn.line != nil,
-          do: Aethrion.Bridge.status(now, turn, locale, before)
+          do: Aethrion.Bridge.status(now, turn, locale, before, scene: auto?)
 
       # A turn is kept once the model has answered.
       finish = fn replied ->
@@ -792,23 +804,25 @@ defmodule Aethrion.API do
       end
 
       if data["stream"] == true and is_function(config[:emit], 1) do
-        stream_turn(config.emit, data, {adapter, messages, opts}, {status, locale}, finish)
+        stream_turn(config.emit, data, {adapter, messages, opts}, {status, locale, auto?}, finish)
       else
         replied = Aethrion.LLM.chat(adapter, messages, opts)
         finish.(replied)
-        reply(data, replied, status)
+        reply(data, replied, status, auto?)
       end
     end
   end
 
-  defp reply(data, replied, status) do
+  defp reply(data, replied, status, scene?) do
     case replied do
       # A reply to a request to continue one adds to it: no new turn, no
       # second status block.
       {:ok, text} when status != nil ->
-        completion(data, String.trim(text) <> "\n\n" <> status)
+        {text, scene} = scene(text, scene?)
+        completion(data, String.trim(text) <> "\n\n" <> Aethrion.Bridge.Scene.mark(status, scene))
 
       {:ok, text} ->
+        {text, _scene} = scene(text, scene?)
         completion(data, String.trim(text))
 
       {:error, reason} ->
@@ -816,10 +830,15 @@ defmodule Aethrion.API do
     end
   end
 
+  # The line the model ends its reply with for a cast read from a card
+  # (who is with the player), taken out of the reply.
+  defp scene(text, true), do: Aethrion.Bridge.Scene.take(text)
+  defp scene(text, false), do: {text, nil}
+
   # The reply as server-sent events while the model writes it, the status
   # block last. Once the first event is out, a failing model can only be
   # told as an error event: the status code has gone.
-  defp stream_turn(emit, data, {adapter, messages, opts}, {status, locale}, done) do
+  defp stream_turn(emit, data, {adapter, messages, opts}, {status, locale, scene?}, done) do
     chunk = sse_chunker(data)
     emit.(:start)
     emit.({:chunk, chunk.(%{role: "assistant", content: ""}, nil)})
@@ -827,7 +846,7 @@ defmodule Aethrion.API do
     # Leading blank lines are left out, as a whole reply is trimmed.
     started = :atomics.new(1, [])
 
-    on_delta = fn delta ->
+    send_delta = fn delta ->
       delta = if :atomics.get(started, 1) == 0, do: String.trim_leading(delta), else: delta
 
       if delta != "" do
@@ -836,11 +855,20 @@ defmodule Aethrion.API do
       end
     end
 
+    # The scene line is held back from the player.
+    {on_delta, flush} =
+      if scene?,
+        do: Aethrion.Bridge.Scene.filter(send_delta),
+        else: {send_delta, fn -> :ok end}
+
     replied = Aethrion.LLM.stream_chat(adapter, messages, opts, on_delta)
+    flush.()
     done.(replied)
 
     case replied do
-      {:ok, _text} ->
+      {:ok, text} ->
+        {_text, scene} = scene(text, scene?)
+        status = status && Aethrion.Bridge.Scene.mark(status, scene)
         if status, do: emit.({:chunk, chunk.(%{content: "\n\n" <> status}, nil)})
         emit.({:chunk, chunk.(%{}, "stop") <> "data: [DONE]\n\n"})
 
@@ -899,11 +927,12 @@ defmodule Aethrion.API do
   # reading them, each new one is a call).
   @max_replay 300
 
-  defp replay_chat(cast, chat, read, to, checkpoints) do
+  defp replay_chat(cast, chat, read, to, checkpoints, scenes?) do
     case Aethrion.Bridge.replay(cast, chat, read,
            to: to,
            checkpoints: checkpoints,
-           max_lines: @max_replay
+           max_lines: @max_replay,
+           scenes: scenes?
          ) do
       {:error, :too_many_lines} ->
         {:error, 400,
@@ -937,10 +966,10 @@ defmodule Aethrion.API do
   # "aethrion" or "aethrion-plain" (no status block), optionally
   # ":character" for whom the player talks to; by default the one who
   # greets on the card.
-  defp bridge_model(_cast, model) when not is_binary(model) and model != nil,
+  defp bridge_model(_cast, model, _auto?) when not is_binary(model) and model != nil,
     do: {:error, 400, Error.new(:invalid_request, "model must be a string")}
 
-  defp bridge_model(cast, model) do
+  defp bridge_model(cast, model, auto?) do
     {base, character} =
       case String.split(model || "aethrion", ":", parts: 2) do
         [base, character] -> {base, character}
@@ -949,14 +978,16 @@ defmodule Aethrion.API do
 
     to = character || default_talker(cast)
 
-    if to == nil or not State.character?(cast, to) do
+    # A cast read from a card may have no one in it yet, and whoever is
+    # named may only come in later.
+    if not auto? and (to == nil or not State.character?(cast, to)) do
       {:error, 400,
        Error.new(
          :invalid_request,
          "model names a character the cast does not have: #{inspect(model)}"
        )}
     else
-      {:ok, to, not String.ends_with?(String.downcase(base), "-plain")}
+      {:ok, to || "", not String.ends_with?(String.downcase(base), "-plain")}
     end
   end
 
