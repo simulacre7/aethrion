@@ -188,9 +188,12 @@ SillyTavern 1.19.0에서 확인했습니다. 표지와 로어북이 들어간 �
    - Model ID: `aethrion`
    - Connect를 누릅니다. "Valid"가 뜨고 모델 목록이 나오면 Aethrion에 닿은 것입니다.
 2. **카드:** 채팅 페이지의 **RisuAI** 패널에서 PNG 카드를 받아 캐릭터로 가져옵니다(Import Character, 또는 `data/default-user/characters/`에 파일을 넣기). 포함된 로어북을 가져올지 물으면 예를 누릅니다.
-3. **상태창:** Regex 확장에서 전역 스크립트를 하나 추가합니다.
-   - Find Regex: `/<aethrion-status[^>]*>([\s\S]*?)<\/aethrion-status>/g`
-   - Replace With: `<div style="white-space:pre-line;border:1px solid rgba(127,127,127,.35);border-radius:10px;padding:8px 12px;margin-top:10px">$1</div>`
-   - Affects: AI Output, Other Options: Alter Chat Display
+3. **상태창:** Regex 확장에서 전역 스크립트를 두 개, 이 순서로 추가합니다. 둘 다 Affects는 AI Output, Other Options는 Alter Chat Display입니다.
+   - 이번 턴 판정을 접어 둔 상태창:
+     - Find Regex: `/<aethrion-status[^>]*>([\s\S]*?)\n?<aethrion-turn title="([^"]*)">([\s\S]*?)<\/aethrion-turn><\/aethrion-status>/g`
+     - Replace With: `<div style="white-space:pre-line;border:1px solid rgba(127,127,127,.35);border-radius:10px;padding:8px 12px;margin-top:10px">$1<details><summary>$2</summary><div style="white-space:pre-line">$3</div></details></div>`
+   - 판정할 게 없는 턴의 상태창:
+     - Find Regex: `/<aethrion-status[^>]*>([\s\S]*?)<\/aethrion-status>/g`
+     - Replace With: `<div style="white-space:pre-line;border:1px solid rgba(127,127,127,.35);border-radius:10px;padding:8px 12px;margin-top:10px">$1</div>`
 
 SillyTavern의 Chat Completion은 기본으로 스트리밍이 켜져 있습니다.

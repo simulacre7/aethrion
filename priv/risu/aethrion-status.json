@@ -1,16 +1,24 @@
 {
-  "type": "risuModule",
-  "name": "Aethrion 상태창",
-  "description": "Aethrion이 응답 끝에 붙이는 <aethrion-status> 블록을 상태창으로 그립니다. 수치는 모델이 아니라 Aethrion의 규칙이 계산합니다. (Renders the status block Aethrion adds to each reply.)",
-  "id": "aethrion-status-window",
-  "regex": [
-    {
-      "comment": "Aethrion status window",
-      "in": "<aethrion-status[^>]*>([\\s\\S]*?)</aethrion-status>",
-      "out": "<div class=\"aethrion-status\" style=\"margin-top:10px;padding:8px 12px;border:1px solid rgba(127,127,127,.35);border-radius:10px;font-size:.85em;line-height:1.6;white-space:pre-line;opacity:.9\">$1</div>",
-      "type": "editdisplay",
-      "flag": "g",
-      "ableFlag": false
-    }
-  ]
+    "type": "risuModule",
+    "name": "Aethrion 상태창",
+    "description": "Aethrion이 응답 끝에 붙이는 <aethrion-status> 블록을 상태창으로 그립니다. 수치는 모델이 아니라 Aethrion의 규칙이 계산합니다. (Renders the status block Aethrion adds to each reply.)",
+    "id": "aethrion-status-window",
+    "regex": [
+        {
+            "comment": "Aethrion status window, with this turn's rulings folded away",
+            "in": "<aethrion-status[^>]*>([\\s\\S]*?)\\n?<aethrion-turn title=\"([^\"]*)\">([\\s\\S]*?)</aethrion-turn></aethrion-status>",
+            "out": "<div class=\"aethrion-status\" style=\"margin-top:10px;padding:8px 12px;border:1px solid rgba(127,127,127,.35);border-radius:10px;font-size:.85em;line-height:1.6;white-space:pre-line;opacity:.9\">$1<details style=\"margin-top:6px\"><summary style=\"cursor:pointer;opacity:.8\">$2</summary><div style=\"white-space:pre-line;margin-top:4px;opacity:.85\">$3</div></details></div>",
+            "type": "editdisplay",
+            "flag": "g",
+            "ableFlag": false
+        },
+        {
+            "comment": "Aethrion status window",
+            "in": "<aethrion-status[^>]*>([\\s\\S]*?)</aethrion-status>",
+            "out": "<div class=\"aethrion-status\" style=\"margin-top:10px;padding:8px 12px;border:1px solid rgba(127,127,127,.35);border-radius:10px;font-size:.85em;line-height:1.6;white-space:pre-line;opacity:.9\">$1</div>",
+            "type": "editdisplay",
+            "flag": "g",
+            "ableFlag": false
+        }
+    ]
 }

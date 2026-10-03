@@ -691,49 +691,164 @@ defmodule Aethrion.Bridge do
   def status(%State{} = state, turn, locale \\ :ko, before \\ nil) do
     words = words(locale)
 
-    people =
-      for character <- State.sorted_characters(state),
-          State.stat(state, character.id, "enemy") == 0,
-          rel = State.get_relationship(state, character.id, "user") do
-        was = before && State.get_relationship(before, character.id, "user")
-
-        "#{character.name} · #{words.affinity} #{rel.affinity}#{change(was && was.affinity, rel.affinity)}" <>
-          " · #{words.trust} #{rel.trust}#{change(was && was.trust, rel.trust)}" <>
-          hp_short(state, character.id, before) <> watched(state, character.id, before, locale)
-      end
-
-    foes =
-      for id <- Enum.sort(Map.keys(state.stats)), State.stat(state, id, "enemy") > 0 do
-        "#{State.name(state, id)}" <> hp_short(state, id, before)
-      end
-
-    player =
-      if State.stat?(state, "user", "hp"),
-        do: ["#{words.you}" <> hp_short(state, "user", before)],
-        else: []
-
-    events =
-      for %{type: type} = o <- turn.outputs, type in [:ending_reached, :milestone_reached] do
-        if type == :ending_reached, do: "★ #{o.title}", else: "♥ #{o.title}"
-      end
-
-    between =
-      turn
-      |> Map.get(:between, [])
-      |> Enum.group_by(fn {from, to, _field, _delta} -> {from, to} end)
-      |> Enum.sort()
-      |> Enum.map(fn {{from, to}, changes} ->
-        "#{State.name(state, from)} → #{State.name(state, to)} · " <>
-          Enum.map_join(changes, " · ", fn {_from, _to, f, d} ->
-            "#{Map.fetch!(words, f)} #{if d > 0, do: "+", else: ""}#{d}"
-          end)
-      end)
-
-    lines = day(state, locale) ++ player ++ people ++ foes ++ between ++ events
+    lines =
+      day(state, locale) ++
+        player_line(state, before, words) ++
+        people_lines(state, before, words, locale) ++
+        foe_lines(state, before) ++ between_status(state, turn, words) ++ story_events(turn)
 
     open = if turn[:id], do: ~s(<aethrion-status id="#{turn.id}">), else: "<aethrion-status>"
-    open <> Enum.map_join(lines, "\n", &escape/1) <> "</aethrion-status>"
+
+    open <>
+      Enum.map_join(lines, "\n", &escape/1) <>
+      turn_section(state, turn, locale) <> "</aethrion-status>"
   end
+
+  defp player_line(state, before, words) do
+    if State.stat?(state, "user", "hp"),
+      do: ["#{words.you}" <> hp_short(state, "user", before)],
+      else: []
+  end
+
+  defp people_lines(state, before, words, locale) do
+    for character <- State.sorted_characters(state),
+        State.stat(state, character.id, "enemy") == 0,
+        rel = State.get_relationship(state, character.id, "user") do
+      was = before && State.get_relationship(before, character.id, "user")
+
+      "#{character.name} · #{words.affinity} #{rel.affinity}#{change(was && was.affinity, rel.affinity)}" <>
+        " · #{words.trust} #{rel.trust}#{change(was && was.trust, rel.trust)}" <>
+        hp_short(state, character.id, before) <> watched(state, character.id, before, locale)
+    end
+  end
+
+  defp foe_lines(state, before) do
+    for id <- Enum.sort(Map.keys(state.stats)), State.stat(state, id, "enemy") > 0 do
+      "#{State.name(state, id)}" <> hp_short(state, id, before)
+    end
+  end
+
+  defp between_status(state, turn, words) do
+    turn
+    |> Map.get(:between, [])
+    |> Enum.group_by(fn {from, to, _field, _delta} -> {from, to} end)
+    |> Enum.sort()
+    |> Enum.map(fn {{from, to}, changes} ->
+      "#{State.name(state, from)} → #{State.name(state, to)} · " <>
+        Enum.map_join(changes, " · ", fn {_from, _to, f, d} ->
+          "#{Map.fetch!(words, f)} #{if d > 0, do: "+", else: ""}#{d}"
+        end)
+    end)
+  end
+
+  defp story_events(turn) do
+    for %{type: type} = o <- turn.outputs, type in [:ending_reached, :milestone_reached] do
+      if type == :ending_reached, do: "★ #{o.title}", else: "♥ #{o.title}"
+    end
+  end
+
+  # What the rules decided this turn, with the dice: the proof that the
+  # numbers are computed. Display scripts fold it away.
+  defp turn_section(state, turn, locale) do
+    case turn_log(state, turn, locale) do
+      [] ->
+        ""
+
+      log ->
+        title = if locale == :ko, do: "이번 턴 판정", else: "This turn"
+
+        ~s(\n<aethrion-turn title="#{title}">) <>
+          Enum.map_join(log, "\n", &escape/1) <> "</aethrion-turn>"
+    end
+  end
+
+  # How each line was read, who saw it, and what the rules did: dice,
+  # gossip, comfort.
+  defp turn_log(state, turn, locale) do
+    read =
+      for %{as: as, event: event} <- Map.get(turn, :readings, []),
+          line = reading(state, as, event, locale),
+          line != nil,
+          do: line
+
+    seen =
+      for scene <- Map.get(turn, :scenes, []),
+          scene.targets != [],
+          line <- witnesses(state, scene, locale),
+          do: line
+
+    done =
+      for output <- Map.get(turn, :outputs, []),
+          line = logged(output, state, locale),
+          line != nil,
+          do: line
+
+    read ++ seen ++ done
+  end
+
+  @tones_ko %{warm: "따뜻하게", neutral: "보통", cold: "차갑게", hostile: "적대적으로"}
+
+  defp reading(state, :talk, %{to: to, tone: tone}, :ko) when is_binary(to),
+    do: "읽기 · #{State.name(state, to)}에게 하는 말 (#{Map.get(@tones_ko, tone, tone)})"
+
+  defp reading(state, :talk, %{to: to, tone: tone}, _en) when is_binary(to),
+    do: "Read · talk to #{State.name(state, to)} (#{tone})"
+
+  defp reading(state, :gift, %{to: to, item: item}, :ko),
+    do: "읽기 · #{State.name(state, to)}에게 선물: #{item}"
+
+  defp reading(state, :gift, %{to: to, item: item}, _en),
+    do: "Read · a gift for #{State.name(state, to)}: #{item}"
+
+  defp reading(_state, :activity, %{activity: activity}, :ko), do: "읽기 · 활동: #{activity}"
+  defp reading(_state, :activity, %{activity: activity}, _en), do: "Read · activity: #{activity}"
+
+  defp reading(state, :combat, %{type: type} = event, locale) do
+    move = %{
+      attack: {"공격", "attack"},
+      defend: {"방어", "guard"},
+      heal: {"치유", "heal"},
+      flee: {"도망", "flee"}
+    }
+
+    {ko, en} = Map.get(move, type, {to_string(type), to_string(type)})
+    at = if is_binary(event[:to]), do: State.name(state, event[:to])
+
+    if locale == :ko,
+      do: "읽기 · #{ko}" <> if(at, do: " → #{at}", else: ""),
+      else: "Read · #{en}" <> if(at, do: " → #{at}", else: "")
+  end
+
+  defp reading(_state, _as, _event, _locale), do: nil
+
+  defp witnesses(state, scene, locale) do
+    names = &Enum.map_join(&1, ", ", fn id -> State.name(state, id) end)
+
+    case locale do
+      :ko ->
+        if(scene.seen_by != [], do: ["목격 · #{names.(scene.seen_by)}"], else: []) ++
+          if(scene.away != [], do: ["모름 · #{names.(scene.away)} (자리에 없음)"], else: [])
+
+      _en ->
+        if(scene.seen_by != [], do: ["Seen by · #{names.(scene.seen_by)}"], else: []) ++
+          if(scene.away != [], do: ["Not there · #{names.(scene.away)}"], else: [])
+    end
+  end
+
+  defp logged(%{type: :combat} = output, state, locale),
+    do: Combat.describe(output, state, locale)
+
+  defp logged(%{type: :character_interaction, kind: :gossip} = o, state, :ko),
+    do: "소문 · #{State.name(state, o.character_id)} → #{State.name(state, o.to)}"
+
+  defp logged(%{type: :character_interaction, kind: :comfort} = o, state, :ko),
+    do: "위로 · #{State.name(state, o.character_id)} → #{State.name(state, o.to)}"
+
+  defp logged(%{type: :character_interaction, kind: kind} = o, state, _en)
+       when kind in [:gossip, :comfort],
+       do: "#{kind} · #{State.name(state, o.character_id)} → #{State.name(state, o.to)}"
+
+  defp logged(_output, _state, _locale), do: nil
 
   defp hp_short(state, id, before) do
     if State.stat?(state, id, "hp") do
