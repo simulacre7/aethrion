@@ -58,6 +58,40 @@ defmodule Aethrion.CampfireEnTest do
     assert status =~ "1일째 / 30일"
     assert status =~ ~r/서윤 · 호감 \d+ · 신뢰 \d+ · 그림 실력 \d+ \(\+\d+\) · 성적 \d+ · 스트레스 \d+ \(\+\d+\)/
     # Taeo's numbers are not watched by the story: only the relationship shows.
-    assert status =~ ~r/태오 · 호감 \d+ · 신뢰 \d+<\/aethrion-status>/
+    assert status =~ ~r/태오 · 호감 \d+ · 신뢰 \d+\n<aethrion-turn/
+    assert status =~ "읽기 · 활동: 그림"
+  end
+
+  test "the status block ends with this turn's rulings: the reading, the witnesses, the dice" do
+    read =
+      Bridge.reader(
+        [interpreter: Aethrion.Interpreter.Rules],
+        %{get: fn _key -> nil end, put: fn _key, _value -> :ok end}
+      )
+
+    campfire = cast("campfire.json")
+
+    {status, _messages} =
+      Enum.reduce(["세라, 목걸이 사 왔어. 선물이야", "고블린 척후를 벤다"], {nil, []}, fn line, {_s, msgs} ->
+        msgs = msgs ++ [%{"role" => "user", "content" => line}]
+        {_all, chat} = Bridge.transcript(msgs)
+        {before, now, turn} = Bridge.replay(campfire, chat, read, to: "sera")
+        status = Bridge.status(now, turn, :ko, before)
+        {status, msgs ++ [%{"role" => "assistant", "content" => "…\n\n" <> status}]}
+      end)
+
+    assert [_, log] =
+             Regex.run(~r/<aethrion-turn title="이번 턴 판정">([\s\S]*)<\/aethrion-turn>/u, status)
+
+    assert log =~ "읽기 · 공격 → 고블린 척후"
+    # Every attack shows its roll against the target's armor class.
+    assert log =~ ~r/\[d20 [^\]]*vs AC \d+/
+
+    {_all, chat} = Bridge.transcript([%{"role" => "user", "content" => "세라, 목걸이 사 왔어. 선물이야"}])
+    {before, now, turn} = Bridge.replay(campfire, chat, read, to: "sera")
+    gift = Bridge.status(now, turn, :ko, before)
+    assert gift =~ "읽기 · 세라에게 선물: 목걸이"
+    assert gift =~ "목격 · 도윤"
+    assert gift =~ "모름 · 하린 (자리에 없음)"
   end
 end

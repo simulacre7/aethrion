@@ -141,7 +141,8 @@ mix aethrion.card 내카드.png --player 선생님 --out casts/my.json
 
 척후는 쓰러졌고, 반격은 함께 싸운 도윤이 맞았습니다. 같이 싸운 도윤과 세라는 플레이어를 조금 더 믿게 됐습니다.
 
-- **리롤:** 같은 기록이므로 같은 판정이 나옵니다. 이야기만 새로 씁니다.
+- **이번 턴 판정:** 상태창 아래 접힌 칸을 펼치면 대사를 무엇으로 읽었는지, 누가 봤고 누가 자리에 없었는지, 공격마다 굴린 주사위와 AC, 캐릭터 사이의 소문과 위로가 나옵니다.
+- **리롤(답 다시 뽑기):** 같은 기록이므로 같은 판정이 나옵니다. 이야기만 새로 씁니다.
 - **수정:** 마지막 문장이든 앞의 문장이든, 고친 문장부터 다시 계산합니다.
 - **긴 채팅:** 앞부분이 잘려도 체크포인트에서 이어집니다. 응답의 상태 블록을 지우면 그 턴의 체크포인트는 쓰지 못하고, 그 앞 체크포인트부터 다시 계산합니다.
 - **이어서 쓰기:** 새 턴이 아니므로 규칙은 아무것도 다시 적용하지 않고, 이어 쓴 부분에는 상태 블록을 붙이지 않습니다.
@@ -188,9 +189,12 @@ SillyTavern 1.19.0에서 확인했습니다. 표지와 로어북이 들어간 �
    - Model ID: `aethrion`
    - Connect를 누릅니다. "Valid"가 뜨고 모델 목록이 나오면 Aethrion에 닿은 것입니다.
 2. **카드:** 채팅 페이지의 **RisuAI** 패널에서 PNG 카드를 받아 캐릭터로 가져옵니다(Import Character, 또는 `data/default-user/characters/`에 파일을 넣기). 포함된 로어북을 가져올지 물으면 예를 누릅니다.
-3. **상태창:** Regex 확장에서 전역 스크립트를 하나 추가합니다.
-   - Find Regex: `/<aethrion-status[^>]*>([\s\S]*?)<\/aethrion-status>/g`
-   - Replace With: `<div style="white-space:pre-line;border:1px solid rgba(127,127,127,.35);border-radius:10px;padding:8px 12px;margin-top:10px">$1</div>`
-   - Affects: AI Output, Other Options: Alter Chat Display
+3. **상태창:** Regex 확장에서 전역 스크립트를 두 개, 이 순서로 추가합니다. 둘 다 Affects는 AI Output, Other Options는 Alter Chat Display입니다.
+   - 이번 턴 판정을 접어 둔 상태창:
+     - Find Regex: `/<aethrion-status[^>]*>([\s\S]*?)\n?<aethrion-turn title="([^"]*)">([\s\S]*?)<\/aethrion-turn><\/aethrion-status>/g`
+     - Replace With: `<div style="white-space:pre-line;border:1px solid rgba(127,127,127,.35);border-radius:10px;padding:8px 12px;margin-top:10px">$1<details><summary>$2</summary><div style="white-space:pre-line">$3</div></details></div>`
+   - 판정할 게 없는 턴의 상태창:
+     - Find Regex: `/<aethrion-status[^>]*>([\s\S]*?)<\/aethrion-status>/g`
+     - Replace With: `<div style="white-space:pre-line;border:1px solid rgba(127,127,127,.35);border-radius:10px;padding:8px 12px;margin-top:10px">$1</div>`
 
 SillyTavern의 Chat Completion은 기본으로 스트리밍이 켜져 있습니다.

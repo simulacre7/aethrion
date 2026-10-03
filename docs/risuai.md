@@ -141,6 +141,7 @@ You: 고블린 척후를 벤다   (I strike the goblin scout)
 
 The scout is down, and Doyun, fighting beside you, took its blow. Doyun and Sera, who fought with you, trust you a little more (호감 is affinity, 신뢰 trust).
 
+- **This turn's rulings:** under the status window, a folded section shows how the line was read, who saw it and who was away, every roll against armor class, and gossip or comfort between characters.
 - **Reroll:** the same history, the same outcome; only the narration is new.
 - **Edit:** the last line or an earlier one, everything from the edited line is recomputed.
 - **Long chats:** trimmed history goes on from the checkpoints. Deleting a reply's status block loses that turn's checkpoint; the replay starts from the one before.
@@ -188,9 +189,12 @@ Tested with SillyTavern 1.19.0: the card with its cover and lorebook, streaming,
    - Model ID `aethrion`
    - Click Connect. "Valid" and the model list mean it reached Aethrion.
 2. **The card.** Download the PNG card from the chat page's **RisuAI** panel, and import it as a character (Import Character, or drop the file into `data/default-user/characters/`). When SillyTavern asks to import the embedded lorebook, say yes.
-3. **The status window.** In the Regex extension, add a global script:
-   - Find Regex: `/<aethrion-status[^>]*>([\s\S]*?)<\/aethrion-status>/g`
-   - Replace With: `<div style="white-space:pre-line;border:1px solid rgba(127,127,127,.35);border-radius:10px;padding:8px 12px;margin-top:10px">$1</div>`
-   - Affects: AI Output; Other Options: Alter Chat Display
+3. **The status window.** In the Regex extension, add two global scripts, in this order. Both use Affects: AI Output, and Other Options: Alter Chat Display.
+   - The window with this turn's rulings folded under it:
+     - Find Regex: `/<aethrion-status[^>]*>([\s\S]*?)\n?<aethrion-turn title="([^"]*)">([\s\S]*?)<\/aethrion-turn><\/aethrion-status>/g`
+     - Replace With: `<div style="white-space:pre-line;border:1px solid rgba(127,127,127,.35);border-radius:10px;padding:8px 12px;margin-top:10px">$1<details><summary>$2</summary><div style="white-space:pre-line">$3</div></details></div>`
+   - The window alone, for a turn with nothing to rule on:
+     - Find Regex: `/<aethrion-status[^>]*>([\s\S]*?)<\/aethrion-status>/g`
+     - Replace With: `<div style="white-space:pre-line;border:1px solid rgba(127,127,127,.35);border-radius:10px;padding:8px 12px;margin-top:10px">$1</div>`
 
 Streaming is on by default in SillyTavern's Chat Completion settings.

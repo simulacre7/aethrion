@@ -147,6 +147,8 @@ defmodule Aethrion.Chat do
       [_all, before] ->
         candidates =
           before
+          # Calling someone first ("세라, 목걸이 사 왔어") names who, not what.
+          |> String.replace(~r/^\s*\S+\s*[,~!]\s*/u, "")
           |> String.split(~r/[\s,.!?~]+/u, trim: true)
           |> Enum.reject(&(&1 in @not_things or String.ends_with?(&1, ["려고", "한테", "에게", "위해"])))
 

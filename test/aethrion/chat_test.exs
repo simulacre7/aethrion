@@ -33,6 +33,9 @@ defmodule Aethrion.ChatTest do
     assert item.("물감 새로 사 왔어") == "물감"
     assert item.("너 주려고 꽃 사 왔어") == "꽃"
     assert item.("이거 선물이야") == "선물"
+    # Calling someone first names who, not what.
+    assert item.("서윤, 목걸이 사 왔어. 선물이야") == "목걸이"
+    assert item.("서윤아! 물감 사 왔어") == "물감"
     assert item.("I got you some tea") == "tea"
     assert item.("선물 고마워") == :talk
     assert item.("내가 도와줄게") == :talk

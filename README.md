@@ -9,13 +9,17 @@
 
 Aethrion keeps the facts of an AI role-play in deterministic rules: affinity and trust, HP and dice, who saw what, who told whom, and which ending you are heading for. Any model then narrates the result. Use it as the Custom API in RisuAI or SillyTavern, or put it behind your own chat app or game.
 
+![The same attack rerolled three times in SillyTavern: the narration changes, the status window and this turn's dice rolls do not](assets/demo/swipes.gif)
+
+<sub>One turn of the Korean campfire cast, swiped (regenerated) three times in SillyTavern. The last frame unfolds "this turn's rulings" under the status window.</sub>
+
 <sub>Pronounced ay-three-on (에이트리온). A personal project, not affiliated with RisuAI or SillyTavern. MIT licensed, early alpha.</sub>
 
 ## The Problem
 
 Long role-play and simulation chats usually leave the state to the model: the card asks it to print a status window at the end of every reply and to remember it. That breaks in familiar ways.
 
-- **A reroll counts twice.** Regenerate an attack and the damage lands again. Regenerate a compliment and affinity rises again.
+- **A reroll (regenerating the reply) counts twice.** Regenerate an attack and the damage lands again. Regenerate a compliment and affinity rises again.
 - **Numbers drift.** Fifty turns in, HP has quietly come back and the trust you earned is gone.
 - **Characters know what they never saw.** A gift given in private is suddenly common knowledge.
 - **The dice follow the model's mood.** The same blow hits once and misses the next time.
@@ -27,7 +31,8 @@ Aethrion reads each line the player types, applies it with rules, and hands the 
 - a reroll changes the wording, never the outcome
 - an edited line is recomputed from that point on
 - characters know only what they saw or were told, and pass it on to the people they trust
-- the status window shows what this turn changed (`Sera · affinity 50 (+10)`), and every change can be traced to the rule and the event behind it
+- the status window shows what this turn changed (`Sera · affinity 50 (+10)`)
+- under it, this turn's rulings show the rules' work: how the line was read, who saw it, and every dice roll (`[d20 6+5=11 vs AC 15, miss.]`), proof that the numbers are computed, not written by the model
 
 ![The same scene rerolled three times. When the model writes the status window, its numbers change with each reroll; with Aethrion only the narration changes.](assets/demo/reroll.png)
 
