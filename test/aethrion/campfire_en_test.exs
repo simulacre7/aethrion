@@ -94,4 +94,27 @@ defmodule Aethrion.CampfireEnTest do
     assert gift =~ "목격 · 도윤"
     assert gift =~ "모름 · 하린 (자리에 없음)"
   end
+
+  test "the note tells the narrator what each character remembers about the player" do
+    read =
+      Bridge.reader(
+        [interpreter: Aethrion.Interpreter.Rules],
+        %{get: fn _key -> nil end, put: fn _key, _value -> :ok end}
+      )
+
+    messages = [
+      %{"role" => "user", "content" => "세라, 목걸이 사 왔어. 선물이야"},
+      %{"role" => "assistant", "content" => "…"},
+      %{"role" => "user", "content" => "세라, 오늘 밤은 조용하네"}
+    ]
+
+    {_all, chat} = Bridge.transcript(messages)
+    {before, now, turn} = Bridge.replay(cast("campfire.json"), chat, read, to: "sera")
+    note = Bridge.note(before, now, turn, :ko)
+
+    # From the turn before: lived through, seen, and heard secondhand.
+    assert note =~ ~r/세라 remembers: the player gave 세라 a 목걸이 \(experienced, \d+ hours ago\)/
+    assert note =~ ~r/도윤 remembers: 도윤 saw the player give 세라 a 목걸이 \(observed/
+    assert note =~ "(heard from 도윤"
+  end
 end

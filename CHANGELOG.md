@@ -8,6 +8,7 @@ Ready for chat apps and games: a world per user, conversations a model can follo
 
 ### Added
 
+- The bridge's note tells the narrating model what each character remembers about the player from earlier turns (up to three memories each, chosen as replies choose them: what they lived through, saw, or heard from someone, with how long ago). Before, the model heard only this turn's facts, so a gift three turns back could not come up in the narration.
 - This turn's rulings in the status block (`<aethrion-turn title="이번 턴 판정">`): how each line was read ("읽기 · 세라에게 선물: 목걸이"), who saw it and who was away, every roll with its armor class ("[d20 6+5=11 vs AC 15, 빗나감.]"), gossip, and comfort. A status window alone looks like one a model writes; the rulings show the numbers are computed. The RisuAI status module and card fold them into a `<details>` under the window; the SillyTavern guide gives the two regex scripts. The keyword reader no longer takes a name called first ("세라, 목걸이 사 왔어") for the gift.
 - The status block shows what a story counts on: the day for a story with a deadline ("1일째 / 30일"), stats the cast names in `labels` or its conditions watch ("그림 실력 24 (+4)"), and feelings its endings watch ("스트레스 4 (+4)"). A raising sim such as `summer` used to show only affinity and trust. `Story.watched/1`.
 - `priv/casts/campfire_en.json`: the campfire cast in English, with the same numbers (a test keeps them equal) and its own cover. Card names come from the cast file in words: `campfire_en.json` is "Campfire (EN)".
