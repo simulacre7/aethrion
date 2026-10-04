@@ -721,6 +721,15 @@ defmodule Aethrion.Bridge.Ledger do
   # "the alley → the van", as some write a move: where it ends.
   defp arrived(value), do: value |> String.split(~r/\s*(?:→|->|=>)\s*/u) |> List.last()
 
+  # A field that says when the scene is.
+  defp timed?(name),
+    do:
+      dated?(name) or
+        String.match?(
+          name,
+          ~r/(?<![\p{L}])(?:time|clock|hour|day|turn)(?![\p{L}])|시간|시각|일차|時間|時刻|⏰|🕐|📅/iu
+        )
+
   # A field that says where the scene is.
   defp placed?(name),
     do:
@@ -1280,7 +1289,17 @@ defmodule Aethrion.Bridge.Ledger do
           do:
             " #{name} is a heading of several parts (now `#{String.slice(value, 0, 80)}`): when one of them changes, write all of it as it should read, `#{name}: ...` with every part."
 
-    "The status window is kept by the game's rules and shown by them: do not print it yourself, whatever the card says. Instead, after everything else, write <aethrion-ledger>...</aethrion-ledger> with one line for each field of the window that this reply changes: `Field: +N` or `Field: -N`, always with its sign, for a number that goes up or down (damage taken is `HP: -N`, experience gained `EXP: +N`), `Field: N / M` to set both numbers of a pair, `Field: =N` to set a number outright, or the field's new words as they should read (a place moved to is `Location: the east gate`, in the story's language).#{lists}#{rows} Use the window's field names (#{names}).#{headings}#{ruled}#{already} Leave out every field that stays as it is, and write the tags with nothing between them when nothing changes. What is listed under This turn and Now (how each character feels) is the rules' own and shown apart from the window: none of it goes in these lines. It is not shown to the player."
+    # When and where: a model that no longer prints the window forgets them first.
+    scene =
+      case Enum.filter(fields, &(placed?(&1.name) or timed?(&1.name) or &1[:heading?] == true)) do
+        [] ->
+          ""
+
+        moving ->
+          " Time passes and places change as the story goes: when this reply moves either, say so (#{Enum.map_join(moving, ", ", & &1.name)})."
+      end
+
+    "The status window is kept by the game's rules and shown by them: do not print it yourself, whatever the card says. Instead, after everything else, write <aethrion-ledger>...</aethrion-ledger> with one line for each field of the window that this reply changes: `Field: +N` or `Field: -N`, always with its sign, for a number that goes up or down (damage taken is `HP: -N`, experience gained `EXP: +N`), `Field: N / M` to set both numbers of a pair, `Field: =N` to set a number outright, or the field's new words as they should read (a place moved to is `Location: the east gate`, in the story's language).#{lists}#{rows} Use the window's field names (#{names}).#{headings}#{scene}#{ruled}#{already} Leave out every field that stays as it is, and write the tags with nothing between them when nothing changes. What is listed under This turn and Now (how each character feels) is the rules' own and shown apart from the window: none of it goes in these lines. It is not shown to the player."
   end
 
   @doc """
