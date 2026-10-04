@@ -513,23 +513,31 @@ defmodule Aethrion.Bridge.Ledger do
       end
 
     cond do
-      # The note's own stand-ins, copied as they stand, are no change.
-      String.downcase(value) in @stand_ins ->
-        {was, nil}
+      nothing?(value) -> {was, nil}
+      Cells.read(was) != [] -> celled_row(was, value)
+      true -> worded_or_counted(was, value, habits)
+    end
+  end
 
-      # "±0", "+0": said to say that nothing changes.
-      String.match?(value, ~r/\A\s*(?:±|\+\/?-|[+\-−])\s*0+\s*\z/u) ->
-        {was, nil}
+  # The note's own stand-ins copied as they stand, and "±0" or "+0", said
+  # to say that nothing changes, are no change.
+  defp nothing?(value) do
+    String.downcase(value) in @stand_ins or
+      String.match?(value, ~r/\A\s*(?:±|\+\/?-|[+\-−])\s*0+\s*\z/u)
+  end
 
-      # A row of labelled numbers: the numbers named move; the row written
-      # anew replaces it; anything else is not about this row.
-      Cells.read(was) != [] ->
-        case Cells.change(was, value) do
-          {:ok, now, problem} -> {now, problem}
-          :rewrite -> {value, nil}
-          :none -> {was, :unreadable}
-        end
+  # A row of labelled numbers: the numbers named move; the row written
+  # anew replaces it; anything else is not about this row.
+  defp celled_row(was, value) do
+    case Cells.change(was, value) do
+      {:ok, now, problem} -> {now, problem}
+      :rewrite -> {value, nil}
+      :none -> {was, :unreadable}
+    end
+  end
 
+  defp worded_or_counted(was, value, habits) do
+    cond do
       # "+thing" joins a list, not a figure: a load of "12 / 80" is no bag.
       String.match?(value, ~r/\A[+\-−]\s*[^\d\s]/u) ->
         if figure?(was), do: {was, :unreadable}, else: Listing.change(was, value, habits)

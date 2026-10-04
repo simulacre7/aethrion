@@ -28,8 +28,9 @@ defmodule Aethrion.Bridge.Ledger.Rules do
     looks at, or it would never stop.
   - `when Field rises: change; change` happens once for each point the
     field went up this turn (`when Level rises: Stat Point += 5`), whoever
-    raised it. So does a cost: `when Strength rises: Stat Point -= 1` (what
-    is paid from does not go below nothing).
+    raised it. So does a cost: `when Strength rises: Stat Point -= 1`. A
+    point that cannot be paid for is not gained: the field goes back to
+    where what could be paid brought it.
   - An expression has numbers, fields, `+ - * / ^ %`, comparisons, `and`,
     `or`, and `floor`, `ceil`, `round`, `min`, `max`, `clamp(x, low,
     high)`, `if(condition, a, b)`. A number put in a field is cut to a
@@ -383,23 +384,7 @@ defmodule Aethrion.Bridge.Ledger.Rules do
 
   defp run(values, rules, counted, fired) do
     values = settle(values, rules)
-
-    risen =
-      Enum.find(rules, fn
-        {:rise, name, _changes} ->
-          is_number(counted[name]) and is_map(values[name]) and values[name].now > counted[name]
-
-        _other ->
-          false
-      end)
-
-    happening =
-      risen ||
-        Enum.find(rules, fn
-          {:when, condition, _changes} -> truthy?(value(condition, values))
-          _other -> false
-        end)
-
+    happening = risen(values, rules, counted) || holding(values, rules)
     fired = if happening, do: Map.update(fired, happening, 1, &(&1 + 1)), else: fired
 
     case happening do
@@ -409,13 +394,9 @@ defmodule Aethrion.Bridge.Ledger.Rules do
       rule when :erlang.map_get(rule, fired) > @max_firings ->
         {:runaway, rule}
 
-      # One point of the rise at a time, the changes seeing that point.
       {:rise, name, changes} ->
-        step = counted[name] + 1
-        real = values[name].now
-        stepped = fire(put_in(values[name].now, step), changes)
-        next = if stepped[name].now == step, do: put_in(stepped[name].now, real), else: stepped
-        run(next, rules, Map.put(counted, name, step), fired)
+        {values, counted} = step(values, name, changes, counted)
+        run(values, rules, counted, fired)
 
       {:when, _condition, changes} = rule ->
         case fire(values, changes) do
@@ -423,6 +404,48 @@ defmodule Aethrion.Bridge.Ledger.Rules do
           ^values -> {:runaway, rule}
           next -> run(next, rules, counted, fired)
         end
+    end
+  end
+
+  # The rule for a field that has risen past what was counted. What a rise
+  # gives comes before what a rise costs: a level gained this turn pays
+  # for a point spent this turn.
+  defp risen(values, rules, counted) do
+    rules
+    |> Enum.filter(fn
+      {:rise, name, _changes} ->
+        is_number(counted[name]) and is_map(values[name]) and values[name].now > counted[name]
+
+      _other ->
+        false
+    end)
+    |> Enum.sort_by(fn {:rise, _name, changes} ->
+      Enum.any?(changes, &match?({:sub, _target, _expr}, &1))
+    end)
+    |> List.first()
+  end
+
+  defp holding(values, rules) do
+    Enum.find(rules, fn
+      {:when, condition, _changes} -> truthy?(value(condition, values))
+      _other -> false
+    end)
+  end
+
+  # One point of a rise, the changes seeing that point. A point that
+  # cannot be paid for is not gained: the field goes back to where what
+  # could be paid brought it.
+  defp step(values, name, changes, counted) do
+    step = counted[name] + 1
+    real = values[name].now
+    at_step = put_in(values[name].now, step)
+
+    if affordable?(at_step, changes) do
+      stepped = fire(at_step, changes)
+      next = if stepped[name].now == step, do: put_in(stepped[name].now, real), else: stepped
+      {next, Map.put(counted, name, step)}
+    else
+      {put_in(values[name].now, counted[name]), counted}
     end
   end
 
@@ -434,6 +457,21 @@ defmodule Aethrion.Bridge.Ledger.Rules do
     end)
   end
 
+  # Whether everything the changes take is there to take (what is paid
+  # from is not taken below nothing).
+  defp affordable?(values, changes) do
+    Enum.all?(changes, fn
+      {:sub, {name, part}, expr} ->
+        case {value(expr, values), value({:field, name, part}, values)} do
+          {n, held} when is_number(n) and is_number(held) -> held < 0 or held - n >= 0
+          _cannot_say -> true
+        end
+
+      _other ->
+        true
+    end)
+  end
+
   defp fire(values, changes) do
     Enum.reduce(changes, values, fn {kind, {name, part} = target, expr}, values ->
       case {value(expr, values), value({:field, name, part}, values)} do
@@ -441,8 +479,6 @@ defmodule Aethrion.Bridge.Ledger.Rules do
         {_n, :none} -> values
         {n, _was} when kind == :set -> put(values, target, n)
         {n, was} when kind == :add -> put(values, target, was + n)
-        # What is paid from does not go below nothing.
-        {n, was} when kind == :sub and was >= 0 -> put(values, target, max(was - n, 0))
         {n, was} when kind == :sub -> put(values, target, was - n)
       end
     end)

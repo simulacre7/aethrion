@@ -174,11 +174,17 @@ defmodule Aethrion.BridgeLedgerRulesTest do
     spent = Map.put(before, "vigor", %{now: 10, max: nil})
     assert %{"stat point" => %{now: 1}} = Rules.run(spent, rules, before)
 
-    # More raised than there are points for: paid to nothing, not below.
+    # More raised than there are points for: what can be paid for is gained.
     over = Map.put(before, "vigor", %{now: 13, max: nil})
-    assert %{"stat point" => %{now: 0}, "vigor" => %{now: 13}} = Rules.run(over, rules, before)
+    assert %{"stat point" => %{now: 0}, "vigor" => %{now: 11}} = Rules.run(over, rules, before)
     assert Rules.lowered(rules) == ["stat point"]
     assert Rules.raised(rules) == []
+
+    # A level gained this turn pays for a point spent this turn, whichever rule is written first.
+    both = rules(["when Vigor rises: Stat Point -= 1", "when Level rises: Stat Point += 3"])
+    start = values()
+    turn = Map.merge(start, %{"vigor" => %{now: 10, max: nil}, "level" => %{now: 2, max: nil}})
+    assert %{"stat point" => %{now: 1}, "vigor" => %{now: 10}} = Rules.run(turn, both, start)
   end
 
   test "raised/1 and watched/1: what the rules raise themselves, and what may pass its maximum" do
