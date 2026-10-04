@@ -114,6 +114,30 @@ defmodule Aethrion.BridgeLedgerCardsTest do
              Ledger.apply(window, [{"Mana", "+1"}], spec)
   end
 
+  test "a change left to a rule that names what the rule gives is no refusal" do
+    spec = %{
+      open: "[상태창]",
+      close: "[상태창]",
+      rules: ["when 근력 rises: 스탯 포인트 -= 1", "when 체력 rises: 스탯 포인트 -= 1"]
+    }
+
+    window = "[상태창]\n- 스탯 포인트: 3\n- 근력: 5\n- 체력: 5\n[상태창]"
+
+    settle = fn changes ->
+      {kept, _applied, refused} = Ledger.apply(window, changes, spec)
+      {kept, _ruled} = Ledger.settle(kept, spec, window)
+      {kept, Ledger.unanswered(refused, window, kept, spec)}
+    end
+
+    paid = "[상태창]\n- 스탯 포인트: 0\n- 근력: 7\n- 체력: 6\n[상태창]"
+    assert settle.([{"근력", "+2"}, {"체력", "+1"}, {"스탯 포인트", "=0"}]) == {paid, []}
+    assert settle.([{"근력", "+2"}, {"체력", "+1"}, {"스탯 포인트", "-3"}]) == {paid, []}
+
+    # Not what the rule gave: the line stays, with its reason.
+    assert {^paid, [{"스탯 포인트", "-1", :ruled}]} =
+             settle.([{"근력", "+2"}, {"체력", "+1"}, {"스탯 포인트", "-1"}])
+  end
+
   test "a list that counts every thing counts a new one as well" do
     habits = %{separator: ", ", empty: "None"}
 

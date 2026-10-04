@@ -1377,6 +1377,33 @@ defmodule Aethrion.Bridge.Ledger do
   end
 
   @doc """
+  The refusals that still say something once the rules have run. A change
+  left to a rule (`:ruled`) that named what the rule then gave ("Stat
+  Point: =0" for points the rule took in payment) was right, and is no
+  refusal worth a line. `before` and `settled` are the window before the
+  turn and after its rules.
+  """
+  @spec unanswered([{String.t(), String.t(), atom()}], String.t(), String.t(), spec() | nil) ::
+          [{String.t(), String.t(), atom()}]
+  def unanswered(refused, before, settled, spec \\ nil) do
+    was = Map.new(fields(before, spec), &{key(&1.name), first(&1.value)})
+    now = Map.new(fields(settled, spec), &{key(&1.name), first(&1.value)})
+
+    Enum.reject(refused, fn
+      {name, value, :ruled} ->
+        case delta(String.replace(value, ~r/\A\s*=\s*/u, ""), true) do
+          {:move, by} -> now[key(name)] == was[key(name)] + by
+          {:set, to} -> now[key(name)] == to
+          {:set_pair, to, _max} -> now[key(name)] == to
+          :text -> false
+        end
+
+      _other ->
+        false
+    end)
+  end
+
+  @doc """
   The lines for this turn's rulings: what the ledger changed, and what it
   refused.
   """

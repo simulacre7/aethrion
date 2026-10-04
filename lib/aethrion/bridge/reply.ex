@@ -174,6 +174,7 @@ defmodule Aethrion.Bridge.Reply do
     {changes, source} = changes(changes, printed, window, spec)
     {kept, applied, refused} = Ledger.apply(window, changes, spec)
     {kept, ruled} = Ledger.settle(kept, spec, window)
+    refused = Ledger.unanswered(refused, window, kept, spec)
     lines = Ledger.log(applied, refused, locale) ++ Ledger.rule_log(ruled, locale)
 
     Logger.info(
