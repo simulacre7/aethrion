@@ -34,7 +34,7 @@ defmodule Aethrion.Bridge.Ledger do
   chat the app has trimmed still has its latest window.
   """
 
-  alias Aethrion.Bridge.Ledger.{Fields, Listing, Rules}
+  alias Aethrion.Bridge.Ledger.{Cells, Fields, Listing, Rules}
 
   @tag "<aethrion-ledger"
   @scene "<aethrion-scene"
@@ -251,6 +251,9 @@ defmodule Aethrion.Bridge.Ledger do
 
     {edits, applied, refused} =
       Enum.reduce(changes, {%{}, [], []}, fn {name, value}, {edits, applied, refused} ->
+        # "Hansol L: +1": a row's labelled number, named with its row.
+        {name, value} = celled(by_name, name, value)
+
         case Map.get(by_name, key(name)) do
           nil ->
             {edits, applied, refused ++ [{name, value, :unknown}]}
@@ -282,6 +285,19 @@ defmodule Aethrion.Bridge.Ledger do
     {rewrite(window, Map.values(by_name), edits), applied, refused}
   end
 
+  # A change named by a row and one of its labels, as a change to the row.
+  defp celled(by_name, name, value) do
+    with false <- Map.has_key?(by_name, key(name)),
+         [_all, row, label] <- Regex.run(~r/\A(.+)\s+(\S+)\z/u, String.trim(name)),
+         %{value: was} <- Map.get(by_name, key(row)),
+         true <-
+           Enum.any?(Cells.read(was), &(String.downcase(&1.label) == String.downcase(label))) do
+      {row, "#{label} #{value}"}
+    else
+      _other -> {name, value}
+    end
+  end
+
   # The window with the fields in `edits` (by name) given their new values.
   defp rewrite(window, fields, edits) do
     # Later fields first, so the earlier ones' places stay where they are.
@@ -306,16 +322,10 @@ defmodule Aethrion.Bridge.Ledger do
   def settle(window, spec \\ nil, before \\ nil) do
     fields = fields(window, spec)
     figures = for field <- fields, figure = figure(field.value), do: {field, figure}
-    values = Map.new(figures, fn {field, {_shape, numbers}} -> {key(field.name), numbers} end)
+    values = values(fields)
 
     # The numbers before this turn's changes, for what rose since.
-    before =
-      before &&
-        for field <- fields(before, spec),
-            {_shape, numbers} <- [figure(field.value)],
-            into: %{},
-            do: {key(field.name), numbers}
-
+    before = before && values(fields(before, spec))
     ruled = Rules.run(values, rules(fields, spec), before)
 
     edits =
@@ -327,6 +337,22 @@ defmodule Aethrion.Bridge.Ledger do
           into: %{},
           do: {field.name, text}
 
+    # The labelled numbers of rows, written back in their places.
+    rows =
+      for field <- fields,
+          cells = Cells.read(field.value),
+          cells != [],
+          numbers =
+            Map.new(cells, fn cell ->
+              {String.downcase(cell.label), ruled[cell_key(field, cell)].now}
+            end),
+          text = Cells.put(field.value, numbers),
+          text != field.value,
+          into: %{},
+          do: {field.name, text}
+
+    edits = Map.merge(edits, rows)
+
     {rewrite(window, fields, edits),
      for(
        %{name: name, value: value} <- fields,
@@ -335,10 +361,59 @@ defmodule Aethrion.Bridge.Ledger do
      )}
   end
 
-  # The card's rules that this window's fields can carry.
+  # A window's numbers as the rules see them: its figures by field name,
+  # and the labelled numbers of its rows by "row label".
+  defp values(fields) do
+    figures =
+      for field <- fields, {_shape, numbers} <- [figure(field.value)], into: %{} do
+        {key(field.name), numbers}
+      end
+
+    cells =
+      for field <- fields, cell <- Cells.read(field.value), into: %{} do
+        {cell_key(field, cell), %{now: cell.number, max: nil}}
+      end
+
+    Map.merge(cells, figures)
+  end
+
+  defp cell_key(field, cell), do: key(field.name) <> " " <> String.downcase(cell.label)
+
+  # The card's rules that this window's fields can carry. A rule that
+  # speaks of a label of the rows' numbers ("L = clamp(L, 0, 100)") is a
+  # rule for each row that has the label.
   defp rules(fields, spec) do
-    names = for field <- fields, figure(field.value), do: key(field.name)
-    for text <- rule_texts(fields, spec), {:ok, rule} <- [Rules.parse(text, names)], do: rule
+    names = Map.keys(values(fields))
+    rows = for field <- fields, cells = Cells.read(field.value), cells != [], do: {field, cells}
+
+    labels =
+      for {_field, cells} <- rows, cell <- cells, uniq: true, do: String.downcase(cell.label)
+
+    Enum.flat_map(rule_texts(fields, spec), fn text ->
+      case Rules.parse(text, names) do
+        {:ok, rule} ->
+          [rule]
+
+        :error ->
+          case labels != [] && Rules.parse(text, names ++ (labels -- names)) do
+            {:ok, rule} -> for_rows(rule, rows, names)
+            _error -> []
+          end
+      end
+    end)
+  end
+
+  # The rule for each row that has every label the rule speaks of.
+  defp for_rows(rule, rows, names) do
+    spoken = Rules.names(rule) -- names
+
+    for {field, cells} <- rows,
+        held = Enum.map(cells, &String.downcase(&1.label)),
+        spoken -- held == [] do
+      Rules.rename(rule, fn name ->
+        if name in spoken, do: key(field.name) <> " " <> name, else: name
+      end)
+    end
   end
 
   # The rules as written: the card's, and a level-up nobody stated.
@@ -405,6 +480,15 @@ defmodule Aethrion.Bridge.Ledger do
       |> String.trim()
 
     cond do
+      # A row of labelled numbers: the numbers named move; the row written
+      # anew replaces it; anything else is not about this row.
+      Cells.read(was) != [] ->
+        case Cells.change(was, value) do
+          {:ok, now, problem} -> {now, problem}
+          :rewrite -> {value, nil}
+          :none -> {was, :unreadable}
+        end
+
       # "+thing" joins a list, not a figure: a load of "12 / 80" is no bag.
       String.match?(value, ~r/\A[+\-−]\s*[^\d\s]/u) ->
         if figure?(was), do: {was, :unreadable}, else: Listing.change(was, value, habits)
@@ -786,6 +870,17 @@ defmodule Aethrion.Bridge.Ledger do
           " For a list (#{Enum.map_join(lists, ", ", & &1.name)}), write only what joins or leaves it, never the whole list: `#{first.name}: +thing × 2` for something gained, `#{first.name}: -thing × 1` for something used or lost."
       end
 
+    rows =
+      case Enum.filter(fields, &(Cells.read(&1.value) != [])) do
+        [] ->
+          ""
+
+        [first | _rest] = rows ->
+          label = first.value |> Cells.read() |> hd() |> Map.fetch!(:label)
+
+          " For a row of labelled numbers (#{Enum.map_join(rows, ", ", & &1.name)}), write the numbers that move by their labels, each with its sign, `#{first.name}: #{label} +1`, or write the whole row anew."
+      end
+
     ruled =
       case set_by_rules(fields, spec) do
         [] ->
@@ -797,7 +892,7 @@ defmodule Aethrion.Bridge.Ledger do
             " (" <> Enum.join(rule_texts(fields, spec), " | ") <> ")."
       end
 
-    "The status window is kept by the game's rules and shown by them: do not print it yourself, whatever the card says. Instead, after everything else, write <aethrion-ledger>...</aethrion-ledger> with one line for each field of the window that this reply changes: `Field: +N` or `Field: -N`, always with its sign, for a number that goes up or down (damage taken is `HP: -N`, experience gained `EXP: +N`), `Field: N / M` to set both numbers of a pair, or `Field: new text`.#{lists} Use the window's field names (#{names}).#{ruled}#{already} Leave out every field that stays as it is, and write the tags with nothing between them when nothing changes. What is listed under This turn and Now (how each character feels) is the rules' own and shown apart from the window: none of it goes in these lines. It is not shown to the player."
+    "The status window is kept by the game's rules and shown by them: do not print it yourself, whatever the card says. Instead, after everything else, write <aethrion-ledger>...</aethrion-ledger> with one line for each field of the window that this reply changes: `Field: +N` or `Field: -N`, always with its sign, for a number that goes up or down (damage taken is `HP: -N`, experience gained `EXP: +N`), `Field: N / M` to set both numbers of a pair, or `Field: new text`.#{lists}#{rows} Use the window's field names (#{names}).#{ruled}#{already} Leave out every field that stays as it is, and write the tags with nothing between them when nothing changes. What is listed under This turn and Now (how each character feels) is the rules' own and shown apart from the window: none of it goes in these lines. It is not shown to the player."
   end
 
   @doc """
@@ -876,6 +971,12 @@ defmodule Aethrion.Bridge.Ledger do
   # what joined and left a list; a text said anew is in the window to read.
   defp shown({name, was, now}) do
     cond do
+      Cells.read(was) != [] and Cells.read(now) != [] ->
+        case Cells.moved(was, now) do
+          [] -> []
+          moved -> ["#{name} " <> Enum.join(moved, ", ")]
+        end
+
       figure?(was) or figure?(now) ->
         ["#{name} #{brief(was)} → #{brief(now)}"]
 
@@ -949,10 +1050,15 @@ defmodule Aethrion.Bridge.Ledger do
   def rule_log(ruled, locale) do
     label = if locale == :ko, do: "규칙", else: "Rules"
 
-    [
-      "#{label} · " <>
-        Enum.map_join(ruled, " · ", fn {n, was, now} -> "#{n} #{brief(was)} → #{brief(now)}" end)
-    ]
+    shown =
+      Enum.map(ruled, fn {name, was, now} ->
+        case Cells.moved(was, now) do
+          [] -> "#{name} #{brief(was)} → #{brief(now)}"
+          moved -> "#{name} " <> Enum.join(moved, ", ")
+        end
+      end)
+
+    ["#{label} · " <> Enum.join(shown, " · ")]
   end
 
   @doc """

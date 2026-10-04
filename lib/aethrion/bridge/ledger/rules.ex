@@ -547,6 +547,44 @@ defmodule Aethrion.Bridge.Ledger.Rules do
   defp whole_up(x) when is_integer(x), do: x
   defp whole_up(x), do: trunc(Float.ceil(x - 1.0e-9))
 
+  @doc "The fields a rule speaks of: those it sets and those it looks at."
+  @spec names(rule()) :: [String.t()]
+  def names({:always, {name, _part}, expr}), do: Enum.uniq([name | mentioned(expr)])
+
+  def names({:when, condition, changes}),
+    do: Enum.uniq(mentioned(condition) ++ changed(changes))
+
+  def names({:rise, name, changes}), do: Enum.uniq([name | changed(changes)])
+
+  defp changed(changes) do
+    Enum.flat_map(changes, fn {_kind, {name, _part}, expr} -> [name | mentioned(expr)] end)
+  end
+
+  @doc "A rule with its fields named anew (`rename.(name)`)."
+  @spec rename(rule(), (String.t() -> String.t())) :: rule()
+  def rename({:always, {name, part}, expr}, rename),
+    do: {:always, {rename.(name), part}, renamed(expr, rename)}
+
+  def rename({:when, condition, changes}, rename),
+    do: {:when, renamed(condition, rename), renamed_changes(changes, rename)}
+
+  def rename({:rise, name, changes}, rename),
+    do: {:rise, rename.(name), renamed_changes(changes, rename)}
+
+  defp renamed_changes(changes, rename) do
+    for {kind, {name, part}, expr} <- changes,
+        do: {kind, {rename.(name), part}, renamed(expr, rename)}
+  end
+
+  defp renamed({:field, name, part}, rename), do: {:field, rename.(name), part}
+  defp renamed({:neg, expr}, rename), do: {:neg, renamed(expr, rename)}
+  defp renamed({:op, op, a, b}, rename), do: {:op, op, renamed(a, rename), renamed(b, rename)}
+
+  defp renamed({:call, name, args}, rename),
+    do: {:call, name, Enum.map(args, &renamed(&1, rename))}
+
+  defp renamed(number, _rename), do: number
+
   @doc """
   Whether a window's numbers agree with a rule that always holds: true or
   false, or nil when they cannot say (a rule for what happens, one that
