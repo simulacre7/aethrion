@@ -252,7 +252,7 @@ defmodule Aethrion.Bridge.Ledger.Listing do
   end
 
   defp stepped(items, steps, was, habits) do
-    {items, problem} = Enum.reduce(steps, {items, nil}, &step/2)
+    {items, problem} = steps |> Enum.take(60) |> Enum.reduce({items, nil}, &step/2)
     {written(items, was, habits), problem}
   end
 
@@ -347,7 +347,7 @@ defmodule Aethrion.Bridge.Ledger.Listing do
       steps == [] or not Enum.all?(steps) -> nil
       # A sign after a thing may be the thing's own ("Sword +1"): a change
       # only when the list has the thing, or something is taken.
-      Enum.any?(things, &signed_after?(&1, parts)) and not held_or_taken?(things, items) -> nil
+      signed_after?(parts) and not held_or_taken?(things, items) -> nil
       true -> things
     end
   end
@@ -378,7 +378,7 @@ defmodule Aethrion.Bridge.Ledger.Listing do
     end
   end
 
-  defp signed_after?(_step, parts),
+  defp signed_after?(parts),
     do: Enum.any?(parts, &String.match?(&1, ~r/\s[+\-−]\s*[0-9]{1,6}\z/u))
 
   defp held_or_taken?(things, items) do
@@ -416,7 +416,7 @@ defmodule Aethrion.Bridge.Ledger.Listing do
     end
   end
 
-  defp same?(a, b), do: key(a.name) == key(b.name)
+  defp same?(a, b), do: a.name == b.name or key(a.name) == key(b.name)
 
   defp key(name), do: name |> String.downcase() |> String.replace(~r/\s+/u, " ") |> String.trim()
 

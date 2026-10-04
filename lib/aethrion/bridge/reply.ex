@@ -274,6 +274,15 @@ defmodule Aethrion.Bridge.Reply do
       common =
         Enum.find(common..max(common - 3, 0)//-1, 0, &String.valid?(binary_part(text, 0, &1)))
 
+      # Back to the blank line before that: a window the model printed and
+      # the rules keep otherwise is sent whole, not from its first number
+      # that differs (the next turn goes on from the last window it finds).
+      common =
+        case :binary.matches(binary_part(text, 0, common), "\n\n") do
+          [] -> common
+          blanks -> blanks |> List.last() |> elem(0)
+        end
+
       rest = binary_part(text, common, byte_size(text) - common)
 
       case String.trim(rest) do

@@ -529,7 +529,7 @@ defmodule Aethrion.Bridge.AutoCast do
       ~r/[0-9]+(?:\.[0-9]+)?/
       |> Regex.scan(rule)
       |> List.flatten()
-      |> Enum.reject(&(&1 in ["0", "1"]))
+      |> Enum.reject(&(&1 in ["0", "1"] or byte_size(&1) > 16))
       |> Enum.uniq()
 
     String.length(quote) >= 8 and quoted?(quote, card) and

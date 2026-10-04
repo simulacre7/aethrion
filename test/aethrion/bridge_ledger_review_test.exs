@@ -1113,4 +1113,168 @@ defmodule Aethrion.BridgeLedgerReviewTest do
       assert streamed.(["Done. <aethrion-led"]) == "Done. "
     end
   end
+
+  describe "a sixth review" do
+    @rpg6 "[Status]\n- HP: 30 / 48\n- Gold: 120\n- Item: Potion × 3 / Rope\n- Location: the inn\n- Date: 2026-10-05 (Mon)\n[Status]"
+    @st %{open: "[Status]", close: "[Status]"}
+    @rows "[Day 1 · night · the keep]\nPresent: Mina\nTyler | 62 | calm | a thought\nMina | Rank 10 | P 0 (+0) | L 0 | C 0 | room | -"
+    @day %{open: "[Day", close: ""}
+
+    defp turn6(window, spec, lines) do
+      chat = [
+        %{"role" => "assistant", "content" => "You wake.\n\n" <> window},
+        %{"role" => "user", "content" => "go"}
+      ]
+
+      plan = Reply.plan(%{window: spec, player: nil}, chat, %{line?: true, locale: :en})
+      raw = "Story.\n<aethrion-ledger>\n" <> lines <> "\n</aethrion-ledger>"
+      Reply.finish(raw, "<aethrion-status></aethrion-status>", plan)
+    end
+
+    test "time: a bag of many things and a long story; a line of many steps" do
+      window =
+        "[Status]\n- HP: 30 / 48\n- Item: " <> String.duplicate("+1, ", 474) <> "+1\n[Status]"
+
+      story = String.duplicate("+1, ", 12_250)
+      {time, _hints} = :timer.tc(fn -> Ledger.unsaid(story, window, [{"HP", "-1"}], @st) end)
+      assert time < 1_500_000
+
+      steps = String.slice(String.duplicate("+1, ", 100), 0, 399)
+
+      {time, _result} =
+        :timer.tc(fn -> Ledger.apply(window, List.duplicate({"Item", steps}, 40), @st) end)
+
+      assert time < 3_000_000
+
+      {time, _result} =
+        :timer.tc(fn ->
+          Ledger.apply(window, [{"HP.max", String.duplicate(" ", 20_000)}], @st)
+        end)
+
+      assert time < 500_000
+    end
+
+    test "N/A leaves a list, a place, a date as they are; a number that stands alone stays above nothing" do
+      {text, _status} =
+        turn6(@rpg6, @st, "HP: -5\nGold: N/A\nItem: N/A\nLocation: N/A\nDate: N/A")
+
+      assert text =~
+               "- HP: 25 / 48\n- Gold: 120\n- Item: Potion × 3 / Rope\n- Location: the inn\n- Date: 2026-10-05 (Mon)\n"
+
+      assert {"[Status]\n- HP: 0\n- Level: 0\n- Karma: -3\n[Status]", _applied,
+              [{"HP", "-50", :clamped}, {"Level", "-2", :clamped}]} =
+               Ledger.apply(
+                 "[Status]\n- HP: 30\n- Level: 1\n- Karma: 2\n[Status]",
+                 [{"HP", "-50"}, {"Level", "-2"}, {"Karma", "-5"}],
+                 @st
+               )
+    end
+
+    test "a window whose lines all begin with its opening mark is all of them" do
+      window = "◈Time: 09:00\n◈Place: the inn\n◈HP: 30 / 48\n◈Gold: 120"
+      spec = %{open: "◈", close: ""}
+
+      assert Ledger.current([%{"role" => "assistant", "content" => "Story.\n\n" <> window}], spec) ==
+               window
+
+      {text, _status} = turn6(window, spec, "Time: 09:30\nHP: -5")
+      assert text =~ "◈Time: 09:30\n◈Place: the inn\n◈HP: 25 / 48\n◈Gold: 120"
+    end
+
+    test "a heading given with fewer parts keeps the rest; a row given fewer cells keeps the rest" do
+      head = fn lines ->
+        @rows
+        |> turn6(@day, lines)
+        |> elem(0)
+        |> String.split("\n")
+        |> Enum.find(&String.starts_with?(&1, "[Day"))
+      end
+
+      assert head.("Day: 2 (morning)") == "[Day 2 (morning) · night · the keep]"
+      assert head.("Day: 2, morning, the yard") == "[Day 2, morning, the yard]"
+
+      {text, _status} = turn6(@rows, @day, "Tyler: 65 | wary")
+      assert text =~ "Tyler | 65 | wary | a thought\n"
+    end
+
+    test "the model's working with its unit leaves no bracket; a word for which way a number moves" do
+      line = "[ Trust: 3% | Anger: 5% | Gold: 120G | a thought of hers ]"
+      spec = %{open: "[ Trust:", close: "]"}
+
+      for {lines, expected} <- [
+            {"Trust: +2 (3% → 5%)", "[ Trust: 5% | Anger: 5% | Gold: 120G |"},
+            {"Trust: 5% (+2)", "[ Trust: 5% | Anger: 5% | Gold: 120G |"},
+            {"Gold: +30 (120G → 150G)", "| Gold: 150G | a thought"},
+            {"Gold: 30 gained", "| Gold: 150G |"},
+            {"Gold: lost 30", "| Gold: 90G |"},
+            {"Gold: 30 획득", "| Gold: 150G |"},
+            {"Trust: 2 상승", "[ Trust: 5% |"}
+          ] do
+        {text, _status} = turn6(line, spec, lines)
+        assert text =~ expected, lines
+      end
+    end
+
+    test "rows and headings written as the window writes them; several changes on one line" do
+      {text, _status} =
+        turn6(@rows, @day, "Tyler | 65 | wary | What is she up to?\n[Day 2 · morning · the yard]")
+
+      assert text =~ "[Day 2 · morning · the yard]\n"
+      assert text =~ "Tyler | 65 | wary | What is she up to?\n"
+
+      {text, _status} = turn6(@rpg6, @st, "HP: -12, Gold: +5\nLocation: the market, Item: -Rope")
+      assert text =~ "- HP: 18 / 48\n- Gold: 125\n- Item: Potion × 3\n- Location: the market\n"
+
+      line =
+        "[ Trust: 3% | Anger: 5% | Date: 1025/03/05 | Location: the hut | a thought of hers ]"
+
+      {text, _status} =
+        turn6(
+          line,
+          %{open: "[ Trust:", close: "]"},
+          "[ Trust: 5% | Anger: 2% | Date: 1025/03/06 | Location: the forest | She is watching ]"
+        )
+
+      assert text =~
+               "[ Trust: 5% | Anger: 2% | Date: 1025/03/06 | Location: the forest | She is watching ]"
+    end
+
+    test "the line a reply was cut off in is not taken, and is said so" do
+      chat = [
+        %{"role" => "assistant", "content" => "You wake.\n\n" <> @rpg6},
+        %{"role" => "user", "content" => "go"}
+      ]
+
+      plan = Reply.plan(%{window: @st, player: nil}, chat, %{line?: true, locale: :en})
+
+      {text, status} =
+        Reply.finish(
+          "Story.\n<aethrion-ledger>\nHP: -12\nGold: +15",
+          "<aethrion-status></aethrion-status>",
+          plan
+        )
+
+      assert text =~ "- HP: 18 / 48\n- Gold: 120\n"
+      assert status =~ "Ledger · Gold: +15 (the reply was cut off in this line)"
+    end
+
+    test "a scene left open ends at the next tag of ours" do
+      assert {"Story.\n<aethrion-ledger>\nHP: -5\n</aethrion-ledger>", [%{name: "Mina"}]} =
+               Scene.take(
+                 "Story.\n<aethrion-scene>Mina\n<aethrion-ledger>\nHP: -5\n</aethrion-ledger>"
+               )
+    end
+
+    test "on a stream, a window the model printed is followed by the whole window the rules keep" do
+      text = "The goblin hits you.\n\n[Day 3 · noon]\nHP: 25 / 48\nMP: 3 / 5"
+      gone = "The goblin hits you.\n\n[Day 3 · noon]\nHP: 26 / 48\nMP: 3 / 5\n"
+      shown = gone <> Reply.unsent(text, gone)
+
+      assert Ledger.current([%{"role" => "assistant", "content" => shown}], %{
+               open: "[",
+               close: "]"
+             }) ==
+               "[Day 3 · noon]\nHP: 25 / 48\nMP: 3 / 5"
+    end
+  end
 end

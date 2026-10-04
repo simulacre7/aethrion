@@ -270,7 +270,9 @@ defmodule Aethrion.BridgeLedgerTest do
     test "empty lines are no changes; no lines are nil; a cut-off tag still counts" do
       assert Ledger.take("끝.<aethrion-ledger></aethrion-ledger>") == {"끝.", []}
       assert Ledger.take("끝.") == {"끝.", nil}
-      assert Ledger.take("끝.\n<aethrion-ledger>\nHP: -3") == {"끝.", [{"HP", "-3"}]}
+      # (The line a reply was cut off in is marked: it may be the beginning of another.)
+      assert Ledger.take("끝.\n<aethrion-ledger>\nHP: -3") == {"끝.", [{"HP", "-3", :cut}]}
+      assert Ledger.take("끝.\n<aethrion-ledger>\nHP: -3\n") == {"끝.", [{"HP", "-3"}]}
     end
   end
 

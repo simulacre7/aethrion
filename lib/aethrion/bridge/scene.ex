@@ -46,7 +46,11 @@ defmodule Aethrion.Bridge.Scene do
   """
   @spec take(String.t(), String.t() | nil) :: {String.t(), [entry()] | nil}
   def take(text, player \\ nil) do
-    case Regex.run(~r/<aethrion-scene\b[^>]*>(.*?)(?:<\/aethrion-scene>|\z)/s, text,
+    # (To its closing tag; or, when the model left that out, to the next
+    # tag of ours or the end.)
+    case Regex.run(
+           ~r/<aethrion-scene\b[^>]*>(.*?)(?:<\/aethrion-scene>|(?=<\/?(?:aeth|ledger))|\z)/s,
+           text,
            return: :index
          ) do
       [{start, length}, {from, size}] ->
