@@ -212,23 +212,6 @@ defmodule Aethrion.Bridge.Ledger do
     end
   end
 
-  # Where the bracket open at `from` is closed, others opened after it
-  # closed first; nil when it never is, within a window's reach.
-  defp balanced(text, from, {opener, close}) do
-    reach = min(byte_size(text) - from, @max_window)
-
-    ~r/#{Regex.escape(opener)}|#{Regex.escape(close)}/u
-    |> Regex.scan(binary_part(text, from, reach), return: :index)
-    |> Enum.reduce_while(1, fn [{at, size}], depth ->
-      depth = if binary_part(text, from + at, size) == opener, do: depth + 1, else: depth - 1
-      if depth == 0, do: {:halt, {:stop, from + at + size}}, else: {:cont, depth}
-    end)
-    |> case do
-      {:stop, stop} -> stop
-      _open -> nil
-    end
-  end
-
   defp closing(text, from, close) do
     case :binary.match(text, close, scope: {from, byte_size(text) - from}) do
       {stop, length} ->
@@ -249,6 +232,23 @@ defmodule Aethrion.Bridge.Ledger do
             nil -> nil
           end
         end
+    end
+  end
+
+  # Where the bracket open at `from` is closed, others opened after it
+  # closed first; nil when it never is, within a window's reach.
+  defp balanced(text, from, {opener, close}) do
+    reach = min(byte_size(text) - from, @max_window)
+
+    ~r/#{Regex.escape(opener)}|#{Regex.escape(close)}/u
+    |> Regex.scan(binary_part(text, from, reach), return: :index)
+    |> Enum.reduce_while(1, fn [{at, size}], depth ->
+      depth = if binary_part(text, from + at, size) == opener, do: depth + 1, else: depth - 1
+      if depth == 0, do: {:halt, {:stop, from + at + size}}, else: {:cont, depth}
+    end)
+    |> case do
+      {:stop, stop} -> stop
+      _open -> nil
     end
   end
 
