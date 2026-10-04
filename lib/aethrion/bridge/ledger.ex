@@ -48,6 +48,8 @@ defmodule Aethrion.Bridge.Ledger do
   @ruled_line ~r/\s*\((?:규칙이 정함|set by the rules)\)\s*\z/u
   # How many rules that wait the model is told of.
   @max_waiting 3
+  # A bracket that may close a window, and the one it closes.
+  @brackets %{"]" => "[", ")" => "(", "}" => "{", "】" => "【", "］" => "［", "」" => "「"}
   # How many blocks of ledger lines a reply may have.
   @max_blocks 12
   @max_openings 60
@@ -136,7 +138,7 @@ defmodule Aethrion.Bridge.Ledger do
       with stop when is_integer(stop) <- closing(text, {start, start + length}, spec),
            window = binary_part(text, start, stop - start),
            true <- byte_size(window) <= @max_window,
-           true <- length(fields(window, spec)) >= 2 do
+           true <- named?(fields(window, spec)) do
         start = if spec.close == "", do: block_start(text, start, spec.open), else: start
         window = binary_part(text, start, stop - start)
 
@@ -147,6 +149,15 @@ defmodule Aethrion.Bridge.Ledger do
         _none -> nil
       end
     end)
+  end
+
+  # A window the ledger can keep has two fields at least, and names for
+  # most of them: one of cells told apart by their place alone
+  # ("[Status:image|title|summary|Time: 22:10|place|...]") has nothing to
+  # call them by in a change, and stays the model's to print.
+  defp named?(fields) do
+    notes = Enum.count(fields, &(&1[:note?] == true))
+    length(fields) >= 2 and notes <= length(fields) - notes
   end
 
   # A mark that opens the window may lead every line of it ("◈Time: ...",
@@ -186,7 +197,37 @@ defmodule Aethrion.Bridge.Ledger do
   defp closing(text, {start, from}, %{close: close} = spec) when close in [nil, ""],
     do: open_ended(text, start, from, spec)
 
-  defp closing(text, {_start, from}, %{close: close}), do: closing(text, from, close)
+  defp closing(text, {start, from}, %{close: close}) do
+    # A window that opens a bracket and closes with it ("[Status: ... ]")
+    # ends where that bracket is closed, not at one closed inside it
+    # ("[Status: a | [Yuji/Mahito] | b]").
+    opened = binary_part(text, start, from - start)
+
+    with opener when is_binary(opener) <- @brackets[close],
+         true <- String.contains?(opened, opener),
+         stop when is_integer(stop) <- balanced(text, from, {opener, close}) do
+      stop
+    else
+      _other -> closing(text, from, close)
+    end
+  end
+
+  # Where the bracket open at `from` is closed, others opened after it
+  # closed first; nil when it never is, within a window's reach.
+  defp balanced(text, from, {opener, close}) do
+    reach = min(byte_size(text) - from, @max_window)
+
+    ~r/#{Regex.escape(opener)}|#{Regex.escape(close)}/u
+    |> Regex.scan(binary_part(text, from, reach), return: :index)
+    |> Enum.reduce_while(1, fn [{at, size}], depth ->
+      depth = if binary_part(text, from + at, size) == opener, do: depth + 1, else: depth - 1
+      if depth == 0, do: {:halt, {:stop, from + at + size}}, else: {:cont, depth}
+    end)
+    |> case do
+      {:stop, stop} -> stop
+      _open -> nil
+    end
+  end
 
   defp closing(text, from, close) do
     case :binary.match(text, close, scope: {from, byte_size(text) - from}) do

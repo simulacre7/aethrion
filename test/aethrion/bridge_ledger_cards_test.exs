@@ -614,4 +614,47 @@ defmodule Aethrion.BridgeLedgerCardsTest do
                nil
     end
   end
+
+  describe "a window with brackets inside it" do
+    test "ends where its own bracket is closed" do
+      spec = %{open: "[Status |", close: "]", rules: []}
+      text = "story\n\n[Status | HP: 10 / 20 | With: [Yuji/Mahito] | Gold: 5]\n\nmore"
+
+      assert {"story\n\n", "[Status | HP: 10 / 20 | With: [Yuji/Mahito] | Gold: 5]", "\n\nmore"} =
+               Ledger.window(text, spec)
+
+      {kept, _applied, _refused} =
+        Ledger.apply(
+          "[Status | HP: 10 / 20 | With: [Yuji/Mahito] | Gold: 5]",
+          [{"Gold", "+3"}],
+          spec
+        )
+
+      assert kept == "[Status | HP: 10 / 20 | With: [Yuji/Mahito] | Gold: 8]"
+    end
+
+    test "a bracket inside that is never closed leaves the first closing one" do
+      spec = %{open: "[Status |", close: "]", rules: []}
+      text = "[Status | HP: 10 / 20 | Gold: 5] and then [ an aside"
+
+      assert {"", "[Status | HP: 10 / 20 | Gold: 5]", " and then [ an aside"} =
+               Ledger.window(text, spec)
+    end
+
+    test "cells told apart by their place alone stay the model's" do
+      spec = %{open: "[JJK_Status:", close: "]", rules: []}
+
+      text =
+        "[JJK_Status:bg_signal-lost|주술회전|시부야 사변 - 15화, 중요한 시점.|Time: 22:10|시부야역 13번 출구|[이타도리 유지/마히토]|분노에 휩싸여 마히토와 대치 중.|이 사건은 결정적인 계기가 된다.]\n\n차가운 아스팔트 위로 빗방울이 떨어졌다."
+
+      assert Ledger.window(text, spec) == nil
+      assert Ledger.current([%{"role" => "assistant", "content" => text}], spec) == nil
+    end
+
+    test "one unnamed line among named fields is kept as before" do
+      spec = %{open: "[ 날짜:", close: "]", rules: []}
+      text = "[ 날짜: 3일 | 시간: 밤 | 친밀: 10% | 경계: 40% | 오늘은 손님이 없네, 하고 생각한다 ]"
+      assert {"", ^text, ""} = Ledger.window(text, spec)
+    end
+  end
 end
