@@ -393,10 +393,17 @@ defmodule Aethrion.Bridge.AutoCast do
       Enum.split_with(window.rules, fn {rule, from} ->
         verdicts = Enum.map(examples, &Aethrion.Bridge.Ledger.agrees?(&1, rule, window))
 
-        # (A rule that none of the card's example windows can carry, for
-        # its field names or its form, would never be used.)
-        false not in verdicts and (true in verdicts or stated?(rule, from, text)) and
-          (examples == [] or Enum.any?(examples, &Aethrion.Bridge.Ledger.reads?(&1, rule, window)))
+        # The examples bear out what a number is worked out from ("HP.max =
+        # Vigor * 10"). A number bounded by itself agrees with any example
+        # within the bounds, so its sentence has to be the card's; and a
+        # number set to a number ("L = 0") is where the examples begin, not
+        # a rule.
+        borne_out? =
+          if bound?(rule),
+            do: stated?(rule, from, text),
+            else: true in verdicts or stated?(rule, from, text)
+
+        not constant?(rule) and false not in verdicts and borne_out?
       end)
 
     if dropped != [],
@@ -407,6 +414,29 @@ defmodule Aethrion.Bridge.AutoCast do
         )
 
     %{window | rules: Enum.map(kept, &elem(&1, 0))}
+  end
+
+  # "L = 0": a number set to a number, with no field or function in it.
+  defp constant?(rule) do
+    case String.split(rule, "=", parts: 2) do
+      [target, value] ->
+        not String.match?(target, ~r/\A\s*when\b/iu) and
+          String.match?(value, ~r/\A[\s0-9.,+\-*\/^%()]*\z/u)
+
+      _other ->
+        false
+    end
+  end
+
+  # "Trust = clamp(Trust, 0, 100)": a number worked out from itself.
+  defp bound?(rule) do
+    with false <- String.match?(rule, ~r/\A\s*when\b/iu),
+         [target, value] <- String.split(rule, "=", parts: 2) do
+      name = target |> String.trim() |> String.replace(~r/\.max\z/iu, "") |> Regex.escape()
+      name != "" and String.match?(value, ~r/(?<![\p{L}\p{N}_])#{name}(?![\p{L}\p{N}_])/iu)
+    else
+      _other -> false
+    end
   end
 
   @doc false

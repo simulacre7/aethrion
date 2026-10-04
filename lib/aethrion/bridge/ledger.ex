@@ -260,26 +260,6 @@ defmodule Aethrion.Bridge.Ledger do
     end
   end
 
-  @doc """
-  Whether a rule as written can be read against a window's fields (their
-  names, and the labels of its rows' numbers): a rule about fields the
-  window does not have, or one that is not in the rules' language, cannot.
-  """
-  @spec reads?(String.t(), String.t(), spec() | nil) :: boolean()
-  def reads?(window, rule, spec \\ nil) do
-    fields = fields(window, spec)
-    names = Map.keys(values(fields))
-
-    labels =
-      for field <- fields,
-          cell <- Cells.read(field.value),
-          uniq: true,
-          do: String.downcase(cell.label)
-
-    Rules.parse(rule, names) != :error or
-      (labels != [] and Rules.parse(rule, names ++ (labels -- names)) != :error)
-  end
-
   @doc "The window as it stood: the one in the last reply of the chat that has one."
   @spec current([map()], spec() | nil) :: String.t() | nil
   def current(_chat, nil), do: nil
