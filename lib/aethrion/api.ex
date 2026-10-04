@@ -732,8 +732,15 @@ defmodule Aethrion.API do
 
         window =
           case read.window do
-            nil -> "no status window"
-            %{open: open, close: close} -> "status window #{inspect(open)} to #{inspect(close)}"
+            nil ->
+              "no status window"
+
+            %{open: open, close: close} = window ->
+              "status window #{inspect(open)} to #{inspect(close)}" <>
+                case Map.get(window, :rules, []) do
+                  [] -> ", no rules"
+                  rules -> ", rules: " <> Enum.join(rules, " | ")
+                end
           end
 
         took = seconds(System.monotonic_time(:millisecond) - started)
@@ -866,7 +873,19 @@ defmodule Aethrion.API do
 
     case ledger do
       nil ->
-        {String.trim(text), status}
+        # The first window is the model's to print; the card's arithmetic
+        # is worked out on it all the same.
+        case spec && Aethrion.Bridge.Ledger.window(text, spec) do
+          {head, printed, tail} ->
+            {settled, ruled} = Aethrion.Bridge.Ledger.settle(printed, spec)
+            lines = Aethrion.Bridge.Ledger.rule_log(ruled, locale)
+
+            {String.trim(head <> settled <> tail),
+             status && Aethrion.Bridge.Ledger.note(status, lines, turn_title(locale))}
+
+          _none ->
+            {String.trim(text), status}
+        end
 
       window ->
         # A window the model printed anyway is taken out; without ledger
@@ -892,22 +911,27 @@ defmodule Aethrion.API do
           end
 
         {kept, applied, refused} = Aethrion.Bridge.Ledger.apply(window, changes, spec)
+        {kept, ruled} = Aethrion.Bridge.Ledger.settle(kept, spec, window)
 
         Logger.info(
-          "Aethrion ledger: #{length(applied)} changed, #{length(refused)} refused, from #{source}" <>
+          "Aethrion ledger: #{length(applied)} changed, #{length(refused)} refused, #{length(ruled)} by rule, from #{source}" <>
             if(printed != nil and source != "a window the model printed",
               do: " (it printed a window too)",
               else: ""
             )
         )
 
-        title = if locale == :ko, do: "이번 턴 판정", else: "This turn"
-        lines = Aethrion.Bridge.Ledger.log(applied, refused, locale)
+        lines =
+          Aethrion.Bridge.Ledger.log(applied, refused, locale) ++
+            Aethrion.Bridge.Ledger.rule_log(ruled, locale)
 
         {String.trim(text) <> "\n\n" <> kept,
-         status && Aethrion.Bridge.Ledger.note(status, lines, title)}
+         status && Aethrion.Bridge.Ledger.note(status, lines, turn_title(locale))}
     end
   end
+
+  defp turn_title(:ko), do: "이번 턴 판정"
+  defp turn_title(_en), do: "This turn"
 
   defp reply(data, replied, status, after_reply) do
     case replied do

@@ -63,7 +63,7 @@ defmodule Aethrion.BridgeLedgerTest do
       assert {"서술\n", found, _rest} = Ledger.window(reply, open_ended)
 
       assert Enum.map(Ledger.fields(found, open_ended), &{&1.name, &1.value}) |> Enum.take(2) ==
-               [{"무공", "120"}, {"평판", "-15"}]
+               [{"무공", "120 | 이류"}, {"평판", "-15"}]
     end
 
     test "text between the markers that is no window is none" do

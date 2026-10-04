@@ -34,13 +34,22 @@ defmodule Aethrion.Bridge.Ledger do
   chat the app has trimmed still has its latest window.
   """
 
+  alias Aethrion.Bridge.Ledger.{Listing, Rules}
+
   @tag "<aethrion-ledger"
   @scene "<aethrion-scene"
   @max_changes 40
   @max_value 400
 
-  @typedoc "The texts that open and close a card's status window."
-  @type spec :: %{open: String.t(), close: String.t()}
+  @typedoc """
+  A card's status window: the texts that open and close it, and the
+  arithmetic the card states for its numbers (`Aethrion.Bridge.Ledger.Rules`).
+  """
+  @type spec :: %{
+          required(:open) => String.t(),
+          required(:close) => String.t(),
+          optional(:rules) => [String.t()]
+        }
 
   @typedoc "A field of a window: its name, its value, and where the value is."
   @type field :: %{
@@ -60,13 +69,19 @@ defmodule Aethrion.Bridge.Ledger do
     |> :binary.matches(open)
     |> Enum.reverse()
     |> Enum.find_value(fn {start, length} ->
-      with stop when is_integer(stop) <- closing(text, start + length, spec.close),
-           window = binary_part(text, start, stop - start),
-           true <- length(fields(window, spec)) >= 2 do
-        {binary_part(text, 0, start), window, binary_part(text, stop, byte_size(text) - stop)}
-      else
-        _none -> nil
-      end
+      # As the card closes it; or, when that leaves no window (a closing
+      # text that also ends the window's heading), to the end of the reply.
+      Enum.find_value([spec.close, ""], fn close ->
+        spec = %{spec | close: close}
+
+        with stop when is_integer(stop) <- closing(text, start + length, close),
+             window = binary_part(text, start, stop - start),
+             true <- length(fields(window, spec)) >= 2 do
+          {binary_part(text, 0, start), window, binary_part(text, stop, byte_size(text) - stop)}
+        else
+          _none -> nil
+        end
+      end)
     end)
   end
 
@@ -78,8 +93,24 @@ defmodule Aethrion.Bridge.Ledger do
 
   defp closing(text, from, close) do
     case :binary.match(text, close, scope: {from, byte_size(text) - from}) do
-      {stop, length} -> stop + length
-      :nomatch -> nil
+      {stop, length} ->
+        stop + length
+
+      # A closing text copied from the card's format with a blank in it
+      # ("|UserColor:(R,G,B)]"): the first line that ends as it ends.
+      :nomatch ->
+        last = String.last(close)
+
+        if last in ["]", ")", "}", ">", "】", "］", "」"] do
+          rest = binary_part(text, from, byte_size(text) - from)
+
+          case Regex.run(~r/\A[^\n]*#{Regex.escape(last)}(?=[ \t]*(?:\n|\z))/u, rest,
+                 return: :index
+               ) do
+            [{0, length}] -> from + length
+            nil -> nil
+          end
+        end
     end
   end
 
@@ -103,20 +134,30 @@ defmodule Aethrion.Bridge.Ledger do
   end
 
   @doc """
-  The fields of a window, in order: `Name: value` pieces, one to a line or
-  split by `|`. A piece with no name (a line of thought at the end of a
-  one-line window) is named `Note`, `Note 2`, and so on. The window's own
-  markers (`spec`) are no fields.
+  The fields of a window, in order, each line read as what it looks like:
+
+  - `Name: value` (after a bullet or a mark such as `◈`), the value being
+    the rest of the line;
+  - several of those on one line, split by `|`, with a piece that has no
+    name (a line of thought at the end of a one-line window) named `Note`,
+    `Note 2`, and so on;
+  - a row of a table, `Name | 62 | calm | a thought`: the first cell names
+    it, the rest is its value;
+  - a line led by a symbol, `📍 the beach`: the symbol names it;
+  - a heading in brackets with something to say, `[Day 3/30 · noon]`: its
+    first word names it;
+  - any other line of words, a note.
+
+  The window's own markers (`spec`) are no fields.
   """
   @spec fields(String.t(), spec() | nil) :: [field()]
   def fields(window, spec \\ nil) do
     {from, to} = body(window, spec)
 
     fields =
-      ~r/[^\n|]+/u
+      ~r/[^\n]+/u
       |> Regex.scan(binary_part(window, from, to - from), return: :index)
-      |> Enum.map(fn [{start, length}] -> piece(window, from + start, length) end)
-      |> Enum.reject(&is_nil/1)
+      |> Enum.flat_map(fn [{start, length}] -> line(window, from + start, length) end)
 
     # Free text counts only next to named values: a window, not a paragraph.
     if Enum.count(fields, & &1.name) >= 2,
@@ -125,19 +166,21 @@ defmodule Aethrion.Bridge.Ledger do
   end
 
   # The part of the window between its markers. An opening text that names
-  # the first field ("[Date:") is kept: the name is read from it.
+  # the first field ("[Date:", "◈무공" before ": 120") or heads a line
+  # with something to say ("[Day" before " 3/30 · noon]") is kept: the
+  # field is read from it.
   defp body(window, spec) do
     open = (spec && spec.open) || ""
     close = (spec && spec.close) || ""
+    after_open = String.replace_prefix(window, open, "")
 
-    # An opening text that is the first field's name ("◈무공" before
-    # ": 120") or holds it ("[Date:") is read as part of the window.
-    named? =
-      String.contains?(open, [":", "："]) or
-        String.match?(String.replace_prefix(window, open, ""), ~r/\A[ \t]*[:：]/u)
+    said? =
+      String.contains?(open, [":", "："]) or String.match?(after_open, ~r/\A[ \t]*[:：]/u) or
+        (String.match?(open, ~r/\A\[\s*\p{L}/u) and
+           String.match?(after_open, ~r/\A[^\n\]]*[\p{L}\p{N}][^\n\]]*\]/u))
 
     from =
-      if open != "" and String.starts_with?(window, open) and not named?,
+      if open != "" and String.starts_with?(window, open) and not said?,
         do: byte_size(open),
         else: 0
 
@@ -150,8 +193,41 @@ defmodule Aethrion.Bridge.Ledger do
     {from, to}
   end
 
-  # One piece of the window: a named value, or free text.
-  defp piece(window, start, length) do
+  # The fields of one line of the window.
+  defp line(window, start, length) do
+    text = binary_part(window, start, length)
+
+    cells =
+      ~r/[^|]+/u
+      |> Regex.scan(text, return: :index)
+      |> Enum.map(fn [{at, size}] -> {start + at, size} end)
+
+    named = Enum.map(cells, fn {at, size} -> named(window, at, size) end)
+
+    cond do
+      # "Trust: 3% | Anger: 5% | a thought": each piece is a field.
+      Enum.count(named, & &1) >= 2 ->
+        cells
+        |> Enum.zip(named)
+        |> Enum.map(fn {{at, size}, named} ->
+          named || free(binary_part(window, at, size), at)
+        end)
+        |> Enum.reject(&is_nil/1)
+
+      row = row(window, cells, start + length) ->
+        [row]
+
+      true ->
+        [
+          named(window, start, length) || marked(window, start, length) ||
+            headed(window, start, length) || free(text, start)
+        ]
+        |> Enum.reject(&is_nil/1)
+    end
+  end
+
+  # `Name: value`, after a bullet or a mark.
+  defp named(window, start, length) do
     text = binary_part(window, start, length)
 
     case Regex.run(~r/\A(\s*(?:[-*•◈▶▪·]\s*)?)([^:：\n]{1,40}?)\s*[:：]\s*(.*?)\s*\z/us, text,
@@ -160,16 +236,72 @@ defmodule Aethrion.Bridge.Ledger do
       [_all, _lead, {name_at, name_length}, {value_at, value_length}] ->
         name = text |> binary_part(name_at, name_length) |> clean_name()
 
-        if name == "" or value_length == 0,
-          do: nil,
-          else: %{
+        if name != "" and value_length > 0,
+          do: %{
             name: name,
             value: binary_part(text, value_at, value_length),
             at: {start + value_at, value_length}
           }
 
       nil ->
-        free(text, start)
+        nil
+    end
+  end
+
+  # A row of a table: a short name, then a number, then more cells.
+  defp row(window, [{name_at, name_size}, {second_at, second_size} | _rest], line_end) do
+    name = window |> binary_part(name_at, name_size) |> clean_name()
+    second = binary_part(window, second_at, second_size)
+
+    if String.match?(name, ~r/\A\p{L}[^:：]{0,23}\z/u) and String.match?(second, ~r/\A\s*-?\d/u) do
+      lead = byte_size(second) - byte_size(String.trim_leading(second))
+      from = second_at + lead
+      value = window |> binary_part(from, line_end - from) |> String.trim_trailing()
+      %{name: name, value: value, at: {from, byte_size(value)}}
+    end
+  end
+
+  defp row(_window, _cells, _line_end), do: nil
+
+  # A line led by a symbol ("📍 the beach"): the symbol names it.
+  defp marked(window, start, length) do
+    text = binary_part(window, start, length)
+
+    case Regex.run(
+           ~r/\A\s*([^\p{L}\p{N}\s\[\](){}<>|:：\-=#*`_~.,'"!?]{1,4})[ \t]+(\S.*?)\s*\z/us,
+           text,
+           return: :index
+         ) do
+      [_all, {name_at, name_length}, {value_at, value_length}] ->
+        %{
+          name: binary_part(text, name_at, name_length),
+          value: binary_part(text, value_at, value_length),
+          at: {start + value_at, value_length}
+        }
+
+      nil ->
+        nil
+    end
+  end
+
+  # A heading in brackets with something to say ("[Day 3/30 · noon]").
+  defp headed(window, start, length) do
+    text = binary_part(window, start, length)
+
+    case Regex.run(
+           ~r/\A\s*\[\s*(\p{L}[\p{L}\p{N}_]{0,19})[ \t]+([^\]\n]*[\p{L}\p{N}][^\]\n]*?)\s*\]\s*\z/us,
+           text,
+           return: :index
+         ) do
+      [_all, {name_at, name_length}, {value_at, value_length}] ->
+        %{
+          name: binary_part(text, name_at, name_length),
+          value: binary_part(text, value_at, value_length),
+          at: {start + value_at, value_length}
+        }
+
+      nil ->
+        nil
     end
   end
 
@@ -264,7 +396,11 @@ defmodule Aethrion.Bridge.Ledger do
   @spec apply(String.t(), [{String.t(), String.t()}], spec() | nil) ::
           {String.t(), [{String.t(), String.t(), String.t()}], [{String.t(), String.t(), atom()}]}
   def apply(window, changes, spec \\ nil) do
-    by_name = Map.new(fields(window, spec), &{key(&1.name), &1})
+    fields = fields(window, spec)
+    by_name = Map.new(fields, &{key(&1.name), &1})
+    habits = habits(fields)
+    rules = rules(fields, spec)
+    {raised, watched} = {Rules.raised(rules), Rules.watched(rules)}
 
     {edits, applied, refused} =
       Enum.reduce(changes, {%{}, [], []}, fn {name, value}, {edits, applied, refused} ->
@@ -275,8 +411,17 @@ defmodule Aethrion.Bridge.Ledger do
           field ->
             # A field named twice: the later change works on the earlier one's result.
             was = Map.get(edits, field.name, field.value)
-            {now, clamped?} = changed(was, value)
-            refused = if clamped?, do: refused ++ [{field.name, value, :clamped}], else: refused
+            # A pair a rule watches may pass its maximum: the rule takes it up.
+            habits = Map.put(habits, :open?, key(field.name) in watched)
+            {now, problem} = changed(was, value, habits)
+
+            # What a rule raises when something happens is not the model's to raise.
+            {now, problem} =
+              if key(field.name) in raised and first(now) > first(was),
+                do: {was, :ruled},
+                else: {now, problem}
+
+            refused = if problem, do: refused ++ [{field.name, value, problem}], else: refused
             applied = Enum.reject(applied, fn {n, _was, _now} -> n == field.name end)
 
             if now == field.value,
@@ -287,78 +432,269 @@ defmodule Aethrion.Bridge.Ledger do
         end
       end)
 
-    # Later fields first, so the earlier ones' places stay where they are.
-    rewritten =
-      by_name
-      |> Map.values()
-      |> Enum.filter(&Map.has_key?(edits, &1.name))
-      |> Enum.sort_by(fn %{at: {start, _length}} -> -start end)
-      |> Enum.reduce(window, fn %{name: name, at: {start, length}}, text ->
-        binary_part(text, 0, start) <>
-          edits[name] <> binary_part(text, start + length, byte_size(text) - start - length)
-      end)
-
-    {rewritten, applied, refused}
+    {rewrite(window, Map.values(by_name), edits), applied, refused}
   end
 
-  # The value after a change, and whether a bound brought it back.
-  defp changed(was, value) do
-    value = value |> String.replace(~r/[\r\n|]/u, " ") |> String.trim()
+  # The window with the fields in `edits` (by name) given their new values.
+  defp rewrite(window, fields, edits) do
+    # Later fields first, so the earlier ones' places stay where they are.
+    fields
+    |> Enum.filter(&Map.has_key?(edits, &1.name))
+    |> Enum.sort_by(fn %{at: {start, _length}} -> -start end)
+    |> Enum.reduce(window, fn %{name: name, at: {start, length}}, text ->
+      binary_part(text, 0, start) <>
+        edits[name] <> binary_part(text, start + length, byte_size(text) - start - length)
+    end)
+  end
 
-    case {number(was), delta(value)} do
+  @doc """
+  The window with the card's arithmetic worked out (`spec.rules`, see
+  `Aethrion.Bridge.Ledger.Rules`), and every pair within its maximum:
+  `{window, ruled}`, `ruled` being `[{name, before, after}]` for the fields
+  that moved. `before` is the window as it stood before this turn's
+  changes, when there was one.
+  """
+  @spec settle(String.t(), spec() | nil, String.t() | nil) ::
+          {String.t(), [{String.t(), String.t(), String.t()}]}
+  def settle(window, spec \\ nil, before \\ nil) do
+    fields = fields(window, spec)
+    figures = for field <- fields, figure = figure(field.value), do: {field, figure}
+    values = Map.new(figures, fn {field, {_shape, numbers}} -> {key(field.name), numbers} end)
+
+    # The numbers before this turn's changes, for what rose since.
+    before =
+      before &&
+        for field <- fields(before, spec),
+            {_shape, numbers} <- [figure(field.value)],
+            into: %{},
+            do: {key(field.name), numbers}
+
+    ruled = Rules.run(values, rules(fields, spec), before)
+
+    edits =
+      for {field, {shape, was}} <- figures,
+          now = Map.fetch!(ruled, key(field.name)),
+          {text, problem} = put(shape, now),
+          now != was or problem != nil,
+          text != field.value,
+          into: %{},
+          do: {field.name, text}
+
+    {rewrite(window, fields, edits),
+     for(
+       %{name: name, value: value} <- fields,
+       Map.has_key?(edits, name),
+       do: {name, value, edits[name]}
+     )}
+  end
+
+  # The card's rules that this window's fields can carry.
+  defp rules(fields, spec) do
+    names = for field <- fields, figure(field.value), do: key(field.name)
+
+    for text <- (spec && Map.get(spec, :rules)) || [],
+        {:ok, rule} <- [Rules.parse(text, names)],
+        do: rule
+  end
+
+  # A field's numbers as the rules see them, with the shape to write them
+  # back in; nil for a field that holds no figure.
+  defp figure(value) do
+    if figure?(value) do
+      case number(value) do
+        {:pair, _pre, a, _sep, b, _post} = pair -> {pair, %{now: a, max: b}}
+        {:one, _pre, a, _post} = one -> {one, %{now: a, max: nil}}
+      end
+    end
+  end
+
+  defp put({:pair, _pre, _a, _sep, _b, _post} = pair, %{now: a, max: b}), do: put_pair(pair, a, b)
+  defp put({:one, _pre, _a, _post} = one, %{now: a}), do: put_one(one, a)
+
+  # The first number of a value, for telling whether it went up.
+  defp first(value) do
+    case number(value) do
+      {:pair, _pre, a, _sep, _b, _post} -> a
+      {:one, _pre, a, _post} -> a
+      :text -> 0
+    end
+  end
+
+  # The value after a change, and what was wrong with the change (nil, or
+  # `:clamped` for a number brought back within its bounds, `:missing` for
+  # something taken from a list that does not have it).
+  defp changed(was, value, habits) do
+    value =
+      value
+      |> String.replace(if(habits.bars?, do: ~r/[\r\n|]/u, else: ~r/[\r\n]/u), " ")
+      |> String.trim()
+
+    cond do
+      # "+thing": something joins a list, whatever the field holds now.
+      String.match?(value, ~r/\A[+\-−]\s*[^\d\s]/u) -> Listing.change(was, value, habits)
+      figure?(was) -> counted(was, value, habits)
+      list?(was) -> Listing.change(was, value, habits)
+      true -> counted(was, value, habits)
+    end
+  end
+
+  defp counted(was, value, habits) do
+    figure? = figure?(was)
+
+    # "31 / 48 → 14 / 48", as some write a change: what it comes to.
+    value =
+      if figure?,
+        do: value |> String.split(~r/\s*(?:→|->|=>)\s*/u) |> List.last(),
+        else: value
+
+    case {number(was), delta(value, figure?)} do
       {{:pair, _pre, a, _sep, b, _post} = pair, {:move, d}} ->
-        put_pair(pair, a + d, b)
+        put_pair(pair, a + d, b, habits[:open?])
 
       {{:pair, _pre, _a, _sep, _b, _post} = pair, {:set_pair, a, b}} ->
-        put_pair(pair, a, b)
+        put_pair(dressed(pair, value), a, b, habits[:open?])
 
       {{:pair, _pre, _a, _sep, b, _post} = pair, {:set, a}} ->
-        put_pair(pair, a, b)
+        put_pair(pair, a, b, habits[:open?])
 
       {{:one, _pre, a, _post} = one, {:move, d}} ->
         put_one(one, a + d)
 
-      {{:one, _pre, _a, _post} = one, {:set, a}} ->
+      # "7 / 207" for a number that stands alone: its first.
+      {{:one, _pre, _a, _post} = one, {:set_pair, a, _b}} ->
         put_one(one, a)
 
-      # A number field given text (or a pair), or a text field: the value as it is said.
-      {_was, {:move, _d}} ->
-        {was, false}
+      {{:one, _pre, _a, _post} = one, {:set, a}} ->
+        put_one(dressed(one, value), a)
 
+      {:text, {:move, _d}} ->
+        if Listing.empty?(was), do: Listing.change(was, value, habits), else: {was, nil}
+
+      # A figure stays a figure: words with no number in them are not one.
+      {_figure, :text} when figure? ->
+        {was, :unreadable}
+
+      # A text field: the value as it is said.
       {_was, _text} ->
-        {value, false}
+        Listing.change(was, value, habits)
     end
+  end
+
+  # A value that is a list (a pair of numbers is not one).
+  defp list?(value) do
+    not match?({:pair, _pre, _a, _sep, _b, _post}, number(value)) and Listing.list?(value)
+  end
+
+  # The number's field as the new value writes it, when the field has
+  # words around its number and the new value brings its own ("45 (호기심)"
+  # over "30 (경계)", "길드 3층" over "명월탑 1층"); as it was written
+  # before, for a number alone or a field that is one.
+  defp dressed({:pair, was_pre, a, sep, b, {was_post, commas?}} = pair, value) do
+    case number(value) do
+      {:pair, pre, _a, _sep, _b, {post, _commas?}}
+      when (pre != "" or post != "") and (was_pre != "" or was_post != "") ->
+        {:pair, pre, a, sep, b, {post, commas?}}
+
+      _same ->
+        pair
+    end
+  end
+
+  defp dressed({:one, was_pre, a, {was_post, commas?}} = one, value) do
+    case number(value) do
+      {:one, pre, _a, {post, _commas?}}
+      when (pre != "" or post != "") and (was_pre != "" or was_post != "") ->
+        {:one, pre, a, {post, commas?}}
+
+      _same ->
+        one
+    end
+  end
+
+  # What the window's lists look like: the text between their things, and
+  # the word for a list with nothing in it.
+  defp habits(fields) do
+    values = Enum.map(fields, & &1.value)
+
+    %{
+      separator: Enum.find_value(values, ", ", &(list?(&1) && Listing.separator(&1))),
+      empty: Enum.find(values, "None", &Listing.empty?/1),
+      # A window that splits its fields by "|" cannot have one in a value.
+      bars?: not Enum.any?(values, &String.contains?(&1, "|"))
+    }
   end
 
   # What a value is made of: `{:pair, pre, current, separator, max, post}`,
   # `{:one, pre, number, post}`, or `:text` (a time, a date, a list).
   defp number(value) do
     cond do
-      match = Regex.run(~r/\A(\D*?)(-?\d[\d,]*)(\s*\/\s*)(\d[\d,]*)(\D*)\z/u, value) ->
+      match =
+          Regex.run(
+            ~r/\A(\D*?)(-?(?:\d{1,3}(?:,\d{3})+|\d+))(\s*\/\s*)((?:\d{1,3}(?:,\d{3})+|\d+))(\D*)\z/u,
+            value
+          ) ->
         [_all, pre, a, sep, b, post] = match
         {:pair, pre, int(a), sep, int(b), {post, commas?(a) or commas?(b)}}
 
-      match = Regex.run(~r/\A(\D*?)(-?\d[\d,]*)(\D*)\z/u, value) ->
+      match = Regex.run(~r/\A(\D*?)(-?(?:\d{1,3}(?:,\d{3})+|\d+))(\D*)\z/u, value) ->
         [_all, pre, a, post] = match
         {:one, pre, int(a), {post, commas?(a)}}
+
+      # A number that leads a row or a line: what follows may hold digits too.
+      match =
+          Regex.run(
+            ~r/\A(-?(?:\d{1,3}(?:,\d{3})+|\d+))(\s*\/\s*)((?:\d{1,3}(?:,\d{3})+|\d+))(\s*[|·(\[].*)\z/us,
+            value
+          ) ->
+        [_all, a, sep, b, post] = match
+        {:pair, "", int(a), sep, int(b), {post, commas?(a) or commas?(b)}}
+
+      match = Regex.run(~r/\A(-?(?:\d{1,3}(?:,\d{3})+|\d+))(\s*%?\s*[|·(\[].*)\z/us, value) ->
+        [_all, a, post] = match
+        {:one, "", int(a), {post, commas?(a)}}
 
       true ->
         :text
     end
   end
 
-  # What a change asks for.
-  defp delta(value) do
+  # What a change asks for. For a figure (`loose?`), a change with more
+  # words than asked for is read by its first number: "-17 (a goblin's
+  # club)" moves, "now 31/48 after the potion" sets.
+  defp delta(value, loose?) do
     cond do
-      match = Regex.run(~r/\A([+\-−])\s*(\d[\d,]*)\s*[^\d\/]*\z/u, value) ->
+      match = Regex.run(~r/\A([+\-−])\s*((?:\d{1,3}(?:,\d{3})+|\d+))\s*[^\d\/]*\z/u, value) ->
         [_all, sign, n] = match
         {:move, if(sign == "+", do: int(n), else: -int(n))}
 
-      match = Regex.run(~r/\A\D*?(-?\d[\d,]*)\s*\/\s*(\d[\d,]*)\D*\z/u, value) ->
+      match =
+          Regex.run(
+            ~r/\A\D*?(-?(?:\d{1,3}(?:,\d{3})+|\d+))\s*\/\s*((?:\d{1,3}(?:,\d{3})+|\d+))\D*\z/u,
+            value
+          ) ->
         [_all, a, b] = match
         {:set_pair, int(a), int(b)}
 
-      match = Regex.run(~r/\A\D*?(-?\d[\d,]*)\D*\z/u, value) ->
+      match = Regex.run(~r/\A\D*?(-?(?:\d{1,3}(?:,\d{3})+|\d+))\D*\z/u, value) ->
+        [_all, a] = match
+        {:set, int(a)}
+
+      not loose? ->
+        :text
+
+      match = Regex.run(~r/\A([+\-−])\s*((?:\d{1,3}(?:,\d{3})+|\d+))(?!\s*\/|\d|,\d)/u, value) ->
+        [_all, sign, n] = match
+        {:move, if(sign == "+", do: int(n), else: -int(n))}
+
+      match =
+          Regex.run(
+            ~r/(-?(?:\d{1,3}(?:,\d{3})+|\d+))\s*\/\s*((?:\d{1,3}(?:,\d{3})+|\d+))/u,
+            value
+          ) ->
+        [_all, a, b] = match
+        {:set_pair, int(a), int(b)}
+
+      match = Regex.run(~r/(?<![\d,.])(-?(?:\d{1,3}(?:,\d{3})+|\d+))/u, value) ->
         [_all, a] = match
         {:set, int(a)}
 
@@ -367,15 +703,17 @@ defmodule Aethrion.Bridge.Ledger do
     end
   end
 
-  defp put_pair({:pair, pre, _a, sep, _b, {post, commas?}}, a, b) do
+  defp put_pair({:pair, pre, _a, sep, _b, {post, commas?}}, a, b, open? \\ false) do
     b = max(b, 0)
-    bounded = a |> max(0) |> min(b)
-    {pre <> digits(bounded, commas?) <> sep <> digits(b, commas?) <> post, bounded != a}
+    bounded = if open?, do: max(a, 0), else: a |> max(0) |> min(b)
+
+    {pre <> digits(bounded, commas?) <> sep <> digits(b, commas?) <> post,
+     if(bounded != a, do: :clamped)}
   end
 
   defp put_one({:one, pre, _a, {post, commas?}}, a) do
-    bounded = if String.contains?(post, "%"), do: a |> max(0) |> min(100), else: a
-    {pre <> digits(bounded, commas?) <> post, bounded != a}
+    bounded = if String.match?(post, ~r/\A\s*%/u), do: a |> max(0) |> min(100), else: a
+    {pre <> digits(bounded, commas?) <> post, if(bounded != a, do: :clamped)}
   end
 
   defp int(text), do: text |> String.replace(",", "") |> String.to_integer()
@@ -402,9 +740,40 @@ defmodule Aethrion.Bridge.Ledger do
   @doc "What the note asks of the model once the rules keep the window."
   @spec instruction(String.t(), spec() | nil) :: String.t()
   def instruction(window, spec \\ nil) do
-    names = window |> fields(spec) |> Enum.map_join(", ", & &1.name)
+    fields = fields(window, spec)
+    names = Enum.map_join(fields, ", ", & &1.name)
 
-    "The status window is kept by the game's rules and shown by them: do not print it yourself, whatever the card says. Instead, after everything else, write <aethrion-ledger>...</aethrion-ledger> with one line for each field of the window that this reply changes: `Field: +N` or `Field: -N` for a number that goes up or down (damage taken is `HP: -N`), `Field: N / M` to set both numbers of a pair, or `Field: new text`. Use the window's field names (#{names}). Leave out every field that stays as it is, and write the tags with nothing between them when nothing changes. It is not shown to the player."
+    lists =
+      case Enum.filter(fields, &listing?/1) do
+        [] ->
+          ""
+
+        [first | _rest] = lists ->
+          " For a list (#{Enum.map_join(lists, ", ", & &1.name)}), write only what joins or leaves it, never the whole list: `#{first.name}: +thing × 2` for something gained, `#{first.name}: -thing × 1` for something used or lost."
+      end
+
+    ruled =
+      case (spec && Map.get(spec, :rules)) || [] do
+        [] ->
+          ""
+
+        rules ->
+          " The rules work these out themselves, so do not write what they give (a level gained, a maximum), only what causes it (EXP gained, a stat raised): " <>
+            Enum.join(rules, " | ") <> "."
+      end
+
+    "The status window is kept by the game's rules and shown by them: do not print it yourself, whatever the card says. Instead, after everything else, write <aethrion-ledger>...</aethrion-ledger> with one line for each field of the window that this reply changes: `Field: +N` or `Field: -N` for a number that goes up or down (damage taken is `HP: -N`), `Field: N / M` to set both numbers of a pair, or `Field: new text`.#{lists} Use the window's field names (#{names}).#{ruled} Leave out every field that stays as it is, and write the tags with nothing between them when nothing changes. It is not shown to the player."
+  end
+
+  # A field the model is told to treat as a list: counted things, things
+  # split by " / " or " · ", or a name that says so.
+  defp listing?(%{name: name, value: value}) do
+    not figure?(value) and
+      ((list?(value) and (Listing.counted?(value) or Listing.separator(value) in [" / ", " · "])) or
+         String.match?(
+           name,
+           ~r/item|inventory|skill|belonging|소지|아이템|인벤|가방|스킬|기술|소유|持ち物|スキル|🎒/iu
+         ))
   end
 
   @doc """
@@ -414,29 +783,96 @@ defmodule Aethrion.Bridge.Ledger do
   @spec log([{String.t(), String.t(), String.t()}], [{String.t(), String.t(), atom()}], :ko | :en) ::
           [String.t()]
   def log(applied, refused, locale) do
-    {changed, kept, unknown, clamped} =
+    {changed, kept, unknown, clamped, missing, ruled, unreadable} =
       if locale == :ko,
-        do: {"기록", "→", "없는 칸", "한도에 맞춤"},
-        else: {"Ledger", "→", "no such field", "kept within bounds"}
+        do: {"기록", "→", "없는 칸", "한도에 맞춤", "가지고 있지 않음", "규칙이 정함", "숫자가 아님"},
+        else:
+          {"Ledger", "→", "no such field", "kept within bounds", "not held", "set by the rules",
+           "not a number"}
 
-    changes =
-      case Enum.filter(applied, fn {_name, was, now} ->
-             number(was) != :text or number(now) != :text
-           end) do
-        [] ->
-          []
+    shown =
+      Enum.flat_map(applied, fn {name, was, now} ->
+        cond do
+          figure?(was) or figure?(now) ->
+            ["#{name} #{brief(was)} #{kept} #{brief(now)}"]
 
-        numbers ->
-          [
-            "#{changed} · " <>
-              Enum.map_join(numbers, " · ", fn {n, was, now} -> "#{n} #{was} #{kept} #{now}" end)
-          ]
-      end
+          list?(was) or list?(now) ->
+            case Listing.moved(was, now) do
+              [] -> []
+              moved -> ["#{name} " <> Enum.join(moved, ", ")]
+            end
+
+          true ->
+            []
+        end
+      end)
+
+    changes = if shown == [], do: [], else: ["#{changed} · " <> Enum.join(shown, " · ")]
 
     changes ++
       for {name, value, reason} <- refused do
-        "#{changed} · #{name}: #{value} (#{if reason == :unknown, do: unknown, else: clamped})"
+        reason =
+          case reason do
+            :unknown -> unknown
+            :clamped -> clamped
+            :missing -> missing
+            :ruled -> ruled
+            :unreadable -> unreadable
+          end
+
+        "#{changed} · #{name}: #{value} (#{reason})"
       end
+  end
+
+  # A value that is a figure: a pair, or a number that leads the value
+  # ("30 (경계)", "120G", "Lv 5"), not a text with a number in it.
+  defp figure?(value) do
+    case number(value) do
+      {:pair, pre, _a, _sep, _b, _post} -> lead?(pre)
+      {:one, pre, _a, _post} -> lead?(pre)
+      :text -> false
+    end
+  end
+
+  # What may stand before a figure: signs and brackets, or a word for a level or a day.
+  defp lead?(pre),
+    do: String.match?(pre, ~r/\A[^\p{L}\p{N}]*(?:(?:lv|level|레벨|day|no|d)[.\s\-]*)?\z/iu)
+
+  # A figure as the turn's record shows it: without a long tail of words.
+  defp brief(value) do
+    case number(value) do
+      {:pair, pre, a, sep, b, {post, commas?}} ->
+        pre <> digits(a, commas?) <> sep <> digits(b, commas?) <> short(post)
+
+      {:one, pre, a, {post, commas?}} ->
+        pre <> digits(a, commas?) <> short(post)
+
+      :text ->
+        value
+    end
+    |> String.trim()
+    |> String.replace(~r/\A\(([^)]*)\z/us, "\\1")
+  end
+
+  defp short(post) do
+    cond do
+      String.match?(post, ~r/\A\s*%/u) -> "%"
+      String.length(post) <= 12 and not String.contains?(post, "|") -> post
+      true -> ""
+    end
+  end
+
+  @doc "The line for what the card's arithmetic moved (`settle/2`), or none."
+  @spec rule_log([{String.t(), String.t(), String.t()}], :ko | :en) :: [String.t()]
+  def rule_log([], _locale), do: []
+
+  def rule_log(ruled, locale) do
+    label = if locale == :ko, do: "규칙", else: "Rules"
+
+    [
+      "#{label} · " <>
+        Enum.map_join(ruled, " · ", fn {n, was, now} -> "#{n} #{brief(was)} → #{brief(now)}" end)
+    ]
   end
 
   @doc """

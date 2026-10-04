@@ -26,6 +26,8 @@ defmodule Aethrion.Bridge.AutoCast do
   @max_people 6
   @max_profile 600
   @max_rules 16_000
+  @max_window_rules 24
+  @max_rule 240
 
   @doc """
   What a request says about its card: the app's prompt before the chat
@@ -140,8 +142,9 @@ defmodule Aethrion.Bridge.AutoCast do
     with {:ok, state} <- State.parse(data) do
       window =
         case kept["window"] do
-          %{"open" => open, "close" => close} when is_binary(open) and is_binary(close) ->
-            %{open: open, close: close}
+          %{"open" => open, "close" => close} = window
+          when is_binary(open) and is_binary(close) ->
+            %{open: open, close: close, rules: kept_rules(window["rules"])}
 
           _none ->
             nil
@@ -156,6 +159,9 @@ defmodule Aethrion.Bridge.AutoCast do
   defp kept(%{"characters" => _} = data, key), do: kept(%{"cast" => data}, key)
   defp kept(_none, _key), do: nil
 
+  defp kept_rules(rules) when is_list(rules), do: Enum.filter(rules, &is_binary/1)
+  defp kept_rules(_none), do: []
+
   @doc """
   Reads the card with the model and keeps what it was read as:
   `{:ok, read}`. A model that fails or answers something else gives
@@ -169,9 +175,27 @@ defmodule Aethrion.Bridge.AutoCast do
          {:ok, state} <- State.parse(data) do
       key = key(card)
 
+      # A rule is kept when the card says it: a formula made up from
+      # somewhere else would bend every window after it.
+      stated = Enum.join([card.prompt, Map.get(card, :rules, ""), card.greeting || ""], "\n")
+
+      people =
+        update_in(people.window, fn
+          nil ->
+            nil
+
+          window ->
+            rules = for {rule, from} <- window.rules, stated?(rule, from, stated), do: rule
+            %{window | rules: rules}
+        end)
+
       window =
         people.window &&
-          %{"open" => people.window.open, "close" => people.window.close}
+          %{
+            "open" => people.window.open,
+            "close" => people.window.close,
+            "rules" => people.window.rules
+          }
 
       kept = %{"cast" => data, "window" => window}
       casts.put.("card:" <> key, kept)
@@ -179,6 +203,29 @@ defmodule Aethrion.Bridge.AutoCast do
       {:ok, %{cast: state, window: people.window, key: key}}
     end
   end
+
+  @doc false
+  # Whether the card states a rule: the sentence the reader gives for it
+  # is in the card's text (whatever its spacing and case), and has every
+  # number the rule uses (0 and 1 aside).
+  def stated?(rule, from, text) do
+    quote = plain(from)
+
+    String.length(quote) >= 6 and String.contains?(plain(text), quote) and
+      ~r/\d+(?:\.\d+)?/
+      |> Regex.scan(rule)
+      |> List.flatten()
+      |> Enum.reject(&(&1 in ["0", "1"]))
+      |> Enum.all?(fn number ->
+        Regex.match?(
+          Regex.compile!("(?<![\\d.])" <> Regex.escape(number) <> "(?!\\.?\\d)"),
+          quote
+        )
+      end)
+  end
+
+  defp plain(text),
+    do: text |> String.downcase() |> String.replace(~r/[\s*_`]+/u, " ") |> String.trim()
 
   @doc false
   # The messages that ask the model who is in the card.
@@ -209,7 +256,13 @@ defmodule Aethrion.Bridge.AutoCast do
 
         affinity and trust are how the character feels about the player when the story starts, 0 to 100: 0 a stranger, 30 an acquaintance, 50 a close friend, 80 a lover or someone devoted. Use what the card says; when it does not say, 0.
 
-        status_window: if the card tells the model to print a status window with every reply (a block of numbers and facts in a fixed format: level, HP, money, trust, date, place), give {"open": "the exact text that begins the block", "close": "the exact text that ends it"}, copied from the card's format: for a block between two "[Status Window]" lines, both are "[Status Window]"; for one line such as "[ Trust: 3% | Anger: 5% | ... ]", "[" and "]"; for a block that just ends with the reply, "" as close. If the card prints no such block, or only draws one with its own scripts and tells the model not to write the numbers, null.
+        status_window: if the card tells the model to print a status window with every reply (a block of numbers and facts in a fixed format: level, HP, money, trust, date, place), give {"open": "the text that begins the block", "close": "the text that ends it", "rules": []}. Copy open and close from the card's format, and only characters that are the same in every reply, never a blank the model fills in: for a block between two "[Status Window]" lines, both are "[Status Window]"; for one line such as "[ Trust: 3% | Anger: 5% | ... ]", "[ Trust:" and "]"; for a block that begins with a heading such as "[Day N/30 · Time]", "[Day" as open; for a block of lines such as "◈Time: ..." that ends with the reply, "◈Time" as open and "" as close. If the card prints no such block, or only draws one with its own scripts and tells the model not to write the numbers, null.
+
+        rules: the arithmetic the card states for the window's numbers, [] when the card states none. Each is {"rule": "one line in the small language below", "from": "the sentence of the card that states it, copied word for word"}; a rule is used only when its sentence is found in the card and has the rule's numbers in it. Use the window's field names exactly as its format writes them; `Field.max` is the second number of a pair such as `HP: 30 / 48`, and `Field.before` is what the field was before the turn. There are only two kinds of line (the examples are not from this card):
+        1. `Target = expression`, something that always holds: a maximum that follows a stat, "Stamina.max = Body * 4"; a range a number stays within, "Favor = clamp(Favor, 0, 100)"; a limit on how far a number moves in one turn, "Favor = clamp(Favor, Favor.before - 3, Favor.before + 3)".
+        2. `when condition: change; change`, something that happens, each change being `Field = expression`, `Field += expression`, or `Field -= expression`; a card whose window has a level and experience toward the next one has its level-up line, in the window's own field names: "when EXP >= EXP.max: Level += 1; EXP -= EXP.max". The condition is a comparison, or `Field rises` for what each point gained gives: "when Level rises: Points += if(Level % 10 == 0, 6, 2)".
+        An expression has numbers, field names, + - * / ^ %, comparisons (>= <= > < == !=), and, or, and the functions floor, ceil, round, min, max, clamp(x, low, high), if(condition, a, b). No other words, and every line begins with a field name or with `when`.
+        Write only what the card itself states in numbers, for fields of its window, with the card's own numbers: never a guess, never one of the examples above, and nothing about text fields. Where the card gives no number ("the requirement grows with each level", a reputation with no range), there is no rule to write.
         """
       }
     ]
@@ -245,10 +298,29 @@ defmodule Aethrion.Bridge.AutoCast do
     {open, close} = {String.trim(open), String.trim(close)}
 
     if open != "" and String.length(open) <= 60 and String.length(close) <= 60,
-      do: %{open: open, close: close}
+      do: %{open: open, close: close, rules: rules(window["rules"])}
   end
 
   defp window(_none), do: nil
+
+  # The card's arithmetic as the model wrote it down: a few short lines
+  # (`Aethrion.Bridge.Ledger.Rules` reads them against the window), each
+  # with the sentence of the card it was taken from.
+  defp rules(rules) when is_list(rules) do
+    rules
+    |> Enum.flat_map(fn
+      %{"rule" => rule, "from" => from} when is_binary(rule) and is_binary(from) ->
+        [{String.trim(rule), from}]
+
+      _other ->
+        []
+    end)
+    |> Enum.filter(fn {rule, _from} -> rule != "" and String.length(rule) <= @max_rule end)
+    |> Enum.uniq_by(fn {rule, _from} -> rule end)
+    |> Enum.take(@max_window_rules)
+  end
+
+  defp rules(_none), do: []
 
   defp title(title) when is_binary(title), do: String.trim(title)
   defp title(_other), do: ""
