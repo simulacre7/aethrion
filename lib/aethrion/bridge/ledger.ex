@@ -492,6 +492,10 @@ defmodule Aethrion.Bridge.Ledger do
       |> String.trim()
 
     cond do
+      # "±0", "+0": said to say that nothing changes.
+      String.match?(value, ~r/\A\s*(?:±|\+\/?-|[+\-−])\s*0+\s*\z/u) ->
+        {was, nil}
+
       # A row of labelled numbers: the numbers named move; the row written
       # anew replaces it; anything else is not about this row.
       Cells.read(was) != [] ->
@@ -640,14 +644,15 @@ defmodule Aethrion.Bridge.Ledger do
   end
 
   # The number's field as the new value writes it, when the field has
-  # words around its number and the new value brings its own ("45 (호기심)"
-  # over "30 (경계)", "길드 3층" over "명월탑 1층"); as it was written
-  # before, for a number alone or a field that is one. A figure keeps
-  # leading the value: words before the number are not taken.
+  # words around its number and the new value brings words after its own
+  # ("45 (호기심)" over "30 (경계)", "길드 3층" over "명월탑 1층", a row
+  # written anew); as it was written before, for a number alone or a field
+  # that is one. A figure keeps leading the value: words before the number
+  # are not taken.
   defp dressed({:pair, was_pre, a, sep, b, {was_post, commas?}} = pair, value) do
     case number(value) do
       {:pair, pre, _a, _sep, _b, {post, _commas?}}
-      when (pre != "" or post != "") and (was_pre != "" or was_post != "") ->
+      when post != "" and (was_pre != "" or was_post != "") ->
         if lead?(was_pre) and not lead?(pre),
           do: pair,
           else: {:pair, pre, a, sep, b, {post, commas?}}
@@ -660,7 +665,7 @@ defmodule Aethrion.Bridge.Ledger do
   defp dressed({:one, was_pre, a, {was_post, commas?}} = one, value) do
     case number(value) do
       {:one, pre, _a, {post, _commas?}}
-      when (pre != "" or post != "") and (was_pre != "" or was_post != "") ->
+      when post != "" and (was_pre != "" or was_post != "") ->
         if lead?(was_pre) and not lead?(pre),
           do: one,
           else: {:one, pre, a, {post, commas?}}

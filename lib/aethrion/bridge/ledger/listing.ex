@@ -202,6 +202,12 @@ defmodule Aethrion.Bridge.Ledger.Listing do
       one_of_many?(items, value) ->
         {written(one(items, value), was, habits), nil}
 
+      # A list of counted things is not said anew in a word ("same",
+      # "±0"): that would be everything lost. An empty list says so.
+      length(items) >= 2 and Enum.any?(items, & &1.count) and separator(value) == nil and
+          not empty?(value) ->
+        {was, :unreadable}
+
       true ->
         {value, nil}
     end

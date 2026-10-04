@@ -462,6 +462,27 @@ defmodule Aethrion.BridgeLedgerTest do
       assert refused == []
     end
 
+    test "a change that says nothing changes changes nothing, whatever the field" do
+      spec = %{open: "[Day", close: ""}
+
+      window =
+        "[Day 1/30 · Morning]\n🎒 Water x1 · Sunscreen · 물통 x3\nChloe | 19 | Curious | Bully drama? That's views."
+
+      changes = [{"Chloe", "±0"}, {"🎒", "±0"}, {"Day", "+0"}, {"🎒", "그대로"}, {"Chloe", "25"}]
+      assert {kept, [], refused} = Ledger.apply(window, changes, spec)
+      assert kept == window
+      assert refused == [{"🎒", "그대로", :unreadable}, {"Chloe", "25", :unsigned}]
+
+      # A number said outright keeps the row's words; a row written anew brings its own.
+      assert {kept, _applied, []} = Ledger.apply(window, [{"Chloe", "=25"}], spec)
+      assert kept =~ "Chloe | 25 | Curious | Bully drama? That's views."
+
+      assert {kept, _applied, []} =
+               Ledger.apply(window, [{"Chloe", "25 | Amused | Okay, funny."}], spec)
+
+      assert kept =~ "Chloe | 25 | Amused | Okay, funny."
+    end
+
     test "a list is changed a thing at a time" do
       changes = [{"Item", "+마정석 (최하급) × 2"}, {"Item", "-타워 단말기 (보급형)"}, {"Item", "-엘릭서"}]
       assert {kept, applied, refused} = Ledger.apply(window(), changes, @lines)
