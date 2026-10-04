@@ -385,6 +385,47 @@ defmodule Aethrion.BridgeLedgerCardsTest do
              Ledger.recorded(messages)
   end
 
+  test "a level the model takes up itself is its to raise; what the level gives is the rules'" do
+    spec = %{
+      open: "[Status]",
+      close: "[Status]",
+      rules: [
+        "EXP.max = floor(100 * 1.15 ^ (Level - 1))",
+        "when EXP >= EXP.max: Level += 1; EXP -= EXP.max",
+        "when Level rises: Stat Point += 5"
+      ]
+    }
+
+    window = "[Status]\n- Level: 1\n- EXP: 35 / 100\n- Stat Point: 0\n[Status]"
+
+    turn = fn changes ->
+      {changed, _applied, refused} = Ledger.apply(window, changes, spec)
+      {settled, _ruled} = Ledger.settle(changed, spec, window)
+      {settled, Ledger.unanswered(refused, window, settled, spec)}
+    end
+
+    # The model wrapped the experience and raised the level: the level is
+    # taken, its points and the next maximum are worked out.
+    assert turn.([{"EXP", "25 / 133"}, {"Level", "2"}, {"Stat Point", "+5"}]) ==
+             {"[Status]\n- Level: 2\n- EXP: 25 / 115\n- Stat Point: 5\n[Status]", []}
+
+    # Experience only gained: the rule raises the level, and the model's raise is not taken.
+    assert turn.([{"EXP", "+90"}, {"Level", "+1"}]) ==
+             {"[Status]\n- Level: 2\n- EXP: 25 / 115\n- Stat Point: 5\n[Status]", []}
+
+    assert {"[Status]\n- Level: 1\n- EXP: 60 / 100\n- Stat Point: 0\n[Status]",
+            [{"Level", "+1", :ruled}]} = turn.([{"EXP", "+25"}, {"Level", "+1"}])
+  end
+
+  test "a count does not go below nothing by what is taken from it" do
+    spec = %{open: "[Status]", close: "[Status]", rules: ["평판 = clamp(평판, -100, 100)"]}
+    window = "[Status]\n- Stat Point: 5\n- 평판: 3\n- Karma: -2\n[Status]"
+
+    assert {"[Status]\n- Stat Point: 0\n- 평판: -7\n- Karma: -5\n[Status]", _applied,
+            [{"Stat Point", "-15", :clamped}]} =
+             Ledger.apply(window, [{"Stat Point", "-15"}, {"평판", "-10"}, {"Karma", "-3"}], spec)
+  end
+
   test "a list that counts every thing counts a new one as well" do
     habits = %{separator: ", ", empty: "None"}
 

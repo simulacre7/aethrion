@@ -448,31 +448,62 @@ defmodule Aethrion.Bridge.Ledger do
     # Whether at most one plain number is given a lesser number with no sign.
     book = Map.put(book, :lone?, Enum.count(changes, &bare_lesser?(book, &1)) <= 1)
 
+    {edits, applied, refused} = changed_all(book, changes)
+
+    # A level the model took up itself: its experience brought back below
+    # the maximum, and its level raised, in the same lines. The raise is
+    # then the model's to make (what a level gives is still the rules').
     {edits, applied, refused} =
-      Enum.reduce(changes, {%{}, [], []}, fn {name, value}, {edits, applied, refused} = so_far ->
-        case named(book, name, value) do
-          :nothing ->
-            so_far
+      case taken_up(book.rules, applied, refused) do
+        [] ->
+          {edits, applied, refused}
 
-          {:unknown, name, value} ->
-            {edits, applied, refused ++ [{name, value, :unknown}]}
-
-          {field, value} ->
-            # A field named twice: the later change works on the earlier one's result.
-            was = Map.get(edits, field.name, field.value)
-            {now, problem} = one(book, field, was, value)
-            refused = if problem, do: refused ++ [{field.name, value, problem}], else: refused
-            applied = Enum.reject(applied, fn {n, _was, _now} -> n == field.name end)
-
-            if now == field.value,
-              do: {Map.delete(edits, field.name), applied, refused},
-              else:
-                {Map.put(edits, field.name, now), applied ++ [{field.name, field.value, now}],
-                 refused}
-        end
-      end)
+        own ->
+          changed_all(update_in(book.sets.raised, &(&1 -- own)), changes)
+      end
 
     sound(window, fields, spec, edits, applied, refused)
+  end
+
+  defp changed_all(book, changes) do
+    Enum.reduce(changes, {%{}, [], []}, fn {name, value}, {edits, applied, refused} = so_far ->
+      case named(book, name, value) do
+        :nothing ->
+          so_far
+
+        {:unknown, name, value} ->
+          {edits, applied, refused ++ [{name, value, :unknown}]}
+
+        {field, value} ->
+          # A field named twice: the later change works on the earlier one's result.
+          was = Map.get(edits, field.name, field.value)
+          {now, problem} = one(book, field, was, value)
+          refused = if problem, do: refused ++ [{field.name, value, problem}], else: refused
+          applied = Enum.reject(applied, fn {n, _was, _now} -> n == field.name end)
+
+          if now == field.value,
+            do: {Map.delete(edits, field.name), applied, refused},
+            else:
+              {Map.put(edits, field.name, now), applied ++ [{field.name, field.value, now}],
+               refused}
+      end
+    end)
+  end
+
+  # The fields a rule raises when something happens ("when EXP >= EXP.max:
+  # Level += 1") whose raise the model made itself: the lines brought what
+  # the rule watches down (EXP 35 / 100 to 25 / 133), and the raise was
+  # refused as the rule's.
+  defp taken_up(rules, applied, refused) do
+    lowered = for {name, was, now} <- applied, first(now) < first(was), do: key(name)
+    kept_back = for {name, _value, :ruled} <- refused, do: key(name)
+
+    for {:when, _condition, _changes} = rule <- rules,
+        Enum.any?(Rules.watched([rule]), &(&1 in lowered)),
+        name <- Rules.raised([rule]),
+        name in kept_back,
+        uniq: true,
+        do: name
   end
 
   # The window with the edits made, as long as it still reads as the
@@ -547,6 +578,9 @@ defmodule Aethrion.Bridge.Ledger do
     habits =
       Map.merge(book.habits, %{
         lone?: book.lone?,
+        # A number a rule keeps within a range goes where the rule lets it.
+        bounded?:
+          {key(field.name), :now} in for({:always, target, _expr} <- book.rules, do: target),
         # A pair a rule watches may pass its maximum: the rule takes it up.
         open?: key(field.name) in book.watched,
         dated?: dated?(field),
@@ -1151,8 +1185,13 @@ defmodule Aethrion.Bridge.Ledger do
       else: put_pair(pair, a, b, habits[:open?])
   end
 
-  defp numbered({:one, _pre, a, _post} = one, {:move, d}, _value, _habits),
-    do: put_one(one, a + d)
+  # (A count, a whole number, does not go below nothing by what is taken
+  # from it, unless a rule says how far it may go.)
+  defp numbered({:one, _pre, a, _post} = one, {:move, d}, _value, habits) do
+    if is_integer(a) and a >= 0 and a + d < 0 and habits[:bounded?] != true,
+      do: {elem(put_one(one, 0), 0), :clamped},
+      else: put_one(one, a + d)
+  end
 
   # "7 / 207" for a number that stands alone: its first.
   defp numbered({:one, _pre, _a, _post} = one, {:set_pair, a, _b}, _value, _habits),
