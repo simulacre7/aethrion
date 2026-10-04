@@ -515,6 +515,8 @@ defmodule Aethrion.Bridge.AutoCast do
     end
   end
 
+  @piece 16
+
   @doc false
   # Whether the card states a rule: the sentence the reader gives for it
   # is the card's (most of it is there word for word, whatever its spacing
@@ -532,8 +534,35 @@ defmodule Aethrion.Bridge.AutoCast do
       |> Enum.reject(&(&1 in ["0", "1"] or byte_size(&1) > 16))
       |> Enum.uniq()
 
+    # (A small reader cuts the sentence short: "Gain 5 points upon
+    # leveling up. Gain an extra 10 points for every fifth level" for a
+    # rule with the 15 that the card's line goes on to say. A number may
+    # stand in the rest of the card's line.)
+    lines = lines_of(quote, text)
+
     String.length(quote) >= 8 and quoted?(quote, card) and
-      Enum.all?(numbers, &in_place?(&1, quote, card)) and (not named? or named?(rule, quote))
+      Enum.all?(numbers, &(in_place?(&1, quote, card) or in_line?(&1, lines))) and
+      (not named? or named?(rule, quote))
+  end
+
+  # The lines of the card that the quote begins in (three at most).
+  defp lines_of(quote, text) do
+    piece = quote |> String.graphemes() |> Enum.take(@piece) |> Enum.join()
+
+    if String.length(piece) < 8 do
+      []
+    else
+      text
+      |> String.split("\n")
+      |> Enum.map(&plain/1)
+      |> Enum.filter(&String.contains?(&1, piece))
+      |> Enum.take(3)
+    end
+  end
+
+  defp in_line?(number, lines) do
+    pattern = Regex.compile!("(?<![0-9.])" <> Regex.escape(number) <> "(?!\\.?[0-9])")
+    Enum.any?(lines, &Regex.match?(pattern, &1))
   end
 
   # The sentence names the fields the rule speaks of: all of two, and all
@@ -562,8 +591,6 @@ defmodule Aethrion.Bridge.AutoCast do
     |> Enum.reject(&(&1 in @rule_words))
     |> Enum.uniq()
   end
-
-  @piece 16
 
   # Most of the quote, taken a piece at a time, is in the card.
   defp quoted?(quote, card) do

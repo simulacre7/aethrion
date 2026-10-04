@@ -325,6 +325,13 @@ defmodule Aethrion.AutoCastTest do
 
       for {rule, from} <- stated, do: assert(AutoCast.stated?(rule, from, card), rule)
 
+      # A sentence cut short of a number that the card's line goes on to say.
+      assert AutoCast.stated?(
+               "when Level rises: Stat_Point += if(Level % 5 == 0, 15, 5)",
+               "Gain 5 points upon leveling up. Gain an extra 10 points for every level ending in 5 or 0",
+               card
+             )
+
       made_up = [
         # A number the sentence does not have, or has only because the reader put it there.
         {"HP.max = 100 + Vigor * 10", "Vigor (생명력): Max HP +10 per point."},
