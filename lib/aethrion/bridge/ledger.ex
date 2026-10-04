@@ -374,48 +374,31 @@ defmodule Aethrion.Bridge.Ledger do
   def apply(window, changes, spec \\ nil) do
     fields = fields(window, spec)
     by_name = Map.new(fields, &{key(&1.name), &1})
-    habits = habits(fields)
     rules = rules(fields, spec)
-    watched = Rules.watched(rules)
-    sets = %{raised: Rules.raised(rules), lowered: Rules.lowered(rules)}
+
+    book = %{
+      fields: fields,
+      by_name: by_name,
+      habits:
+        Map.merge(habits(fields), %{close: (spec && spec.close) || "", open: spec && spec.open}),
+      rules: rules,
+      watched: Rules.watched(rules),
+      sets: %{raised: Rules.raised(rules), lowered: Rules.lowered(rules)}
+    }
 
     {edits, applied, refused} =
-      Enum.reduce(changes, {%{}, [], []}, fn {name, value}, {edits, applied, refused} ->
-        # "Hansol L: +1": a row's labelled number, named with its row.
-        {name, value} = celled(by_name, name, value)
-        {name, value} = itemed(fields, by_name, name, value)
+      Enum.reduce(changes, {%{}, [], []}, fn {name, value}, {edits, applied, refused} = so_far ->
+        case named(book, name, value) do
+          :nothing ->
+            so_far
 
-        case Map.get(by_name, key(name)) do
-          # What the rules say of a person (affinity, trust), written under
-          # the person's name: the rules' own, and no line of the window.
-          nil ->
-            if String.match?(value, ~r/\A\s*(?:affinity|trust|호감|신뢰)/iu),
-              do: {edits, applied, refused},
-              else: {edits, applied, refused ++ [{name, value, :unknown}]}
+          {:unknown, name, value} ->
+            {edits, applied, refused ++ [{name, value, :unknown}]}
 
-          field ->
+          {field, value} ->
             # A field named twice: the later change works on the earlier one's result.
             was = Map.get(edits, field.name, field.value)
-
-            habits =
-              Map.merge(habits, %{
-                # A pair a rule watches may pass its maximum: the rule takes it up.
-                open?: key(field.name) in watched,
-                dated?: dated?(field.name) or weekday?(field.value),
-                placed?: placed?(field.name),
-                close: (spec && spec.close) || "",
-                open: spec && spec.open
-              })
-
-            {now, problem} =
-              case parted(was, value, field) do
-                :unreadable ->
-                  {was, :unreadable}
-
-                value ->
-                  was |> changed(value, habits) |> judged(was, value, key(field.name), sets)
-              end
-
+            {now, problem} = one(book, field, was, value)
             refused = if problem, do: refused ++ [{field.name, value, problem}], else: refused
             applied = Enum.reject(applied, fn {n, _was, _now} -> n == field.name end)
 
@@ -428,6 +411,43 @@ defmodule Aethrion.Bridge.Ledger do
       end)
 
     {rewrite(window, Map.values(by_name), edits), applied, refused}
+  end
+
+  # The field a change names, and the change as that field takes it:
+  # `{field, value}`, `{:unknown, name, value}`, or `:nothing` for what is
+  # no change to the window and no fault worth a line.
+  defp named(book, name, value) do
+    # "Hansol L: +1": a row's labelled number, named with its row.
+    {name, value} = celled(book.by_name, name, value)
+    {name, value} = itemed(book.fields, book.by_name, name, value)
+    {name, value} = maxed(book.by_name, book.rules, name, value)
+    field = Map.get(book.by_name, key(name))
+
+    cond do
+      # A maximum that a rule sets: the rule's.
+      value == :ruled -> :nothing
+      field != nil -> {field, value}
+      # What the rules say of a person (affinity, trust), written under
+      # the person's name: the rules' own.
+      String.match?(value, ~r/\A\s*(?:affinity|trust|호감|신뢰)/iu) -> :nothing
+      true -> {:unknown, name, value}
+    end
+  end
+
+  # One field's value after a change, and what was wrong with the change.
+  defp one(book, field, was, value) do
+    habits =
+      Map.merge(book.habits, %{
+        # A pair a rule watches may pass its maximum: the rule takes it up.
+        open?: key(field.name) in book.watched,
+        dated?: dated?(field.name) or weekday?(field.value),
+        placed?: placed?(field.name)
+      })
+
+    case parted(was, value, field) do
+      :unreadable -> {was, :unreadable}
+      value -> was |> changed(value, habits) |> judged(was, value, key(field.name), book.sets)
+    end
   end
 
   # A heading of several parts ("[Day 1 · night · the keep]") written with
@@ -493,6 +513,33 @@ defmodule Aethrion.Bridge.Ledger do
       {list.name, "#{sign}#{name} × #{n}"}
     else
       _other -> {name, value}
+    end
+  end
+
+  # "HP.max: +10", as the rules write a pair's maximum: a change to the
+  # pair, or `:ruled` when a rule sets that maximum.
+  defp maxed(by_name, rules, name, value) do
+    with false <- Map.has_key?(by_name, key(name)),
+         [_all, base] <- Regex.run(~r/\A(.+?)\s*\.\s*max(?:imum)?\z/iu, name),
+         %{value: was} <- Map.get(by_name, key(base)),
+         {:pair, _pre, a, _sep, b, _post} <- number(was) do
+      if {key(base), :max} in for({:always, target, _expr} <- rules, do: target),
+        do: {base, :ruled},
+        else: new_maximum(name, value, base, trunc(a), trunc(b))
+    else
+      _other -> {name, value}
+    end
+  end
+
+  defp new_maximum(name, value, base, now, max) do
+    said = String.replace(value, ~r/\A\s*=\s*/u, "")
+    {said, _outright?} = come_to_number(Integer.to_string(max), said)
+
+    case delta(said, true) do
+      {:move, by} -> {base, "=#{now} / #{trunc(max + by)}"}
+      {:set, to} -> {base, "=#{now} / #{trunc(to)}"}
+      {:set_pair, _now, to} -> {base, "=#{now} / #{trunc(to)}"}
+      :text -> {name, value}
     end
   end
 
@@ -598,7 +645,9 @@ defmodule Aethrion.Bridge.Ledger do
     labels =
       for {_field, cells} <- rows, cell <- cells, uniq: true, do: String.downcase(cell.label)
 
-    Enum.flat_map(rule_texts(fields, spec), fn text ->
+    fields
+    |> rule_texts(spec)
+    |> Enum.flat_map(fn text ->
       case Rules.parse(text, names) do
         {:ok, rule} ->
           [rule]
@@ -610,6 +659,8 @@ defmodule Aethrion.Bridge.Ledger do
           end
       end
     end)
+    # A rule written twice (in two spellings of a field, say) is one rule.
+    |> Enum.uniq()
   end
 
   # The rule for each row that has every label the rule speaks of.
@@ -658,11 +709,13 @@ defmodule Aethrion.Bridge.Ledger do
 
   # A field's numbers as the rules see them, with the shape to write them
   # back in; nil for a field that holds no figure.
-  # A value with a day of the week in brackets is a date: "5/31 (Sat)".
+  # A value with a day of the week in brackets, after a number, is a
+  # date: "5/31 (Sat)", "10월 14일 (월요일)". The word in the brackets is
+  # the day and no more: "(일반)" is a grade, "(Sunny)" the weather.
   defp weekday?(value) do
     String.match?(
       value,
-      ~r/\((?:[월화수목금토일]|mon|tue|wed|thu|fri|sat|sun)[^()]{0,8}\)/iu
+      ~r/[0-9][^()]{0,6}\(\s*(?:[월화수목금토일](?:요일)?|[月火水木金土日](?:曜日?)?|mon|tue|wed|thu|fri|sat|sun|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\.?\s*\)/iu
     )
   end
 
@@ -878,7 +931,7 @@ defmodule Aethrion.Bridge.Ledger do
         several(match)
 
       match = Regex.run(~r/\A.*(?:→|->|=>)\s*(\S.*)\z/us, value) ->
-        {List.last(match), true}
+        arrowed(value, List.last(match))
 
       # "42 + 8", "36 + 25 / 50": the number it stands at, and what is added to it.
       match =
@@ -897,6 +950,17 @@ defmodule Aethrion.Bridge.Ledger do
       true ->
         {value, false}
     end
+  end
+
+  # What follows the last arrow, said outright; or, when that is no number
+  # ("+150 (90 → 240); so → Level 7, EXP resets"), the move the change
+  # leads with.
+  defp arrowed(value, last) do
+    lead = Regex.run(~r/\A\s*([+\-−])\s*([0-9][0-9,]*)(?![0-9,.]|\s*\/)/u, value)
+
+    if lead != nil and delta(last, true) == :text,
+      do: {Enum.at(lead, 1) <> Enum.at(lead, 2), false},
+      else: {last, true}
   end
 
   # Several moves in one change: the number they are said to come to, when
@@ -943,8 +1007,11 @@ defmodule Aethrion.Bridge.Ledger do
   defp numbered({:one, _pre, _a, _post} = one, {:set_pair, a, _b}, _value, _habits),
     do: put_one(one, a)
 
+  # (A number that stands alone and is given a greater one has grown to
+  # it: "Level: 11" after level 10, "Gold: 50" after 42. A lesser one may
+  # be what is left or what was lost, and "0" is said for no change.)
   defp numbered({:one, pre, now, _post} = one, {:set, a}, value, habits) do
-    if lead?(pre) and unsigned?(value, a, now, habits),
+    if lead?(pre) and a < now and unsigned?(value, a, now, habits),
       do: {elem(put_one(one, now), 0), :unsigned},
       else: put_one(dressed(one, value), a)
   end
@@ -1450,6 +1517,48 @@ defmodule Aethrion.Bridge.Ledger do
            name,
            ~r/item|inventory|skill|belonging|소지|아이템|인벤|가방|스킬|기술|소유|持ち物|スキル|🎒/iu
          ))
+  end
+
+  @doc """
+  The turn's record without what came to nothing: a change that a rule
+  then put back ("EXP 337 / 351 → 337 / 385" and "EXP 337 / 385 → 337 /
+  351") is a line of neither. `{applied, ruled}` as they are shown.
+  """
+  @spec net([{String.t(), String.t(), String.t()}], [{String.t(), String.t(), String.t()}]) ::
+          {[{String.t(), String.t(), String.t()}], [{String.t(), String.t(), String.t()}]}
+  def net(applied, ruled) do
+    undone =
+      for {name, was, _now} <- applied,
+          {^name, _from, back} <- ruled,
+          back == was,
+          do: name
+
+    reject = fn changes -> Enum.reject(changes, fn {name, _was, _now} -> name in undone end) end
+    {reject.(applied), reject.(ruled)}
+  end
+
+  @doc """
+  The reply without lines that are only the window's opening or closing
+  text: a marker the model left in its story would pair with the window's
+  own, for whatever draws the window.
+  """
+  @spec unmarked(String.t(), spec() | nil) :: String.t()
+  def unmarked(text, nil), do: text
+
+  def unmarked(text, spec) do
+    markers =
+      for marker <- [spec.open, spec.close],
+          marker = String.trim(marker),
+          byte_size(marker) >= 4,
+          do: marker
+
+    if markers == [],
+      do: text,
+      else:
+        text
+        |> String.split("\n")
+        |> Enum.reject(&(String.trim(&1) in markers))
+        |> Enum.join("\n")
   end
 
   @doc """

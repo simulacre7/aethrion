@@ -170,12 +170,14 @@ defmodule Aethrion.Bridge.Reply do
     # A window the model printed anyway is taken out; without ledger
     # lines, what it changed stands in for them.
     {text, printed} = without_window(text, spec)
+    text = Ledger.unmarked(text, spec)
     Logger.debug("Aethrion ledger lines: #{inspect(changes)}")
     {changes, source} = changes(changes, printed, window, spec)
     {kept, applied, refused} = Ledger.apply(window, changes, spec)
     {kept, ruled} = Ledger.settle(kept, spec, window)
     refused = Ledger.unanswered(refused, window, kept, spec)
-    lines = Ledger.log(applied, refused, locale) ++ Ledger.rule_log(ruled, locale)
+    {shown, by_rule} = Ledger.net(applied, ruled)
+    lines = Ledger.log(shown, refused, locale) ++ Ledger.rule_log(by_rule, locale)
 
     Logger.info(
       "Aethrion ledger: #{length(applied)} changed, #{length(refused)} refused, " <>

@@ -244,8 +244,8 @@ defmodule Aethrion.BridgeLedgerCardsTest do
       assert {name, value, got, refused} == {name, value, expected, []}
     end
 
-    # What says too much to be read is refused, and the field stays.
-    assert {^window, [], [{"EXP", _value, :unreadable}]} =
+    # What says too much to be read: the move it leads with is taken.
+    assert {now, [{"EXP", "90 / 201", "201 / 201"}], [{"EXP", _value, :clamped}]} =
              Ledger.apply(
                window,
                [
@@ -254,6 +254,95 @@ defmodule Aethrion.BridgeLedgerCardsTest do
                ],
                spec
              )
+
+    assert now =~ "- EXP: 201 / 201\n"
+  end
+
+  test "a grade in brackets is no day of the week: the list is kept as a list" do
+    spec = %{open: "[Status]", close: "[Status]"}
+
+    window =
+      "[Status]\n- Date: 2026-10-08 (금)\n- Weather: 맑음 (Sunny)\n" <>
+        "- Item: Potion (Normal) × 3 / 철제 칼: 녹슨 기사검 (일반) / 스켈레톤 (뼈) × 10\n[Status]"
+
+    assert {now, _applied, []} =
+             Ledger.apply(
+               window,
+               [
+                 {"Item", "+스켈레톤 (뼈) × 12"},
+                 {"Date", "2026-10-09 (토)"},
+                 {"Weather", "흐림 (Cloudy)"}
+               ],
+               spec
+             )
+
+    assert now ==
+             "[Status]\n- Date: 2026-10-09 (토)\n- Weather: 흐림 (Cloudy)\n" <>
+               "- Item: Potion (Normal) × 3 / 철제 칼: 녹슨 기사검 (일반) / 스켈레톤 (뼈) × 22\n[Status]"
+
+    # A date is still a date, whatever numbers it holds.
+    dated = "[Status]\n- When: 10월 14일 (월요일)\n- Day: 5/31 (Sat)\n[Status]"
+
+    assert {^dated, [], [{"When", "+1", :unreadable}, {"Day", "+1", :unreadable}]} =
+             Ledger.apply(dated, [{"When", "+1"}, {"Day", "+1"}], spec)
+  end
+
+  test "a pair's maximum named as the rules name it" do
+    window = "[Status]\n- HP: 120 / 120\n- MP: 30 / 80\n- Vigor: 12\n[Status]"
+    ruled = %{open: "[Status]", close: "[Status]", rules: ["HP.max = Vigor * 10"]}
+
+    # A maximum a rule sets is the rule's: no change, and no line.
+    assert Ledger.apply(window, [{"HP.max", "+20"}, {"HP.max", "120 → 130"}], ruled) ==
+             {window, [], []}
+
+    # One no rule sets is the pair's second number.
+    assert {now, [{"MP", "30 / 80", "30 / 90"}], []} =
+             Ledger.apply(window, [{"MP.max", "+10"}], ruled)
+
+    assert now =~ "- MP: 30 / 90\n"
+    assert {now, _applied, []} = Ledger.apply(window, [{"MP.max", "80 → 100"}], ruled)
+    assert now =~ "- MP: 30 / 100\n"
+
+    assert {^window, [], [{"Luck.max", "+1", :unknown}]} =
+             Ledger.apply(window, [{"Luck.max", "+1"}], ruled)
+  end
+
+  test "the record leaves out what a rule put back, and the story a marker left alone" do
+    applied = [{"EXP", "337 / 351", "337 / 385"}, {"HP", "120 / 120", "108 / 120"}]
+    ruled = [{"EXP", "337 / 385", "337 / 351"}, {"Level", "1", "2"}]
+
+    assert Ledger.net(applied, ruled) ==
+             {[{"HP", "120 / 120", "108 / 120"}], [{"Level", "1", "2"}]}
+
+    spec = %{open: "[Status Window]", close: "[Status Window]"}
+
+    assert Ledger.unmarked("A blow.\n\n[Status Window]\n[What next?]\n", spec) ==
+             "A blow.\n\n[What next?]\n"
+
+    assert Ledger.unmarked("He said ] and left.\n]", %{open: "[ Trust:", close: "]"}) ==
+             "He said ] and left.\n]"
+  end
+
+  test "a number alone: what a plain number grew to, and no more" do
+    spec = %{open: "[Status]", close: "[Status]"}
+    window = "[Status]\n- Level: 10\n- 골드: 42\n- HP: 36 / 50\n- Dexterity: 104\n[Status]"
+
+    assert {now, _applied, refused} =
+             Ledger.apply(
+               window,
+               [{"Level", "11"}, {"골드", "50"}, {"Dexterity", "0"}, {"HP", "8"}, {"HP", "45"}],
+               spec
+             )
+
+    assert now == "[Status]\n- Level: 11\n- 골드: 50\n- HP: 36 / 50\n- Dexterity: 104\n[Status]"
+
+    assert refused == [
+             {"Dexterity", "0", :unsigned},
+             {"HP", "8", :unsigned},
+             {"HP", "45", :unsigned}
+           ]
+
+    assert {^window, [], [{"골드", "35", :unsigned}]} = Ledger.apply(window, [{"골드", "35"}], spec)
   end
 
   test "a list that counts every thing counts a new one as well" do

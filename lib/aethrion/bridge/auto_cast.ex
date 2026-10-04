@@ -19,6 +19,8 @@ defmodule Aethrion.Bridge.AutoCast do
   those are added in the editor, and played with the model name `aethrion`.
   """
 
+  require Logger
+
   alias Aethrion.{Bridge, Card, State}
 
   @max_prompt 24_000
@@ -171,23 +173,32 @@ defmodule Aethrion.Bridge.AutoCast do
   defp kept_rules(rules) when is_list(rules), do: Enum.filter(rules, &is_binary/1)
   defp kept_rules(_none), do: []
 
+  # How many times a card with a status window is read for its rules.
+  @readings 3
+
   @doc """
   Reads the card with the model and keeps what it was read as:
   `{:ok, read}`. A model that fails or answers something else gives
-  `{:error, reason}`, and nothing is kept. Options are the adapter's.
+  `{:error, reason}`, and nothing is kept. A card with a status window is
+  read `:readings` times in all (three unless said), the later ones at
+  once, and the rules come from the reading the card bears out most.
+  Other options are the adapter's.
   """
   @spec read(map(), map(), module(), keyword()) :: {:ok, read()} | {:error, term()}
   def read(card, casts, adapter, opts \\ []) do
+    {readings, opts} = Keyword.pop(opts, :readings, @readings)
+
+    # A rule is kept when the card says it: a formula made up from
+    # somewhere else would bend every window after it.
+    stated = Enum.join([card.prompt, Map.get(card, :rules, ""), card.greeting || ""], "\n")
+
     with {:ok, answer} <- Aethrion.LLM.chat(adapter, question(card), opts),
          {:ok, people} <- people(answer),
          data = cast_data(people, card),
          {:ok, state} <- State.parse(data) do
       key = key(card)
-
-      # A rule is kept when the card says it: a formula made up from
-      # somewhere else would bend every window after it.
-      stated = Enum.join([card.prompt, Map.get(card, :rules, ""), card.greeting || ""], "\n")
       people = update_in(people.window, &grounded(&1, stated))
+      people = surest(people, readings - 1, fn -> again(card, stated, adapter, opts) end)
 
       window =
         people.window &&
@@ -211,6 +222,40 @@ defmodule Aethrion.Bridge.AutoCast do
     end
   end
 
+  # A card's arithmetic is read once and kept, and one reading may leave
+  # half of it out. So a card with a status window is read again, and the
+  # reading that the card bears out most (`grounded/2`) gives the rules.
+  # Who is in the card stays as the first reading had it.
+  defp surest(%{window: nil} = people, _more, _again), do: people
+  defp surest(people, more, _again) when more < 1, do: people
+
+  defp surest(people, more, again) do
+    1..more
+    |> Task.async_stream(fn _n -> again.() end, timeout: :infinity, on_timeout: :kill_task)
+    |> Enum.reduce(people, fn
+      {:ok, %{open: open, close: close, rules: rules}}, best
+      when open == best.window.open and close == best.window.close and
+             length(rules) > length(best.window.rules) ->
+        put_in(best.window.rules, rules)
+
+      _other, best ->
+        best
+    end)
+  end
+
+  # The card's window as another reading has it, or nil.
+  defp again(card, stated, adapter, opts) do
+    with {:ok, answer} when is_binary(answer) <- Aethrion.LLM.chat(adapter, question(card), opts),
+         {:ok, %{window: %{} = window}} <- people(answer) do
+      grounded(window, stated)
+    else
+      _other -> nil
+    end
+  rescue
+    # Another reading is a help, not a need: the first one stands.
+    _error -> nil
+  end
+
   # The window with the rules the card bears out. The card's own examples
   # of its window decide first: a rule they contradict is dropped, one they
   # agree with is kept. Where they cannot say, the sentence the reader
@@ -220,14 +265,20 @@ defmodule Aethrion.Bridge.AutoCast do
   defp grounded(window, text) do
     examples = Aethrion.Bridge.Ledger.windows(text, window)
 
-    rules =
-      for {rule, from} <- window.rules,
-          verdicts = Enum.map(examples, &Aethrion.Bridge.Ledger.agrees?(&1, rule, window)),
-          false not in verdicts,
-          true in verdicts or stated?(rule, from, text),
-          do: rule
+    {kept, dropped} =
+      Enum.split_with(window.rules, fn {rule, from} ->
+        verdicts = Enum.map(examples, &Aethrion.Bridge.Ledger.agrees?(&1, rule, window))
+        false not in verdicts and (true in verdicts or stated?(rule, from, text))
+      end)
 
-    %{window | rules: rules}
+    if dropped != [],
+      do:
+        Logger.debug(
+          "Aethrion card: rules the card does not bear out, left out: " <>
+            Enum.map_join(dropped, " | ", &elem(&1, 0))
+        )
+
+    %{window | rules: Enum.map(kept, &elem(&1, 0))}
   end
 
   @doc false

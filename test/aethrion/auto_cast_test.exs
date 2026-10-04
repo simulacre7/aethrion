@@ -84,6 +84,64 @@ defmodule Aethrion.AutoCastTest do
                )
     end
 
+    test "a card with a status window is read again, and the surest reading gives the rules" do
+      card = %{
+        greeting: nil,
+        rules: "",
+        prompt:
+          "Print the status between [Status] lines.\nVigor: Max HP +10 per point.\n" <>
+            "Attunement: Max MP +10 per point.\nA level gives 5 stat points."
+      }
+
+      reading = fn open, rules ->
+        Jason.encode!(%{
+          "characters" => [],
+          "status_window" => %{
+            "open" => open,
+            "close" => "[Status]",
+            "rules" => for({from, rule} <- rules, do: %{"from" => from, "rule" => rule})
+          }
+        })
+      end
+
+      hp = {"Vigor: Max HP +10 per point.", "HP.max = Vigor * 10"}
+      mp = {"Attunement: Max MP +10 per point.", "MP.max = Attunement * 10"}
+      gift = {"A level gives 5 stat points.", "when Level rises: Stat Points += 5"}
+      made_up = {"Luck doubles gold.", "Gold = Gold * 2"}
+
+      read = fn answers ->
+        {:ok, agent} = Agent.start_link(fn -> answers end)
+        casts = %{put: fn _key, _value -> :ok end}
+
+        {:ok, %{window: window}} =
+          AutoCast.read(card, casts, Aethrion.AutoCastTest.Readers, answers: agent)
+
+        {window, Agent.get(agent, &length/1)}
+      end
+
+      # The second reading has more that the card bears out; the third, of
+      # another window, is not this one's.
+      assert {%{open: "[Status]", rules: rules}, 0} =
+               read.([
+                 reading.("[Status]", [hp, made_up]),
+                 reading.("[Status]", [hp, mp, gift]),
+                 reading.("[Other]", [hp, mp, gift, hp, mp])
+               ])
+
+      assert rules == [
+               "HP.max = Vigor * 10",
+               "MP.max = Attunement * 10",
+               "when Level rises: Stat Points += 5"
+             ]
+
+      # A reading that fails is no loss, and a card with no window is read once.
+      assert {%{rules: ["HP.max = Vigor * 10"]}, 0} =
+               read.([reading.("[Status]", [hp]), "not json"])
+
+      none = Jason.encode!(%{"characters" => []})
+      assert {nil, 2} = read.([none, none, none])
+    end
+
     test "several rules written on one line are taken apart; a card's example windows decide" do
       card = %{
         greeting: nil,
@@ -196,6 +254,16 @@ defmodule Aethrion.AutoCastTest do
   end
 
   # Answers what the test put in its process dictionary.
+  defmodule Readers do
+    # One answer a reading, in turn (the later readings run in tasks).
+    def chat(_messages, opts) do
+      Agent.get_and_update(opts[:answers], fn
+        [answer | rest] -> {{:ok, answer}, rest}
+        [] -> {{:error, :no_more}, []}
+      end)
+    end
+  end
+
   defmodule Reader do
     def chat(_messages, _opts), do: {:ok, Process.get(:reader_answer)}
   end
@@ -601,7 +669,8 @@ defmodule Aethrion.AutoCastTest do
       # That one settled it.
       {200, third_time} = ask(base, chat, card)
       assert third_time == again
-      assert card_reads() == 1
+      # The card was read at its first turn only: three readings, for its rules.
+      assert card_reads() == 3
     end
 
     test "the ledger's lines and a window printed anyway are held back from a stream", %{
@@ -730,11 +799,12 @@ defmodule Aethrion.AutoCastTest do
       assert {200, %{"ok" => true}} = call(:delete, base <> "/casts/cards/" <> key)
       assert {200, %{"cards" => []}} = call(:get, base <> "/casts/cards")
       {200, _again} = ask(base, [user("탑에 들어간다.")], card)
-      assert card_reads() == reads + 1
+      # (A card with a status window is read three times, for its rules.)
+      assert card_reads() == reads + 3
       # Read once more and kept: listed again, and not read a third time.
       assert {200, %{"cards" => [%{"title" => "Tower"}]}} = call(:get, base <> "/casts/cards")
       {200, _again} = ask(base, [user("탑에 들어간다.")], card)
-      assert card_reads() == reads + 1
+      assert card_reads() == reads + 3
     end
 
     test "another model may read the card, while the server's narrates", %{base: base} do
