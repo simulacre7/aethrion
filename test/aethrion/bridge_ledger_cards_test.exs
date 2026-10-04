@@ -550,19 +550,51 @@ defmodule Aethrion.BridgeLedgerCardsTest do
     alias Aethrion.Bridge.Reply
 
     test "the model is asked for the card's window while the chat has none" do
-      plan = %{
-        ledger: nil,
-        spec: %{open: "[Status Window]", close: "[Status Window]"},
-        line?: true
-      }
+      spec = %{open: "[Status Window]", close: "[Status Window]", rules: []}
+      turn = %{line?: true, locale: :ko}
+      greeting = [%{"role" => "assistant", "content" => "The gate stands open."}]
 
+      plan = Reply.plan(%{window: spec}, greeting, turn)
       assert Reply.instruction(plan, []) =~ "the chat has none yet"
+
+      # Once a window is in the chat, the ledger's own note takes over.
+      window = "[Status Window]\n- HP: 10 / 20\n- Gold: 5\n[Status Window]"
+      played = greeting ++ [%{"role" => "assistant", "content" => "A blow lands.\n\n" <> window}]
+
+      assert Reply.instruction(Reply.plan(%{window: spec}, played, turn), played) =~
+               "kept by the game's rules"
+    end
+
+    test "a window that is mostly prose stays the model's" do
+      spec = %{open: "<LIVE>", close: "</LIVE>", rules: []}
+
+      window =
+        "<LIVE>\n[cam: 현관 · CAM 4]\n[rating: 41만 명]\n[sera: 하 실장 얼굴이 하얗다. 정전 하나에? 저 사람이?]\n[taeseok: 또 다들 하 실장만 부른다. 아버지까지.]\n[sia: 오빠가 내 메시지 읽고도 표정이 없다. 원래 저래.]\n</LIVE>"
+
+      refute Ledger.keeps?(window, spec)
+      chat = [%{"role" => "assistant", "content" => "조명이 켜진다.\n\n" <> window}]
+      plan = Reply.plan(%{window: spec}, chat, %{line?: true, locale: :ko})
+      assert plan.ledger == nil
+      assert Reply.instruction(plan, chat) == nil
+
+      # The model's own window is left where and as it is.
+      reply = "카메라가 돈다.\n\n" <> String.replace(window, "41만", "52만")
+      assert {^reply, nil} = Reply.finish(reply, nil, plan)
+    end
+
+    test "a window of numbers with a line of prose is kept, and the line is asked for" do
+      spec = %{open: "[ 날짜:", close: "]", rules: []}
+      window = "[ 날짜: 3일 | 친밀: 10% | 경계: 40% | 생각: 오늘은 손님이 없네, 비가 와서 그런가 ]"
+      assert Ledger.keeps?(window, spec)
+      assert Ledger.instruction(window, spec) =~ "writes anew as the scene moves on (생각)"
     end
 
     test "not when a reply is only continued, nor for a card with no window" do
       spec = %{open: "[Status Window]", close: "[Status Window]"}
-      assert Reply.instruction(%{ledger: nil, spec: spec, line?: false}, []) == nil
-      assert Reply.instruction(%{ledger: nil, spec: nil, line?: true}, []) == nil
+      assert Reply.instruction(%{ledger: nil, first?: true, spec: spec, line?: false}, []) == nil
+      assert Reply.instruction(%{ledger: nil, first?: false, spec: nil, line?: true}, []) == nil
+      # A window the model keeps itself (mostly prose) is in the chat already.
+      assert Reply.instruction(%{ledger: nil, first?: false, spec: spec, line?: true}, []) == nil
       assert Reply.instruction(nil, []) == nil
     end
   end
@@ -678,6 +710,16 @@ defmodule Aethrion.BridgeLedgerCardsTest do
       text = String.trim(@sheet) <> "\n\n---\n\nThe square is quiet at noon."
       assert {"", window, "\n\n---\n\nThe square is quiet at noon."} = Ledger.window(text, @needs)
       assert String.ends_with?(window, "</Status Update>")
+    end
+
+    test "a long line of the story after the window is no trouble" do
+      # 400 bytes into it is the middle of a character.
+      story = String.duplicate("가", 134) <> "나다라 마바사."
+      text = "<Status Update>\n- Gold: 5\n- Day: 2\n\n" <> "a" <> story <> "\n\n끝."
+      assert {"", "<Status Update>\n- Gold: 5\n- Day: 2", _story} = Ledger.window(text, @needs)
+
+      text = "<Status Update>\n- Gold: 5\n- Day: 2\n\n" <> story
+      assert {"", "<Status Update>\n- Gold: 5\n- Day: 2", _story} = Ledger.window(text, @needs)
     end
 
     test "each joined piece is a field, and a part's title is none" do

@@ -277,8 +277,12 @@ defmodule Aethrion.Bridge.Ledger do
       so_far = binary_part(text, start, stop - start)
       lead = so_far |> String.split("\n") |> List.last() |> lead()
 
+      # (A span cut by bytes may end inside a character.)
       [following | below] =
-        text |> binary_part(next, min(byte_size(text) - next, 400)) |> String.split("\n")
+        text
+        |> binary_part(next, min(byte_size(text) - next, 400))
+        |> String.replace_invalid("")
+        |> String.split("\n")
 
       # A part's title in brackets ("[Player Character]") stands for the
       # line under it.
@@ -304,9 +308,9 @@ defmodule Aethrion.Bridge.Ledger do
   # to a format that has none.
   defp closed_tag(text, at, open) do
     with [_all, tag] <- Regex.run(~r/\A\s*<([^<>\/\n]{1,40})>\s*\z/u, open),
-         rest = binary_part(text, at, min(byte_size(text) - at, 200)),
+         rest = binary_part(text, at, min(byte_size(text) - at, byte_size(tag) + 40)),
          [{0, length}] <-
-           Regex.run(~r/\A[ \t]*<\/#{Regex.escape(tag)}>/u, rest, return: :index) do
+           Regex.run(~r/\A[ \t]*<\/#{Regex.escape(tag)}>/, rest, return: :index) do
       at + length
     else
       _other -> nil
@@ -383,6 +387,37 @@ defmodule Aethrion.Bridge.Ledger do
       _other ->
         nil
     end)
+  end
+
+  @doc """
+  Whether the ledger keeps this window, or leaves it to the model as
+  before. A window that is mostly lines of prose (what each character is
+  thinking, the scene in a sentence) is written anew by the model with
+  every reply; kept, with only what the model names changed, its lines go
+  stale. So a window is kept when it has at least as many numbers and
+  lists as lines of prose.
+  """
+  @spec keeps?(String.t(), spec() | nil) :: boolean()
+  def keeps?(window, spec) do
+    {figures, prose} = kinds(window, spec)
+    prose <= figures
+  end
+
+  @doc false
+  @spec kinds(String.t(), spec() | nil) :: {non_neg_integer(), non_neg_integer()}
+  def kinds(window, spec) do
+    fields = fields(window, spec)
+    {Enum.count(fields, &kept_kind?/1), Enum.count(fields, &prose?/1)}
+  end
+
+  # A number, a pair, a list, or a row of labelled numbers: what a ledger keeps.
+  defp kept_kind?(field),
+    do: figure(field) != nil or listing?(field) or Cells.read(field.value) != []
+
+  # A sentence or more, that is no place, time, or date.
+  defp prose?(%{name: name, value: value} = field) do
+    not kept_kind?(field) and not placed?(field) and not timed?(name) and not dated?(field) and
+      String.length(value) >= 12 and length(String.split(value)) >= 3
   end
 
   @doc """
@@ -2111,7 +2146,7 @@ defmodule Aethrion.Bridge.Ledger do
     fields = fields(window, spec)
     names = Enum.map_join(fields, ", ", & &1.name)
 
-    "The status window is kept by the game's rules and shown by them: do not print it yourself, whatever the card says. Instead, after everything else, write <aethrion-ledger>...</aethrion-ledger> with one line for each field of the window that this reply changes: `Field: +N` or `Field: -N`, always with its sign, for a number that goes up or down (damage taken is `HP: -N`, experience gained `EXP: +N`), `Field: N / M` to set both numbers of a pair, `Field: =N` to set a number outright, or the field's new words as they should read (a place moved to is `Location: the east gate`, in the story's language).#{lists_note(fields)}#{rows_note(fields)} Use the window's field names (#{names}).#{headings_note(fields)}#{notes_note(fields)}#{scene_note(fields)}#{ruled_note(fields, spec)}#{already_note(recorded)}#{waiting_note(fields, spec)} Leave out every field that stays as it is, and write the tags with nothing between them when nothing changes. What is listed under This turn and Now (how each character feels) is the rules' own and shown apart from the window: none of it goes in these lines. It is not shown to the player."
+    "The status window is kept by the game's rules and shown by them: do not print it yourself, whatever the card says. Instead, after everything else, write <aethrion-ledger>...</aethrion-ledger> with one line for each field of the window that this reply changes: `Field: +N` or `Field: -N`, always with its sign, for a number that goes up or down (damage taken is `HP: -N`, experience gained `EXP: +N`), `Field: N / M` to set both numbers of a pair, `Field: =N` to set a number outright, or the field's new words as they should read (a place moved to is `Location: the east gate`, in the story's language).#{lists_note(fields)}#{rows_note(fields)} Use the window's field names (#{names}).#{headings_note(fields)}#{notes_note(fields)}#{prose_note(fields)}#{scene_note(fields)}#{ruled_note(fields, spec)}#{already_note(recorded)}#{waiting_note(fields, spec)} Leave out every field that stays as it is, and write the tags with nothing between them when nothing changes. What is listed under This turn and Now (how each character feels) is the rules' own and shown apart from the window: none of it goes in these lines. It is not shown to the player."
   end
 
   # Last turn's record, so that it is not written twice, and what was not
@@ -2247,6 +2282,19 @@ defmodule Aethrion.Bridge.Ledger do
   defp notes_note(fields) do
     for %{note?: true, name: name, value: value} <- fields, into: "" do
       " #{name} is the window's line of words that has no name (now `#{String.slice(value, 0, 80)}`): when it should read otherwise after this reply, write `#{name}: ...` with its new words."
+    end
+  end
+
+  # A named line of prose (a thought, the day's news, a record's entry):
+  # a card has it written anew with every reply, and a model asked only
+  # for what changed leaves it as it was.
+  defp prose_note(fields) do
+    case for(%{name: name} = field <- fields, field[:note?] != true, prose?(field), do: name) do
+      [] ->
+        ""
+
+      [first | _rest] = names ->
+        " These hold a line of words that the card writes anew as the scene moves on (#{Enum.join(names, ", ")}): when this reply has moved it on, write `#{first}: ...` with its new words."
     end
   end
 

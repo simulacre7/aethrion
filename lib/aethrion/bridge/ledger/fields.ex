@@ -276,8 +276,13 @@ defmodule Aethrion.Bridge.Ledger.Fields do
     text = binary_part(window, start, length)
 
     case Regex.run(@named, text, return: :index) || Regex.run(@assigned, text, return: :index) do
-      [_all, _lead, {name_at, name_length}, {value_at, value_length}] ->
+      [_all, {lead_at, lead_length}, {name_at, name_length}, {value_at, value_length}] ->
         name = text |> binary_part(name_at, name_length) |> clean_name()
+        lead = binary_part(text, lead_at, lead_length)
+
+        # "[rating: 51]": the bracket the line opened with closes after
+        # the value, and is no part of it.
+        value_length = unbracketed(lead, binary_part(text, value_at, value_length))
         value = binary_part(text, value_at, value_length)
 
         # ("⏰ 09:47" names nothing with its colon, which stands between
@@ -290,6 +295,17 @@ defmodule Aethrion.Bridge.Ledger.Fields do
       nil ->
         nil
     end
+  end
+
+  # The length of a value without the bracket that closes its line, when
+  # the line opened with one and the value closes more than it opens.
+  defp unbracketed(lead, value) do
+    count = fn mark -> length(String.split(value, mark)) - 1 end
+
+    if String.contains?(lead, "[") and String.ends_with?(value, "]") and
+         count.("]") > count.("["),
+       do: value |> binary_part(0, byte_size(value) - 1) |> String.trim_trailing() |> byte_size(),
+       else: byte_size(value)
   end
 
   # A row of a table: a short name in the first cell, and the rest of the

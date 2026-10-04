@@ -39,6 +39,7 @@ defmodule Aethrion.Bridge.Reply do
           required(:locale) => :ko | :en,
           required(:player) => String.t() | nil,
           optional(:line?) => boolean(),
+          optional(:first?) => boolean(),
           optional(:settled) => settled() | nil,
           optional(:keep) => (settled() -> any())
         }
@@ -58,7 +59,9 @@ defmodule Aethrion.Bridge.Reply do
   @spec plan(map(), [map()], map()) :: plan()
   def plan(auto, chat, %{line?: line?, locale: locale} = turn) do
     spec = auto[:window]
-    ledger = if spec, do: Ledger.current(chat, spec)
+    found = if spec, do: Ledger.current(chat, spec)
+    # A window that is mostly prose stays the model's to write.
+    ledger = if found && Ledger.keeps?(found, spec), do: found
     key = if ledger && line? && is_binary(turn[:id]) && turn[:store], do: key(turn.id, chat)
 
     %{
@@ -67,6 +70,7 @@ defmodule Aethrion.Bridge.Reply do
       locale: locale,
       player: auto[:player],
       line?: line?,
+      first?: spec != nil and found == nil,
       settled: key && settled(turn.store.get.(key)),
       keep: if(key, do: &turn.store.put.(key, kept(&1)))
     }
@@ -116,7 +120,7 @@ defmodule Aethrion.Bridge.Reply do
 
   # No window in the chat yet: the first one is the model's to print, and
   # a small model leaves it out of its first reply one time in eight.
-  def instruction(%{ledger: nil, spec: %{open: open}} = plan, _messages)
+  def instruction(%{ledger: nil, first?: true, spec: %{open: open}} = plan, _messages)
       when is_binary(open) and open != "" do
     if plan[:line?] != false, do: Ledger.first_instruction()
   end
