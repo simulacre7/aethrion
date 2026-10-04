@@ -60,7 +60,12 @@ defmodule Aethrion.Bridge.Ledger.Listing do
 
   @doc "Whether a value says a list has nothing in it."
   @spec empty?(String.t()) :: boolean()
-  def empty?(value), do: String.downcase(String.trim(value)) in @empty
+  def empty?(value) do
+    value = String.downcase(String.trim(value))
+
+    # The word for nothing, or for not known yet ("확인 중", "???").
+    value in @empty or String.match?(value, ~r/\A(?:확인 중.*|미정|불명|알 수 없음|unknown|tbd|\?+)\z/u)
+  end
 
   @doc "The text between a list's things, or nil for a value that is one thing."
   @spec separator(String.t()) :: String.t() | nil
@@ -248,19 +253,18 @@ defmodule Aethrion.Bridge.Ledger.Listing do
   end
 
   defp move(items, :plus, new) do
-    if Enum.any?(items, &same?(&1, new)) do
-      {:ok,
-       Enum.map(items, fn item ->
-         if same?(item, new),
-           do: %{
-             item
-             | count: (item.count || 1) + (new.count || 1),
-               style: item.style || new.style || style(items)
-           },
-           else: item
-       end)}
-    else
-      {:ok, items ++ [new]}
+    cond do
+      # A list that counts nothing (quests, companions) has a thing or
+      # has it not: joining twice is joining once.
+      Enum.any?(items, &same?(&1, new)) and new.count == nil and
+          not Enum.any?(items, & &1.count) ->
+        {:ok, items}
+
+      Enum.any?(items, &same?(&1, new)) ->
+        counted_up(items, new)
+
+      true ->
+        {:ok, items ++ [new]}
     end
   end
 
@@ -287,6 +291,19 @@ defmodule Aethrion.Bridge.Ledger.Listing do
            end
          end)}
     end
+  end
+
+  defp counted_up(items, new) do
+    {:ok,
+     Enum.map(items, fn item ->
+       if same?(item, new),
+         do: %{
+           item
+           | count: (item.count || 1) + (new.count || 1),
+             style: item.style || new.style || style(items)
+         },
+         else: item
+     end)}
   end
 
   # How the list's other things write a count.

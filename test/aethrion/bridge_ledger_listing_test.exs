@@ -34,6 +34,18 @@ defmodule Aethrion.BridgeLedgerListingTest do
       assert change("빵 2개, 물", "+빵 1개") == {"빵 3개, 물", nil}
     end
 
+    test "a list that counts nothing has a thing once, however often it joins" do
+      assert change("첫 임무", "+첫 임무") == {"첫 임무", nil}
+      assert change("최승규 / 에르웬", "+에르웬") == {"최승규 / 에르웬", nil}
+      # Said with a count, it is counted.
+      assert change("최승규 / 에르웬", "+에르웬 × 2") == {"최승규 / 에르웬 × 3", nil}
+    end
+
+    test "a word for not known yet is an empty list" do
+      assert change("확인 중인 여러 물건들", "+낡은 검") == {"낡은 검", nil}
+      assert change("???", "+낡은 검") == {"낡은 검", nil}
+    end
+
     test "something leaves, wholly or by count" do
       assert change(@items, "-회복의 물약 (노말) × 1") ==
                {"타워 단말기 (보급형) / 회복의 물약 (노말) × 2 / 마정석 (최하급) × 1", nil}
