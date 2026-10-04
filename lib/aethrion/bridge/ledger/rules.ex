@@ -433,6 +433,14 @@ defmodule Aethrion.Bridge.Ledger.Rules do
     end
   end
 
+  @doc """
+  Whether what a rule waits for holds of these numbers (`when EXP >=
+  EXP.max`); false for a rule of another kind.
+  """
+  @spec holds?(rule(), values()) :: boolean()
+  def holds?({:when, condition, _changes}, values), do: truthy?(value(condition, values))
+  def holds?(_rule, _values), do: false
+
   defp holding(values, rules) do
     Enum.find(rules, fn
       {:when, condition, _changes} -> truthy?(value(condition, values))
@@ -729,6 +737,21 @@ defmodule Aethrion.Bridge.Ledger.Rules do
         uniq: true,
         do: name
   end
+
+  @doc """
+  The fields whose rise brings about what a rule waits for (`when EXP >=
+  EXP.max`: EXP). A model that brings such a field down in the lines where
+  it raises what the rule raises has taken the rule's work on itself; one
+  that waits for a fall (`when HP <= 0`) is not reset by a fall.
+  """
+  @spec risers(rule()) :: [String.t()]
+  def risers({:when, {:op, op, {:field, name, :now}, _than}, _changes}) when op in [:gte, :gt],
+    do: [name]
+
+  def risers({:when, {:op, op, _than, {:field, name, :now}}, _changes}) when op in [:lte, :lt],
+    do: [name]
+
+  def risers(_rule), do: []
 
   defp mentioned({:field, name, _part}), do: [name]
   defp mentioned({:neg, expr}), do: mentioned(expr)

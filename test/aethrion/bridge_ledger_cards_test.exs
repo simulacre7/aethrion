@@ -438,8 +438,7 @@ defmodule Aethrion.BridgeLedgerCardsTest do
           "unchanged",
           "same as before",
           "(변화 없음)",
-          "그대로",
-          "N/A"
+          "그대로"
         ] do
       assert Ledger.apply(
                window,
@@ -448,6 +447,10 @@ defmodule Aethrion.BridgeLedgerCardsTest do
              ) ==
                {window, [], []}
     end
+
+    # "N/A" is a value: a field may come to hold nothing that applies.
+    assert {now, _applied, []} = Ledger.apply(window, [{"Mood", "N/A"}], spec)
+    assert now =~ "|Mood:N/A]"
 
     # A card's own name for a change is the field it is a change of.
     assert {now, _applied, [{"ReputationChange", _value, :unknown}]} =

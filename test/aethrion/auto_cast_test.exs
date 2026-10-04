@@ -160,6 +160,53 @@ defmodule Aethrion.AutoCastTest do
                  |> Enum.map(&String.replace(&1, ~s("close":"[Status]"), ~s("close":"")))
                )
 
+      # A mark alone, from one reading, is not the opening the others give.
+      mark = fn open ->
+        String.replace(reading.(open, []), ~s("close":"[Status]"), ~s("close":""))
+      end
+
+      assert {%{open: "◈Time"}, 0} = read.([mark.("◈Time"), mark.("◈Time"), mark.("◈")])
+
+      # A range said in two rules is two rules; a maximum that is a number is
+      # a rule when the card says so; a maximum worked out from other numbers
+      # is no bound of its own number.
+      stated = %{
+        card
+        | prompt:
+            card.prompt <>
+              "\nTrust never goes above 100. Trust never goes below 0.\nThe EXP bar is always out of 100 points.\n" <>
+              "Example:\n[Status]\n- HP: 150 / 150\n- Base HP: 20\n- Vigor: 13\n[Status]"
+      }
+
+      {:ok, agent} =
+        Agent.start_link(fn ->
+          List.duplicate(
+            reading.("[Status]", [
+              {"Trust never goes above 100.", "Trust = min(Trust, 100)"},
+              {"Trust never goes below 0.", "Trust = max(Trust, 0)"},
+              {"The EXP bar is always out of 100 points.", "EXP.max = 100"},
+              {"Base HP plus ten a point.", "HP.max = Base HP + Vigor * 10"},
+              {"- Vigor: 13", "Vigor = 13"}
+            ]),
+            3
+          )
+        end)
+
+      assert {:ok, %{window: %{rules: kept}}} =
+               AutoCast.read(
+                 stated,
+                 %{put: fn _key, _value -> :ok end},
+                 Aethrion.AutoCastTest.Readers,
+                 answers: agent
+               )
+
+      assert kept == [
+               "Trust = min(Trust, 100)",
+               "Trust = max(Trust, 0)",
+               "EXP.max = 100",
+               "HP.max = Base HP + Vigor * 10"
+             ]
+
       # A later reading that exits or throws does not take the caller with it.
       casts = %{put: fn _key, _value -> :ok end}
       {:ok, calls} = Agent.start_link(fn -> 0 end)
@@ -168,6 +215,20 @@ defmodule Aethrion.AutoCastTest do
 
       assert {:ok, %{window: %{rules: ["HP.max = Vigor * 10"]}}} =
                AutoCast.read(card, casts, Aethrion.AutoCastTest.Exits, calls: calls, first: first)
+
+      # Nor is anything left in the caller's mailbox, whatever the first reading does.
+      {:ok, raises} = Agent.start_link(fn -> 0 end)
+
+      assert_raise RuntimeError, fn ->
+        AutoCast.read(card, casts, Aethrion.AutoCastTest.Raises,
+          calls: raises,
+          first: first,
+          caller: self()
+        )
+      end
+
+      Process.sleep(50)
+      assert {:messages, []} = Process.info(self(), :messages)
     end
 
     test "several rules written on one line are taken apart; a card's example windows decide" do
@@ -294,6 +355,13 @@ defmodule Aethrion.AutoCastTest do
         1 -> exit(:timeout)
         _later -> throw(:oops)
       end
+    end
+  end
+
+  defmodule Raises do
+    # The caller's own reading raises; the others answer.
+    def chat(_messages, opts) do
+      if self() == opts[:caller], do: raise("no model"), else: {:ok, opts[:first]}
     end
   end
 

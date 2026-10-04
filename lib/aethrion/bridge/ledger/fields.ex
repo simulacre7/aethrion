@@ -33,7 +33,8 @@ defmodule Aethrion.Bridge.Ledger.Fields do
           required(:value) => String.t(),
           required(:at) => {non_neg_integer(), non_neg_integer()},
           optional(:heading?) => true,
-          optional(:written) => String.t()
+          optional(:written) => String.t(),
+          optional(:note?) => true
         }
 
   @doc "The fields of `window`, in order. `spec` has the window's opening and closing text."
@@ -148,9 +149,10 @@ defmodule Aethrion.Bridge.Ledger.Fields do
           # that is a field ("📍 the beach"), and else stands in a title
           # ("*** Status ***"), which is no field.
           name == "" and not String.match?(open, ~r/[\[\]<>(){}]/u) ->
-            if marked(window, 0, byte_size(open) + byte_size(rest)),
-              do: {[], 0},
-              else: {[], byte_size(open) + byte_size(rest)}
+            if marked(window, 0, byte_size(open) + byte_size(rest)) ||
+                 named(window, 0, byte_size(open) + byte_size(rest)),
+               do: {[], 0},
+               else: {[], byte_size(open) + byte_size(rest)}
 
           name != "" and String.match?(value, ~r/[\p{L}\p{N}]/u) ->
             {[
@@ -348,9 +350,14 @@ defmodule Aethrion.Bridge.Ledger.Fields do
   defp name_notes(fields) do
     {named, _count} =
       Enum.map_reduce(fields, 0, fn
-        %{name: nil} = field, 0 -> {%{field | name: "Note"}, 1}
-        %{name: nil} = field, n -> {%{field | name: "Note #{n + 1}"}, n + 1}
-        field, n -> {field, n}
+        %{name: nil} = field, 0 ->
+          {field |> Map.put(:name, "Note") |> Map.put(:note?, true), 1}
+
+        %{name: nil} = field, n ->
+          {field |> Map.put(:name, "Note #{n + 1}") |> Map.put(:note?, true), n + 1}
+
+        field, n ->
+          {field, n}
       end)
 
     named

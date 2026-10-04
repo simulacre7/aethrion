@@ -761,12 +761,11 @@ defmodule Aethrion.BridgeLedgerReviewTest do
                "[ Trust: 3% | Anger: 5% | hm, who is this ]"
     end
 
-    test "a window after marks, blanks, or a number at the start of its line" do
+    test "a window after marks or blanks at the start of its line" do
       for lines <- [
             "　HP: 10/20\n　MP: 5/5",
             "❤️ HP: 10/20\n💙 MP: 5/5",
-            String.duplicate(" ", 20) <> "HP: 10/20\n" <> String.duplicate(" ", 20) <> "MP: 5/5",
-            "1. HP: 10/20\n2. MP: 5/5"
+            String.duplicate(" ", 20) <> "HP: 10/20\n" <> String.duplicate(" ", 20) <> "MP: 5/5"
           ] do
         assert Ledger.window("story.\n\n" <> lines, %{open: "HP:", close: ""}) != nil, lines
       end
@@ -871,6 +870,247 @@ defmodule Aethrion.BridgeLedgerReviewTest do
                "Morning.\n━━━━━━━━\nEvening."
 
       assert Ledger.unmarked("Status\nfine.", %{open: "Status", close: ""}) == "Status\nfine."
+    end
+  end
+
+  describe "a fifth review" do
+    @rpg "[Status]\n- HP: 30 / 48\n- Gold: 120\n- Item: Potion × 3 / Rope\n[Status]"
+    @sp %{open: "[Status]", close: "[Status]"}
+
+    defp turn(previous, raw, spec) do
+      chat = [
+        %{"role" => "assistant", "content" => previous},
+        %{"role" => "user", "content" => "go"}
+      ]
+
+      plan = Reply.plan(%{window: spec, player: nil}, chat, %{line?: true, locale: :en})
+      Reply.finish(raw, "<aethrion-status></aethrion-status>", plan)
+    end
+
+    test "a story of bytes that are no text, and many tags left open, cost no crash and no time" do
+      raw = "You rest " <> <<0xEA, 0xB0>> <> "\n<aethrion-ledger>\nHP: +1\n</aethrion-ledger>"
+      assert {text, _status} = turn("x\n\n" <> @rpg, raw, @sp)
+      assert text =~ "- HP: 31 / 48"
+
+      open = "Story.\n" <> String.duplicate("<aeth-ledger>\n\n", 3_333)
+      {time, _result} = :timer.tc(fn -> turn("x\n\n" <> @rpg, open, @sp) end)
+      assert time < 700_000
+    end
+
+    test "a raise the rule will make itself is not the model's as well" do
+      window = "[Status]\n- Day: 3\n- AP: 1 / 3\n- HP: 12 / 48\n- Deaths: 0\n[Status]"
+      rules = ["when AP <= 0: Day += 1; AP = AP.max", "when HP <= 0: Deaths += 1; HP = HP.max"]
+      spec = Map.put(@sp, :rules, rules)
+
+      {night, _status} =
+        turn(
+          "x\n\n" <> window,
+          "Night.\n<aethrion-ledger>\nAP: -1\nDay: +1\n</aethrion-ledger>",
+          spec
+        )
+
+      assert night =~ "- Day: 4\n- AP: 3 / 3"
+
+      {dead, _status} =
+        turn(
+          "x\n\n" <> window,
+          "Dark.\n<aethrion-ledger>\nHP: -12\nDeaths: +1\n</aethrion-ledger>",
+          spec
+        )
+
+      assert dead =~ "- Deaths: 1\n"
+
+      {hurt, _status} =
+        turn(
+          "x\n\n" <> window,
+          "Ow.\n<aethrion-ledger>\nHP: -2\nDeaths: +1\n</aethrion-ledger>",
+          spec
+        )
+
+      assert hurt =~ "- HP: 10 / 48\n- Deaths: 0\n"
+    end
+
+    test "what the story spent: a thing carried, as a word of its own, and not denied" do
+      window =
+        "[Status]\n- HP: 30 / 48\n- Party: Mina / Tyler\n- Skills: Fireball / Heal\n- Item: Potion × 3 / Ring / Map\n[Status]"
+
+      for story <- [
+            "You ate breakfast during the long silence.",
+            "You threw a Fireball at the goblin.",
+            "You handed over the letter to Mina.",
+            "You never drank the potion."
+          ] do
+        assert Ledger.unsaid(story, window, [{"HP", "+1"}], @sp) == [], story
+      end
+
+      assert Ledger.unsaid("You drank the potion in one gulp.", window, [{"HP", "+1"}], @sp) ==
+               [{"Item", "-Potion × 1", :unsaid}]
+
+      korean = "[상태창]\n- 동료: 미나 / 타일러\n- 소지품: 사과 × 2 / 지도 / 회복약 × 1\n[상태창]"
+      spec = %{open: "[상태창]", close: "[상태창]"}
+
+      for story <- [
+            "미나는 말없이 빵을 먹었다.",
+            "그럴지도 모른다고 생각하며 빵을 먹었다.",
+            "그녀는 사과하고 물을 마셨다.",
+            "회복약을 안 마셨다."
+          ] do
+        assert Ledger.unsaid(story, korean, [], spec) == [], story
+      end
+
+      assert Ledger.unsaid("사과를 한 입 베어 먹었다.", korean, [], spec) == [{"소지품", "-사과 × 1", :unsaid}]
+    end
+
+    test "a heading written whole with other marks between its parts, or part by part with arrows" do
+      spec = %{open: "[Day", close: ""}
+      window = "[Day 1 · night · the keep]\nHP: 30 / 48\nMP: 3 / 5"
+
+      head = fn change ->
+        window |> Ledger.apply([{"Day", change}], spec) |> elem(0) |> String.split("\n") |> hd()
+      end
+
+      assert head.("2, morning, the yard") == "[Day 2, morning, the yard]"
+      assert head.("2") == "[Day 2 · night · the keep]"
+      assert head.("1 · night · the keep → the yard") == "[Day 1 · night · the yard]"
+      assert head.("1 → 2 · night → morning · the keep") == "[Day 2 · morning · the keep]"
+    end
+
+    test "lists: something used and nothing gained; a sign after the thing; a thing gone" do
+      item = fn change ->
+        @rpg
+        |> Ledger.apply([{"Item", change}], @sp)
+        |> elem(0)
+        |> String.split("\n")
+        |> Enum.at(3)
+      end
+
+      assert item.("Potion × 1 used, nothing gained") == "- Item: Potion × 2 / Rope"
+      assert item.("Potion -1, Arrow +10") == "- Item: Potion × 2 / Rope / Arrow × 10"
+      assert item.("Rope → gone") == "- Item: Potion × 3"
+      assert item.("Rope → -") == "- Item: Potion × 3"
+      # A sign after a thing the list does not have is the thing's own: the
+      # list of counted things is not said anew in a word.
+      assert {_window, [], [{"Item", "Sword +1", :unreadable}]} =
+               Ledger.apply(@rpg, [{"Item", "Sword +1"}], @sp)
+
+      assert item.("+Sword +1") == "- Item: Potion × 3 / Rope / Sword +1"
+    end
+
+    test "numbers that may go below nothing; odd numerals; a field named twice" do
+      window = "[Status]\n- Temp: 3°C\n- Karma: 2\n- Stat Point: 5\n- Gold: 120\n[Status]"
+
+      assert {"[Status]\n- Temp: -5°C\n- Karma: -3\n- Stat Point: 0\n- Gold: 0\n[Status]",
+              _applied, [{"Stat Point", "-8", :clamped}, {"Gold", "-500", :clamped}]} =
+               Ledger.apply(
+                 window,
+                 [{"Temp", "-8"}, {"Karma", "-5"}, {"Stat Point", "-8"}, {"Gold", "-500"}],
+                 @sp
+               )
+
+      for odd <- [".5", "1,2,3", "1.2.3"] do
+        assert {^window, [], [{"Gold", ^odd, _reason}]} =
+                 Ledger.apply(window, [{"Gold", odd}], @sp)
+      end
+
+      assert {now, _applied, []} = Ledger.apply(window, [{"Gold", "35"}, {"Gold", "20"}], @sp)
+      assert now =~ "- Gold: 20\n"
+    end
+
+    test "a row's one number given a bare 0; a maximum of nothing; a change of a short name" do
+      rows = "Mina | Affection 30 | cheerful | lobby\nTyler | Affection 10 | gloomy | room"
+      assert {^rows, [], [{"Mina", "0", :unreadable}]} = Ledger.apply(rows, [{"Mina", "0"}])
+
+      pairs = "HP: 30 / 48\nMP: 3 / 5"
+
+      assert {^pairs, [], [{"HP.max", "-100", :unknown}]} =
+               Ledger.apply(pairs, [{"HP.max", "-100"}])
+
+      korean = "[Status]\n- HP: 30 / 48\n- 골드: 120\n[Status]"
+
+      assert {"[Status]\n- HP: 31 / 48\n- 골드: 125\n[Status]", _applied, []} =
+               Ledger.apply(korean, [{"HP Change", "+1"}, {"골드 변화", "+5"}], @sp)
+    end
+
+    test "values after a mark keep their links and faces; a thought with a colon is a note" do
+      # (They are refused, as they would read as fields of other names: not rewritten.)
+      marks = "📍 the beach\n🔗 none\n💬 hm, who is that"
+
+      assert {^marks, [], [{"💬", "ok :)", :unsound}, {"🔗", "https://example.com/a:b", :unsound}]} =
+               Ledger.apply(marks, [{"🔗", "https://example.com/a:b"}, {"💬", "ok :)"}])
+
+      assert {"📍 Seoul — the station\n🔗 none\n💬 hm, who is that", _applied, []} =
+               Ledger.apply(marks, [{"📍", "Seoul: the station"}])
+
+      assert {"[ Trust: 12% | Anger: 5% | He said — no ]", _applied, []} =
+               Ledger.apply(
+                 "[ Trust: 12% | Anger: 5% | a thought here ]",
+                 [{"Note", "He said: no"}],
+                 %{open: "[ Trust:", close: "]"}
+               )
+    end
+
+    test "a window whose opening is a bullet or a mark keeps its first field" do
+      assert Enum.map(
+               Ledger.fields("- HP: 30 / 48\n- MP: 3 / 5\n- Gold: 120", %{open: "-", close: ""}),
+               & &1.name
+             ) ==
+               ["HP", "MP", "Gold"]
+
+      assert Enum.map(
+               Ledger.fields("◈Time: 09:00\n◈Place: the inn\n◈HP: 30 / 48", %{
+                 open: "◈",
+                 close: ""
+               }),
+               & &1.name
+             ) ==
+               ["Time", "Place", "HP"]
+    end
+
+    test "numbered lines of the story are no window; a tag opened twice leaves nothing" do
+      {text, _status} =
+        turn(
+          "x\n\nHP: 10/20\nMP: 5/5",
+          "You rest and count what came back:\n1. HP: fully restored\n2. MP: fully restored\nThen you sleep.\n<aethrion-ledger>\nHP: +10\n</aethrion-ledger>",
+          %{open: "HP:", close: ""}
+        )
+
+      assert text =~ "1. HP: fully restored\n2. MP: fully restored\nThen you sleep."
+      assert text =~ "HP: 20/20\nMP: 5/5"
+
+      assert Ledger.take(
+               "S.\n<aethrion-ledger>\n<aethrion-ledger>\nHP: -5\n</aethrion-ledger>\n</aethrion-ledger>\nAfter"
+             ) ==
+               {"S.\n\n\nAfter", [{"HP", "-5"}]}
+
+      for tags <- [
+            {"<aethrion-ledgers>", "</aethrion-ledgers>"},
+            {"<aethrion ledger>", "</aethrion ledger>"},
+            {"<ledger>", "</ledger>"}
+          ] do
+        {open, close} = tags
+        assert {"S.", [{"HP", "-5"}]} = Ledger.take("S.\n" <> open <> "\nHP: -5\n" <> close)
+      end
+    end
+
+    test "a stream goes on past a word that only begins as our tags do" do
+      streamed = fn pieces ->
+        {:ok, sent} = Agent.start_link(fn -> "" end)
+        {on_delta, flush} = Ledger.filter(&Agent.update(sent, fn all -> all <> &1 end), nil)
+        Enum.each(pieces, on_delta)
+        flush.()
+        Agent.get(sent, & &1)
+      end
+
+      assert streamed.(["The <aether> hums ", "around you.\nYou walk on."]) ==
+               "The <aether> hums around you.\nYou walk on."
+
+      assert streamed.(["King <Aethel", "red> stands."]) == "King <Aethelred> stands."
+
+      assert streamed.(["Done.\n<aeth", "erion-ledger>\nHP: -1\n</aetherion-ledger>"]) ==
+               "Done.\n"
+
+      assert streamed.(["Done.\n<led", "ger>\nHP: -1\n</ledger>"]) == "Done.\n"
+      assert streamed.(["Done. <aethrion-led"]) == "Done. "
     end
   end
 end

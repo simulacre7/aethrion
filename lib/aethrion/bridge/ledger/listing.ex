@@ -232,22 +232,41 @@ defmodule Aethrion.Bridge.Ledger.Listing do
 
     # "+ring → -ring (given away)", as some write a change: what it comes to.
     value =
-      case String.split(value, ~r/\s*(?:→|->|=>)\s*(?=[+\-−])/u) do
+      case String.match?(value, ~r/\A[+\-−]/u) &&
+             String.split(value, ~r/\s*(?:→|->|=>)\s*(?=[+\-−])/u) do
+        false -> value
         [_one] -> value
         parts -> List.last(parts)
       end
 
     cond do
       String.match?(value, ~r/\A[+\-−]/u) ->
-        {items, problem} = value |> steps(separator(was)) |> Enum.reduce({items, nil}, &step/2)
-        {written(items, was, habits), problem}
+        stepped(items, steps(value, separator(was)), was, habits)
 
       renamed = renamed(items, value) ->
         {written(renamed, was, habits), nil}
 
-      steps = worded_steps(value, separator(was)) ->
-        {items, problem} = Enum.reduce(steps, {items, nil}, &step/2)
-        {written(items, was, habits), problem}
+      true ->
+        worded(items, value, was, habits)
+    end
+  end
+
+  defp stepped(items, steps, was, habits) do
+    {items, problem} = Enum.reduce(steps, {items, nil}, &step/2)
+    {written(items, was, habits), problem}
+  end
+
+  # A change with no sign before it.
+  defp worded(items, value, was, habits) do
+    steps = worded_steps(items, value, separator(was))
+
+    cond do
+      # "nothing gained", and no more: no change that can be read.
+      steps == [] ->
+        {was, :unreadable}
+
+      steps != nil ->
+        stepped(items, steps, was, habits)
 
       one_of_many?(items, value) ->
         {written(one(items, value), was, habits), nil}
@@ -278,7 +297,8 @@ defmodule Aethrion.Bridge.Ledger.Listing do
           recounted(items, held, String.to_integer(new))
 
         # "Rope → none", "Rope → used": gone.
-        empty?(new) or String.match?(" " <> new, @used) ->
+        empty?(new) or String.match?(" " <> new, @used) or
+            String.match?(new, ~r/\A(?:gone|destroyed|없어짐|사라짐|소멸)\z/iu) ->
           others
 
         # Under the name of a thing the list has: one more of that.
@@ -311,7 +331,7 @@ defmodule Aethrion.Bridge.Ledger.Listing do
 
   # "Potion × 1 used, mana stone × 5 gained": every thing with the word
   # for what became of it, and no signs.
-  defp worded_steps(value, separator) do
+  defp worded_steps(items, value, separator) do
     parts =
       value
       |> apart(separator || ", ")
@@ -319,18 +339,52 @@ defmodule Aethrion.Bridge.Ledger.Listing do
       |> Enum.map(&String.trim/1)
       |> Enum.reject(&(&1 == ""))
 
-    steps =
-      Enum.map(parts, fn part ->
-        cond do
-          # "nothing gained", "no items used": no thing.
-          String.match?(part, ~r/\A(?:nothing|none|no \S+|없음|아무것도)\b/iu) -> nil
-          String.match?(part, @gained) -> {:plus, changed_item(String.replace(part, @gained, ""))}
-          String.match?(part, @used) -> {:minus, changed_item(String.replace(part, @used, ""))}
-          true -> nil
-        end
-      end)
+    steps = Enum.map(parts, &worded_step/1)
 
-    if steps != [] and Enum.all?(steps), do: steps
+    things = Enum.reject(steps, &(&1 == :nothing))
+
+    cond do
+      steps == [] or not Enum.all?(steps) -> nil
+      # A sign after a thing may be the thing's own ("Sword +1"): a change
+      # only when the list has the thing, or something is taken.
+      Enum.any?(things, &signed_after?(&1, parts)) and not held_or_taken?(things, items) -> nil
+      true -> things
+    end
+  end
+
+  # One thing of such a change: `{sign, thing}`, `:nothing`, or nil.
+  defp worded_step(part) do
+    cond do
+      # "nothing gained", "no items used": no thing. ("None" alone is the
+      # list said to be empty.)
+      String.match?(part, ~r/\A(?:nothing|none|no \S+|없음|아무것도)\b/iu) and
+          (String.match?(part, @gained) or String.match?(part, @used)) ->
+        :nothing
+
+      String.match?(part, @gained) ->
+        {:plus, changed_item(String.replace(part, @gained, ""))}
+
+      String.match?(part, @used) ->
+        {:minus, changed_item(String.replace(part, @used, ""))}
+
+      # "Potion -1", "Arrow +10": the sign after the thing.
+      match = Regex.run(~r/\A(.+?)\s*([+\-−])\s*([0-9]{1,6})\z/u, part) ->
+        [_all, name, sign, count] = match
+        item = %{changed_item(name) | count: String.to_integer(count)}
+        {if(sign == "+", do: :plus, else: :minus), item}
+
+      true ->
+        nil
+    end
+  end
+
+  defp signed_after?(_step, parts),
+    do: Enum.any?(parts, &String.match?(&1, ~r/\s[+\-−]\s*[0-9]{1,6}\z/u))
+
+  defp held_or_taken?(things, items) do
+    Enum.any?(things, fn {sign, thing} ->
+      sign == :minus or Enum.any?(items, &same?(&1, thing))
+    end)
   end
 
   defp step({sign, item}, {items, problem}) do

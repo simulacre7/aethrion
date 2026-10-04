@@ -125,9 +125,8 @@ defmodule Aethrion.Bridge.Reply do
 
   def finish(text, status, %{locale: locale} = plan) do
     {text, scene} = text |> String.replace("\r\n", "\n") |> Scene.take(plan[:player])
-    whole? = not Ledger.cut_off?(text)
-    {text, changes} = Ledger.take(text)
-    {text, lines} = window(text, changes, Map.put(plan, :whole?, whole?))
+    {text, changes, cut_off?} = Ledger.taken(text)
+    {text, lines} = window(text, changes, Map.put(plan, :whole?, not cut_off?))
 
     status = status && status |> Scene.mark(scene) |> Ledger.note(lines, title(locale))
     {text, status}

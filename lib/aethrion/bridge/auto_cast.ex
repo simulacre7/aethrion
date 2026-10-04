@@ -198,9 +198,16 @@ defmodule Aethrion.Bridge.AutoCast do
     # somewhere else would bend every window after it.
     stated = Enum.join([card.prompt, Map.get(card, :rules, ""), card.greeting || ""], "\n")
 
-    later = later(readings - 1, fn -> reading(card, adapter, opts) end)
-    first = reading(card, adapter, opts, :told)
-    others = later.()
+    {gather, stop} = later(readings - 1, fn -> reading(card, adapter, opts) end)
+
+    # (Whatever becomes of the first reading, the others are not left behind.)
+    {first, others} =
+      try do
+        first = reading(card, adapter, opts, :told)
+        {first, gather.()}
+      after
+        stop.()
+      end
 
     with {:ok, people} <- first_of([first | others]),
          data = cast_data(people, card),
@@ -245,7 +252,7 @@ defmodule Aethrion.Bridge.AutoCast do
   # `count` more readings begun at once, each in a process of its own (one
   # that dies takes nothing with it): a function that waits for them and
   # gives what they came to.
-  defp later(count, _read) when count < 1, do: fn -> [] end
+  defp later(count, _read) when count < 1, do: {fn -> [] end, fn -> :ok end}
 
   defp later(count, read) do
     {parent, ref} = {self(), make_ref()}
@@ -257,7 +264,26 @@ defmodule Aethrion.Bridge.AutoCast do
       end
 
     deadline = System.monotonic_time(:millisecond) + @reading_timeout
-    fn -> gathered(readers, ref, deadline, %{}) end
+
+    stop = fn ->
+      for {_n, pid, monitor} <- readers do
+        Process.demonitor(monitor, [:flush])
+        Process.exit(pid, :kill)
+      end
+
+      flushed(ref)
+    end
+
+    {fn -> gathered(readers, ref, deadline, %{}) end, stop}
+  end
+
+  # The readers' answers that came and were not waited for.
+  defp flushed(ref) do
+    receive do
+      {^ref, _n, _result} -> flushed(ref)
+    after
+      0 -> :ok
+    end
   end
 
   defp gathered([], ref, _deadline, read) do
@@ -333,7 +359,11 @@ defmodule Aethrion.Bridge.AutoCast do
     # An opening text that begins the one most readings give is the part of
     # it that is the same in every reply.
     opens
-    |> Enum.filter(&(&1 != said and byte_size(&1) >= 2 and String.starts_with?(said, &1)))
+    |> Enum.filter(fn open ->
+      # (More than a mark: one reading's "◈" is not the part "◈Time" has in every reply.)
+      open != said and String.length(open) >= 2 and String.match?(open, ~r/[\p{L}\p{N}]/u) and
+        String.starts_with?(said, open)
+    end)
     |> Enum.min_by(&byte_size/1, fn -> said end)
   end
 
@@ -377,7 +407,8 @@ defmodule Aethrion.Bridge.AutoCast do
             {:always, target, :step}
 
           true ->
-            {:always, target, :range}
+            # (A range may be said in two rules, a floor and a ceiling.)
+            {:always, target, :range, expression}
         end
     end
   end
@@ -403,7 +434,10 @@ defmodule Aethrion.Bridge.AutoCast do
             do: stated?(rule, from, text),
             else: true in verdicts or stated?(rule, from, text)
 
-        not constant?(rule) and false not in verdicts and borne_out?
+        # (A maximum that is a number, "EXP.max = 100", is a rule when the
+        # card says so.)
+        (not constant?(rule) or (maximum?(rule) and stated?(rule, from, text))) and
+          false not in verdicts and borne_out?
       end)
 
     if dropped != [],
@@ -428,11 +462,16 @@ defmodule Aethrion.Bridge.AutoCast do
     end
   end
 
-  # "Trust = clamp(Trust, 0, 100)": a number worked out from itself.
+  defp maximum?(rule), do: String.match?(rule, ~r/\A[^=]*\.max\s*=/iu)
+
+  # "Trust = clamp(Trust, 0, 100)": a number worked out from itself. (A
+  # maximum is worked out from other numbers: "HP.max = Base HP + Vigor *
+  # 10" is no bound of HP.)
   defp bound?(rule) do
     with false <- String.match?(rule, ~r/\A\s*when\b/iu),
+         false <- maximum?(rule),
          [target, value] <- String.split(rule, "=", parts: 2) do
-      name = target |> String.trim() |> String.replace(~r/\.max\z/iu, "") |> Regex.escape()
+      name = target |> String.trim() |> Regex.escape()
       name != "" and String.match?(value, ~r/(?<![\p{L}\p{N}_])#{name}(?![\p{L}\p{N}_])/iu)
     else
       _other -> false
