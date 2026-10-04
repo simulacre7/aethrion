@@ -140,6 +140,7 @@ Checked in the RisuAI desktop app 2026.8.250 with a raising-sim card that has it
 
 - A line said on the turn someone first appears is not read as said to them; from the turn after the model has named them, it is. A card with no fixed characters starts with no one.
 - Who comes in depends on the line the model writes. When the model leaves it out, the scene stays as it was.
+- A thirty-turn session, measured: [A Long Session With A Status-Window Card](ledger-benchmark.md). A small model alone broke the card's rules in every turn; with the ledger its maximums, EXP formula, and level-ups held throughout, and rerolls gave the same window.
 - The ledger keeps the books, not the judgment. How much EXP a kill gives or how hard a blow lands is the model's to say, the first time a turn is answered. What stops is the window drifting by itself: a maximum that changes, a level that jumps, an inventory that loses what was never used, damage that is forgotten a turn later.
 - The window is written at the end of the reply, also for a card that puts it first.
 - A window is kept when its fields read as `Name: value` or `NAME=value` lines, several of those on one line split by `|`, rows of a table (`Name | 62 | calm | ...`, or `Name | Rank 10 | L 0 | C 0 | ...` with labelled numbers), lines led by a symbol, or a heading that says something (`[Day 3/30 · noon]`). A window in another shape (cells with no names, say) stays the model's, as before, and so does one the card draws with its own scripts.
