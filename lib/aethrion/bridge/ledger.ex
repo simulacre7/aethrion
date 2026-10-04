@@ -826,16 +826,42 @@ defmodule Aethrion.Bridge.Ledger do
       end
 
     ruled =
-      case (spec && Map.get(spec, :rules)) || [] do
+      case set_by_rules(fields, spec) do
         [] ->
           ""
 
-        rules ->
-          " The rules work these out themselves, so do not write what they give (a level gained, a maximum), only what causes it (EXP gained, a stat raised): " <>
-            Enum.join(rules, " | ") <> "."
+        set ->
+          " The game's rules set these themselves, so do not write them, only what leads to them: " <>
+            Enum.join(set, ", ") <>
+            " (" <> Enum.join(Map.get(spec, :rules, []), " | ") <> ")."
       end
 
     "The status window is kept by the game's rules and shown by them: do not print it yourself, whatever the card says. Instead, after everything else, write <aethrion-ledger>...</aethrion-ledger> with one line for each field of the window that this reply changes: `Field: +N` or `Field: -N` for a number that goes up or down (damage taken is `HP: -N`), `Field: N / M` to set both numbers of a pair, or `Field: new text`.#{lists} Use the window's field names (#{names}).#{ruled}#{already} Leave out every field that stays as it is, and write the tags with nothing between them when nothing changes. It is not shown to the player."
+  end
+
+  # What the card's rules set, as the model is told: "the maximum of HP", "Level".
+  defp set_by_rules(fields, spec) do
+    names = Map.new(fields, &{key(&1.name), &1.name})
+
+    fields
+    |> rules(spec)
+    |> Enum.flat_map(fn
+      {:always, {name, :max}, _expr} ->
+        ["the maximum of #{names[name]}"]
+
+      {:always, {name, _part}, _expr} ->
+        # A range or a limit bounds what the model writes; it does not write it for it.
+        _ = name
+        []
+
+      {:when, condition, changes} ->
+        watched = Rules.watched([{:when, condition, changes}])
+        for {_kind, {name, _part}, _expr} <- changes, name not in watched, do: names[name]
+
+      {:rise, _name, changes} ->
+        for {_kind, {name, _part}, _expr} <- changes, do: names[name]
+    end)
+    |> Enum.uniq()
   end
 
   # A field the model is told to treat as a list: counted things, things

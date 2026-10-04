@@ -489,7 +489,7 @@ defmodule Aethrion.BridgeLedgerTest do
     text = Ledger.instruction(window(), @lines)
     assert text =~ "(Date, Time, Location, Cash, Level, HP, EXP, Stat Point, Strength, Item)"
     assert text =~ "For a list (Item), write only what joins or leaves it"
-    refute text =~ "The rules work these out themselves"
+    refute text =~ "The game's rules set these themselves"
 
     # What the ledger did last turn is said, so that it is not asked for again.
     last = [
@@ -513,7 +513,23 @@ defmodule Aethrion.BridgeLedgerTest do
              "do not write them again (기록 · Stat Point 5 → 0 · Strength 9 → 14; 규칙 · HP 90 / 90 → 140 / 140)."
 
     ruled = Ledger.instruction(window(), Map.put(@lines, :rules, ["HP.max = Strength * 10"]))
-    assert ruled =~ "The rules work these out themselves"
-    assert ruled =~ "HP.max = Strength * 10."
+
+    assert ruled =~
+             "The game's rules set these themselves, so do not write them, only what leads to them: the maximum of HP (HP.max = Strength * 10)."
+
+    # Only what the rules that parse do set is named: a level-up is the
+    # model's to write when the card's reader found no rule for it.
+    levels =
+      Ledger.instruction(
+        window(),
+        Map.put(@lines, :rules, [
+          "when EXP >= EXP.max: Level += 1; EXP -= EXP.max",
+          "when Level rises: Stat Point += 5",
+          "HP = clamp(HP, 0, 999)",
+          "Mana.max = 3"
+        ])
+      )
+
+    assert levels =~ "only what leads to them: Level, Stat Point ("
   end
 end

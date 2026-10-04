@@ -480,7 +480,9 @@ defmodule Aethrion.AutoCastTest do
       note = calls() |> List.last() |> List.last() |> Map.fetch!("content")
       assert note =~ "do not print it yourself"
       assert note =~ "(Level, HP, EXP, Vigor, Item)"
-      assert note =~ "HP.max = Vigor * 10 | when EXP >= EXP.max: Level += 1; EXP -= EXP.max."
+
+      assert note =~
+               "the maximum of HP, Level (HP.max = Vigor * 10 | when EXP >= EXP.max: Level += 1; EXP -= EXP.max)."
 
       assert two =~
                ~r/\A고블린을 벤다.\n\n\[Status\]\n- Level: 2\n- HP: 38 \/ 50\n- EXP: 15 \/ 100\n- Vigor: 5\n- Item: 물약 × 1\n\[Status\]\n\n<aethrion-status /
