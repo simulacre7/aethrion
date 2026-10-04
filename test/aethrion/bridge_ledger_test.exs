@@ -468,7 +468,16 @@ defmodule Aethrion.BridgeLedgerTest do
       window =
         "[Day 1/30 · Morning]\n🎒 Water x1 · Sunscreen · 물통 x3\nChloe | 19 | Curious | Bully drama? That's views."
 
-      changes = [{"Chloe", "±0"}, {"🎒", "±0"}, {"Day", "+0"}, {"🎒", "그대로"}, {"Chloe", "25"}]
+      changes = [
+        {"Chloe", "±0"},
+        {"🎒", "±0"},
+        {"Day", "+0"},
+        # The note's own stand-in, copied as it stands.
+        {"🎒", "new text"},
+        {"🎒", "그대로"},
+        {"Chloe", "25"}
+      ]
+
       assert {kept, [], refused} = Ledger.apply(window, changes, spec)
       assert kept == window
       assert refused == [{"🎒", "그대로", :unreadable}, {"Chloe", "25", :unsigned}]

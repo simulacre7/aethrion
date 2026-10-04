@@ -482,6 +482,20 @@ defmodule Aethrion.Bridge.Ledger do
     end
   end
 
+  @stand_ins [
+    "new text",
+    "the new text",
+    "+n",
+    "-n",
+    "=n",
+    "n / m",
+    "n/m",
+    "thing",
+    "+thing",
+    "-thing",
+    "the east gate"
+  ]
+
   # The value after a change, and what was wrong with the change (nil, or
   # `:clamped` for a number brought back within its bounds, `:missing` for
   # something taken from a list that does not have it).
@@ -492,6 +506,10 @@ defmodule Aethrion.Bridge.Ledger do
       |> String.trim()
 
     cond do
+      # The note's own stand-ins, copied as they stand, are no change.
+      String.downcase(value) in @stand_ins ->
+        {was, nil}
+
       # "±0", "+0": said to say that nothing changes.
       String.match?(value, ~r/\A\s*(?:±|\+\/?-|[+\-−])\s*0+\s*\z/u) ->
         {was, nil}
@@ -925,7 +943,7 @@ defmodule Aethrion.Bridge.Ledger do
             " (" <> Enum.join(rule_texts(fields, spec), " | ") <> ")."
       end
 
-    "The status window is kept by the game's rules and shown by them: do not print it yourself, whatever the card says. Instead, after everything else, write <aethrion-ledger>...</aethrion-ledger> with one line for each field of the window that this reply changes: `Field: +N` or `Field: -N`, always with its sign, for a number that goes up or down (damage taken is `HP: -N`, experience gained `EXP: +N`), `Field: N / M` to set both numbers of a pair, `Field: =N` to set a number outright, or `Field: new text`.#{lists}#{rows} Use the window's field names (#{names}).#{ruled}#{already} Leave out every field that stays as it is, and write the tags with nothing between them when nothing changes. What is listed under This turn and Now (how each character feels) is the rules' own and shown apart from the window: none of it goes in these lines. It is not shown to the player."
+    "The status window is kept by the game's rules and shown by them: do not print it yourself, whatever the card says. Instead, after everything else, write <aethrion-ledger>...</aethrion-ledger> with one line for each field of the window that this reply changes: `Field: +N` or `Field: -N`, always with its sign, for a number that goes up or down (damage taken is `HP: -N`, experience gained `EXP: +N`), `Field: N / M` to set both numbers of a pair, `Field: =N` to set a number outright, or the field's new words as they should read (a place moved to is `Location: the east gate`, in the story's language).#{lists}#{rows} Use the window's field names (#{names}).#{ruled}#{already} Leave out every field that stays as it is, and write the tags with nothing between them when nothing changes. What is listed under This turn and Now (how each character feels) is the rules' own and shown apart from the window: none of it goes in these lines. It is not shown to the player."
   end
 
   @doc """
