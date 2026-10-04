@@ -1050,7 +1050,7 @@ defmodule Aethrion.Bridge.Ledger do
       figure?(was) or figure?(now) ->
         ["#{name} #{brief(was)} → #{brief(now)}"]
 
-      list?(was) or list?(now) ->
+      listing?(%{name: name, value: was}) or listing?(%{name: name, value: now}) ->
         case Listing.moved(was, now) do
           [] -> []
           moved -> ["#{name} " <> Enum.join(moved, ", ")]
