@@ -32,12 +32,12 @@ You:  I pass the waterskin through the bars. "Lucien, take it. It's yours."
 - **The card is read once.** On a new card's first reply, Aethrion reads the card and takes the people in it and how each feels about the player at the start: an old friend starts high, a stranger at 0.
 - **Then the rules keep count.** Affinity, trust, memories, and who saw what are the rules'. A reroll leaves the numbers alone.
 - **People may turn up as the story goes.** With a narrator card (an open-world RPG, say) the model says, with each reply, who is with the player. Someone new joins the cast and has numbers from the next turn, and someone who has left does not see what the player does.
-- **The card works as before.** Its prompt, lorebook, assets, and its own status window stay. Where the card's window shows something Aethrion tracks, it shows the number the rules computed: with a raising-sim card that prints its own window, the card's Trust followed Aethrion's trust. What Aethrion does not track, such as that card's Anger, is still the model's.
+- **The card works as before, and its status window stops drifting.** Its prompt, lorebook, and assets stay. A status window the card has the model print (level, HP, money, an inventory) is kept by the rules from the second reply on: the model says what changed, and Aethrion keeps the books in the card's own format. Arithmetic the card states (a maximum per stat point, the EXP a level takes, how far trust may move in a turn) is worked out by the rules, not from the model's memory.
 
 Checked with an ensemble card (Sinmarked), a one-on-one card, a dating-sim card with a fixed set of people, a raising-sim card with its own status window, and two narrator RPG cards. Not there yet:
 
 - A line said on the turn someone first appears is not read as said to them. From the next turn it is.
-- What comes by itself is affinity, trust, and memories. HP, fights, and endings need [a cast made in the editor](docs/stories.md#building-a-world).
+- What comes by itself is affinity, trust, memories, and the card's own window kept straight. How much a kill gives or a blow costs is still the model's to say. Fights with dice and endings need [a cast made in the editor](docs/stories.md#building-a-world).
 - A new card's first turn costs one more model call, to read the card.
 
 More in the [RisuAI guide](docs/risuai.md#keep-the-card-you-already-use).
