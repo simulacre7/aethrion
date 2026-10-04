@@ -566,4 +566,52 @@ defmodule Aethrion.BridgeLedgerCardsTest do
       assert Reply.instruction(nil, []) == nil
     end
   end
+
+  describe "a rule that waits" do
+    @pyros %{
+      open: "[Status Window]",
+      close: "[Status Window]",
+      rules: [
+        "EXP.max = floor(100 * 1.15 ^ (Level - 1))",
+        "when Level rises: Stat Point += if(Level % 5 == 0, 15, 5)",
+        "when EXP >= EXP.max: Level += 1; EXP -= EXP.max"
+      ]
+    }
+
+    @window "[Status Window]\n- Level: 3\n- EXP: 52 / 132\n- Stat Point: 0\n[Status Window]"
+
+    test "the model is told how far the window is from it" do
+      note = Ledger.instruction(@window, @pyros)
+      assert note =~ "Level stays at 3 (EXP is 52 / 132, 80 short)"
+      assert note =~ "do not tell of one in the story"
+    end
+
+    test "a card with no such rule is told nothing of the kind" do
+      spec = %{open: "[ 날짜:", close: "]", rules: ["친밀 = clamp(친밀, 0, 100)"]}
+      refute Ledger.instruction("[ 날짜: 3일 | 친밀: 10% | 경계: 40% ]", spec) =~ "stays at"
+      refute Ledger.instruction("[ 날짜: 3일 | 친밀: 10% | 경계: 40% ]", nil) =~ "stays at"
+    end
+
+    test "a line for what the rules set is not asked for again" do
+      note = Ledger.instruction(@window, @pyros, {[], ["Level: 4 (규칙이 정함)", "Mana: +1 (없는 칸)"]})
+      assert note =~ "you wrote what only the rules set (`Level: 4`)"
+      assert note =~ "write it again in the form asked for: Mana: +1 (없는 칸)."
+      refute note =~ "asked for: Level"
+    end
+
+    test "how far short is the rule's own arithmetic" do
+      alias Aethrion.Bridge.Ledger.Rules
+
+      {:ok, rule} =
+        Rules.parse("when EXP >= EXP.max: Level += 1; EXP -= EXP.max", ["exp", "level"])
+
+      values = %{"exp" => %{now: 16, max: 132}, "level" => %{now: 3, max: nil}}
+      assert Rules.short(rule, values) == {"exp", 116}
+      assert Rules.short(rule, %{values | "exp" => %{now: 140, max: 132}}) == nil
+      {:ok, falls} = Rules.parse("when HP <= 0: HP = 1; Level -= 1", ["hp", "level"])
+
+      assert Rules.short(falls, %{"hp" => %{now: 5, max: 10}, "level" => %{now: 3, max: nil}}) ==
+               nil
+    end
+  end
 end

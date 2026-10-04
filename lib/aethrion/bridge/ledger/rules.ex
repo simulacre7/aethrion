@@ -753,6 +753,25 @@ defmodule Aethrion.Bridge.Ledger.Rules do
 
   def risers(_rule), do: []
 
+  @doc """
+  How far a field is from what a rule waits for (`when EXP >= EXP.max`,
+  with EXP at 16 of 132: `{"exp", 116}`), or nil for a rule that waits
+  for something else.
+  """
+  @spec short(rule(), values()) :: {String.t(), number()} | nil
+  def short({:when, {:op, op, {:field, name, :now} = field, than}, _changes}, values)
+      when op in [:gte, :gt] do
+    with now when is_number(now) <- value(field, values),
+         needed when is_number(needed) <- value(than, values),
+         true <- needed > now do
+      {name, needed - now}
+    else
+      _other -> nil
+    end
+  end
+
+  def short(_rule, _values), do: nil
+
   defp mentioned({:field, name, _part}), do: [name]
   defp mentioned({:neg, expr}), do: mentioned(expr)
   defp mentioned({:op, _op, a, b}), do: mentioned(a) ++ mentioned(b)

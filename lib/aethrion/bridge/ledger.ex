@@ -44,6 +44,10 @@ defmodule Aethrion.Bridge.Ledger do
   @max_changes 40
   # A record line for a thing the story spent and the lines left out.
   @unsaid_line ~r/\s*\((?:이야기에서는 썼는데 적히지 않음|spent in the story, not written)\)\s*\z/u
+  # A record line for a change that is the rules' to make.
+  @ruled_line ~r/\s*\((?:규칙이 정함|set by the rules)\)\s*\z/u
+  # How many rules that wait the model is told of.
+  @max_waiting 3
   # How many blocks of ledger lines a reply may have.
   @max_blocks 12
   @max_openings 60
@@ -2040,7 +2044,7 @@ defmodule Aethrion.Bridge.Ledger do
     fields = fields(window, spec)
     names = Enum.map_join(fields, ", ", & &1.name)
 
-    "The status window is kept by the game's rules and shown by them: do not print it yourself, whatever the card says. Instead, after everything else, write <aethrion-ledger>...</aethrion-ledger> with one line for each field of the window that this reply changes: `Field: +N` or `Field: -N`, always with its sign, for a number that goes up or down (damage taken is `HP: -N`, experience gained `EXP: +N`), `Field: N / M` to set both numbers of a pair, `Field: =N` to set a number outright, or the field's new words as they should read (a place moved to is `Location: the east gate`, in the story's language).#{lists_note(fields)}#{rows_note(fields)} Use the window's field names (#{names}).#{headings_note(fields)}#{notes_note(fields)}#{scene_note(fields)}#{ruled_note(fields, spec)}#{already_note(recorded)} Leave out every field that stays as it is, and write the tags with nothing between them when nothing changes. What is listed under This turn and Now (how each character feels) is the rules' own and shown apart from the window: none of it goes in these lines. It is not shown to the player."
+    "The status window is kept by the game's rules and shown by them: do not print it yourself, whatever the card says. Instead, after everything else, write <aethrion-ledger>...</aethrion-ledger> with one line for each field of the window that this reply changes: `Field: +N` or `Field: -N`, always with its sign, for a number that goes up or down (damage taken is `HP: -N`, experience gained `EXP: +N`), `Field: N / M` to set both numbers of a pair, `Field: =N` to set a number outright, or the field's new words as they should read (a place moved to is `Location: the east gate`, in the story's language).#{lists_note(fields)}#{rows_note(fields)} Use the window's field names (#{names}).#{headings_note(fields)}#{notes_note(fields)}#{scene_note(fields)}#{ruled_note(fields, spec)}#{already_note(recorded)}#{waiting_note(fields, spec)} Leave out every field that stays as it is, and write the tags with nothing between them when nothing changes. What is listed under This turn and Now (how each character feels) is the rules' own and shown apart from the window: none of it goes in these lines. It is not shown to the player."
   end
 
   # Last turn's record, so that it is not written twice, and what was not
@@ -2055,6 +2059,8 @@ defmodule Aethrion.Bridge.Ledger do
 
     # What the story spent and the lines left out is asked for by itself.
     {unsaid, refused} = Enum.split_with(refused, &String.match?(&1, @unsaid_line))
+    # What the rules set and the model wrote for them is not to be written again.
+    {ruled, refused} = Enum.split_with(refused, &String.match?(&1, @ruled_line))
 
     done =
       if refused == [],
@@ -2063,6 +2069,15 @@ defmodule Aethrion.Bridge.Ledger do
           done <>
             " These lines of yours last turn were not taken, for the reason in brackets; if one still holds, write it again in the form asked for: " <>
             Enum.join(refused, "; ") <> "."
+
+    done =
+      if ruled == [],
+        do: done,
+        else:
+          done <>
+            " IMPORTANT: last turn you wrote what only the rules set (" <>
+            Enum.map_join(ruled, "; ", &("`" <> String.replace(&1, @ruled_line, "") <> "`")) <>
+            "), and the rules did not make it so: it did not happen, whatever the story said. The window is what holds; go on from its numbers, and do not write those lines again."
 
     if unsaid == [],
       do: done,
@@ -2104,6 +2119,47 @@ defmodule Aethrion.Bridge.Ledger do
         " The game's rules set these themselves, so do not write them, only what leads to them: " <>
           Enum.join(set, ", ") <>
           " (" <> Enum.join(rule_texts(fields, spec), " | ") <> ")."
+    end
+  end
+
+  # A rule that waits (`when EXP >= EXP.max: Level += 1`) and is not met as
+  # the window stands: a small model tells of the level gained all the
+  # same, turn after turn, and the window, which did not move, is then at
+  # odds with the story. So it is told where the rule stands.
+  defp waiting_note(fields, spec) do
+    names = Map.new(fields, &{key(&1.name), &1})
+    values = values(fields)
+    said = fn name -> "#{names[name].name} is #{String.slice(names[name].value, 0, 40)}" end
+
+    stays = fn name ->
+      "#{names[name].name} stays at #{String.slice(names[name].value, 0, 40)}"
+    end
+
+    waiting =
+      for {:when, condition, changes} = rule <- rules(fields, spec),
+          watched = Rules.watched([rule]),
+          watched != [] and Enum.all?(watched, &Map.has_key?(names, &1)),
+          set = for({_kind, {name, _part}, _expr} <- changes, name not in watched, do: name),
+          set = Enum.uniq(set),
+          set != [] and Enum.all?(set, &Map.has_key?(names, &1)),
+          not Rules.holds?({:when, condition, changes}, values) do
+        short =
+          case Rules.short(rule, values) do
+            {_name, by} -> ", #{whole(by)} short"
+            nil -> ""
+          end
+
+        "#{Enum.map_join(set, ", ", stays)} (#{Enum.map_join(watched, ", ", said)}#{short})"
+      end
+
+    case Enum.take(waiting, @max_waiting) do
+      [] ->
+        ""
+
+      waiting ->
+        " IMPORTANT: as the window stands, " <>
+          Enum.join(waiting, "; ") <>
+          ". Unless this reply's own lines make that up, there is no such change in this reply: do not tell of one in the story."
     end
   end
 
