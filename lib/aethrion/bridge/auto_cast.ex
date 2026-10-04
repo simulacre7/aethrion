@@ -420,34 +420,65 @@ defmodule Aethrion.Bridge.AutoCast do
   defp grounded(window, text) do
     examples = Aethrion.Bridge.Ledger.windows(text, window)
 
+    verdicts = fn rule ->
+      Enum.map(examples, &Aethrion.Bridge.Ledger.agrees?(&1, rule, window))
+    end
+
     {kept, dropped} =
-      Enum.split_with(window.rules, fn {rule, from} ->
-        verdicts = Enum.map(examples, &Aethrion.Bridge.Ledger.agrees?(&1, rule, window))
-
-        # The examples bear out what a number is worked out from ("HP.max =
-        # Vigor * 10"). A number bounded by itself agrees with any example
-        # within the bounds, so its sentence has to be the card's; and a
-        # number set to a number ("L = 0") is where the examples begin, not
-        # a rule.
-        borne_out? =
-          if bound?(rule),
-            do: stated?(rule, from, text),
-            else: true in verdicts or stated?(rule, from, text)
-
-        # (A maximum that is a number, "EXP.max = 100", is a rule when the
-        # card says so.)
-        (not constant?(rule) or (maximum?(rule) and stated?(rule, from, text))) and
-          false not in verdicts and borne_out?
+      window.rules
+      |> Enum.map(fn {rule, from} ->
+        cond do
+          borne_out?(rule, from, text, verdicts.(rule)) -> {:kept, rule}
+          mended = mended(rule, verdicts) -> {:kept, mended}
+          true -> {:dropped, rule}
+        end
       end)
+      |> Enum.split_with(&match?({:kept, _rule}, &1))
 
     if dropped != [],
       do:
         Logger.debug(
           "Aethrion card: rules the card does not bear out, left out: " <>
-            Enum.map_join(dropped, " | ", &elem(&1, 0))
+            Enum.map_join(dropped, " | ", &elem(&1, 1))
         )
 
-    %{window | rules: Enum.map(kept, &elem(&1, 0))}
+    %{window | rules: Enum.map(kept, &elem(&1, 1))}
+  end
+
+  # The examples bear out what a number is worked out from ("HP.max = Vigor
+  # * 10"). A number bounded by itself agrees with any example within the
+  # bounds, so its sentence has to be the card's; and a number set to a
+  # number ("L = 0") is where the examples begin, not a rule (a maximum
+  # that is a number, "EXP.max = 100", is one when the card says so).
+  defp borne_out?(rule, from, text, verdicts) do
+    borne_out? =
+      if bound?(rule),
+        do: stated?(rule, from, text),
+        else: true in verdicts or stated?(rule, from, text)
+
+    (not constant?(rule) or (maximum?(rule) and stated?(rule, from, text))) and
+      false not in verdicts and borne_out?
+  end
+
+  # A small reader writes "HP.max = 100 + Vigor * 10" for "Max HP +10 per
+  # point", with a base the card does not have: the card's example says
+  # otherwise. The rule without the number added to it, when the examples
+  # bear that out.
+  defp mended(rule, verdicts) do
+    with false <- String.match?(rule, ~r/\A\s*when\b/iu),
+         true <- false in verdicts.(rule) do
+      [
+        Regex.replace(~r/=\s*[0-9][0-9.]*\s*\+\s*/u, rule, "= ", global: false),
+        Regex.replace(~r/\s*\+\s*[0-9][0-9.]*\s*\z/u, rule, "")
+      ]
+      |> Enum.reject(&(&1 == rule))
+      |> Enum.find(fn plain ->
+        said = verdicts.(plain)
+        not constant?(plain) and true in said and false not in said
+      end)
+    else
+      _other -> nil
+    end
   end
 
   # "L = 0": a number set to a number, with no field or function in it.

@@ -256,6 +256,11 @@ defmodule Aethrion.AutoCastTest do
             "rules" => [
               # A sentence that is not the card's, for a rule its example bears out.
               %{"from" => "HP: Health Points.", "rule" => "HP.max = Vigor * 10"},
+              # A base the card does not have, which its example says so: the rule without it.
+              %{
+                "from" => "Vigor: Max HP +10 per point.",
+                "rule" => "HP.max = 100 + (Vigor * 10)"
+              },
               # Where the example begins is no rule; nor is a bound the card does not state,
               # though the example is within it.
               %{"from" => "- Level: 8", "rule" => "Level = 8"},
