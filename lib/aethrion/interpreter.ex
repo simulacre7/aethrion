@@ -71,12 +71,23 @@ defmodule Aethrion.Interpreter do
 
     result =
       try do
-        interpreter.interpret(request, Keyword.get(opts, :interpreter_opts, []) ++ intent(opts))
+        interpreter.interpret(
+          request,
+          Keyword.get(opts, :interpreter_opts, []) ++
+            intent(opts) ++ [allow_none: Keyword.get(opts, :allow_none, false)]
+        )
       rescue
         exception -> {:error, {:exception, Exception.message(exception)}}
       end
 
     case result do
+      # The line does nothing the rules track (`:allow_none`): the player
+      # walks on, or fights something the cast does not have.
+      {:ok, []} when interpreter != __MODULE__.Rules ->
+        if Keyword.get(opts, :allow_none, false),
+          do: {:ok, [], %{interpreter: interpreter, status: :ok}},
+          else: fallback(request, opts, {:invalid_response, []})
+
       {:ok, [_ | _] = readings} ->
         cond do
           not Enum.all?(readings, &reading?/1) ->

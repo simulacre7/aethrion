@@ -51,8 +51,9 @@ defmodule Aethrion.Bridge do
   comes after the app's `[Start a new chat]` marker (example dialogues come
   before it), or after the leading system messages. In the chat proper, a
   reply that carried a status block keeps its checkpoint id as
-  `"checkpoint"`, and the scene it named (`Aethrion.Bridge.Scene`) as
-  `"scene"`.
+  `"checkpoint"`, the scene it named (`Aethrion.Bridge.Scene`) as
+  `"scene"`, and the key of the card it was read from
+  (`Aethrion.Bridge.AutoCast`) as `"card"`.
   """
   @spec transcript([map()]) :: {[map()], [map()]}
   def transcript(messages) do
@@ -68,7 +69,8 @@ defmodule Aethrion.Bridge do
               [_, id] -> id
               nil -> nil
             end,
-          "scene" => Aethrion.Bridge.Scene.marked(content)
+          "scene" => Aethrion.Bridge.Scene.marked(content),
+          "card" => attr(content, "card")
         }
       end)
 
@@ -81,7 +83,30 @@ defmodule Aethrion.Bridge do
         from_end -> length(chat) - from_end
       end
 
-    {Enum.map(chat, &Map.drop(&1, ["checkpoint", "scene"])), Enum.drop(chat, start)}
+    {Enum.map(chat, &Map.drop(&1, ["checkpoint", "scene", "card"])), Enum.drop(chat, start)}
+  end
+
+  @doc """
+  The value of an attribute of a reply's status block (`name="..."`, of
+  hex digits), or nil.
+  """
+  @spec attr(String.t(), String.t()) :: String.t() | nil
+  def attr(reply, name) do
+    case Regex.run(~r/<aethrion-status\b[^>]*?\s#{name}="([0-9a-f]{1,64})"/, reply) do
+      [_all, value] -> value
+      nil -> nil
+    end
+  end
+
+  @doc "The status block with an attribute (of hex digits) added to its opening tag."
+  @spec put_attr(String.t(), String.t(), String.t()) :: String.t()
+  def put_attr(status, name, value) do
+    if String.match?(value, ~r/\A[0-9a-f]{1,64}\z/),
+      do:
+        String.replace(status, ~r/\A<aethrion-status\b[^>]*/, ~s(\\0 #{name}="#{value}"),
+          global: false
+        ),
+      else: status
   end
 
   @doc """
@@ -524,7 +549,9 @@ defmodule Aethrion.Bridge do
   Options: `:card_status` (default false). A card the rules were not made
   for (`Aethrion.Bridge.AutoCast`) may print a status window of its own;
   with `card_status: true` the note leaves it to the card, and asks only
-  that what the rules track shows the rules' numbers there. `:scene`
+  that what the rules track shows the rules' numbers there. `:ledger`: the
+  card's window is kept by the rules, and the note says this instead (the
+  text of `Aethrion.Bridge.Ledger.instruction/2`). `:scene`
   (default false): the note says who is away, and asks the model to end its
   reply with who is with the player (`Aethrion.Bridge.Scene`).
   """
@@ -533,11 +560,16 @@ defmodule Aethrion.Bridge do
     happened = happened(before, now, turn, locale)
 
     window =
-      if Keyword.get(opts, :card_status, false),
-        do:
-          "and do not invent hits, heals, or endings beyond these. If the card asks for a status window or a format of its own, keep it as the card says; where it shows something listed here (how a character feels about the player), it shows these numbers, fitted to the card's scale. A separate window shows these rules' numbers, so do not print them a second time on your own.",
-        else:
+      cond do
+        ledger = Keyword.get(opts, :ledger) ->
+          "and do not invent hits, heals, or endings beyond these. " <> ledger
+
+        Keyword.get(opts, :card_status, false) ->
+          "and do not invent hits, heals, or endings beyond these. If the card asks for a status window or a format of its own, keep it as the card says; where it shows something listed here (how a character feels about the player), it shows these numbers, fitted to the card's scale. A separate window shows these rules' numbers, so do not print them a second time on your own."
+
+        true ->
           "do not invent hits, heals, or endings beyond these, and do not print a status window: it is shown separately."
+      end
 
     scene? = Keyword.get(opts, :scene, false)
     standing = standing(now, locale, scene?)

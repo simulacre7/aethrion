@@ -179,7 +179,7 @@ defmodule Aethrion.AutoCastTest do
 
       # The people are the card's, not the server's cast (a wolf den).
       assert first =~
-               ~r/<aethrion-status id="[0-9a-f]+">세라 · 호감 3\d \(\+\d\) · 신뢰 2\d \(\+\d\)\n도윤 · 호감 10 · 신뢰 10\n/
+               ~r/<aethrion-status id="[0-9a-f]+" card="[0-9a-f]{24}">세라 · 호감 3\d \(\+\d\) · 신뢰 2\d \(\+\d\)\n도윤 · 호감 10 · 신뢰 10\n/
 
       refute first =~ "울프"
       assert card_reads() == 1
@@ -268,7 +268,7 @@ defmodule Aethrion.AutoCastTest do
       # No one to track yet; the scene line is taken out of the reply and
       # kept in the status block's tag.
       assert one =~
-               ~r/\A버스가 멈춘다. 옆자리의 하루카가 고개를 든다.\n\n<aethrion-status id="[0-9a-f]+" scene="하루카\|조용한 도서부원">/
+               ~r/\A버스가 멈춘다. 옆자리의 하루카가 고개를 든다.\n\n<aethrion-status id="[0-9a-f]+" card="[0-9a-f]+" scene="하루카\|조용한 도서부원">/
 
       refute one =~ "<aethrion-scene"
       refute one =~ "호감"
@@ -329,7 +329,7 @@ defmodule Aethrion.AutoCastTest do
             do: content
 
       assert text =~
-               ~r/\A버스가 멈춘다. 옆자리의 하루카가 고개를 든다.\s+<aethrion-status id="[0-9a-f]+" scene="하루카\|조용한 도서부원">/
+               ~r/\A버스가 멈춘다. 옆자리의 하루카가 고개를 든다.\s+<aethrion-status id="[0-9a-f]+" card="[0-9a-f]+" scene="하루카\|조용한 도서부원">/
 
       refute text =~ "<aethrion-scene"
     end
