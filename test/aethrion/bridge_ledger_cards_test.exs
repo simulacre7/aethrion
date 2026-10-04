@@ -657,4 +657,70 @@ defmodule Aethrion.BridgeLedgerCardsTest do
       assert {"", ^text, ""} = Ledger.window(text, spec)
     end
   end
+
+  describe "a window in parts, its fields joined by &" do
+    @needs %{open: "<Status Update>", close: "", rules: []}
+
+    @sheet """
+    <Status Update>
+
+    [Status]
+    - DateTime: 2026-10-05 / 12:00 PM | Weather: Clear
+
+    [Player Character]
+    - Item: Wooden Sword & Currency: 3 Silver
+    - Hunger: Stable & Hygiene: Stable & Sleep: Content
+
+    </Status Update>
+    """
+
+    test "runs through its parts to the tag the model closed it with" do
+      text = String.trim(@sheet) <> "\n\n---\n\nThe square is quiet at noon."
+      assert {"", window, "\n\n---\n\nThe square is quiet at noon."} = Ledger.window(text, @needs)
+      assert String.ends_with?(window, "</Status Update>")
+    end
+
+    test "each joined piece is a field, and a part's title is none" do
+      names = @sheet |> String.trim() |> Ledger.fields(@needs) |> Enum.map(& &1.name)
+
+      assert names ==
+               ["DateTime", "Weather", "Item", "Currency", "Hunger", "Hygiene", "Sleep"]
+    end
+
+    test "a change is written in its place" do
+      {kept, applied, []} =
+        Ledger.apply(
+          String.trim(@sheet),
+          [{"Currency", "5 Silver"}, {"Hunger", "Content"}],
+          @needs
+        )
+
+      assert kept =~ "- Item: Wooden Sword & Currency: 5 Silver\n"
+      assert kept =~ "- Hunger: Content & Hygiene: Stable & Sleep: Content\n"
+      assert length(applied) == 2
+    end
+
+    test "an & inside a value joins nothing" do
+      spec = %{open: "[Sheet]", close: "[Sheet]", rules: []}
+      window = "[Sheet]\n- Gear: Sword & Shield\n- Gold: 5\n[Sheet]"
+
+      assert [%{name: "Gear", value: "Sword & Shield"}, %{name: "Gold"}] =
+               Ledger.fields(window, spec)
+
+      window = "[Sheet]\n- Gear: Sword & Shield & Gold: 5\n- Day: 2\n[Sheet]"
+
+      assert [
+               %{name: "Gear", value: "Sword & Shield"},
+               %{name: "Gold", value: "5"},
+               %{name: "Day"}
+             ] =
+               Ledger.fields(window, spec)
+    end
+
+    test "a heading that says something is still a field" do
+      spec = %{open: "<sheet>", close: "</sheet>", rules: []}
+      window = "<sheet>\n[Day 3/30 · noon]\n- Gold: 5\n[Party Members]\n- Mood: calm\n</sheet>"
+      assert ["Day", "Gold", "Mood"] = window |> Ledger.fields(spec) |> Enum.map(& &1.name)
+    end
+  end
 end

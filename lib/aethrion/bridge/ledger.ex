@@ -277,14 +277,40 @@ defmodule Aethrion.Bridge.Ledger do
       so_far = binary_part(text, start, stop - start)
       lead = so_far |> String.split("\n") |> List.last() |> lead()
 
+      [following | below] =
+        text |> binary_part(next, min(byte_size(text) - next, 400)) |> String.split("\n")
+
+      # A part's title in brackets ("[Player Character]") stands for the
+      # line under it.
       following =
-        text |> binary_part(next, min(byte_size(text) - next, 400)) |> String.split("\n") |> hd()
+        if String.match?(following, ~r/\A\s*[\[【][^\[\]【】\n]{1,40}[\]】]\s*\z/u) and below != [],
+          do: hd(below),
+          else: following
 
       goes_on? =
         length(fields(so_far, spec)) < 2 or (lead != "" and lead(following) == lead)
 
-      if not goes_on?, do: stop
+      cond do
+        goes_on? -> nil
+        # The tag the window opened with, closed ("</Status>"): its last line.
+        closed = closed_tag(text, next, spec.open) -> closed
+        true -> stop
+      end
     end)
+  end
+
+  # Where the line at `at` ends, when it closes the tag that opens the
+  # window ("<Status Update>" ... "</Status Update>"), which a model adds
+  # to a format that has none.
+  defp closed_tag(text, at, open) do
+    with [_all, tag] <- Regex.run(~r/\A\s*<([^<>\/\n]{1,40})>\s*\z/u, open),
+         rest = binary_part(text, at, min(byte_size(text) - at, 200)),
+         [{0, length}] <-
+           Regex.run(~r/\A[ \t]*<\/#{Regex.escape(tag)}>/u, rest, return: :index) do
+      at + length
+    else
+      _other -> nil
+    end
   end
 
   # The mark a line is led by ("◈", "-", "📍"), or "" for a line that begins with words.

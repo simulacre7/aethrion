@@ -199,8 +199,30 @@ defmodule Aethrion.Bridge.Ledger.Fields do
       length == 0 -> []
       several = several(window, cells) -> several
       row = row(window, cells, start + length) -> [row]
+      joined = joined(window, text, start) -> joined
       true -> List.wrap(alone(window, text, start, length))
     end
+  end
+
+  # The fields of a line that joins them with "&" ("Item: a sword &
+  # Currency: 3 silver"): two at least, each with its name. A piece with
+  # no name belongs to the value before it ("Item: sword & shield").
+  defp joined(window, text, start) do
+    pieces =
+      ~r/[^&]+/u
+      |> Regex.scan(text, return: :index)
+      |> Enum.map(fn [{at, size}] -> {start + at, size} end)
+      |> Enum.reduce([], fn {at, size}, acc ->
+        case {named(window, at, size), acc} do
+          {nil, [{before, _size} | rest]} -> [{before, at + size - before} | rest]
+          {_field, acc} -> [{at, size} | acc]
+        end
+      end)
+      |> Enum.reverse()
+      |> Enum.map(fn {at, size} -> trimmed(window, at, size) end)
+
+    fields = Enum.map(pieces, fn {at, size} -> named(window, at, size) end)
+    if length(fields) >= 2 and Enum.all?(fields), do: fields
   end
 
   # The fields of a line that holds several, between bars; nil for a line
@@ -320,12 +342,17 @@ defmodule Aethrion.Bridge.Ledger.Fields do
            return: :index
          ) do
       [_all, {name_at, name_length}, {value_at, value_length}] ->
-        %{
-          name: binary_part(text, name_at, name_length),
-          value: binary_part(text, value_at, value_length),
-          at: {start + value_at, value_length},
-          heading?: true
-        }
+        value = binary_part(text, value_at, value_length)
+
+        # Words alone are a part's title ("[Player Character]"), which
+        # says nothing that changes.
+        if String.match?(value, ~r/[0-9·•|\/:：,~\-–—]/u),
+          do: %{
+            name: binary_part(text, name_at, name_length),
+            value: value,
+            at: {start + value_at, value_length},
+            heading?: true
+          }
 
       nil ->
         nil
