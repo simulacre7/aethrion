@@ -11,7 +11,7 @@ Aethrion은 AI 롤플레이에서 흔들리면 안 되는 것들을 모델 대�
 
 ![공개 카드 Sinmarked를 고치지 않고 플레이하며 같은 턴을 세 번 리롤한 화면. 서술은 매번 다르고, 상태창 숫자와 이번 턴 판정은 그대로입니다](assets/demo/card.ko.gif)
 
-<sub>RisuRealm에 공개된 카드 [Sinmarked](https://realm.risuai.net/character/387a703e-8122-4d7a-8e34-069ebb26d0bc)(ieungieung 제작, CC BY-SA 4.0)를 고치지 않고 SillyTavern에서 플레이한 실제 화면입니다. 요청 모델 이름만 `aethrion-auto`로 바꿨습니다. 같은 턴을 세 번 리롤(답을 다시 뽑기)했고, 마지막 장면은 "이번 턴 판정"을 펼친 모습입니다.</sub>
+<sub>RisuRealm에 공개된 카드 [Sinmarked](https://realm.risuai.net/character/387a703e-8122-4d7a-8e34-069ebb26d0bc)(ieungieung 제작, CC BY-SA 4.0)를 고치지 않고 RisuAI 데스크톱 앱에서 플레이한 실제 화면입니다. 요청 모델 이름만 `aethrion-auto`로 바꿨고, 상태창 상자는 Aethrion의 상태창 모듈이 그립니다. 같은 턴을 세 번 리롤(답을 다시 뽑기)했고, 마지막 장면은 "이번 턴 판정"을 펼친 모습입니다.</sub>
 
 <sub>발음: 에이트리온. 개인 프로젝트이며 RisuAI·SillyTavern 공식 프로젝트와는 관계없습니다. MIT 라이선스, 초기 알파.</sub>
 

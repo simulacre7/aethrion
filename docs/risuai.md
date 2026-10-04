@@ -112,7 +112,7 @@ curl -s -H "Authorization: Bearer $AETHRION_TOKEN" 'localhost:4848/casts/card?na
 
 Import it with Import Character. If that opens no file picker (it does not in the macOS desktop app), drag the file onto the RisuAI window instead. The card holds the cast, the first message (the `greeting` of a character who is not a foe), the lorebook, and the status window's regex script, so the status window works with nothing else to set.
 
-To keep using a card you already have, import just the status module: Settings → Modules → Import Module, open [`priv/risu/aethrion-status.json`](../priv/risu/aethrion-status.json), and enable it for that card. It is one display-only regex for the `<aethrion-status>` block.
+To keep using a card you already have, import just the status module: in Settings → Modules, use the import button under the list to open [`priv/risu/aethrion-status.json`](../priv/risu/aethrion-status.json) (dropping this file on the window fails: RisuAI tries to read it as a card). Then click the globe next to the module's name to turn it on for every chat, or enable it for that card only. It is one display-only regex for the `<aethrion-status>` block.
 
 The other way, a community card becomes an Aethrion cast to add numbers and endings to:
 
@@ -133,7 +133,7 @@ A card can be played as it is in RisuAI, without importing it into Aethrion. In 
 - **Aethrion's status window.** Without the status module, the numbers and this turn's rulings show as plain lines at the end of the reply. For the box and the fold, import the status module from [4. Character Cards](#4-character-cards) and turn it on.
 - **Letter case.** On macOS the settings field may rewrite the name as `Aethrion-auto`. Case does not matter.
 
-Checked in the RisuAI desktop app 2026.8.250 with a raising-sim card that has its own status window and assets, and in SillyTavern 1.19.0 with an ensemble card. Limits:
+Checked in the RisuAI desktop app 2026.8.250 with a raising-sim card that has its own status window and assets and with an ensemble card (rerolls included), and in SillyTavern 1.19.0 with an ensemble card. Limits:
 
 - A line said on the turn someone first appears is not read as said to them; from the turn after the model has named them, it is. A card with no fixed characters starts with no one.
 - Who comes in depends on the line the model writes. When the model leaves it out, the scene stays as it was.
