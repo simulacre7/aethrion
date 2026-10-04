@@ -86,6 +86,98 @@ defmodule Aethrion.BridgeLedgerTest do
     end
   end
 
+  describe "windows of other shapes" do
+    test "a table's rows, lines led by a symbol, and a heading with something to say" do
+      # The card closes its heading with "]": the window runs on to the end.
+      spec = %{open: "[Day", close: "]"}
+
+      reply =
+        "서술.\n\n[Day 3/30 · 오후]\n📍 해변 캠프\n🎒 물병 x2 · 라이터 · 밧줄\nTyler | 62 | 의기양양 | 다들 날 봐: 당연하지\nChloe♥ | 35 | 목마름 | 저 사람 2번이나 날 도왔어"
+
+      assert {"서술.\n\n", found, ""} = Ledger.window(reply, spec)
+
+      assert Enum.map(Ledger.fields(found, spec), &{&1.name, &1.value}) == [
+               {"Day", "3/30 · 오후"},
+               {"📍", "해변 캠프"},
+               {"🎒", "물병 x2 · 라이터 · 밧줄"},
+               {"Tyler", "62 | 의기양양 | 다들 날 봐: 당연하지"},
+               {"Chloe♥", "35 | 목마름 | 저 사람 2번이나 날 도왔어"}
+             ]
+
+      changes = [
+        {"Day", "+1"},
+        {"Tyler", "-4"},
+        {"Chloe♥", "38 | 미소 | 고마워"},
+        {"📍", "숲 입구"},
+        {"🎒", "+코코넛 x3"}
+      ]
+
+      assert {kept, applied, []} = Ledger.apply(found, changes, spec)
+
+      assert kept ==
+               "[Day 4/30 · 오후]\n📍 숲 입구\n🎒 물병 x2 · 라이터 · 밧줄 · 코코넛 x3\nTyler | 58 | 의기양양 | 다들 날 봐: 당연하지\nChloe♥ | 38 | 미소 | 고마워"
+
+      # The turn's record has the figures, not the rows' words.
+      assert Ledger.log(applied, [], :ko) == [
+               "기록 · Day 3/30 · 오후 → 4/30 · 오후 · Tyler 62 → 58 · Chloe♥ 35 → 38 · 🎒 +코코넛 × 3"
+             ]
+    end
+
+    test "lines marked with a sign, their values holding a bar" do
+      spec = %{open: "◈시간:", close: ""}
+
+      reply =
+        "서술.\n\n```\n◈시간: 봄|월요일|진시\n◈장소: 화산파 연무장\n◈무공: 120 | 이류\n◈평판: -5 | 비호감\n```"
+
+      assert {_head, found, ""} = Ledger.window(reply, spec)
+
+      assert {kept, _applied, []} =
+               Ledger.apply(
+                 found,
+                 [{"무공", "+30"}, {"평판", "10 | 호감"}, {"시간", "봄|월요일|사시"}],
+                 spec
+               )
+
+      assert kept == "◈시간: 봄|월요일|사시\n◈장소: 화산파 연무장\n◈무공: 150 | 이류\n◈평판: 10 | 호감\n```"
+    end
+
+    test "a closing text copied from the card's format with a blank in it" do
+      spec = %{open: "[Date:", close: "|UserColor:(R,G,B)]"}
+      reply = "서술.\n[Date:1900-03-02 (Thu)|Currencies:0G, 0S, 0C|UserColor:(0,0,0)]\n뒷말."
+
+      assert {"서술.\n", found, "\n뒷말."} = Ledger.window(reply, spec)
+      assert {kept, _applied, []} = Ledger.apply(found, [{"Currencies", "+5G"}], spec)
+      assert kept == "[Date:1900-03-02 (Thu)|Currencies:5G, 0S, 0C|UserColor:(0,0,0)]"
+      # A color is no number to keep within bounds.
+      assert Ledger.settle(kept, spec) == {kept, []}
+    end
+
+    test "a sheet in a code block, its numbers among words" do
+      spec = %{open: "```", close: "```"}
+
+      reply =
+        "You wake.\n<stats>\n```\nInventory: [\"rusty sword\", \"bread x2\"]\nGold: 120G\nEXP: (45/100 EXP to next level)\nReputation: 12 \"novice\"\n```\n</stats>"
+
+      assert {_head, found, "\n</stats>"} = Ledger.window(reply, spec)
+
+      changes = [
+        {"Gold", "-20"},
+        {"EXP", "+30"},
+        {"Reputation", "15 \"known\""},
+        {"Inventory", "+rope"}
+      ]
+
+      assert {kept, applied, []} = Ledger.apply(found, changes, spec)
+
+      assert kept ==
+               "```\nInventory: [\"rusty sword\", \"bread x2\", \"rope\"]\nGold: 100G\nEXP: (75/100 EXP to next level)\nReputation: 15 \"known\"\n```"
+
+      assert Ledger.log(applied, [], :en) == [
+               "Ledger · Gold 120G → 100G · EXP 45/100 → 75/100 · Reputation 12 \"novice\" → 15 \"known\" · Inventory +rope"
+             ]
+    end
+  end
+
   describe "take/1" do
     test "takes the ledger lines out of the reply" do
       reply =
@@ -199,6 +291,97 @@ defmodule Aethrion.BridgeLedgerTest do
     end
   end
 
+  describe "apply/3 with what a small model writes" do
+    test "a figure stays a figure, whatever words come with the number" do
+      changes = [
+        {"Level", "9 / 221"},
+        {"HP", "-17 (현재 damage from previous encounters recovered to 104/130)"},
+        {"Cash", "2095900 → 2100000"},
+        {"EXP", "23 / 266 → 60 / 266 (거의 다 왔다)"},
+        {"Strength", "아주 강함"}
+      ]
+
+      assert {kept, _applied, refused} = Ledger.apply(window(), changes, @lines)
+      assert value(kept, @lines, "Level") == "9"
+      assert value(kept, @lines, "HP") == "104 / 130"
+      assert value(kept, @lines, "Cash") == "2,100,000"
+      assert value(kept, @lines, "EXP") == "60 / 266"
+      assert value(kept, @lines, "Strength") == "12"
+      assert refused == [{"Strength", "아주 강함", :unreadable}]
+    end
+
+    test "a list is changed a thing at a time" do
+      changes = [{"Item", "+마정석 (최하급) × 2"}, {"Item", "-타워 단말기 (보급형)"}, {"Item", "-엘릭서"}]
+      assert {kept, applied, refused} = Ledger.apply(window(), changes, @lines)
+      assert value(kept, @lines, "Item") == "마정석 (최하급) × 7"
+      assert refused == [{"Item", "-엘릭서", :missing}]
+
+      assert Ledger.log(applied, refused, :ko) == [
+               "기록 · Item −타워 단말기 (보급형), +마정석 (최하급) × 2",
+               "기록 · Item: -엘릭서 (가지고 있지 않음)"
+             ]
+    end
+
+    test "a number with words of its own takes the new words; a bare one stays bare" do
+      window = "[ 호감도: 30 (경계) | 위치: 명월탑 1층 | 레벨: 3 ]"
+      spec = %{open: "[", close: "]"}
+
+      changes = [{"호감도", "45 (호기심)"}, {"위치", "서울 협회 본부"}, {"레벨", "4 (레벨 업!)"}]
+      assert {kept, _applied, []} = Ledger.apply(window, changes, spec)
+      assert kept == "[ 호감도: 45 (호기심) | 위치: 서울 협회 본부 | 레벨: 4 ]"
+    end
+  end
+
+  describe "settle/3: the card's arithmetic" do
+    @rules [
+      "HP.max = Strength * 10",
+      "EXP.max = floor(100 * 1.15 ^ (Level - 1))",
+      "when EXP >= EXP.max: Level += 1; EXP -= EXP.max",
+      "when Level rises: Stat Point += if(Level % 5 == 0, 15, 5)",
+      "Mana.max = Strength * 3",
+      "not a rule at all"
+    ]
+
+    test "a first window is put right by the rules the card states" do
+      spec = Map.put(@lines, :rules, @rules)
+      # Strength 12: a maximum of 120, and the hurt stay as hurt as they were.
+      assert {settled, ruled} = Ledger.settle(window(), spec)
+      assert value(settled, spec, "HP") == "120 / 120"
+      assert ruled == [{"HP", "121 / 130", "120 / 120"}]
+      assert Ledger.rule_log(ruled, :ko) == ["규칙 · HP 121 / 130 → 120 / 120"]
+      assert Ledger.rule_log([], :ko) == []
+    end
+
+    test "what the model gains is carried over a level, and the level's gifts are the rules'" do
+      spec = Map.put(@lines, :rules, @rules)
+      {before, _ruled} = Ledger.settle(window(), spec)
+
+      # The model writes the EXP and, as it would without rules, the rest too.
+      changes = [{"EXP", "+300"}, {"Level", "+1"}, {"Stat Point", "+5"}, {"Stat Point", "-1"}]
+      assert {kept, applied, refused} = Ledger.apply(before, changes, spec)
+      assert refused == [{"Level", "+1", :ruled}, {"Stat Point", "+5", :ruled}]
+      # Past its maximum for now: the rule takes it up.
+      assert {"EXP", "23 / 266", "323 / 266"} in applied
+
+      assert {settled, ruled} = Ledger.settle(kept, spec, before)
+      assert value(settled, spec, "Level") == "9"
+      assert value(settled, spec, "EXP") == "57 / 305"
+      assert value(settled, spec, "Stat Point") == "6"
+
+      assert Ledger.rule_log(ruled, :en) == [
+               "Rules · Level 8 → 9 · EXP 323 / 266 → 57 / 305 · Stat Point 1 → 6"
+             ]
+    end
+
+    test "without rules, a pair is still kept within its maximum" do
+      assert {settled, [{"HP", "150 / 130", "130 / 130"}]} =
+               Ledger.settle(String.replace(window(), "121 / 130", "150 / 130"), @lines)
+
+      assert value(settled, @lines, "HP") == "130 / 130"
+      assert Ledger.settle(window(), @lines) == {window(), []}
+    end
+  end
+
   describe "differences/3" do
     test "what a window the model printed anyway changed" do
       printed =
@@ -302,8 +485,14 @@ defmodule Aethrion.BridgeLedgerTest do
     end
   end
 
-  test "instruction/2 names the window's fields" do
-    assert Ledger.instruction(window(), @lines) =~
-             "(Date, Time, Location, Cash, Level, HP, EXP, Stat Point, Strength, Item)"
+  test "instruction/2 names the window's fields, its lists, and the card's rules" do
+    text = Ledger.instruction(window(), @lines)
+    assert text =~ "(Date, Time, Location, Cash, Level, HP, EXP, Stat Point, Strength, Item)"
+    assert text =~ "For a list (Item), write only what joins or leaves it"
+    refute text =~ "The rules work these out themselves"
+
+    ruled = Ledger.instruction(window(), Map.put(@lines, :rules, ["HP.max = Strength * 10"]))
+    assert ruled =~ "The rules work these out themselves"
+    assert ruled =~ "HP.max = Strength * 10."
   end
 end

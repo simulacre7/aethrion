@@ -41,6 +41,12 @@ defmodule Mix.Tasks.Aethrion.Serve do
     line does (a short choice, so a smaller, faster model does), while
     `--model` narrates (default: the `AETHRION_READ_MODEL` environment
     variable, else `--model`)
+  - `--card-model NAME` - a model of the same backend for reading a card
+    once, for the model name `aethrion-auto`: who is in it, its status
+    window, and the arithmetic it states (default: the `AETHRION_CARD_MODEL`
+    environment variable, else `--model`). A small model narrates well
+    enough and reads a card's rules less surely, so a stronger one here
+    costs one call a card
   - `--locale ko` - lines in Korean: with `--llm` the model writes them,
     otherwise the built-in Korean templates do
   - `--idle MINUTES` - stop worlds unused for this long (default 30)
@@ -68,6 +74,7 @@ defmodule Mix.Tasks.Aethrion.Serve do
     llm: :string,
     model: :string,
     read_model: :string,
+    card_model: :string,
     base_url: :string,
     locale: :string,
     idle: :integer,
@@ -75,7 +82,7 @@ defmodule Mix.Tasks.Aethrion.Serve do
   ]
 
   @usage "mix aethrion.serve [--cast FILE] [--data DIR] [--port N] [--bind ADDRESS] " <>
-           "[--token TOKEN] [--allow-host NAMES] [--read-model NAME] [--llm anthropic|openai] [--locale ko] [--idle MINUTES] [--tick-every SECONDS]"
+           "[--token TOKEN] [--allow-host NAMES] [--read-model NAME] [--card-model NAME] [--llm anthropic|openai] [--locale ko] [--idle MINUTES] [--tick-every SECONDS]"
 
   @impl Mix.Task
   def run(args) do
@@ -126,7 +133,11 @@ defmodule Mix.Tasks.Aethrion.Serve do
             backend_opts,
             label,
             blank_to_nil(opts[:read_model] || System.get_env("AETHRION_READ_MODEL"))
-          )
+          ) ++
+          case blank_to_nil(opts[:card_model] || System.get_env("AETHRION_CARD_MODEL")) do
+            nil -> []
+            model -> [card_opts: [model: model]]
+          end
       )
 
     announce(Aethrion.API.port(api), opts[:bind] || "127.0.0.1", cast, data, token, label)

@@ -61,6 +61,9 @@ defmodule Aethrion.API do
   - `:token` - when set, requests need `Authorization: Bearer <token>`
   - `:allow_hosts` - names besides this machine's that may reach the server
     without a token, such as a Docker Compose service name (`["aethrion"]`)
+  - `:card_opts` - adapter options for reading a card for `aethrion-auto`
+    (`Aethrion.Bridge.AutoCast`), over the narrating model's: `[model:
+    "..."]` has a stronger model read each card once
   - `:intent` - options for interpreting `say` text (`:adapter`,
     `:adapter_opts`), default `Aethrion.LLM.FakeAdapter`
   - `:render_timeout` (ms, default 15_000)
@@ -122,6 +125,7 @@ defmodule Aethrion.API do
       intent: Keyword.get(opts, :intent, []),
       interpreter: Keyword.get(opts, :interpreter, Aethrion.Interpreter.Rules),
       interpreter_opts: Keyword.get(opts, :interpreter_opts, []),
+      card_opts: Keyword.get(opts, :card_opts, []),
       cast: Keyword.get(opts, :cast),
       model: Keyword.get(opts, :model),
       render_timeout: Keyword.get(opts, :render_timeout, 15_000),
@@ -694,7 +698,7 @@ defmodule Aethrion.API do
   defp bridge_cast(config, data, messages, generator, stores) do
     cond do
       auto_model?(data["model"]) ->
-        card_cast(messages, generator, stores)
+        card_cast(messages, generator, stores, Map.get(config, :card_opts, []))
 
       match?(%State{}, config.cast) ->
         {:ok, config.cast, nil}
@@ -704,7 +708,7 @@ defmodule Aethrion.API do
     end
   end
 
-  defp card_cast(messages, {adapter, adapter_opts}, stores) do
+  defp card_cast(messages, {adapter, adapter_opts}, stores, card_opts) do
     {all, chat} = Aethrion.Bridge.transcript(messages)
     card = Aethrion.Bridge.AutoCast.card(all, chat)
 
@@ -714,7 +718,13 @@ defmodule Aethrion.API do
         {:ok, cast, Map.delete(read, :cast)}
 
       nil ->
-        opts = Keyword.put_new(adapter_opts ++ [max_tokens: 1_500], :timeout, @reply_timeout)
+        # The card is read once: a model other than the narrating one may do it.
+        opts =
+          adapter_opts
+          |> Keyword.merge(card_opts)
+          |> Keyword.merge(max_tokens: 2_500)
+          |> Keyword.put_new(:timeout, @reply_timeout)
+
         read_card(card, stores.casts, adapter, opts)
     end
   end
@@ -1002,6 +1012,21 @@ defmodule Aethrion.API do
           if after_reply != nil and String.starts_with?(text, head),
             do: binary_part(text, byte_size(head), byte_size(text) - byte_size(head)),
             else: ""
+
+        # The blank lines that went out after the head are not sent again.
+        space = binary_part(gone, byte_size(head), byte_size(gone) - byte_size(head))
+
+        rest =
+          cond do
+            space == "" ->
+              rest
+
+            String.starts_with?(rest, space) ->
+              binary_part(rest, byte_size(space), byte_size(rest) - byte_size(space))
+
+            true ->
+              String.trim_leading(rest)
+          end
 
         if rest != "", do: emit.({:chunk, chunk.(%{content: rest}, nil)})
         if status, do: emit.({:chunk, chunk.(%{content: "\n\n" <> status}, nil)})

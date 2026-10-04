@@ -206,22 +206,53 @@ defmodule Aethrion.Bridge.AutoCast do
 
   @doc false
   # Whether the card states a rule: the sentence the reader gives for it
-  # is in the card's text (whatever its spacing and case), and has every
-  # number the rule uses (0 and 1 aside).
+  # is the card's (most of it is there word for word, whatever its spacing
+  # and case, though the reader may have left some of it out), and each
+  # number the rule uses (0 and 1 aside) stands in it with the words
+  # around it as the card has them.
   def stated?(rule, from, text) do
-    quote = plain(from)
+    {quote, card} = {plain(from), plain(text)}
 
-    String.length(quote) >= 6 and String.contains?(plain(text), quote) and
+    numbers =
       ~r/\d+(?:\.\d+)?/
       |> Regex.scan(rule)
       |> List.flatten()
       |> Enum.reject(&(&1 in ["0", "1"]))
-      |> Enum.all?(fn number ->
-        Regex.match?(
-          Regex.compile!("(?<![\\d.])" <> Regex.escape(number) <> "(?!\\.?\\d)"),
-          quote
-        )
-      end)
+      |> Enum.uniq()
+
+    String.length(quote) >= 6 and quoted?(quote, card) and
+      Enum.all?(numbers, &in_place?(&1, quote, card))
+  end
+
+  @piece 16
+
+  # Most of the quote, taken a piece at a time, is in the card.
+  defp quoted?(quote, card) do
+    letters = String.graphemes(quote)
+
+    pieces =
+      if length(letters) <= @piece,
+        do: [quote],
+        else: letters |> Enum.chunk_every(@piece, 8, :discard) |> Enum.map(&Enum.join/1)
+
+    found = Enum.count(pieces, &String.contains?(card, &1))
+    found * 10 >= length(pieces) * 7
+  end
+
+  # The number stands somewhere in the quote with the few letters on each
+  # side of it as the card has them.
+  defp in_place?(number, quote, card) do
+    pattern = Regex.compile!("(?<![\\d.])" <> Regex.escape(number) <> "(?!\\.?\\d)")
+
+    pattern
+    |> Regex.scan(quote, return: :index)
+    |> Enum.any?(fn [{at, length}] ->
+      from = max(at - 12, 0)
+      around = binary_part(quote, from, min(at + length + 12, byte_size(quote)) - from)
+      # Cut to whole letters: the reach is counted in bytes.
+      around = around |> String.replace_invalid("") |> String.trim()
+      String.contains?(card, around)
+    end)
   end
 
   defp plain(text),
@@ -258,7 +289,7 @@ defmodule Aethrion.Bridge.AutoCast do
 
         status_window: if the card tells the model to print a status window with every reply (a block of numbers and facts in a fixed format: level, HP, money, trust, date, place), give {"open": "the text that begins the block", "close": "the text that ends it", "rules": []}. Copy open and close from the card's format, and only characters that are the same in every reply, never a blank the model fills in: for a block between two "[Status Window]" lines, both are "[Status Window]"; for one line such as "[ Trust: 3% | Anger: 5% | ... ]", "[ Trust:" and "]"; for a block that begins with a heading such as "[Day N/30 · Time]", "[Day" as open; for a block of lines such as "◈Time: ..." that ends with the reply, "◈Time" as open and "" as close. If the card prints no such block, or only draws one with its own scripts and tells the model not to write the numbers, null.
 
-        rules: the arithmetic the card states for the window's numbers, [] when the card states none. Each is {"rule": "one line in the small language below", "from": "the sentence of the card that states it, copied word for word"}; a rule is used only when its sentence is found in the card and has the rule's numbers in it. Use the window's field names exactly as its format writes them; `Field.max` is the second number of a pair such as `HP: 30 / 48`, and `Field.before` is what the field was before the turn. There are only two kinds of line (the examples are not from this card):
+        rules: the arithmetic the card states for the window's numbers, [] when the card states none. Go through the card's sentences that give a number for the window (a formula, a gain per point or per level, a range, a limit on change), and for each write {"from": "that sentence, copied word for word", "rule": "what it says, as one line in the small language below"}. A rule is used only when its sentence is found in the card and has the rule's numbers in it. Use the window's field names exactly as its format writes them; `Field.max` is the second number of a pair such as `HP: 30 / 48`, and `Field.before` is what the field was before the turn. There are only two kinds of line (the examples are not from this card):
         1. `Target = expression`, something that always holds: a maximum that follows a stat, "Stamina.max = Body * 4"; a range a number stays within, "Favor = clamp(Favor, 0, 100)"; a limit on how far a number moves in one turn, "Favor = clamp(Favor, Favor.before - 3, Favor.before + 3)".
         2. `when condition: change; change`, something that happens, each change being `Field = expression`, `Field += expression`, or `Field -= expression`; a card whose window has a level and experience toward the next one has its level-up line, in the window's own field names: "when EXP >= EXP.max: Level += 1; EXP -= EXP.max". The condition is a comparison, or `Field rises` for what each point gained gives: "when Level rises: Points += if(Level % 10 == 0, 6, 2)".
         An expression has numbers, field names, + - * / ^ %, comparisons (>= <= > < == !=), and, or, and the functions floor, ceil, round, min, max, clamp(x, low, high), if(condition, a, b). No other words, and every line begins with a field name or with `when`.
