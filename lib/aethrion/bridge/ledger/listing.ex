@@ -67,11 +67,15 @@ defmodule Aethrion.Bridge.Ledger.Listing do
     value in @empty or String.match?(value, ~r/\A(?:확인 중.*|미정|불명|알 수 없음|unknown|tbd|\?+)\z/u)
   end
 
+  @doc "Whether a value is a word for nothing, as a window writes an empty list."
+  @spec none?(String.t()) :: boolean()
+  def none?(value), do: String.downcase(String.trim(value)) in (@empty -- ["x"])
+
   @doc "The text between a list's things, or nil for a value that is one thing."
   @spec separator(String.t()) :: String.t() | nil
   def separator(value) do
     {_wrap, inner} = unwrap(value)
-    Enum.find(@separators, &(length(String.split(inner, &1)) >= 2))
+    Enum.find(@separators, &(length(apart(inner, &1)) >= 2))
   end
 
   @doc """
@@ -98,9 +102,29 @@ defmodule Aethrion.Bridge.Ledger.Listing do
 
     cond do
       empty?(value) or String.trim(inner) == "" -> []
-      separator = separator(value) -> inner |> String.split(separator) |> Enum.map(&item/1)
+      separator = separator(value) -> inner |> apart(separator) |> Enum.map(&item/1)
       true -> [item(inner)]
     end
+  end
+
+  # The things of a list, split where its separator stands outside
+  # brackets: "Kit (flint, matches), Guidebook" is two things.
+  defp apart(text, separator) do
+    text
+    |> String.split(separator)
+    |> Enum.reduce([], fn
+      piece, [last | rest] = pieces ->
+        if unclosed?(last), do: [last <> separator <> piece | rest], else: [piece | pieces]
+
+      piece, [] ->
+        [piece]
+    end)
+    |> Enum.reverse()
+  end
+
+  defp unclosed?(text) do
+    count = fn marks -> length(Regex.scan(marks, text)) end
+    count.(~r/[(（]/u) > count.(~r/[)）]/u)
   end
 
   # A list in brackets: `["a", "b"]`.
@@ -117,7 +141,7 @@ defmodule Aethrion.Bridge.Ledger.Listing do
     parts =
       case separator(value) do
         nil -> [inner]
-        separator -> String.split(inner, separator)
+        separator -> apart(inner, separator)
       end
 
     parts != [] and Enum.all?(parts, &String.match?(&1, ~r/\A\s*"[^"]*"\s*\z/u))
@@ -157,6 +181,15 @@ defmodule Aethrion.Bridge.Ledger.Listing do
   # One thing as a change writes it: also "× 2 추가 획득" and "2 마정석".
   defp changed_item(text) do
     text = String.trim(text)
+
+    # "2S (now 2S)", "1C (the bet)": an amount, with a remark on it.
+    text =
+      with [_all, bare] <- Regex.run(~r/\A([0-9][0-9,]*\p{L}{1,3})\s*\([^()]*\)\z/us, text),
+           %{style: {:amount, _space}} <- item(bare) do
+        bare
+      else
+        _other -> text
+      end
 
     case item(text) do
       %{count: nil} ->
@@ -199,6 +232,13 @@ defmodule Aethrion.Bridge.Ledger.Listing do
         {items, problem} = value |> steps(separator(was)) |> Enum.reduce({items, nil}, &step/2)
         {written(items, was, habits), problem}
 
+      renamed = renamed(items, value) ->
+        {written(renamed, was, habits), nil}
+
+      steps = worded_steps(value, separator(was)) ->
+        {items, problem} = Enum.reduce(steps, {items, nil}, &step/2)
+        {written(items, was, habits), problem}
+
       one_of_many?(items, value) ->
         {written(one(items, value), was, habits), nil}
 
@@ -211,6 +251,53 @@ defmodule Aethrion.Bridge.Ledger.Listing do
       true ->
         {value, nil}
     end
+  end
+
+  # "Slash → Slash II": a thing of the list under a new name, the rest as it was.
+  defp renamed(items, value) do
+    with [old, new] <- String.split(value, ~r/\s*(?:→|->|=>)\s*/u),
+         true <- String.trim(new) != "",
+         held when held != nil <- Enum.find(items, &same?(&1, changed_item(old))) do
+      new = changed_item(new)
+
+      Enum.map(items, fn item ->
+        if item == held,
+          do: %{
+            held
+            | name: new.name,
+              count: new.count || held.count,
+              style: held.style || new.style
+          },
+          else: item
+      end)
+    else
+      _other -> nil
+    end
+  end
+
+  @gained ~r/\s+(?:추가\s*)?(?:획득|얻\S*|입수|added|gained|obtained|acquired)\s*\z/iu
+  @used ~r/\s+(?:사용|소모|소비|잃\S*|판매|used|lost|sold|consumed|spent)\s*\z/iu
+
+  # "Potion × 1 used, mana stone × 5 gained": every thing with the word
+  # for what became of it, and no signs.
+  defp worded_steps(value, separator) do
+    parts =
+      value
+      |> apart(separator || ", ")
+      |> Enum.flat_map(&apart(&1, ", "))
+      |> Enum.map(&String.trim/1)
+      |> Enum.reject(&(&1 == ""))
+
+    steps =
+      Enum.map(parts, fn part ->
+        cond do
+          String.match?(part, @gained) -> {:plus, changed_item(String.replace(part, @gained, ""))}
+          String.match?(part, @used) -> {:minus, changed_item(String.replace(part, @used, ""))}
+          true -> nil
+        end
+      end)
+
+    if steps != [] and Enum.all?(steps), do: steps
   end
 
   defp step({sign, item}, {items, problem}) do
@@ -254,8 +341,13 @@ defmodule Aethrion.Bridge.Ledger.Listing do
   defp steps(value, separator) do
     {steps, _sign} =
       value
-      |> String.split(separator || ", ")
-      |> Enum.flat_map(&String.split(&1, ~r/\s*[,;\/·]\s*(?=[+\-−]\s*\S)/u))
+      |> apart(separator || ", ")
+      |> Enum.flat_map(fn part ->
+        # (Not within brackets: "+Kit (flint, +matches)" is one thing.)
+        if unclosed?(hd(String.split(part, ~r/\s*[,;\/·]\s*(?=[+\-−]\s*\S)/u))),
+          do: [part],
+          else: String.split(part, ~r/\s*[,;\/·]\s*(?=[+\-−]\s*\S)/u)
+      end)
       # "+potion × 1 -rat fur × 1": nothing between them but a space. (A
       # sign before a number is a thing's own: "sword +1".)
       |> Enum.flat_map(&String.split(&1, ~r/\s+(?=[+\-−][^\p{Nd}\s+\-−])/u))

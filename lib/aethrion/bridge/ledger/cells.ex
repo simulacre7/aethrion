@@ -35,30 +35,34 @@ defmodule Aethrion.Bridge.Ledger.Cells do
   """
   @spec read(String.t()) :: [cell()]
   def read(value) do
-    cells =
-      ~r/[^|│｜]+/u
-      |> Regex.scan(value, return: :index)
-      |> Enum.flat_map(fn [{start, length}] ->
-        case Regex.run(@cell, binary_part(value, start, length), return: :index) do
-          [_all, {_lead_at, lead}, {_label_at, label_size}, {_gap_at, gap}, {_at, digits}] ->
-            label = binary_part(value, start + lead, label_size)
-            at = start + lead + label_size + gap
-
-            [
-              %{
-                label: label,
-                number: value |> binary_part(at, digits) |> String.to_integer(),
-                at: {at, digits}
-              }
-            ]
-
-          nil ->
-            []
-        end
-      end)
-      |> Enum.uniq_by(&key(&1.label))
-
+    cells = labelled(value)
     if length(cells) >= 2, do: cells, else: []
+  end
+
+  @doc "Every labelled number of a row's value, be it one."
+  @spec labelled(String.t()) :: [cell()]
+  def labelled(value) do
+    ~r/[^|│｜]+/u
+    |> Regex.scan(value, return: :index)
+    |> Enum.flat_map(fn [{start, length}] ->
+      case Regex.run(@cell, binary_part(value, start, length), return: :index) do
+        [_all, {_lead_at, lead}, {_label_at, label_size}, {_gap_at, gap}, {_at, digits}] ->
+          label = binary_part(value, start + lead, label_size)
+          at = start + lead + label_size + gap
+
+          [
+            %{
+              label: label,
+              number: value |> binary_part(at, digits) |> String.to_integer(),
+              at: {at, digits}
+            }
+          ]
+
+        nil ->
+          []
+      end
+    end)
+    |> Enum.uniq_by(&key(&1.label))
   end
 
   defp key(label), do: String.downcase(label)
@@ -73,15 +77,16 @@ defmodule Aethrion.Bridge.Ledger.Cells do
   @spec change(String.t(), String.t()) ::
           {:ok, String.t(), atom() | nil} | :rewrite | :none
   def change(row, change) do
-    cells = read(row)
+    cells = labelled(row)
     labels = Map.new(cells, &{key(&1.label), &1})
     bars = fn text -> length(Regex.scan(~r/[|│｜]/u, text)) end
+    parts = String.split(change, ~r/\s*[,;\/|│｜]\s*/u, trim: true)
 
     # Each part of the change that is a label and its number, and no more
     # than a remark after it: "L: +1 (warmed to you)", "L 0 → 1". A label
     # in the middle of a sentence ("Rank 3 guards arrived") names nothing.
     named =
-      for part <- String.split(change, ~r/\s*[,;\/|│｜]\s*/u),
+      for part <- parts,
           [_all, label, sign, n] <- [Regex.run(@named, part)],
           Map.has_key?(labels, key(label)),
           do: {key(label), sign, String.to_integer(n)}
@@ -89,6 +94,11 @@ defmodule Aethrion.Bridge.Ledger.Cells do
     cond do
       cells == [] ->
         :none
+
+      # Every part a label and its number, however they are set apart
+      # ("L +1 | C +1"): those numbers, and the rest of the row stays.
+      named != [] and length(named) == length(parts) ->
+        {:ok, put(row, numbers(named, labels)), nil}
 
       # As many cells as the row has: the row, written anew.
       bars.(change) >= max(bars.(row), 1) ->
@@ -98,18 +108,19 @@ defmodule Aethrion.Bridge.Ledger.Cells do
         :none
 
       true ->
-        # A number with its sign moves; without one it is the number as
-        # the row would write it ("L 1"), so the new value.
-        numbers =
-          for {label, sign, n} <- named, into: %{} do
-            case sign do
-              "" -> {label, n}
-              "+" -> {label, labels[label].number + n}
-              _minus -> {label, labels[label].number - n}
-            end
-          end
+        {:ok, put(row, numbers(named, labels)), nil}
+    end
+  end
 
-        {:ok, put(row, numbers), nil}
+  # A number with its sign moves; without one it is the number as the row
+  # would write it ("L 1"), so the new value.
+  defp numbers(named, labels) do
+    for {label, sign, n} <- named, into: %{} do
+      case sign do
+        "" -> {label, n}
+        "+" -> {label, labels[label].number + n}
+        _minus -> {label, labels[label].number - n}
+      end
     end
   end
 
@@ -118,7 +129,7 @@ defmodule Aethrion.Bridge.Ledger.Cells do
   def put(row, numbers) do
     # Later cells first, so the earlier ones' places stay where they are.
     row
-    |> read()
+    |> labelled()
     |> Enum.filter(&Map.has_key?(numbers, key(&1.label)))
     |> Enum.sort_by(fn %{at: {at, _size}} -> -at end)
     |> Enum.reduce(row, fn %{label: label, at: {at, size}}, text ->

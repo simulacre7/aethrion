@@ -243,6 +243,8 @@ defmodule Aethrion.Bridge.Reply do
   """
   @spec unsent(String.t(), String.t()) :: String.t()
   def unsent(text, gone) do
+    # (As the finished reply has its line breaks.)
+    gone = String.replace(gone, "\r\n", "\n")
     head = String.trim_trailing(gone)
 
     if String.starts_with?(text, head) do

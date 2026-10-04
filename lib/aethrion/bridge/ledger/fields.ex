@@ -25,13 +25,15 @@ defmodule Aethrion.Bridge.Ledger.Fields do
 
   @typedoc """
   A field: its name, its value, and where the value is in the window. A
-  heading says that it is one (`heading?`).
+  heading says that it is one (`heading?`), and a field named apart from
+  another has the name the window writes (`written`).
   """
   @type field :: %{
           required(:name) => String.t(),
           required(:value) => String.t(),
           required(:at) => {non_neg_integer(), non_neg_integer()},
-          optional(:heading?) => true
+          optional(:heading?) => true,
+          optional(:written) => String.t()
         }
 
   @doc "The fields of `window`, in order. `spec` has the window's opening and closing text."
@@ -86,12 +88,15 @@ defmodule Aethrion.Bridge.Ledger.Fields do
 
     {fields, _seen} =
       Enum.map_reduce(fields, {MapSet.new(), taken}, fn field, {seen, taken} ->
-        name =
+        field =
           if MapSet.member?(seen, key(field.name)),
-            do: next_name(field.name, taken),
-            else: field.name
+            do:
+              field
+              |> Map.put(:written, field.name)
+              |> Map.put(:name, next_name(field.name, taken)),
+            else: field
 
-        {%{field | name: name}, {MapSet.put(seen, key(name)), MapSet.put(taken, key(name))}}
+        {field, {MapSet.put(seen, key(field.name)), MapSet.put(taken, key(field.name))}}
       end)
 
     fields
@@ -127,12 +132,20 @@ defmodule Aethrion.Bridge.Ledger.Fields do
         # The value: the rest of the line, without the bracket that closes it,
         # nor the rule drawn after it ("4 ━━").
         value =
-          rest |> String.trim() |> String.replace(~r/[\s\]】］」━─═=\-–—*~_]+\z/u, "")
+          rest
+          |> String.trim()
+          |> String.replace(~r/\s*[\]】］」]\z/u, "")
+          |> String.replace(~r/\s+[━─═=\-–—*~_\s]+\z/u, "")
+          |> String.replace(~r/\s*[\]】］」]\z/u, "")
 
         lead = byte_size(rest) - byte_size(String.trim_leading(rest))
 
-        if name != "" and String.match?(value, ~r/[\p{L}\p{N}]/u),
-          do:
+        cond do
+          # An opening text that is only a mark ("📍") leads the first line.
+          name == "" and not String.match?(open, ~r/[\[\]<>(){}]/u) ->
+            {[], 0}
+
+          name != "" and String.match?(value, ~r/[\p{L}\p{N}]/u) ->
             {[
                %{
                  name: name,
@@ -140,8 +153,11 @@ defmodule Aethrion.Bridge.Ledger.Fields do
                  at: {byte_size(open) + lead, byte_size(value)},
                  heading?: true
                }
-             ], byte_size(open) + byte_size(rest)},
-          else: {[], byte_size(open)}
+             ], byte_size(open) + byte_size(rest)}
+
+          true ->
+            {[], byte_size(open)}
+        end
     end
   end
 
@@ -159,24 +175,31 @@ defmodule Aethrion.Bridge.Ledger.Fields do
   defp line(_window, _start, length) when length > @max_line, do: []
 
   defp line(window, start, length) do
+    # Without the blanks around it: a line of spaces is not gone through
+    # for a name.
+    {start, length} = trimmed(window, start, length)
     text = binary_part(window, start, length)
 
     cells =
       ~r/[^|│｜]+/u
       |> Regex.scan(text, return: :index)
-      |> Enum.map(fn [{at, size}] -> {start + at, size} end)
+      |> Enum.map(fn [{at, size}] -> trimmed(window, start + at, size) end)
+      |> Enum.reject(fn {_at, size} -> size == 0 end)
 
     named = Enum.map(cells, fn {at, size} -> named(window, at, size) end)
+    marked = Enum.map(cells, fn {at, size} -> marked(window, at, size) end)
 
     cond do
+      length == 0 ->
+        []
+
       # "Trust: 3% | Anger: 5% | a thought": each piece is a field.
       Enum.count(named, & &1) >= 2 ->
-        cells
-        |> Enum.zip(named)
-        |> Enum.map(fn {{at, size}, named} ->
-          named || free(binary_part(window, at, size), at)
-        end)
-        |> Enum.reject(&is_nil/1)
+        pieces(window, cells, named)
+
+      # "⏰ 14:30 | 📍 the school | ❤️ 30": each piece led by its mark.
+      length(cells) >= 2 and Enum.all?(Enum.zip(named, marked), fn {n, m} -> n || m end) ->
+        pieces(window, cells, Enum.zip_with(named, marked, &(&1 || &2)))
 
       row = row(window, cells, start + length) ->
         [row]
@@ -190,6 +213,21 @@ defmodule Aethrion.Bridge.Ledger.Fields do
     end
   end
 
+  defp pieces(window, cells, fields) do
+    cells
+    |> Enum.zip(fields)
+    |> Enum.map(fn {{at, size}, field} -> field || free(binary_part(window, at, size), at) end)
+    |> Enum.reject(&is_nil/1)
+  end
+
+  # A span of the window without the spaces and tabs at its ends.
+  defp trimmed(window, start, length) do
+    text = binary_part(window, start, length)
+    lead = byte_size(text) - byte_size(String.replace(text, ~r/\A[ \t\r]+/, ""))
+    kept = text |> String.replace(~r/\A[ \t\r]+/, "") |> String.replace(~r/[ \t\r]+\z/, "")
+    {start + lead, byte_size(kept)}
+  end
+
   @named ~r/\A(\s*(?:[-*•◈▶▪·\[]\s*)?)([^:：=\n]{1,40}?)\s*[:：]\s*(.*?)\s*\z/us
   @assigned ~r/\A(\s*(?:[-*•◈▶▪·\[]\s*)?)([\p{L}\p{N}_]{1,24})[ \t]*=[ \t]*(.*?)\s*\z/us
 
@@ -200,13 +238,13 @@ defmodule Aethrion.Bridge.Ledger.Fields do
     case Regex.run(@named, text, return: :index) || Regex.run(@assigned, text, return: :index) do
       [_all, _lead, {name_at, name_length}, {value_at, value_length}] ->
         name = text |> binary_part(name_at, name_length) |> clean_name()
+        value = binary_part(text, value_at, value_length)
 
-        if name != "" and value_length > 0,
-          do: %{
-            name: name,
-            value: binary_part(text, value_at, value_length),
-            at: {start + value_at, value_length}
-          }
+        # ("⏰ 09:47" names nothing with its colon: that is a clock.)
+        clock? = String.match?(name, ~r/[0-9]{1,2}\z/) and String.match?(value, ~r/\A[0-9]{2}/)
+
+        if name != "" and value_length > 0 and not clock?,
+          do: %{name: name, value: value, at: {start + value_at, value_length}}
 
       nil ->
         nil

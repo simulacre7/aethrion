@@ -387,7 +387,11 @@ defmodule Aethrion.Bridge.Ledger.Rules do
   defp run(values, rules, counted, fired) do
     values = settle(values, rules)
 
-    case risen(values, rules, counted) || holding(values, rules) do
+    # What only gives, then what happens, then what costs: a level gained
+    # this turn (by a rule, from experience gained this turn) pays for a
+    # point spent this turn.
+    case risen(values, rules, counted, false) || holding(values, rules) ||
+           risen(values, rules, counted, true) do
       nil ->
         {:ok, values}
 
@@ -408,10 +412,9 @@ defmodule Aethrion.Bridge.Ledger.Rules do
     end
   end
 
-  # A field that has risen past what its rules have taken up. A rise that
-  # only gives comes before one that costs: a level gained this turn pays
-  # for a point spent this turn.
-  defp risen(values, rules, counted) do
+  # A field that has risen past what its rules have taken up, and whose
+  # rules cost something (`costs?`) or only give.
+  defp risen(values, rules, counted, costs?) do
     rules
     |> Enum.filter(fn
       {:rise, name, _changes} ->
@@ -423,10 +426,10 @@ defmodule Aethrion.Bridge.Ledger.Rules do
     |> Enum.group_by(fn {:rise, name, _changes} -> name end, fn {:rise, _name, changes} ->
       Enum.any?(changes, &match?({:sub, _target, _expr}, &1))
     end)
-    |> Enum.min_by(fn {_name, costs?} -> Enum.any?(costs?) end, fn -> nil end)
+    |> Enum.find(fn {_name, costs} -> Enum.any?(costs) == costs? end)
     |> case do
       nil -> nil
-      {name, _costs?} -> {:risen, name}
+      {name, _costs} -> {:risen, name}
     end
   end
 
