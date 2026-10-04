@@ -736,9 +736,12 @@ defmodule Aethrion.Bridge.Ledger do
   # (A figure and a row of numbers read their own arrows, and a value that
   # had an arrow in it keeps the one it is given.)
   defp come_to(was, value, habits) do
+    # ("+ring → -ring" is a list's own; "+20 minutes → 14:40" comes to a time.)
     own? =
       (figure?(was) and not habits[:dated?]) or Cells.read(was) != [] or
-        String.match?(was, ~r/→|->|=>/u) or String.match?(value, ~r/\A[+\-−]/u)
+        String.match?(was, ~r/→|->|=>/u) or
+        (String.match?(value, ~r/\A[+\-−]/u) and
+           not String.match?(arrived(value), ~r/\A[0-9]{1,2}:[0-9]{2}/u))
 
     if own?, do: value, else: arrived(value)
   end
@@ -848,33 +851,7 @@ defmodule Aethrion.Bridge.Ledger do
 
   defp counted(was, value, habits) do
     figure? = figure?(was)
-
-    # "31 / 48 → 14 / 48" or "15 - 15 = 0", as some write a change: what
-    # it comes to, said outright.
-    {value, outright?} =
-      cond do
-        not figure? ->
-          {value, false}
-
-        match = Regex.run(~r/\A.*(?:→|->|=>)\s*(\S.*)\z/us, value) ->
-          {List.last(match), true}
-
-        # "42 + 8": the number it stands at, and what is added to it.
-        match = Regex.run(~r/\A\s*(-?[0-9][0-9,]*)\s*([+\-−])\s*([0-9][0-9,]*)\s*\z/u, value) ->
-          [_all, from, sign, by] = match
-          if int(from) == first(was), do: {sign <> by, false}, else: {value, false}
-
-        # "15 - 15 = 0": a sum, with what it comes to after the sign.
-        match =
-            Regex.run(
-              ~r/\A.*=\s*(-?[0-9][0-9,.]*(?:\s*\/\s*[0-9][0-9,.]*)?)\s*\z/us,
-              value
-            ) ->
-          {List.last(match), true}
-
-        true ->
-          {value, false}
-      end
+    {value, outright?} = if figure?, do: come_to_number(was, value), else: {value, false}
 
     habits = Map.put(habits, :outright?, outright? or habits[:outright?] == true)
 
@@ -890,6 +867,61 @@ defmodule Aethrion.Bridge.Ledger do
 
     numbered(number(was), delta, value, habits) || worded(was, value, habits, figure?)
   end
+
+  # "31 / 48 → 14 / 48" or "15 - 15 = 0", as some write a change to a
+  # figure: what it comes to, and whether that is said outright.
+  defp come_to_number(was, value) do
+    cond do
+      # "+5 -15", "-15 +9 = -6": several moves, and what they come to.
+      match =
+          Regex.run(~r/\A\s*((?:[+\-−]\s*[0-9][0-9,]*\s*){2,})(?:=\s*(.*))?\z/us, value) ->
+        several(match)
+
+      match = Regex.run(~r/\A.*(?:→|->|=>)\s*(\S.*)\z/us, value) ->
+        {List.last(match), true}
+
+      # "42 + 8", "36 + 25 / 50": the number it stands at, and what is added to it.
+      match =
+          Regex.run(
+            ~r/\A\s*(-?[0-9][0-9,]*)\s*([+\-−])\s*([0-9][0-9,]*)\s*(?:\/\s*[0-9][0-9,]*\s*)?\z/u,
+            value
+          ) ->
+        [_all, from, sign, by] = match
+        if int(from) == first(was), do: {sign <> by, false}, else: {value, false}
+
+      # "15 - 15 = 0": a sum, with what it comes to after the sign.
+      match =
+          Regex.run(~r/\A.*=\s*(-?[0-9][0-9,.]*(?:\s*\/\s*[0-9][0-9,.]*)?)\s*\z/us, value) ->
+        {List.last(match), true}
+
+      true ->
+        {value, false}
+    end
+  end
+
+  # Several moves in one change: the number they are said to come to, when
+  # one is said plainly ("= 34"); else their sum.
+  defp several([_all, moves | result]) do
+    sum =
+      ~r/([+\-−])\s*([0-9][0-9,]*)/u
+      |> Regex.scan(moves)
+      |> Enum.reduce(0, fn [_all, sign, n], sum ->
+        if sign == "+", do: sum + int(n), else: sum - int(n)
+      end)
+
+    case result do
+      [result] ->
+        if String.match?(result, ~r/\A[0-9][0-9,]*(?:\s*\/\s*[0-9][0-9,]*)?\s*\z/u),
+          do: {result, true},
+          else: {signed(sum), false}
+
+      [] ->
+        {signed(sum), false}
+    end
+  end
+
+  defp signed(n) when n < 0, do: Integer.to_string(n)
+  defp signed(n), do: "+" <> Integer.to_string(n)
 
   # A number moved or set, or nil when the field or the change is none.
   defp numbered({:pair, _pre, a, _sep, b, _post} = pair, {:move, d}, _value, habits),
@@ -1107,6 +1139,11 @@ defmodule Aethrion.Bridge.Ledger do
 
   @number "(?:[0-9]{1,3}(?:,[0-9]{3})+|[0-9]+)(?:\\.[0-9]+)?"
   @moved Regex.compile!("\\A([+\\-−])\\s*(#{@number})\\s*[^0-9\\/]*\\z", "u")
+  # "+25 / 50": a move, written before the maximum it is kept within.
+  @moved_pair Regex.compile!(
+                "\\A([+\\-−])\\s*(#{@number})\\s*\\/\\s*#{@number}[^0-9]*\\z",
+                "u"
+              )
   @pair_set Regex.compile!("\\A[^0-9]*?(-?#{@number})\\s*\\/\\s*(#{@number})[^0-9]*\\z", "u")
   @one_set Regex.compile!("\\A[^0-9+\\-−]*?(#{@number})[^0-9]*\\z", "u")
   @moved_first Regex.compile!("\\A([+\\-−])\\s*(#{@number})(?!\\s*\\/|[0-9]|,[0-9])", "u")
@@ -1121,6 +1158,7 @@ defmodule Aethrion.Bridge.Ledger do
     cond do
       String.match?(value, ~r/[0-9]{16}/) -> :text
       match = Regex.run(@moved, value) -> move(match)
+      match = Regex.run(@moved_pair, value) -> move(match)
       match = Regex.run(@pair_set, value) -> set_pair(match)
       # A number with words around it, and no sign: the new value.
       match = Regex.run(@one_set, value) -> {:set, int(Enum.at(match, 1))}

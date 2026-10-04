@@ -259,17 +259,38 @@ defmodule Aethrion.Bridge.Ledger.Listing do
       # "+potion × 1 -rat fur × 1": nothing between them but a space. (A
       # sign before a number is a thing's own: "sword +1".)
       |> Enum.flat_map(&String.split(&1, ~r/\s+(?=[+\-−][^\p{Nd}\s+\-−])/u))
+      |> Enum.flat_map(&counted_parts/1)
       |> Enum.map(&String.trim/1)
       |> Enum.reject(&(&1 == ""))
       |> Enum.map_reduce(:plus, fn part, sign ->
         case Regex.run(~r/\A([+\-−])\s*(.*)\z/us, part) do
           [_all, "+", rest] -> {{:plus, changed_item(rest)}, :plus}
           [_all, _minus, rest] -> {{:minus, changed_item(rest)}, :minus}
-          nil -> {{sign, changed_item(part)}, sign}
+          # With no sign of its own, the word for it, or the sign before.
+          nil -> {{said_sign(part, sign), changed_item(part)}, sign}
         end
       end)
 
     Enum.reject(steps, fn {_sign, item} -> item.name == "" end)
+  end
+
+  # "-hive × 5 slain, mana stone × 5 gained", in a list that splits its
+  # things otherwise: each counted thing is a part.
+  defp counted_parts(part) do
+    pieces = String.split(part, ~r/,\s+/u)
+
+    if length(pieces) >= 2 and
+         Enum.all?(pieces, &String.match?(&1, ~r/\A\s*[+\-−]|[×xX\*]\s*[0-9]+|[0-9]+\s*개/u)),
+       do: pieces,
+       else: [part]
+  end
+
+  defp said_sign(part, sign) do
+    cond do
+      gained?(part) -> :plus
+      String.match?(part, ~r/사용|소모|소비|잃|판매|used|lost|sold|consumed|spent/iu) -> :minus
+      true -> sign
+    end
   end
 
   defp move(items, :plus, new) do

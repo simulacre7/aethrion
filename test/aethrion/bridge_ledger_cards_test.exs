@@ -168,6 +168,18 @@ defmodule Aethrion.BridgeLedgerCardsTest do
 
     assert now == "[상태창]\n- HP: 50 / 50\n- 골드: 50\n- 소지품: 낡은 검 / 회복약 × 1\n[상태창]"
 
+    # A move written before the maximum is a move, not a pair to set.
+    hp = fn value ->
+      {now, _applied, _refused} = Ledger.apply(window, [{"HP", value}], spec)
+      now |> String.split("\n") |> Enum.at(1)
+    end
+
+    assert hp.("+10 / 50") == "- HP: 46 / 50"
+    assert hp.("-5 / 50") == "- HP: 31 / 50"
+    assert hp.("36 + 10 / 50") == "- HP: 46 / 50"
+    assert hp.("+25 / 50") == "- HP: 50 / 50"
+    assert hp.("40 / 50") == "- HP: 40 / 50"
+
     # A thing no list holds is no field, and a sum from another number is not this one's.
     assert {^window, [], [{"마나 물약", "-1", :unknown}, {"골드", "40 + 8", _reason}]} =
              Ledger.apply(window, [{"마나 물약", "-1"}, {"골드", "40 + 8"}], spec)
@@ -190,6 +202,58 @@ defmodule Aethrion.BridgeLedgerCardsTest do
       )
 
     assert now == "[상태창]\n- 날짜: 2일차 아침\n- 기분: 들뜸\n- HP: 50 / 50\n- 변화: 은 → 금\n[상태창]"
+  end
+
+  test "the forms a small model wrote over a night of sessions" do
+    spec = %{open: "[Status]", close: "[Status]"}
+
+    window =
+      "[Status]\n- Time: 14:20:00\n- Location: 명월탑 6층\n- HP: 36 / 50\n- EXP: 90 / 201\n- 골드: 42\n" <>
+        "- Strength: 19\n- Item: 특급 마정석 × 200 / 황금 천사 편 × 1 / 고블린 하이브 (괴물심장) × 5 / 최하급 마정석 × 2\n[Status]"
+
+    for {name, value, expected} <- [
+          # Several moves in one change come to their sum, or to the number said plainly.
+          {"골드", "+7 -15 = 34", "34"},
+          {"골드", "+5 -15", "32"},
+          {"골드", "+8 - 15", "35"},
+          {"골드", "-15 +9 = -6", "36"},
+          {"골드", "+5 - 15 = +(-10)", "32"},
+          {"골드", "+8 -15 = +45에서 35로", "35"},
+          {"골드", "42 + 8", "50"},
+          {"골드", "+8 (42 → 50)", "50"},
+          {"골드", "42 → 50 (+8)", "50"},
+          # One move with what it comes to.
+          {"Strength", "+4 (19 → 23)", "23"},
+          {"HP", "-8 → 28 / 50", "28 / 50"},
+          {"HP", "36 - 8 = 28 / 50", "28 / 50"},
+          {"HP", "36 / 50 → 61 / 50 → 50 / 50", "50 / 50"},
+          {"HP", "-18 (피로 누적)", "18 / 50"},
+          {"EXP", "+25 → 115/201", "115 / 201"},
+          # Times and places.
+          {"Time", "+20 minutes → 14:40:00", "14:40:00"},
+          {"Time", "06:30:00 → 09:15:00", "09:15:00"},
+          {"Time", "+0:03:30", "14:23:30"},
+          {"Location", "명월탑 6층 → 명월탑 1층 → 협회 정산 센터", "협회 정산 센터"},
+          # Lists.
+          {"Item", "-특급 마정석 × 189, -황금 천사 편", "특급 마정석 × 11 / 고블린 하이브 (괴물심장) × 5 / 최하급 마정석 × 2"},
+          {"Item", "-고블린 하이브 (괴물심장) × 5 처치, 최하급 마정석 × 5 획득",
+           "특급 마정석 × 200 / 황금 천사 편 × 1 / 최하급 마정석 × 7"}
+        ] do
+      {now, _applied, refused} = Ledger.apply(window, [{name, value}], spec)
+      got = Enum.find(Ledger.fields(now, spec), &(&1.name == name)).value
+      assert {name, value, got, refused} == {name, value, expected, []}
+    end
+
+    # What says too much to be read is refused, and the field stays.
+    assert {^window, [], [{"EXP", _value, :unreadable}]} =
+             Ledger.apply(
+               window,
+               [
+                 {"EXP",
+                  "+150 (90 → 40/240); actually: 90 + 150 = 240, so 240 = 240 → Level 7, 0 + 40"}
+               ],
+               spec
+             )
   end
 
   test "a list that counts every thing counts a new one as well" do
