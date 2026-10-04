@@ -324,6 +324,17 @@ defmodule Aethrion.BridgeLedgerTest do
                Ledger.apply(line, [{"Time", "+2 hours"}], %{open: "[", close: "]"})
     end
 
+    test "a number alone for a pair is not taken: it says neither up nor down" do
+      changes = [{"HP", "8"}, {"EXP", "15"}, {"HP", "now 100"}, {"Strength", "14"}]
+      assert {kept, _applied, refused} = Ledger.apply(window(), changes, @lines)
+      assert value(kept, @lines, "EXP") == "23 / 266"
+      # Words that say it is the new value; and a number that stands alone is set.
+      assert value(kept, @lines, "HP") == "100 / 130"
+      assert value(kept, @lines, "Strength") == "14"
+      assert refused == [{"HP", "8", :unsigned}, {"EXP", "15", :unsigned}]
+      assert Ledger.log([], refused, :ko) == ["기록 · HP: 8 (+나 -가 없음)", "기록 · EXP: 15 (+나 -가 없음)"]
+    end
+
     test "a list is changed a thing at a time" do
       changes = [{"Item", "+마정석 (최하급) × 2"}, {"Item", "-타워 단말기 (보급형)"}, {"Item", "-엘릭서"}]
       assert {kept, applied, refused} = Ledger.apply(window(), changes, @lines)

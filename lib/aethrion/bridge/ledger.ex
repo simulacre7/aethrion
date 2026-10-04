@@ -597,8 +597,18 @@ defmodule Aethrion.Bridge.Ledger do
   defp numbered({:pair, _pre, _a, _sep, _b, _post} = pair, {:set_pair, a, b}, value, habits),
     do: put_pair(dressed(pair, value), a, b, habits[:open?])
 
-  defp numbered({:pair, _pre, _a, _sep, b, _post} = pair, {:set, a}, _value, habits),
-    do: put_pair(pair, a, b, habits[:open?])
+  # A number alone for a pair says neither which way it moves nor that it
+  # is the new value: a small model writes "HP: 8" for eight lost. It is
+  # taken as the new value only with words that say so ("now 8", "8 left").
+  defp numbered({:pair, _pre, _a, _sep, b, _post} = pair, {:set, a}, value, habits) do
+    if String.match?(value, ~r/\A\s*-?[\d,.]+\s*\z/u) do
+      {:pair, _pre, now, _sep, _b, _post} = pair
+      {as_it_was, _problem} = put_pair(pair, now, b, true)
+      {as_it_was, :unsigned}
+    else
+      put_pair(pair, a, b, habits[:open?])
+    end
+  end
 
   defp numbered({:one, _pre, a, _post} = one, {:move, d}, _value, _habits),
     do: put_one(one, a + d)
@@ -923,7 +933,7 @@ defmodule Aethrion.Bridge.Ledger do
             " (" <> Enum.join(rule_texts(fields, spec), " | ") <> ")."
       end
 
-    "The status window is kept by the game's rules and shown by them: do not print it yourself, whatever the card says. Instead, after everything else, write <aethrion-ledger>...</aethrion-ledger> with one line for each field of the window that this reply changes: `Field: +N` or `Field: -N` for a number that goes up or down (damage taken is `HP: -N`), `Field: N / M` to set both numbers of a pair, or `Field: new text`.#{lists} Use the window's field names (#{names}).#{ruled}#{already} Leave out every field that stays as it is, and write the tags with nothing between them when nothing changes. It is not shown to the player."
+    "The status window is kept by the game's rules and shown by them: do not print it yourself, whatever the card says. Instead, after everything else, write <aethrion-ledger>...</aethrion-ledger> with one line for each field of the window that this reply changes: `Field: +N` or `Field: -N`, always with its sign, for a number that goes up or down (damage taken is `HP: -N`, experience gained `EXP: +N`), `Field: N / M` to set both numbers of a pair, or `Field: new text`.#{lists} Use the window's field names (#{names}).#{ruled}#{already} Leave out every field that stays as it is, and write the tags with nothing between them when nothing changes. It is not shown to the player."
   end
 
   @doc """
@@ -1021,7 +1031,8 @@ defmodule Aethrion.Bridge.Ledger do
     clamped: {"한도에 맞춤", "kept within bounds"},
     missing: {"가지고 있지 않음", "not held"},
     ruled: {"규칙이 정함", "set by the rules"},
-    unreadable: {"숫자가 아님", "not a number"}
+    unreadable: {"숫자가 아님", "not a number"},
+    unsigned: {"+나 -가 없음", "no + or -"}
   }
 
   defp reason(reason, locale) do
