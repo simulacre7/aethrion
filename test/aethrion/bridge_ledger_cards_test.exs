@@ -103,6 +103,17 @@ defmodule Aethrion.BridgeLedgerCardsTest do
     end
   end
 
+  test "what the rules say of a person, written under the person's name, is dropped without a line" do
+    spec = %{open: "[Time:", close: "]"}
+    window = "[Time: 02:15 | Location: an alley | Race: Civilian]"
+
+    assert Ledger.apply(window, [{"한서율", "trust +6"}, {"유서아", "호감 +10"}], spec) ==
+             {window, [], []}
+
+    assert {^window, [], [{"Mana", "+1", :unknown}]} =
+             Ledger.apply(window, [{"Mana", "+1"}], spec)
+  end
+
   test "a list that counts every thing counts a new one as well" do
     habits = %{separator: ", ", empty: "None"}
 

@@ -385,8 +385,12 @@ defmodule Aethrion.Bridge.Ledger do
         {name, value} = celled(by_name, name, value)
 
         case Map.get(by_name, key(name)) do
+          # What the rules say of a person (affinity, trust), written under
+          # the person's name: the rules' own, and no line of the window.
           nil ->
-            {edits, applied, refused ++ [{name, value, :unknown}]}
+            if String.match?(value, ~r/\A\s*(?:affinity|trust|호감|신뢰)/iu),
+              do: {edits, applied, refused},
+              else: {edits, applied, refused ++ [{name, value, :unknown}]}
 
           field ->
             # A field named twice: the later change works on the earlier one's result.
