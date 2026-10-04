@@ -83,7 +83,9 @@ defmodule Aethrion.Bridge.Ledger.Fields do
     {fields, _seen} =
       Enum.map_reduce(fields, {MapSet.new(), taken}, fn field, {seen, taken} ->
         name =
-          if MapSet.member?(seen, key(field.name)), do: free(field.name, taken), else: field.name
+          if MapSet.member?(seen, key(field.name)),
+            do: next_name(field.name, taken),
+            else: field.name
 
         {%{field | name: name}, {MapSet.put(seen, key(name)), MapSet.put(taken, key(name))}}
       end)
@@ -92,7 +94,7 @@ defmodule Aethrion.Bridge.Ledger.Fields do
   end
 
   # The name with the next number no field has.
-  defp free(name, taken) do
+  defp next_name(name, taken) do
     Enum.find_value(2..500, name, fn n ->
       numbered = "#{name} #{n}"
       if not MapSet.member?(taken, key(numbered)), do: numbered
