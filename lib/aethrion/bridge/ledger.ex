@@ -742,10 +742,16 @@ defmodule Aethrion.Bridge.Ledger do
   defp loose_delta(value) do
     cond do
       match = Regex.run(@moved_first, value) -> move(match)
+      # A figure that leads its own words ("2 · night · room B2"): the new value.
+      leading = leading(number(value)) -> leading
       match = Regex.run(@pair_within, value) -> set_pair(match)
       true -> one_among_words(Regex.scan(@numbers_within, value))
     end
   end
+
+  defp leading({:one, "", a, _post}), do: {:set, a}
+  defp leading({:pair, "", a, _sep, b, _post}), do: {:set_pair, a, b}
+  defp leading(_other), do: nil
 
   # One number among words: a change when it carries a sign ("ego -2"),
   # else the new value ("level 9 reached"). Several numbers say too much.

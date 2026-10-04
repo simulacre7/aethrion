@@ -218,6 +218,8 @@ defmodule Aethrion.BridgeLedgerTest do
                ~w(Day Present Visited Hansol Remi)
 
       changes = [
+        # Its words hold a number of their own (a room on B2).
+        {"Day", "1 · 밤 · B2 E동 숙소"},
         {"Day", "2 · 아침 식사 · 식당"},
         {"Visited", "+Hansol"},
         {"Present", "-Leo"},
