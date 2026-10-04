@@ -63,7 +63,8 @@ defmodule Aethrion.Bridge.Ledger.Rules do
           | {:rise, String.t(), [change()]}
 
   @functions ~w(floor ceil round min max clamp if abs)
-  @max_firings 40
+  @max_firings 300
+  @max_points 1_000
 
   @doc """
   A rule as written, read against the window's field names (as the ledger
@@ -364,10 +365,10 @@ defmodule Aethrion.Bridge.Ledger.Rules do
   """
   @spec run(values(), [rule()], values() | nil) :: values()
   def run(values, rules, before \\ nil) do
-    # What each rule for a rise has taken up so far: its field as it was.
+    # How far each field's rise has been taken up: the field as it was.
     counted =
-      for {:rise, name, _changes} = rule <- rules, into: %{} do
-        {rule, (before || values) |> Map.get(name, %{now: nil}) |> Map.fetch!(:now)}
+      for {:rise, name, _changes} <- rules, into: %{} do
+        {name, (before || values) |> Map.get(name, %{now: nil}) |> Map.fetch!(:now)}
       end
 
     # Each field with what it was before this turn, for `Field.before`.
@@ -385,22 +386,21 @@ defmodule Aethrion.Bridge.Ledger.Rules do
 
   defp run(values, rules, counted, fired) do
     values = settle(values, rules)
-    happening = risen(values, rules, counted) || holding(values, rules)
-    fired = if happening, do: Map.update(fired, happening, 1, &(&1 + 1)), else: fired
 
-    case happening do
+    case risen(values, rules, counted) || holding(values, rules) do
       nil ->
         {:ok, values}
 
-      rule when :erlang.map_get(rule, fired) > @max_firings ->
-        {:runaway, rule}
-
-      {:rise, _name, _changes} = rule ->
-        {values, counted} = step(values, rule, counted)
-        run(values, rules, counted, fired)
+      # A rise is taken up a point at a time, by every rule for the field.
+      {:risen, name} ->
+        {values, counted} = step(values, name, rules, counted, Map.get(fired, name, 0))
+        run(values, rules, counted, Map.update(fired, name, 1, &(&1 + 1)))
 
       {:when, _condition, changes} = rule ->
+        fired = Map.update(fired, rule, 1, &(&1 + 1))
+
         case fire(values, changes) do
+          _next when :erlang.map_get(rule, fired) > @max_firings -> {:runaway, rule}
           # Nothing moved though the condition holds: it never will.
           ^values -> {:runaway, rule}
           next -> run(next, rules, counted, fired)
@@ -408,22 +408,26 @@ defmodule Aethrion.Bridge.Ledger.Rules do
     end
   end
 
-  # The rule for a field that has risen past what was counted. What a rise
-  # gives comes before what a rise costs: a level gained this turn pays
+  # A field that has risen past what its rules have taken up. A rise that
+  # only gives comes before one that costs: a level gained this turn pays
   # for a point spent this turn.
   defp risen(values, rules, counted) do
     rules
     |> Enum.filter(fn
-      {:rise, name, _changes} = rule ->
-        is_number(counted[rule]) and is_map(values[name]) and values[name].now > counted[rule]
+      {:rise, name, _changes} ->
+        is_number(counted[name]) and is_map(values[name]) and values[name].now > counted[name]
 
       _other ->
         false
     end)
-    |> Enum.sort_by(fn {:rise, _name, changes} ->
+    |> Enum.group_by(fn {:rise, name, _changes} -> name end, fn {:rise, _name, changes} ->
       Enum.any?(changes, &match?({:sub, _target, _expr}, &1))
     end)
-    |> List.first()
+    |> Enum.min_by(fn {_name, costs?} -> Enum.any?(costs?) end, fn -> nil end)
+    |> case do
+      nil -> nil
+      {name, _costs?} -> {:risen, name}
+    end
   end
 
   defp holding(values, rules) do
@@ -433,28 +437,46 @@ defmodule Aethrion.Bridge.Ledger.Rules do
     end)
   end
 
-  # One point of a rise, the changes seeing that point. A point that
-  # cannot be paid for is not gained: the field goes back to where what
-  # could be paid brought it.
-  defp step(values, {:rise, name, changes} = rule, counted) do
-    step = counted[rule] + 1
+  # One point of a field's rise, for every rule about it, the changes
+  # seeing that point: what the point gives, then what it costs (a level
+  # gained this turn pays for a point spent this turn). A point that
+  # cannot be paid for is not gained, and gives nothing: the field goes
+  # back to where what could be paid brought it. A rise of more points
+  # than any game has is left as it is.
+  defp step(values, name, _rules, counted, taken) when taken >= @max_points,
+    do: {values, Map.put(counted, name, values[name].now)}
+
+  defp step(values, name, rules, counted, _taken) do
+    changes =
+      rules
+      |> Enum.flat_map(fn
+        {:rise, ^name, changes} -> changes
+        _other -> []
+      end)
+      |> Enum.sort_by(&match?({:sub, _target, _expr}, &1))
+
+    step = counted[name] + 1
     real = values[name].now
     at_step = put_in(values[name].now, step)
 
-    if affordable?(at_step, changes) do
-      stepped = fire(at_step, changes)
-      next = if stepped[name].now == step, do: put_in(stepped[name].now, real), else: stepped
-      {next, Map.put(counted, rule, step)}
-    else
-      # The field goes back for every rule that looks at it.
-      back = counted[rule]
+    case pay(at_step, changes) do
+      {:ok, stepped} ->
+        next = if stepped[name].now == step, do: put_in(stepped[name].now, real), else: stepped
+        {next, Map.put(counted, name, step)}
 
-      {put_in(values[name].now, back),
-       Map.new(counted, fn
-         {{:rise, ^name, _changes} = other, n} -> {other, min(n, back)}
-         entry -> entry
-       end)}
+      :short ->
+        {put_in(values[name].now, counted[name]), counted}
     end
+  end
+
+  # The changes made one after another, or `:short` when one would take
+  # from what is not there (what is paid from is not taken below nothing).
+  defp pay(values, changes) do
+    Enum.reduce_while(changes, {:ok, values}, fn change, {:ok, values} ->
+      if affordable?(values, [change]),
+        do: {:cont, {:ok, fire(values, [change])}},
+        else: {:halt, :short}
+    end)
   end
 
   # What always holds, each rule seeing the ones before it.

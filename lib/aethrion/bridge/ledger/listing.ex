@@ -288,6 +288,8 @@ defmodule Aethrion.Bridge.Ledger.Listing do
   defp move(items, :minus, gone) do
     case Enum.find(items, &same?(&1, gone)) do
       nil -> without_remark(items, gone)
+      # An amount is spent by a number: "-G" says none.
+      %{style: {:amount, _space}} when gone.count == nil -> {:missing, items}
       %{style: {:amount, _space}} = held -> spend(items, held, gone)
       held -> take_away(items, held, gone)
     end

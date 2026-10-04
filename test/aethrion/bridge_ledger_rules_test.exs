@@ -185,6 +185,30 @@ defmodule Aethrion.BridgeLedgerRulesTest do
     start = values()
     turn = Map.merge(start, %{"vigor" => %{now: 10, max: nil}, "level" => %{now: 2, max: nil}})
     assert %{"stat point" => %{now: 1}, "vigor" => %{now: 10}} = Rules.run(turn, both, start)
+
+    # A point that cannot be paid for gives nothing either.
+    gifts = rules(["when Vigor rises: HP.max += 10", "when Vigor rises: Stat Point -= 1"])
+    one_point = values(%{"stat point" => %{now: 1, max: nil}})
+    raised = Map.put(one_point, "vigor", %{now: 10, max: nil})
+
+    assert %{"vigor" => %{now: 9}, "stat point" => %{now: 0}, "hp" => %{now: 90, max: 90}} =
+             Rules.run(raised, gifts, one_point)
+
+    # More points than a rule may fire for a runaway are still paid for one by one.
+    rich = values(%{"stat point" => %{now: 100, max: nil}})
+
+    assert %{"vigor" => %{now: 63}, "stat point" => %{now: 45}} =
+             Rules.run(
+               Map.put(rich, "vigor", %{now: 63, max: nil}),
+               rules(["when Vigor rises: Stat Point -= 1"]),
+               rich
+             )
+
+    # And a great deal of experience is a great many levels.
+    levels = rules(["when EXP >= EXP.max: Level += 1; EXP -= EXP.max"])
+
+    assert %{"level" => %{now: 151}, "exp" => %{now: 50}} =
+             Rules.run(values(%{"exp" => %{now: 15_050, max: 100}}), levels)
   end
 
   test "raised/1 and watched/1: what the rules raise themselves, and what may pass its maximum" do

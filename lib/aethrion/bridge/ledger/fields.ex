@@ -55,25 +55,49 @@ defmodule Aethrion.Bridge.Ledger.Fields do
       else: Enum.filter(fields, & &1.name)
   end
 
-  # Two fields of one name (two people's HP) are told apart: the later
-  # ones are "HP 2", "HP 3".
-  defp apart(fields) do
-    {fields, _seen} =
-      Enum.map_reduce(fields, %{}, fn field, seen ->
-        key = String.downcase(field.name)
-        n = Map.get(seen, key, 0) + 1
+  @doc """
+  A field's name as it is looked up: in lower case, its spaces single, and
+  without the marks before it ("❤️ HP" is "hp"), unless it is all marks.
+  """
+  @spec key(String.t()) :: String.t()
+  def key(name) do
+    key = name |> String.downcase() |> String.replace(~r/\s+/u, " ") |> String.trim()
 
-        {if(n == 1, do: field, else: %{field | name: "#{field.name} #{n}"}),
-         Map.put(seen, key, n)}
-      end)
-
-    fields
+    case String.replace(key, ~r/\A[^\p{L}\p{N}]+/u, "") do
+      "" -> key
+      bare -> bare
+    end
   end
 
   @doc "A field's name as written, without the marks around it."
   @spec clean_name(String.t()) :: String.t()
   def clean_name(name),
     do: name |> String.replace(~r/[\[\]\*`_]/u, "") |> String.trim()
+
+  # Two fields that would be looked up as one (two people's HP, "❤️ HP"
+  # and "HP") are told apart: the later ones are "HP 2", "HP 3", or the
+  # next number no field has.
+  defp apart(fields) do
+    taken = MapSet.new(fields, &key(&1.name))
+
+    {fields, _seen} =
+      Enum.map_reduce(fields, {MapSet.new(), taken}, fn field, {seen, taken} ->
+        name =
+          if MapSet.member?(seen, key(field.name)), do: free(field.name, taken), else: field.name
+
+        {%{field | name: name}, {MapSet.put(seen, key(name)), MapSet.put(taken, key(name))}}
+      end)
+
+    fields
+  end
+
+  # The name with the next number no field has.
+  defp free(name, taken) do
+    Enum.find_value(2..500, name, fn n ->
+      numbered = "#{name} #{n}"
+      if not MapSet.member?(taken, key(numbered)), do: numbered
+    end)
+  end
 
   # The field the opening text makes, and where the rest of the window
   # begins. An opening text that names the first field ("[Date:", "◈무공"

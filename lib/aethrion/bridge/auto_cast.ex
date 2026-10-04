@@ -235,7 +235,8 @@ defmodule Aethrion.Bridge.AutoCast do
   # is the card's (most of it is there word for word, whatever its spacing
   # and case, though the reader may have left some of it out), and each
   # number the rule uses (0 and 1 aside) stands in it with the words
-  # around it as the card has them.
+  # around it as the card has them, and the sentence names the fields the
+  # rule speaks of.
   def stated?(rule, from, text) do
     {quote, card} = {plain(from), plain(text)}
 
@@ -246,8 +247,30 @@ defmodule Aethrion.Bridge.AutoCast do
       |> Enum.reject(&(&1 in ["0", "1"]))
       |> Enum.uniq()
 
-    String.length(quote) >= 6 and quoted?(quote, card) and
-      Enum.all?(numbers, &in_place?(&1, quote, card))
+    String.length(quote) >= 8 and quoted?(quote, card) and
+      Enum.all?(numbers, &in_place?(&1, quote, card)) and named?(rule, quote)
+  end
+
+  # The sentence names the fields the rule speaks of: all of two, and all
+  # but one of three or more (a sentence under the heading "Stat Point"
+  # need not say the heading again).
+  defp named?(rule, quote) do
+    words = words(rule)
+    missing = Enum.count(words, &(not String.contains?(quote, &1)))
+    missing <= div(length(words) - 1, 2)
+  end
+
+  @rule_words ~w(when rises rise increases increase then and or max maximum now current cur
+                 before was previous prev floor ceil round min clamp if abs)
+
+  # The fields a rule speaks of, as words to look for in its sentence: a
+  # sentence about the inn's price states nothing of HP and Vigor.
+  defp words(rule) do
+    ~r/\p{L}[\p{L}\p{N}]*/u
+    |> Regex.scan(String.downcase(rule))
+    |> List.flatten()
+    |> Enum.reject(&(&1 in @rule_words))
+    |> Enum.uniq()
   end
 
   @piece 16
@@ -411,8 +434,10 @@ defmodule Aethrion.Bridge.AutoCast do
       characters =
         characters
         |> Enum.filter(&(is_map(&1) and is_binary(&1["name"]) and String.trim(&1["name"]) != ""))
-        # The player is not one of the people the player meets.
-        |> Enum.reject(&(player != nil and Aethrion.Bridge.Scene.same?(&1["name"], player)))
+        # The player is not one of the people the player meets, under the
+        # name the card gives or a stand-in for it (the cast keeps "user"
+        # for the player).
+        |> Enum.reject(&player?(&1["name"], player))
         |> Enum.uniq_by(&Card.id_for(String.trim(&1["name"])))
         |> Enum.take(@max_people)
 
@@ -479,6 +504,11 @@ defmodule Aethrion.Bridge.AutoCast do
       end)
 
     lines ++ List.wrap(happening)
+  end
+
+  defp player?(name, player) do
+    String.downcase(String.trim(name)) in ["user", "{{user}}", "player", "you"] or
+      (player != nil and Aethrion.Bridge.Scene.same?(name, player))
   end
 
   # The player's name as the card gives it, when it is a name.

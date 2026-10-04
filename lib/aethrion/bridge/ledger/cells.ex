@@ -24,6 +24,11 @@ defmodule Aethrion.Bridge.Ledger.Cells do
 
   @cell ~r/\A(\s*)(\p{L}[\p{L}\p{N}]{0,11})(\s+)(-?[0-9]+)(?![0-9.,][0-9]|[0-9])/u
 
+  # A label and its number, as a change writes one: the number signed or
+  # not, after a colon or not, after the number it was ("0 → 1") or not,
+  # with a remark in brackets or none.
+  @named ~r/\A\s*(\p{L}[\p{L}\p{N}]{0,11})\s*[:：]?\s*(?:[+\-−]?[0-9]+\s*(?:→|->|=>)\s*)?([+\-−]?)\s*([0-9]+)\s*(?:\([^()]*\))?\s*\z/u
+
   @doc """
   The labelled numbers of a row's value, in order; none unless the row has
   at least two (one label and a number is a sentence as often as a cell).
@@ -72,9 +77,12 @@ defmodule Aethrion.Bridge.Ledger.Cells do
     labels = Map.new(cells, &{key(&1.label), &1})
     bars = fn text -> length(Regex.scan(~r/[|│｜]/u, text)) end
 
+    # Each part of the change that is a label and its number, and no more
+    # than a remark after it: "L: +1 (warmed to you)", "L 0 → 1". A label
+    # in the middle of a sentence ("Rank 3 guards arrived") names nothing.
     named =
-      for [_all, label, sign, n] <-
-            Regex.scan(~r/(\p{L}[\p{L}\p{N}]{0,11})\s*[:：]?\s*([+\-−]?)\s*([0-9]+)/u, change),
+      for part <- String.split(change, ~r/\s*[,;\/|│｜]\s*/u),
+          [_all, label, sign, n] <- [Regex.run(@named, part)],
           Map.has_key?(labels, key(label)),
           do: {key(label), sign, String.to_integer(n)}
 
@@ -83,7 +91,7 @@ defmodule Aethrion.Bridge.Ledger.Cells do
         :none
 
       # As many cells as the row has: the row, written anew.
-      bars.(change) >= max(bars.(row) - 1, 1) ->
+      bars.(change) >= max(bars.(row), 1) ->
         :rewrite
 
       named == [] ->
@@ -115,7 +123,7 @@ defmodule Aethrion.Bridge.Ledger.Cells do
     |> Enum.sort_by(fn %{at: {at, _size}} -> -at end)
     |> Enum.reduce(row, fn %{label: label, at: {at, size}}, text ->
       binary_part(text, 0, at) <>
-        Integer.to_string(numbers[key(label)]) <>
+        Integer.to_string(trunc(numbers[key(label)])) <>
         binary_part(text, at + size, byte_size(text) - at - size)
     end)
   end

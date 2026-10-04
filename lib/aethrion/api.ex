@@ -990,7 +990,7 @@ defmodule Aethrion.API do
         # The end of the reply that has not gone out yet: what the filter
         # held back, as the rules left it. (Without a filter all of it went
         # out as it came.)
-        rest = if plan, do: Aethrion.Bridge.Reply.unsent(text, gone, plan), else: ""
+        rest = if plan, do: Aethrion.Bridge.Reply.unsent(text, gone), else: ""
 
         if rest != "", do: emit.({:chunk, chunk.(%{content: rest}, nil)})
         if status, do: emit.({:chunk, chunk.(%{content: "\n\n" <> status}, nil)})

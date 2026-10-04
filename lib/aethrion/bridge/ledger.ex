@@ -39,7 +39,7 @@ defmodule Aethrion.Bridge.Ledger do
   @tag "<aethrion-ledger"
   @scene "<aethrion-scene"
   @max_changes 40
-  @max_openings 24
+  @max_openings 60
   @max_window 12_000
   @max_replies 6
   # An opening text this long at the start of a line is the window's ("[Day", "```").
@@ -81,7 +81,7 @@ defmodule Aethrion.Bridge.Ledger do
       Enum.find_value(closings(spec.close), fn close ->
         spec = %{spec | close: close}
 
-        with stop when is_integer(stop) <- closing(text, start + length, close),
+        with stop when is_integer(stop) <- closing(text, {start, start + length}, spec),
              window = binary_part(text, start, stop - start),
              true <- byte_size(window) <= @max_window,
              true <- length(fields(window, spec)) >= 2 do
@@ -100,15 +100,12 @@ defmodule Aethrion.Bridge.Ledger do
   defp closings(close) when close in ["]", ")", "}", ">", "】", "］", "」"], do: [close, ""]
   defp closings(close), do: [close]
 
-  # Where the window that opens before `from` ends.
-  # A window with no closing text is a block of lines: it ends at the
-  # first blank line, or with the text.
-  defp closing(text, from, close) when close in [nil, ""] do
-    case Regex.run(~r/\n[ \t]*\n/, text, offset: from, return: :index) do
-      [{stop, _length}] -> stop
-      nil -> byte_size(String.trim_trailing(text))
-    end
-  end
+  # Where the window that opens at `start` (its opening text ending at
+  # `from`) ends.
+  defp closing(text, {start, from}, %{close: close} = spec) when close in [nil, ""],
+    do: open_ended(text, start, from, spec)
+
+  defp closing(text, {_start, from}, %{close: close}), do: closing(text, from, close)
 
   defp closing(text, from, close) do
     case :binary.match(text, close, scope: {from, byte_size(text) - from}) do
@@ -133,12 +130,50 @@ defmodule Aethrion.Bridge.Ledger do
     end
   end
 
+  # A window with no closing text is a block of lines. It ends at a blank
+  # line, unless what comes after goes on as the window does: its lines
+  # led by the same mark ("◈"), or the window has had no two fields yet
+  # (a heading, a blank line, then its lines). A plain `Name: value` after
+  # a blank line may as well be someone speaking, and is the story's.
+  defp open_ended(text, start, from, spec) do
+    stops =
+      ~r/\n[ \t]*\n/
+      |> Regex.scan(text, offset: from, return: :index)
+      |> Enum.map(fn [{stop, length}] -> {stop, stop + length} end)
+
+    final = byte_size(String.trim_trailing(text))
+
+    Enum.find_value(stops, final, fn {stop, next} ->
+      so_far = binary_part(text, start, stop - start)
+      lead = so_far |> String.split("\n") |> List.last() |> lead()
+      following = text |> binary_part(next, byte_size(text) - next) |> String.split("\n") |> hd()
+
+      goes_on? =
+        length(fields(so_far, spec)) < 2 or (lead != "" and lead(following) == lead)
+
+      if not goes_on?, do: stop
+    end)
+  end
+
+  # The mark a line is led by ("◈", "-", "📍"), or "" for a line that begins with words.
+  defp lead(line) do
+    case Regex.run(~r/\A\s*([^\p{L}\p{N}\s\[\](){}<>|:：=#"'`]{1,4})/u, line) do
+      [_all, mark] -> mark
+      nil -> ""
+    end
+  end
+
   @doc """
   Every window in `text`, in order: a card's own examples of its window,
   say. (`window/2` gives the last one.)
   """
   @spec windows(String.t(), spec()) :: [String.t()]
-  def windows(text, spec) do
+  def windows(text, spec), do: windows(text, spec, 6)
+
+  # The last few: a card full of examples is not read through for them.
+  defp windows(_text, _spec, 0), do: []
+
+  defp windows(text, spec, left) do
     case window(text, spec) do
       nil ->
         []
@@ -146,7 +181,8 @@ defmodule Aethrion.Bridge.Ledger do
       {before, window, _after} ->
         # Past a window that is the rest of the text, look no further back
         # than its opening.
-        windows(String.slice(before, 0, max(String.length(before) - 1, 0)), spec) ++ [window]
+        before = binary_part(before, 0, max(byte_size(before) - 1, 0))
+        windows(String.replace_invalid(before, ""), spec, left - 1) ++ [window]
     end
   end
 
@@ -180,7 +216,8 @@ defmodule Aethrion.Bridge.Ledger do
     |> Enum.take(@max_replies)
     |> Enum.find_value(fn
       %{"role" => "assistant", "content" => content} ->
-        case window(content, spec) do
+        # A chat app may send its line breaks as CR LF.
+        case window(String.replace(content, "\r\n", "\n"), spec) do
           {_before, window, _after} -> window
           nil -> nil
         end
@@ -198,32 +235,66 @@ defmodule Aethrion.Bridge.Ledger do
 
   defp clean_name(name), do: Fields.clean_name(name)
 
-  @block ~r/<aethrion-ledger\b[^>]*>(.*?)(?:<\/aethrion-ledger>|\z)/si
+  @opened ~r/<aethrion-ledger\b[^>\n]*(\/>|>|(?=\n)|\z)/i
+  @closed ~r/<\/aethrion-ledger\s*>/i
+  @change ~r/\A\s*(?:[-*•]\s*)?([^:：]{1,40}?)\s*[:：]\s*(\S.*)\z/u
 
   @doc """
   The reply without its ledger lines, and the changes they name:
   `[{name, value}]`, or nil when the model wrote none. Every block of
-  lines is taken, however the tag is cased.
+  lines is taken, however the tag is cased. A block that is not closed
+  (cut off, or closed wrongly) ends where its lines stop reading as
+  changes: the story after it stays in the reply.
   """
   @spec take(String.t()) :: {String.t(), [{String.t(), String.t()}] | nil}
-  def take(text) do
-    case Regex.scan(@block, text) do
-      [] ->
-        {text, nil}
+  def take(text), do: take(text, [], nil)
 
-      blocks ->
-        changes =
-          blocks
-          |> Enum.flat_map(fn [_all, lines] -> String.split(lines, "\n") end)
-          |> Enum.flat_map(fn line ->
-            case Regex.run(~r/\A\s*(?:[-*•]\s*)?([^:：]{1,40}?)\s*[:：]\s*(.+?)\s*\z/u, line) do
-              [_all, name, value] -> [{clean_name(name), String.slice(value, 0, @max_value)}]
-              nil -> []
-            end
-          end)
-          |> Enum.take(@max_changes)
+  defp take(text, kept, changes) do
+    case Regex.run(@opened, text, return: :index) do
+      nil ->
+        {(kept ++ [text]) |> Enum.join() |> String.trim(),
+         changes && Enum.take(changes, @max_changes)}
 
-        {text |> String.replace(@block, "") |> String.trim(), changes}
+      [{start, length}, {ending_at, ending_length}] ->
+        head = binary_part(text, 0, start)
+        rest = binary_part(text, start + length, byte_size(text) - start - length)
+
+        {lines, rest} =
+          if binary_part(text, ending_at, ending_length) == "/>",
+            do: {"", rest},
+            else: block(rest)
+
+        take(rest, kept ++ [head], (changes || []) ++ changes(lines))
+    end
+  end
+
+  # A block's lines, and the reply after it.
+  defp block(rest) do
+    case Regex.run(@closed, rest, return: :index) do
+      [{stop, length}] ->
+        {binary_part(rest, 0, stop),
+         binary_part(rest, stop + length, byte_size(rest) - stop - length)}
+
+      # Not closed: the lines that read as changes, up to the first that does not.
+      nil ->
+        # (A blank line ends them: what follows it is the story, though a
+        # line of it may read "Name: words".)
+        {blanks, rest} = rest |> String.split("\n") |> Enum.split_while(&(String.trim(&1) == ""))
+        {lines, story} = Enum.split_while(rest, &(change(&1) != nil))
+        _ = blanks
+        {Enum.join(lines, "\n"), Enum.join(story, "\n")}
+    end
+  end
+
+  defp changes(lines), do: lines |> String.split("\n") |> Enum.flat_map(&List.wrap(change(&1)))
+
+  # One line of a block as a change, or nil. A line too long to be one is none.
+  defp change(line) when byte_size(line) > 1_200, do: nil
+
+  defp change(line) do
+    case Regex.run(@change, String.trim_trailing(line)) do
+      [_all, name, value] -> {clean_name(name), String.slice(value, 0, @max_value)}
+      nil -> nil
     end
   end
 
@@ -306,8 +377,9 @@ defmodule Aethrion.Bridge.Ledger do
               Map.merge(habits, %{
                 # A pair a rule watches may pass its maximum: the rule takes it up.
                 open?: key(field.name) in watched,
-                dated?: dated?(field.name),
-                close: (spec && spec.close) || ""
+                dated?: dated?(field.name) or weekday?(field.value),
+                close: (spec && spec.close) || "",
+                open: spec && spec.open
               })
 
             {now, problem} =
@@ -522,7 +594,16 @@ defmodule Aethrion.Bridge.Ledger do
 
   # A field's numbers as the rules see them, with the shape to write them
   # back in; nil for a field that holds no figure.
-  defp figure(%{name: name, value: value}), do: if(dated?(name), do: nil, else: figure(value))
+  # A value with a day of the week in brackets is a date: "5/31 (Sat)".
+  defp weekday?(value) do
+    String.match?(
+      value,
+      ~r/\((?:[월화수목금토일]|mon|tue|wed|thu|fri|sat|sun)[^()]{0,8}\)/iu
+    )
+  end
+
+  defp figure(%{name: name, value: value}),
+    do: if(dated?(name) or weekday?(value), do: nil, else: figure(value))
 
   defp figure(value) do
     if figure?(value) do
@@ -565,33 +646,10 @@ defmodule Aethrion.Bridge.Ledger do
   # `:clamped` for a number brought back within its bounds, `:missing` for
   # something taken from a list that does not have it).
   defp changed(was, value, habits) do
-    value =
-      value
-      |> String.replace(if(habits.bars?, do: ~r/[\r\n|]/u, else: ~r/[\r\n]/u), " ")
-      |> String.trim()
-
-    # A stand-in of the note's, copied before the value ("new text: the inn").
-    value = Regex.replace(~r/\A(?:the )?new (?:text|words|value)\s*[:：]\s*/iu, value, "")
-
-    # "=20:30", "= 45": the value said outright, for any field.
-    {value, habits} =
-      case Regex.run(~r/\A=\s*(\S.*)\z/us, value) do
-        [_all, said] -> {said, Map.put(habits, :outright?, true)}
-        nil -> {value, habits}
-      end
-
-    # A value cannot close the window it is in: "calm [for now]" in a
-    # window that ends with "]" is written with round brackets, and any
-    # other closing text is left out.
-    value =
-      case habits[:close] do
-        close when close in [nil, ""] -> value
-        "]" -> value |> String.replace("[", "(") |> String.replace("]", ")")
-        close -> value |> String.replace(close, " ") |> String.trim()
-      end
+    {value, habits} = said(value, habits)
 
     cond do
-      nothing?(value) ->
+      nothing?(value) and habits[:outright?] != true ->
         {was, nil}
 
       # A date is said anew, whatever numbers it holds; it is not moved by one.
@@ -605,6 +663,38 @@ defmodule Aethrion.Bridge.Ledger do
         worded_or_counted(was, value, habits)
     end
   end
+
+  # A change's value as it may be written into the window, and whether it
+  # was said outright ("=20:30", "= 45", for any field).
+  defp said(value, habits) do
+    value =
+      value
+      |> String.replace(if(habits.bars?, do: ~r/[\r\n|│｜]/u, else: ~r/[\r\n]/u), " ")
+      |> String.trim()
+      # A stand-in of the note's, copied before the value ("new text: the inn").
+      |> String.replace(~r/\A(?:the )?new (?:text|words|value)\s*[:：]\s*/iu, "")
+
+    {value, habits} =
+      case Regex.run(~r/\A=\s*(\S.*)\z/us, value) do
+        [_all, said] -> {said, Map.put(habits, :outright?, true)}
+        nil -> {value, habits}
+      end
+
+    {value |> unclosing(habits[:close]) |> unopening(habits[:open]), habits}
+  end
+
+  # A value cannot close the window it is in: "calm [for now]" in a window
+  # that ends with "]" is written with round brackets, and any other
+  # closing text is left out.
+  defp unclosing(value, close) when close in [nil, ""], do: value
+  defp unclosing(value, "]"), do: value |> String.replace("[", "(") |> String.replace("]", ")")
+  defp unclosing(value, close), do: value |> String.replace(close, " ") |> String.trim()
+
+  # Nor open another: the next window would begin inside the value.
+  defp unopening(value, open) when is_binary(open) and byte_size(open) >= 2,
+    do: value |> String.replace(open, " ") |> String.trim()
+
+  defp unopening(value, _short_or_none), do: value
 
   # The note's own stand-ins copied as they stand, and "±0" or "+0", said
   # to say that nothing changes, are no change.
@@ -625,8 +715,12 @@ defmodule Aethrion.Bridge.Ledger do
 
   defp worded_or_counted(was, value, habits) do
     cond do
+      # A text or a list said outright is what it is said to be.
+      habits[:outright?] == true and not figure?(was) ->
+        {value, nil}
+
       # "+thing" joins a list, not a figure: a load of "12 / 80" is no bag.
-      String.match?(value, ~r/\A[+\-−]\s*[^0-9\s]/u) ->
+      String.match?(value, ~r/\A[+\-−]\s*[^\p{Nd}\s]/u) ->
         if figure?(was), do: {was, :unreadable}, else: Listing.change(was, value, habits)
 
       figure?(was) ->
@@ -646,15 +740,38 @@ defmodule Aethrion.Bridge.Ledger do
     # "31 / 48 → 14 / 48" or "15 - 15 = 0", as some write a change: what
     # it comes to, said outright.
     {value, outright?} =
-      case figure? && String.split(value, ~r/\s*(?:→|->|=>|=)\s*/u) do
-        [_before | _more] = parts when length(parts) > 1 -> {List.last(parts), true}
-        _one_part -> {value, false}
+      cond do
+        not figure? ->
+          {value, false}
+
+        match = Regex.run(~r/\A.*(?:→|->|=>)\s*(\S.*)\z/us, value) ->
+          {List.last(match), true}
+
+        # "15 - 15 = 0": a sum, with what it comes to after the sign.
+        match =
+            Regex.run(
+              ~r/\A.*=\s*(-?[0-9][0-9,.]*(?:\s*\/\s*[0-9][0-9,.]*)?)\s*\z/us,
+              value
+            ) ->
+          {List.last(match), true}
+
+        true ->
+          {value, false}
       end
 
     habits = Map.put(habits, :outright?, outright? or habits[:outright?] == true)
 
-    numbered(number(was), delta(value, figure?), value, habits) ||
-      worded(was, value, habits, figure?)
+    # Said outright, a number with a sign is the number, not a move by it.
+    # ("Karma: =-7" is minus seven; "… → anxious, ego -2" is still a move.)
+    alone? = String.match?(value, ~r/\A\s*[+\-−]\s*[0-9][0-9,.]*\s*[^0-9\s]{0,4}\s*\z/u)
+
+    delta =
+      case {delta(value, figure?), habits.outright? and alone?} do
+        {{:move, d}, true} -> {:set, d}
+        {delta, _outright?} -> delta
+      end
+
+    numbered(number(was), delta, value, habits) || worded(was, value, habits, figure?)
   end
 
   # A number moved or set, or nil when the field or the change is none.
@@ -706,7 +823,7 @@ defmodule Aethrion.Bridge.Ledger do
 
   defp worded(was, value, habits, false) do
     cond do
-      Listing.empty?(was) or not String.match?(value, ~r/\A[+\-−]\s*[0-9]/u) ->
+      Listing.empty?(was) or not String.match?(value, ~r/\A[+\-−]\s*\p{Nd}/u) ->
         Listing.change(was, value, habits)
 
       later = clock(was, value) ->
@@ -968,16 +1085,7 @@ defmodule Aethrion.Bridge.Ledger do
     sign <> grouped
   end
 
-  # A field's name as it is looked up: in lower case, its spaces single,
-  # and without the marks before it ("❤️ HP" is "hp"), unless it is all marks.
-  defp key(name) do
-    key = name |> String.downcase() |> String.replace(~r/\s+/u, " ") |> String.trim()
-
-    case String.replace(key, ~r/\A[^\p{L}\p{N}]+/u, "") do
-      "" -> key
-      bare -> bare
-    end
-  end
+  defp key(name), do: Fields.key(name)
 
   @doc """
   What the last reply's status block says the ledger did, from the
@@ -1088,15 +1196,25 @@ defmodule Aethrion.Bridge.Ledger do
   @doc """
   What the note says of the window on a turn that was answered before
   (a reroll): what the turn does to the window is settled, as facts to
-  narrate. `lines` are the record's lines of the first answer.
+  narrate. `lines` are the record's lines of the first answer, and
+  `fields` the fields it left changed.
   """
-  @spec settled_instruction([String.t()]) :: String.t()
-  def settled_instruction(lines) do
-    # What was refused then is no fact of the turn.
+  @spec settled_instruction([String.t()], [{String.t(), String.t()}]) :: String.t()
+  def settled_instruction(lines, fields \\ []) do
+    # What was refused then is no fact of the turn. A field the record
+    # does not speak of (a place, a mood) is said as it came to stand.
+    lines = Enum.reject(lines, &refusal?/1)
+    said = Enum.join(lines, " ")
+
+    words =
+      for {name, value} <- fields,
+          not String.contains?(said, name <> " "),
+          do: "#{name}: #{value}"
+
     facts =
-      case Enum.reject(lines, &refusal?/1) do
+      case lines ++ words do
         [] -> "nothing in it changes this turn"
-        lines -> Enum.join(lines, "; ")
+        facts -> Enum.join(facts, "; ")
       end
 
     "The status window is kept by the game's rules and shown by them: do not print it yourself, whatever the card says, and write no <aethrion-ledger> lines. This turn was played before, and what it does to the window is settled: #{facts}. Narrate so that the reply agrees with that: the same gains, losses, and outcome, told anew."
@@ -1134,6 +1252,7 @@ defmodule Aethrion.Bridge.Ledger do
       {:rise, _name, changes} ->
         for {_kind, {name, _part}, _expr} <- changes, do: names[name]
     end)
+    |> Enum.reject(&(&1 == nil or &1 == "the maximum of "))
     |> Enum.uniq()
   end
 
@@ -1209,8 +1328,10 @@ defmodule Aethrion.Bridge.Ledger do
 
   # A field that holds a date ("12/5 (Fri)", "2025.01.01"): its numbers
   # are no figures, however they are written.
-  defp dated?(name),
-    do: String.match?(name, ~r/date|날짜|일자|日付|日期|birthday|생일|기념일/iu)
+  defp dated?(name) do
+    String.match?(name, ~r/(?<![\p{L}])(?:date|birthday|today)(?![\p{L}])/iu) or
+      String.match?(name, ~r/날짜|생일|기념일|오늘|日付|日期|(?<![\p{L}])일자(?![\p{L}])/u)
+  end
 
   # A value that is a figure: a pair, or a number that leads the value
   # ("30 (경계)", "120G", "Lv 5"), not a text with a number in it.
@@ -1388,11 +1509,12 @@ defmodule Aethrion.Bridge.Ledger do
         passed = binary_part(text, 0, byte_size(text) - byte_size(keep))
         out(emit, passed)
 
+        # At a line's start still when only blanks have gone out on the line.
         line_start? =
           cond do
             passed == "" -> line_start?
-            keep == "" -> String.ends_with?(passed, "\n")
-            true -> String.ends_with?(passed, "\n")
+            String.contains?(passed, "\n") -> String.match?(passed, ~r/\n[ \t]*\z/)
+            true -> line_start? and String.match?(passed, ~r/\A[ \t]*\z/)
           end
 
         {keep, line_start?}
@@ -1405,8 +1527,7 @@ defmodule Aethrion.Bridge.Ledger do
   # Where the reply's own end begins: the first tag, or the window's
   # opening text at the start of a line, whichever comes first.
   defp stop(text, line_start?, open) do
-    # The tags in any case; ASCII letters lowered, so the places stay.
-    lowered = for <<c <- text>>, into: "", do: <<if(c in ?A..?Z, do: c + 32, else: c)>>
+    lowered = lowered(text)
 
     tag =
       [@scene, @tag]
@@ -1434,7 +1555,9 @@ defmodule Aethrion.Bridge.Ledger do
     pattern
     |> Regex.scan(text, return: :index)
     |> Enum.find_value(fn [{all, _length}, {at, _open_length}] ->
-      if all > 0 or line_start?, do: at
+      # At the text's own start only when that is a line's start; after a
+      # line break anywhere, the first character included.
+      if all > 0 or line_start? or binary_part(text, 0, 1) == "\n", do: at
     end)
   end
 
@@ -1472,13 +1595,19 @@ defmodule Aethrion.Bridge.Ledger do
     if byte_size(line_tail) > byte_size(tag_tail), do: line_tail, else: tag_tail
   end
 
+  # The end of the text that is the beginning of the tag, in any case.
   defp prefix_tail(text, tag) do
     1..(byte_size(tag) - 1)
     |> Enum.reverse()
     |> Enum.find_value("", fn n ->
-      if byte_size(text) >= n and
-           binary_part(text, byte_size(text) - n, n) == binary_part(tag, 0, n),
-         do: binary_part(tag, 0, n)
+      if byte_size(text) >= n do
+        ending = binary_part(text, byte_size(text) - n, n)
+        if lowered(ending) == binary_part(tag, 0, n), do: ending
+      end
     end)
   end
+
+  # ASCII letters lowered, so every place in the text stays where it is.
+  defp lowered(text),
+    do: for(<<c <- text>>, into: "", do: <<if(c in ?A..?Z, do: c + 32, else: c)>>)
 end

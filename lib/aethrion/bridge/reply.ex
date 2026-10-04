@@ -108,8 +108,8 @@ defmodule Aethrion.Bridge.Reply do
   def instruction(%{ledger: ledger, line?: false}, _messages) when is_binary(ledger),
     do: Ledger.continued_instruction()
 
-  def instruction(%{ledger: ledger, settled: %{lines: lines}}, _messages) when is_binary(ledger),
-    do: Ledger.settled_instruction(lines)
+  def instruction(%{ledger: ledger, settled: %{} = settled}, _messages) when is_binary(ledger),
+    do: Ledger.settled_instruction(settled.lines, settled.fields)
 
   def instruction(%{ledger: ledger, spec: spec}, messages) when is_binary(ledger),
     do: Ledger.instruction(ledger, spec, Ledger.recorded(messages))
@@ -124,7 +124,7 @@ defmodule Aethrion.Bridge.Reply do
   def finish(text, status, nil), do: {String.trim(text), status}
 
   def finish(text, status, %{locale: locale} = plan) do
-    {text, scene} = Scene.take(text, plan[:player])
+    {text, scene} = text |> String.replace("\r\n", "\n") |> Scene.take(plan[:player])
     whole? = not Ledger.cut_off?(text)
     {text, changes} = Ledger.take(text)
     {text, lines} = window(text, changes, Map.put(plan, :whole?, whole?))
@@ -233,12 +233,13 @@ defmodule Aethrion.Bridge.Reply do
   streamed (`gone`): what the filter held back, as the rules left it. The
   blank lines that went out after the head are not sent again. When what
   went out is not how the finished reply begins (a window the model
-  printed slipped past the filter), the window as the rules keep it is
-  sent after it all the same: the last window in a reply is the one the
-  next turn goes on from.
+  printed slipped past the filter), the finished reply from where the two
+  part is sent after it all the same: the story that was held back, and
+  the window as the rules keep it. The last window in a reply is the one
+  the next turn goes on from.
   """
-  @spec unsent(String.t(), String.t(), plan() | nil) :: String.t()
-  def unsent(text, gone, plan \\ nil) do
+  @spec unsent(String.t(), String.t()) :: String.t()
+  def unsent(text, gone) do
     head = String.trim_trailing(gone)
 
     if String.starts_with?(text, head) do
@@ -251,9 +252,17 @@ defmodule Aethrion.Bridge.Reply do
         true -> String.trim_leading(rest)
       end
     else
-      case plan && plan[:spec] && Ledger.window(text, plan.spec) do
-        {_head, window, _tail} -> "\n\n" <> window
-        _none -> ""
+      # From where the two part: the story the filter held, and the window.
+      common = :binary.longest_common_prefix([text, head])
+      # Not from the middle of a letter.
+      common =
+        Enum.find(common..max(common - 3, 0)//-1, 0, &String.valid?(binary_part(text, 0, &1)))
+
+      rest = binary_part(text, common, byte_size(text) - common)
+
+      case String.trim(rest) do
+        "" -> ""
+        rest -> "\n\n" <> rest
       end
     end
   end

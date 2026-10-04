@@ -212,17 +212,185 @@ defmodule Aethrion.BridgeLedgerReviewTest do
     end
 
     test "what was streamed and is not how the reply begins is followed by the window all the same" do
-      plan = plan(%{})
       finished = "A hit.\n\n[Status]\n- Level: 5\n- HP: 25 / 48\n- Gold: 120G\n[Status]"
       # Streamed as it should be: the rest follows.
-      assert Reply.unsent(finished, "A hit.\n\n", plan) ==
+      assert Reply.unsent(finished, "A hit.\n\n") ==
                "[Status]\n- Level: 5\n- HP: 25 / 48\n- Gold: 120G\n[Status]"
 
       # A window the model printed slipped out: the ledger's comes after it.
       slipped = "A hit.\n\n**[Status]**\n- HP: 30 / 48\n**[Status]**"
 
-      assert Reply.unsent(finished, slipped, plan) ==
+      assert Reply.unsent(finished, slipped) ==
                "\n\n[Status]\n- Level: 5\n- HP: 25 / 48\n- Gold: 120G\n[Status]"
+    end
+  end
+
+  describe "a second review" do
+    test "names that are looked up as one are told apart, whatever marks or numbers they carry" do
+      for window <- [
+            "[Status]\n- ❤️ HP: 30 / 48\n- HP: 12\n[Status]",
+            "[Status]\n- HP: 30 / 48\n- HP: 20 / 40\n- HP 2: 7\n[Status]",
+            "[Status]\n- 🔴 Affection: 30 / 100\n- 🔵 Affection: 12 / 100\n- Stat Point: 1\n- Stat  Point: 2\n[Status]"
+          ] do
+        names = Enum.map(Ledger.fields(window, @lines), &Ledger.Fields.key(&1.name))
+        assert names == Enum.uniq(names)
+        assert Ledger.settle(window, @lines) == {window, []}
+        assert is_binary(Ledger.instruction(window, @lines))
+      end
+    end
+
+    test "the stream filter finds a window after a line break or blanks, and a tag in any case" do
+      streamed = fn pieces, open ->
+        {on_delta, flush} = Ledger.filter(&send(self(), {:out, &1}), open)
+        Enum.each(pieces, on_delta)
+        flush.()
+
+        Stream.repeatedly(fn ->
+          receive do
+            {:out, text} -> text
+          after
+            0 -> nil
+          end
+        end)
+        |> Enum.take_while(& &1)
+        |> Enum.join()
+      end
+
+      assert streamed.(
+               ["You strike.", "\n[Status]\n- HP: 22 / 30\n[Status]\n\nThe goblin falls."],
+               "[Status]"
+             ) ==
+               "You strike.\n"
+
+      assert streamed.([" ", "[Status]\n- HP: 22 / 30\n[Status]\nA story."], "[Status]") == " "
+
+      assert streamed.(["The end.\n<Aeth", "rion-Ledger>\nHP: -3\n</Aethrion-Ledger>"], nil) ==
+               "The end.\n"
+    end
+
+    test "what slipped out is followed by the story that was held, and the window" do
+      finished = "You strike.\n\nThe goblin falls.\n\n[Status]\n- HP: 22 / 30\n[Status]"
+      gone = "You strike.\n[Status]\n- HP: 30 / 30\n"
+
+      assert Reply.unsent(finished, gone) ==
+               "\n\nThe goblin falls.\n\n[Status]\n- HP: 22 / 30\n[Status]"
+    end
+
+    test "a printed window's numbers are taken as they stand, signs and all" do
+      window = "[Status]\n- Karma: -5\n- Temp: -3°C\n- Debt: -200G\n- Bag: rope\n[Status]"
+      printed = "[Status]\n- Karma: -7\n- Temp: -1°C\n- Debt: -150G\n- Bag: -\n[Status]"
+      plan = %{ledger: window, spec: @lines, locale: :en, player: nil, line?: true}
+      assert {text, nil} = Reply.finish("Night falls.\n\n" <> printed, nil, plan)
+      assert text == "Night falls.\n\n" <> printed
+
+      assert {kept, _applied, []} =
+               Ledger.apply(window, [{"Karma", "=-7"}, {"Debt", "-5 (def=3)"}], @lines)
+
+      assert kept =~ "- Karma: -7\n"
+      assert kept =~ "- Debt: -205G\n"
+    end
+
+    test "an open-ended window goes on over its own blank lines, and stops before the story" do
+      marked = %{open: "◈Time", close: ""}
+      window = "◈Time: 05:00\n◈HP: 30 / 48\n\n◈Inventory: potion × 2\n◈Gold: 12"
+      assert {"Dawn.\n\n", ^window, ""} = Ledger.window("Dawn.\n\n" <> window, marked)
+
+      headed = %{open: "[Day", close: "]"}
+      reply = "[Day 3/30 · noon]\n\nHP: 30 / 48\nGold: 12\n\nMira: Come with me.\nShe said: wait."
+
+      assert {"", found, "\n\nMira: Come with me.\nShe said: wait."} =
+               Ledger.window(reply, headed)
+
+      assert Enum.map(Ledger.fields(found, headed), & &1.name) == ["Day", "HP", "Gold"]
+
+      # Line breaks sent as CR LF.
+      chat = [
+        %{
+          "role" => "assistant",
+          "content" => "[Day 3/30 · noon]\r\nHP: 30 / 48\r\nGold: 12\r\n\r\nMira: Come."
+        }
+      ]
+
+      assert Ledger.current(chat, headed) == "[Day 3/30 · noon]\nHP: 30 / 48\nGold: 12"
+    end
+
+    test "a reroll is told the words that changed too" do
+      text =
+        Ledger.settled_instruction(["Ledger · HP 30 / 30 → 25 / 30"], [
+          {"HP", "25 / 30"},
+          {"Location", "the docks"},
+          {"Mood", "wary"}
+        ])
+
+      assert text =~
+               "is settled: Ledger · HP 30 / 30 → 25 / 30; Location: the docks; Mood: wary. Narrate"
+
+      assert Ledger.settled_instruction([], []) =~ "nothing in it changes this turn"
+    end
+
+    test "a name that only holds the letters of a date word is a number like any other" do
+      window =
+        "[Status]\n- Intimidate: 12\n- Candidates: 3 / 5\n- Updates: 4\n- 일자리: 3\n- Date: 12/5\n- 오늘: 5/31 (토)\n- Today: 1/31 (Fri)\n[Status]"
+
+      changes = [
+        {"Intimidate", "+1"},
+        {"Candidates", "+1"},
+        {"Updates", "+1"},
+        {"일자리", "+1"},
+        {"오늘", "6/1 (일)"},
+        {"Today", "2/1 (Sat)"}
+      ]
+
+      assert {kept, _applied, []} = Ledger.apply(window, changes, @lines)
+
+      assert kept ==
+               "[Status]\n- Intimidate: 13\n- Candidates: 4 / 5\n- Updates: 5\n- 일자리: 4\n- Date: 12/5\n- 오늘: 6/1 (일)\n- Today: 2/1 (Sat)\n[Status]"
+
+      assert Ledger.settle(kept, @lines, window) == {kept, []}
+    end
+
+    test "a row's change names its numbers a part at a time, and prose names none" do
+      row = "Rank 10 | P 0 | L 0"
+      assert Ledger.Cells.change(row, "L +1 | P +2") == {:ok, "Rank 10 | P 2 | L 1", nil}
+      assert Ledger.Cells.change(row, "L 0 → 1, P: 5 -> 6") == {:ok, "Rank 10 | P 6 | L 1", nil}
+      assert Ledger.Cells.change(row, "Rank 3 guards arrived") == :none
+      assert Ledger.Cells.change(row, "moved to L 2 wing") == :none
+    end
+
+    test "ledger tags that are not closed, or closed wrongly, take no story with them" do
+      assert Ledger.take(
+               "A hit.\n<aethrion-ledger>\nHP: -5\n\nThe goblin staggers back: bleeding, it runs."
+             ) ==
+               {"A hit.\n\nThe goblin staggers back: bleeding, it runs.", [{"HP", "-5"}]}
+
+      assert Ledger.take("A hit.\n<aethrion-ledger/>\nThe goblin runs.") ==
+               {"A hit.\nThe goblin runs.", []}
+
+      assert Ledger.take("A hit.\n<aethrion-ledger\nHP: -5\n</aethrion-ledger>") ==
+               {"A hit.", [{"HP", "-5"}]}
+
+      # A line too long to be a change is none, and costs no time.
+      long = "HP: x" <> String.duplicate(" ", 60_000) <> "y"
+
+      {time, {_text, []}} =
+        :timer.tc(fn -> Ledger.take("<aethrion-ledger>\n" <> long <> "\n</aethrion-ledger>") end)
+
+      assert time < 500_000
+    end
+
+    test "a sign before a digit of another script is no thing to add to a list" do
+      window = "[Status]\n- レベル: １２\n- Time: 05:00\n- Gold: 3\n[Status]"
+
+      assert {^window, [], refused} =
+               Ledger.apply(window, [{"レベル", "+１"}, {"Time", "+３０분"}], @lines)
+
+      assert length(refused) == 2
+    end
+
+    test "an amount is spent by a number" do
+      habits = %{separator: ", ", empty: "None"}
+      assert Listing.change("5G, 3S, 0C", "-G", habits) == {"5G, 3S, 0C", :missing}
+      assert Listing.change("5G, 3S, 0C", "-2G", habits) == {"3G, 3S, 0C", nil}
     end
   end
 end

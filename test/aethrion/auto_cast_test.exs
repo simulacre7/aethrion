@@ -160,7 +160,11 @@ defmodule Aethrion.AutoCastTest do
         {"when EXP >= EXP.max: Level += 1; EXP -= EXP.max",
          "when EXP >= EXP.max: Level += 1; EXP -= EXP.max"},
         {"when EXP >= 100: Level += 1; EXP -= 100", "EXP requirement increases with each level"},
-        {"HP.max = Vigor * 10", ""}
+        {"HP.max = Vigor * 10", ""},
+        # A sentence of the card's that says nothing of the rule's fields.
+        {"HP.max = Vigor * 10", "A potion costs 100G."},
+        {"Stat Point = 0", "HP/SP recovery rate increases."},
+        {"HP.max = Stat Point", "Gain 5 points upon leveling up."}
       ]
 
       for {rule, from} <- made_up, do: refute(AutoCast.stated?(rule, from, card), rule)
