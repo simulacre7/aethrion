@@ -1346,12 +1346,9 @@ defmodule Aethrion.Bridge.Ledger do
       not_applicable?(was, value, habits) ->
         {was, nil}
 
-      # A date is said anew, whatever numbers it holds; it is not moved by one.
-      habits[:dated?] ->
-        if String.match?(value, ~r/\A[+\-−]\s*[0-9]/u), do: {was, :unreadable}, else: {value, nil}
-
-      # So is a place whose name begins with a number ("24-hour store").
-      habits[:placed?] == true and figure?(was) ->
+      # A date is said anew, whatever numbers it holds; it is not moved by
+      # one. So is a place whose name begins with a number.
+      said_anew?(was, habits) ->
         if String.match?(value, ~r/\A[+\-−]\s*[0-9]/u), do: {was, :unreadable}, else: {value, nil}
 
       # A row of labelled numbers; or one of cells ("Affection 30 | cheerful
@@ -1520,6 +1517,10 @@ defmodule Aethrion.Bridge.Ledger do
     said in @stand_ins or String.match?(said, @unchanged) or
       String.match?(value, ~r/\A\s*(?:±|\+\/?-|[+\-−])\s*0+\s*\z/u)
   end
+
+  # A date, or a place that reads as a number ("24-hour store", "2층 복도").
+  defp said_anew?(was, habits),
+    do: habits[:dated?] == true or (habits[:placed?] == true and figure?(was))
 
   # A row of labelled numbers: the numbers named move; the row written
   # anew replaces it; anything else is not about this row.
