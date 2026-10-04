@@ -510,11 +510,15 @@ defmodule Aethrion.Bridge.Ledger do
   defp counted(was, value, habits) do
     figure? = figure?(was)
 
-    # "31 / 48 → 14 / 48", as some write a change: what it comes to.
-    value =
-      if figure?,
-        do: value |> String.split(~r/\s*(?:→|->|=>)\s*/u) |> List.last(),
-        else: value
+    # "31 / 48 → 14 / 48" or "15 - 15 = 0", as some write a change: what
+    # it comes to, said outright.
+    {value, outright?} =
+      case figure? && String.split(value, ~r/\s*(?:→|->|=>|=)\s*/u) do
+        [_before | _more] = parts when length(parts) > 1 -> {List.last(parts), true}
+        _one_part -> {value, false}
+      end
+
+    habits = Map.put(habits, :outright?, outright?)
 
     numbered(number(was), delta(value, figure?), value, habits) ||
       worded(was, value, habits, figure?)
@@ -527,17 +531,10 @@ defmodule Aethrion.Bridge.Ledger do
   defp numbered({:pair, _pre, _a, _sep, _b, _post} = pair, {:set_pair, a, b}, value, habits),
     do: put_pair(dressed(pair, value), a, b, habits[:open?])
 
-  # A number alone for a pair says neither which way it moves nor that it
-  # is the new value: a small model writes "HP: 8" for eight lost. It is
-  # taken as the new value only with words that say so ("now 8", "8 left").
-  defp numbered({:pair, _pre, _a, _sep, b, _post} = pair, {:set, a}, value, habits) do
-    if String.match?(value, ~r/\A\s*-?[\d,.]+\s*\z/u) do
-      {:pair, _pre, now, _sep, _b, _post} = pair
-      {as_it_was, _problem} = put_pair(pair, now, b, true)
-      {as_it_was, :unsigned}
-    else
-      put_pair(pair, a, b, habits[:open?])
-    end
+  defp numbered({:pair, _pre, now, _sep, b, _post} = pair, {:set, a}, value, habits) do
+    if unsigned?(value, a, now, habits),
+      do: {elem(put_pair(pair, now, b, true), 0), :unsigned},
+      else: put_pair(pair, a, b, habits[:open?])
   end
 
   defp numbered({:one, _pre, a, _post} = one, {:move, d}, _value, _habits),
@@ -547,10 +544,23 @@ defmodule Aethrion.Bridge.Ledger do
   defp numbered({:one, _pre, _a, _post} = one, {:set_pair, a, _b}, _value, _habits),
     do: put_one(one, a)
 
-  defp numbered({:one, _pre, _a, _post} = one, {:set, a}, value, _habits),
-    do: put_one(dressed(one, value), a)
+  defp numbered({:one, pre, now, _post} = one, {:set, a}, value, habits) do
+    if lead?(pre) and unsigned?(value, a, now, habits),
+      do: {elem(put_one(one, now), 0), :unsigned},
+      else: put_one(dressed(one, value), a)
+  end
 
   defp numbered(_shape, _delta, _value, _habits), do: nil
+
+  # A number alone says neither which way the figure moves nor that it is
+  # the new value: a small model writes "HP: 8" for eight lost, and
+  # "Agility: 0" for no change. It is taken as the new value only when
+  # said outright ("= 8", "14 → 8") or with words of its own ("8 left",
+  # "45 (curious)"); the number as it stands changes nothing either way.
+  defp unsigned?(value, new, now, habits) do
+    not habits[:outright?] and new != now and
+      String.match?(value, ~r/\A\s*-?[\d,.]+\s*(?:%|\p{L}{0,3})\s*\z/u)
+  end
 
   # A change that is words, or a field that is. A figure stays a figure:
   # words with no number in them are not one. A text takes the value as it
@@ -895,7 +905,7 @@ defmodule Aethrion.Bridge.Ledger do
             " (" <> Enum.join(rule_texts(fields, spec), " | ") <> ")."
       end
 
-    "The status window is kept by the game's rules and shown by them: do not print it yourself, whatever the card says. Instead, after everything else, write <aethrion-ledger>...</aethrion-ledger> with one line for each field of the window that this reply changes: `Field: +N` or `Field: -N`, always with its sign, for a number that goes up or down (damage taken is `HP: -N`, experience gained `EXP: +N`), `Field: N / M` to set both numbers of a pair, or `Field: new text`.#{lists}#{rows} Use the window's field names (#{names}).#{ruled}#{already} Leave out every field that stays as it is, and write the tags with nothing between them when nothing changes. What is listed under This turn and Now (how each character feels) is the rules' own and shown apart from the window: none of it goes in these lines. It is not shown to the player."
+    "The status window is kept by the game's rules and shown by them: do not print it yourself, whatever the card says. Instead, after everything else, write <aethrion-ledger>...</aethrion-ledger> with one line for each field of the window that this reply changes: `Field: +N` or `Field: -N`, always with its sign, for a number that goes up or down (damage taken is `HP: -N`, experience gained `EXP: +N`), `Field: N / M` to set both numbers of a pair, `Field: =N` to set a number outright, or `Field: new text`.#{lists}#{rows} Use the window's field names (#{names}).#{ruled}#{already} Leave out every field that stays as it is, and write the tags with nothing between them when nothing changes. What is listed under This turn and Now (how each character feels) is the rules' own and shown apart from the window: none of it goes in these lines. It is not shown to the player."
   end
 
   @doc """

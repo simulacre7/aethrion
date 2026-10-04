@@ -319,7 +319,7 @@ defmodule Aethrion.BridgeLedgerTest do
     test "sets a pair, a number, and a text" do
       changes = [
         {"HP", "140 / 140"},
-        {"Strength", "14"},
+        {"Strength", "=14"},
         {"Location", "명월탑 1층 외곽"},
         {"Stat Point", "+5"}
       ]
@@ -410,15 +410,33 @@ defmodule Aethrion.BridgeLedgerTest do
                Ledger.apply(line, [{"Time", "+2 hours"}], %{open: "[", close: "]"})
     end
 
-    test "a number alone for a pair is not taken: it says neither up nor down" do
-      changes = [{"HP", "8"}, {"EXP", "15"}, {"HP", "now 100"}, {"Strength", "14"}]
+    test "a number alone is not taken: it says neither up nor down, nor that it is the new value" do
+      changes = [
+        {"HP", "8"},
+        {"EXP", "15"},
+        {"Strength", "0"},
+        # The number as it stands changes nothing, and is no fault.
+        {"Level", "8"},
+        # Said outright, or with words of its own.
+        {"HP", "now 100"},
+        {"Stat Point", "2 - 2 = 0"},
+        {"Cash", "=2,000,000"}
+      ]
+
       assert {kept, _applied, refused} = Ledger.apply(window(), changes, @lines)
       assert value(kept, @lines, "EXP") == "23 / 266"
-      # Words that say it is the new value; and a number that stands alone is set.
+      assert value(kept, @lines, "Strength") == "12"
       assert value(kept, @lines, "HP") == "100 / 130"
-      assert value(kept, @lines, "Strength") == "14"
-      assert refused == [{"HP", "8", :unsigned}, {"EXP", "15", :unsigned}]
-      assert Ledger.log([], refused, :ko) == ["기록 · HP: 8 (+나 -가 없음)", "기록 · EXP: 15 (+나 -가 없음)"]
+      assert value(kept, @lines, "Stat Point") == "0"
+      assert value(kept, @lines, "Cash") == "2,000,000"
+
+      assert refused == [
+               {"HP", "8", :unsigned},
+               {"EXP", "15", :unsigned},
+               {"Strength", "0", :unsigned}
+             ]
+
+      assert Ledger.log([], Enum.take(refused, 1), :ko) == ["기록 · HP: 8 (+나 -가 없음)"]
     end
 
     test "a row that leads with its number keeps doing so, whatever a change says of it" do
