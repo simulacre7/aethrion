@@ -495,10 +495,38 @@ defmodule Aethrion.Bridge.Ledger do
   # The card's rules that this window's fields can carry.
   defp rules(fields, spec) do
     names = for field <- fields, figure(field.value), do: key(field.name)
+    for text <- rule_texts(fields, spec), {:ok, rule} <- [Rules.parse(text, names)], do: rule
+  end
 
-    for text <- (spec && Map.get(spec, :rules)) || [],
-        {:ok, rule} <- [Rules.parse(text, names)],
-        do: rule
+  # The rules as written: the card's, and a level-up nobody stated.
+  defp rule_texts(fields, spec) do
+    names = for field <- fields, figure(field.value), do: key(field.name)
+    stated = (spec && Map.get(spec, :rules)) || []
+    parsed = for text <- stated, {:ok, rule} <- [Rules.parse(text, names)], do: rule
+    stated ++ implied(fields, parsed)
+  end
+
+  # Experience that fills its bar next to a level is a level gained, on
+  # any card: when the card's rules say nothing of it, the bar is not left
+  # full with the rest thrown away.
+  defp implied(fields, parsed) do
+    exp =
+      Enum.find(fields, fn field ->
+        match?({:pair, _pre, _a, _sep, _b, _post}, number(field.value)) and figure?(field.value) and
+          String.match?(field.name, ~r/\A(?:exp|xp|experience|경험치|경험)\.?\z/iu)
+      end)
+
+    level =
+      Enum.find(fields, fn field ->
+        match?({:one, _pre, _a, _post}, number(field.value)) and figure?(field.value) and
+          String.match?(field.name, ~r/\A(?:level|lv|lvl|레벨|렙)\.?\z/iu)
+      end)
+
+    if exp && level && key(exp.name) not in Rules.watched(parsed),
+      do: [
+        "when #{exp.name} >= #{exp.name}.max: #{level.name} += 1; #{exp.name} -= #{exp.name}.max"
+      ],
+      else: []
   end
 
   # A field's numbers as the rules see them, with the shape to write them
@@ -837,7 +865,7 @@ defmodule Aethrion.Bridge.Ledger do
         set ->
           " The game's rules set these themselves, so do not write them, only what leads to them: " <>
             Enum.join(set, ", ") <>
-            " (" <> Enum.join(Map.get(spec, :rules, []), " | ") <> ")."
+            " (" <> Enum.join(rule_texts(fields, spec), " | ") <> ")."
       end
 
     "The status window is kept by the game's rules and shown by them: do not print it yourself, whatever the card says. Instead, after everything else, write <aethrion-ledger>...</aethrion-ledger> with one line for each field of the window that this reply changes: `Field: +N` or `Field: -N` for a number that goes up or down (damage taken is `HP: -N`), `Field: N / M` to set both numbers of a pair, or `Field: new text`.#{lists} Use the window's field names (#{names}).#{ruled}#{already} Leave out every field that stays as it is, and write the tags with nothing between them when nothing changes. It is not shown to the player."

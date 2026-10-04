@@ -241,14 +241,14 @@ defmodule Aethrion.BridgeLedgerTest do
     test "sets a pair, a number, and a text" do
       changes = [
         {"HP", "140 / 140"},
-        {"Level", "9"},
+        {"Strength", "14"},
         {"Location", "명월탑 1층 외곽"},
         {"Stat Point", "+5"}
       ]
 
       {after_turn, _applied, []} = Ledger.apply(window(), changes, @lines)
       assert value(after_turn, @lines, "HP") == "140 / 140"
-      assert value(after_turn, @lines, "Level") == "9"
+      assert value(after_turn, @lines, "Strength") == "14"
       assert value(after_turn, @lines, "Location") == "명월탑 1층 외곽"
       assert value(after_turn, @lines, "Stat Point") == "7"
     end
@@ -294,7 +294,7 @@ defmodule Aethrion.BridgeLedgerTest do
   describe "apply/3 with what a small model writes" do
     test "a figure stays a figure, whatever words come with the number" do
       changes = [
-        {"Level", "9 / 221"},
+        {"Stat Point", "3 / 221"},
         {"HP", "-17 (현재 damage from previous encounters recovered to 104/130)"},
         {"Cash", "2095900 → 2100000"},
         {"EXP", "23 / 266 → 60 / 266 (거의 다 왔다)"},
@@ -302,7 +302,7 @@ defmodule Aethrion.BridgeLedgerTest do
       ]
 
       assert {kept, _applied, refused} = Ledger.apply(window(), changes, @lines)
-      assert value(kept, @lines, "Level") == "9"
+      assert value(kept, @lines, "Stat Point") == "3"
       assert value(kept, @lines, "HP") == "104 / 130"
       assert value(kept, @lines, "Cash") == "2,100,000"
       assert value(kept, @lines, "EXP") == "60 / 266"
@@ -371,6 +371,30 @@ defmodule Aethrion.BridgeLedgerTest do
       assert Ledger.rule_log(ruled, :en) == [
                "Rules · Level 8 → 9 · EXP 323 / 266 → 57 / 305 · Stat Point 1 → 6"
              ]
+    end
+
+    test "experience that fills its bar is a level gained, though the card's rules say nothing of it" do
+      # The card's reader found only the maximum's formula.
+      spec = Map.put(@lines, :rules, ["EXP.max = floor(100 * 1.15 ^ (Level - 1))"])
+      assert {kept, _applied, []} = Ledger.apply(window(), [{"EXP", "+250"}], spec)
+      assert {settled, ruled} = Ledger.settle(kept, spec, window())
+      assert value(settled, spec, "Level") == "9"
+      assert value(settled, spec, "EXP") == "7 / 305"
+      assert Ledger.rule_log(ruled, :ko) == ["규칙 · Level 8 → 9 · EXP 273 / 266 → 7 / 305"]
+
+      assert Ledger.instruction(window(), spec) =~
+               "only what leads to them: the maximum of EXP, Level ("
+
+      # With no rules at all, the maximum stays the model's to set.
+      assert {kept, _applied, []} = Ledger.apply(window(), [{"EXP", "+250"}], @lines)
+      assert {settled, _ruled} = Ledger.settle(kept, @lines, window())
+      assert value(settled, @lines, "EXP") == "7 / 266"
+
+      # A window with no level beside it: a bar that is full is full.
+      bar = "[ EXP: 90 / 100 | Mood: calm ]"
+
+      assert {"[ EXP: 100 / 100 | Mood: calm ]", _applied, [{"EXP", "+30", :clamped}]} =
+               Ledger.apply(bar, [{"EXP", "+30"}], %{open: "[", close: "]"})
     end
 
     test "without rules, a pair is still kept within its maximum" do
@@ -489,7 +513,12 @@ defmodule Aethrion.BridgeLedgerTest do
     text = Ledger.instruction(window(), @lines)
     assert text =~ "(Date, Time, Location, Cash, Level, HP, EXP, Stat Point, Strength, Item)"
     assert text =~ "For a list (Item), write only what joins or leaves it"
-    refute text =~ "The game's rules set these themselves"
+    # A level beside an experience bar is the rules' on any card.
+    assert text =~
+             "only what leads to them: Level (when EXP >= EXP.max: Level += 1; EXP -= EXP.max)."
+
+    refute Ledger.instruction("[ Trust: 3% | Anger: 5% ]", %{open: "[", close: "]"}) =~
+             "The game's rules set these themselves"
 
     # What the ledger did last turn is said, so that it is not asked for again.
     last = [
@@ -515,7 +544,7 @@ defmodule Aethrion.BridgeLedgerTest do
     ruled = Ledger.instruction(window(), Map.put(@lines, :rules, ["HP.max = Strength * 10"]))
 
     assert ruled =~
-             "The game's rules set these themselves, so do not write them, only what leads to them: the maximum of HP (HP.max = Strength * 10)."
+             "The game's rules set these themselves, so do not write them, only what leads to them: the maximum of HP, Level (HP.max = Strength * 10 | when EXP >= EXP.max: Level += 1; EXP -= EXP.max)."
 
     # Only what the rules that parse do set is named: a level-up is the
     # model's to write when the card's reader found no rule for it.
