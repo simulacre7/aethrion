@@ -128,19 +128,19 @@ defmodule Aethrion.Bridge.Ledger.Listing do
     text = text |> String.trim() |> String.replace(~r/\A"(.*)"\z/us, "\\1")
 
     cond do
-      match = Regex.run(~r/\A(.+?)(\s*[×xX\*]\s*)(\d+)(개|ea|)\z/u, text) ->
+      match = Regex.run(~r/\A(.+?)(\s*[×xX\*]\s*)([0-9]+)(개|ea|)\z/u, text) ->
         [_all, name, mark, count, unit] = match
         %{name: String.trim(name), count: String.to_integer(count), style: {mark, unit}}
 
-      match = Regex.run(~r/\A(.+?)(\s+)(\d+)(개)\z/u, text) ->
+      match = Regex.run(~r/\A(.+?)(\s+)([0-9]+)(개)\z/u, text) ->
         [_all, name, mark, count, unit] = match
         %{name: String.trim(name), count: String.to_integer(count), style: {mark, unit}}
 
-      match = Regex.run(~r/\A(.+?)(\s*\()(\d+)(\))\z/u, text) ->
+      match = Regex.run(~r/\A(.+?)(\s*\()([0-9]+)(\))\z/u, text) ->
         [_all, name, mark, count, unit] = match
         %{name: String.trim(name), count: String.to_integer(count), style: {mark, unit}}
 
-      match = Regex.run(~r/\A(\d{1,3}(?:,\d{3})+|\d+)(\s*)(\p{L}{1,8})\z/u, text) ->
+      match = Regex.run(~r/\A([0-9]{1,3}(?:,[0-9]{3})+|[0-9]+)(\s*)(\p{L}{1,8})\z/u, text) ->
         [_all, count, space, kind] = match
 
         %{
@@ -161,11 +161,11 @@ defmodule Aethrion.Bridge.Ledger.Listing do
     case item(text) do
       %{count: nil} ->
         cond do
-          match = Regex.run(~r/\A(.+?)(\s*[×xX\*]\s*)(\d+)(개|ea|)\s+\D*\z/u, text) ->
+          match = Regex.run(~r/\A(.+?)(\s*[×xX\*]\s*)([0-9]+)(개|ea|)\s+[^0-9]*\z/u, text) ->
             [_all, name, mark, count, unit] = match
             %{name: String.trim(name), count: String.to_integer(count), style: {mark, unit}}
 
-          match = Regex.run(~r/\A(\d+)\s*(?:개의?|[×xX])?\s+(\D.*)\z/u, text) ->
+          match = Regex.run(~r/\A([0-9]+)\s*(?:개의?|[×xX])?\s+([^0-9].*)\z/u, text) ->
             [_all, count, name] = match
             %{name: String.trim(name), count: String.to_integer(count), style: nil}
 
@@ -308,17 +308,22 @@ defmodule Aethrion.Bridge.Ledger.Listing do
     if left < 0, do: {:clamped, items}, else: {:ok, items}
   end
 
+  # One of a thing leaves unless a count says more, as one joins: "-potion"
+  # from "potion × 3" leaves two. More than there are leaves none, and
+  # is said to be more than was held.
   defp take_away(items, held, gone) do
-    left = (held.count || 1) - (gone.count || held.count || 1)
+    left = (held.count || 1) - (gone.count || 1)
 
-    {:ok,
-     Enum.flat_map(items, fn item ->
-       cond do
-         not same?(item, held) -> [item]
-         left <= 0 -> []
-         true -> [%{item | count: left}]
-       end
-     end)}
+    items =
+      Enum.flat_map(items, fn item ->
+        cond do
+          not same?(item, held) -> [item]
+          left <= 0 -> []
+          true -> [%{item | count: left}]
+        end
+      end)
+
+    if left < 0, do: {:clamped, items}, else: {:ok, items}
   end
 
   defp counted_up(items, new) do

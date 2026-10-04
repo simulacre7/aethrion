@@ -600,12 +600,25 @@ defmodule Aethrion.BridgeLedgerTest do
       assert Ledger.instruction(window(), spec) =~ "only what leads to them: Stat Point, Level ("
     end
 
-    test "without rules, a pair is still kept within its maximum" do
-      assert {settled, [{"HP", "150 / 130", "130 / 130"}]} =
-               Ledger.settle(String.replace(window(), "121 / 130", "150 / 130"), @lines)
-
+    test "without rules, a pair that was within its maximum is kept there" do
+      over = String.replace(window(), "121 / 130", "150 / 130")
+      assert {settled, [{"HP", "150 / 130", "130 / 130"}]} = Ledger.settle(over, @lines, window())
       assert value(settled, @lines, "HP") == "130 / 130"
       assert Ledger.settle(window(), @lines) == {window(), []}
+    end
+
+    test "what was never a current and a maximum, or a share of a whole, is left as written" do
+      spec = %{open: "[", close: "]"}
+      window = "[ 날짜: 12/5 (금) | 보너스: 150% | 손실: -20% | 달: 12/5 | HP: 30/48 ]"
+      # A first window, and a turn that changes nothing.
+      assert Ledger.settle(window, spec) == {window, []}
+      assert Ledger.settle(window, spec, window) == {window, []}
+
+      changes = [{"날짜", "12/6 (토)"}, {"보너스", "+30"}, {"달", "12/6"}, {"HP", "+40"}]
+      assert {kept, _applied, refused} = Ledger.apply(window, changes, spec)
+      assert kept == "[ 날짜: 12/6 (토) | 보너스: 180% | 손실: -20% | 달: 12/6 | HP: 48/48 ]"
+      assert refused == [{"HP", "+40", :clamped}]
+      assert Ledger.settle(kept, spec, window) == {kept, []}
     end
   end
 

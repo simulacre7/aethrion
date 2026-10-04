@@ -17,6 +17,8 @@ defmodule Aethrion.Bridge.Ledger.Fields do
     value;
   - any other line of words, a note.
 
+  Two fields of one name are told apart by a number (`HP`, `HP 2`).
+
   The window's own markers (`spec`) are no fields, except an opening text
   that is a heading or the first field's name.
   """
@@ -49,8 +51,23 @@ defmodule Aethrion.Bridge.Ledger.Fields do
 
     # Free text counts only next to named values: a window, not a paragraph.
     if Enum.count(fields, & &1.name) >= 2,
-      do: name_notes(fields),
+      do: fields |> name_notes() |> apart(),
       else: Enum.filter(fields, & &1.name)
+  end
+
+  # Two fields of one name (two people's HP) are told apart: the later
+  # ones are "HP 2", "HP 3".
+  defp apart(fields) do
+    {fields, _seen} =
+      Enum.map_reduce(fields, %{}, fn field, seen ->
+        key = String.downcase(field.name)
+        n = Map.get(seen, key, 0) + 1
+
+        {if(n == 1, do: field, else: %{field | name: "#{field.name} #{n}"}),
+         Map.put(seen, key, n)}
+      end)
+
+    fields
   end
 
   @doc "A field's name as written, without the marks around it."
@@ -96,7 +113,12 @@ defmodule Aethrion.Bridge.Ledger.Fields do
       String.match?(after_open, ~r/\A[ \t]*[:：=]/u)
   end
 
-  # The fields of one line of the window.
+  @max_line 2_000
+
+  # The fields of one line of the window. A line too long to be a field is
+  # none.
+  defp line(_window, _start, length) when length > @max_line, do: []
+
   defp line(window, start, length) do
     text = binary_part(window, start, length)
 
@@ -160,7 +182,7 @@ defmodule Aethrion.Bridge.Ledger.Fields do
     second = binary_part(window, second_at, second_size)
 
     if String.match?(name, ~r/\A\p{L}[^:：=]{0,23}\z/u) and
-         (String.match?(second, ~r/\A\s*-?\d/u) or more != []) do
+         (String.match?(second, ~r/\A\s*-?[0-9]/u) or more != []) do
       lead = byte_size(second) - byte_size(String.trim_leading(second))
       from = second_at + lead
       value = window |> binary_part(from, line_end - from) |> String.trim_trailing()

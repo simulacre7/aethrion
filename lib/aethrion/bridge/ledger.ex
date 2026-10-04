@@ -39,6 +39,9 @@ defmodule Aethrion.Bridge.Ledger do
   @tag "<aethrion-ledger"
   @scene "<aethrion-scene"
   @max_changes 40
+  @max_openings 24
+  @max_window 12_000
+  @max_replies 6
   @max_value 400
 
   @typedoc """
@@ -68,6 +71,8 @@ defmodule Aethrion.Bridge.Ledger do
     text
     |> :binary.matches(open)
     |> Enum.reverse()
+    # A short opening text ("[") may stand in many places: the last ones.
+    |> Enum.take(@max_openings)
     |> Enum.find_value(fn {start, length} ->
       # As the card closes it; or, when that leaves no window (a closing
       # text that also ends the window's heading), to the end of the reply.
@@ -76,6 +81,7 @@ defmodule Aethrion.Bridge.Ledger do
 
         with stop when is_integer(stop) <- closing(text, start + length, close),
              window = binary_part(text, start, stop - start),
+             true <- byte_size(window) <= @max_window,
              true <- length(fields(window, spec)) >= 2 do
           {binary_part(text, 0, start), window, binary_part(text, stop, byte_size(text) - stop)}
         else
@@ -93,8 +99,14 @@ defmodule Aethrion.Bridge.Ledger do
   defp closings(close), do: [close]
 
   # Where the window that opens before `from` ends.
-  defp closing(text, _from, close) when close in [nil, ""],
-    do: byte_size(String.trim_trailing(text))
+  # A window with no closing text is a block of lines: it ends at the
+  # first blank line, or with the text.
+  defp closing(text, from, close) when close in [nil, ""] do
+    case Regex.run(~r/\n[ \t]*\n/, text, offset: from, return: :index) do
+      [{stop, _length}] -> stop
+      nil -> byte_size(String.trim_trailing(text))
+    end
+  end
 
   defp closing(text, from, close) do
     case :binary.match(text, close, scope: {from, byte_size(text) - from}) do
@@ -145,7 +157,7 @@ defmodule Aethrion.Bridge.Ledger do
   @spec agrees?(String.t(), String.t(), spec() | nil) :: boolean() | nil
   def agrees?(window, rule, spec \\ nil) do
     fields = fields(window, spec)
-    figures = for field <- fields, figure = figure(field.value), do: {field, figure}
+    figures = for field <- fields, figure = figure(field), do: {field, figure}
     values = Map.new(figures, fn {field, {_shape, numbers}} -> {key(field.name), numbers} end)
 
     case Rules.parse(rule, Map.keys(values)) do
@@ -161,6 +173,9 @@ defmodule Aethrion.Bridge.Ledger do
   def current(chat, spec) do
     chat
     |> Enum.reverse()
+    |> Enum.filter(&(&1["role"] == "assistant"))
+    # A chat that has had no window for this long has none to go on from.
+    |> Enum.take(@max_replies)
     |> Enum.find_value(fn
       %{"role" => "assistant", "content" => content} ->
         case window(content, spec) do
@@ -262,7 +277,13 @@ defmodule Aethrion.Bridge.Ledger do
             # A field named twice: the later change works on the earlier one's result.
             was = Map.get(edits, field.name, field.value)
             # A pair a rule watches may pass its maximum: the rule takes it up.
-            habits = Map.put(habits, :open?, key(field.name) in watched)
+            habits =
+              Map.merge(habits, %{
+                open?: key(field.name) in watched,
+                dated?: dated?(field.name),
+                close: (spec && spec.close) || ""
+              })
+
             {now, problem} = changed(was, value, habits)
 
             # What a rule raises when something happens is not the model's to raise.
@@ -333,7 +354,7 @@ defmodule Aethrion.Bridge.Ledger do
           {String.t(), [{String.t(), String.t(), String.t()}]}
   def settle(window, spec \\ nil, before \\ nil) do
     fields = fields(window, spec)
-    figures = for field <- fields, figure = figure(field.value), do: {field, figure}
+    figures = for field <- fields, figure = figure(field), do: {field, figure}
     values = values(fields)
 
     # The numbers before this turn's changes, for what rose since.
@@ -343,6 +364,9 @@ defmodule Aethrion.Bridge.Ledger do
     edits =
       for {field, {shape, was}} <- figures,
           now = Map.fetch!(ruled, key(field.name)),
+          # A pair a change put past its maximum for a rule to take up, and
+          # no rule did: back within the maximum it was within before.
+          shape = within(shape, before && before[key(field.name)]),
           {text, problem} = put(shape, now),
           now != was or problem != nil,
           text != field.value,
@@ -373,11 +397,19 @@ defmodule Aethrion.Bridge.Ledger do
      )}
   end
 
+  # The shape of a pair that was within its maximum before this turn, so
+  # that it is kept there now (`put_pair/4` looks at how the pair stood).
+  defp within({:pair, pre, _a, sep, _b, post}, %{now: was, max: max})
+       when is_number(max) and was <= max,
+       do: {:pair, pre, was, sep, max, post}
+
+  defp within(shape, _before), do: shape
+
   # A window's numbers as the rules see them: its figures by field name,
   # and the labelled numbers of its rows by "row label".
   defp values(fields) do
     figures =
-      for field <- fields, {_shape, numbers} <- [figure(field.value)], into: %{} do
+      for field <- fields, {_shape, numbers} <- [figure(field)], into: %{} do
         {key(field.name), numbers}
       end
 
@@ -430,7 +462,7 @@ defmodule Aethrion.Bridge.Ledger do
 
   # The rules as written: the card's, and a level-up nobody stated.
   defp rule_texts(fields, spec) do
-    names = for field <- fields, figure(field.value), do: key(field.name)
+    names = for field <- fields, figure(field), do: key(field.name)
     stated = (spec && Map.get(spec, :rules)) || []
     parsed = for text <- stated, {:ok, rule} <- [Rules.parse(text, names)], do: rule
     stated ++ implied(fields, parsed)
@@ -461,6 +493,8 @@ defmodule Aethrion.Bridge.Ledger do
 
   # A field's numbers as the rules see them, with the shape to write them
   # back in; nil for a field that holds no figure.
+  defp figure(%{name: name, value: value}), do: if(dated?(name), do: nil, else: figure(value))
+
   defp figure(value) do
     if figure?(value) do
       case number(value) do
@@ -515,10 +549,29 @@ defmodule Aethrion.Bridge.Ledger do
         nil -> {value, habits}
       end
 
+    # A value cannot close the window it is in: "calm [for now]" in a
+    # window that ends with "]" is written with round brackets, and any
+    # other closing text is left out.
+    value =
+      case habits[:close] do
+        close when close in [nil, ""] -> value
+        "]" -> value |> String.replace("[", "(") |> String.replace("]", ")")
+        close -> value |> String.replace(close, " ") |> String.trim()
+      end
+
     cond do
-      nothing?(value) -> {was, nil}
-      Cells.read(was) != [] -> celled_row(was, value)
-      true -> worded_or_counted(was, value, habits)
+      nothing?(value) ->
+        {was, nil}
+
+      # A date is said anew, whatever numbers it holds; it is not moved by one.
+      habits[:dated?] ->
+        if String.match?(value, ~r/\A[+\-−]\s*[0-9]/u), do: {was, :unreadable}, else: {value, nil}
+
+      Cells.read(was) != [] ->
+        celled_row(was, value)
+
+      true ->
+        worded_or_counted(was, value, habits)
     end
   end
 
@@ -542,7 +595,7 @@ defmodule Aethrion.Bridge.Ledger do
   defp worded_or_counted(was, value, habits) do
     cond do
       # "+thing" joins a list, not a figure: a load of "12 / 80" is no bag.
-      String.match?(value, ~r/\A[+\-−]\s*[^\d\s]/u) ->
+      String.match?(value, ~r/\A[+\-−]\s*[^0-9\s]/u) ->
         if figure?(was), do: {was, :unreadable}, else: Listing.change(was, value, habits)
 
       figure?(was) ->
@@ -611,7 +664,7 @@ defmodule Aethrion.Bridge.Ledger do
     # One more than it was is a count going on ("Day: 2" after day 1):
     # the new value and the smallest change agree.
     not habits[:outright?] and new != now and new != now + 1 and
-      String.match?(value, ~r/\A\s*-?[\d,.]+\s*(?:%|\p{L}{0,3})\s*\z/u)
+      String.match?(value, ~r/\A\s*-?[0-9,.]+\s*(?:%|\p{L}{0,3})\s*\z/u)
   end
 
   # A change that is words, or a field that is. A figure stays a figure:
@@ -622,7 +675,7 @@ defmodule Aethrion.Bridge.Ledger do
 
   defp worded(was, value, habits, false) do
     cond do
-      Listing.empty?(was) or not String.match?(value, ~r/\A[+\-−]\s*\d/u) ->
+      Listing.empty?(was) or not String.match?(value, ~r/\A[+\-−]\s*[0-9]/u) ->
         Listing.change(was, value, habits)
 
       later = clock(was, value) ->
@@ -637,7 +690,7 @@ defmodule Aethrion.Bridge.Ledger do
   # "+30분", "+2 hours"), around midnight; nil when either is not that.
   defp clock(was, value) do
     with [_all, pre, h, m, s, post] <-
-           Regex.run(~r/\A(\D*?)(\d{1,2}):(\d{2})(?::(\d{2}))?(\D.*|)\z/us, was),
+           Regex.run(~r/\A([^0-9]*?)([0-9]{1,2}):([0-9]{2})(?::([0-9]{2}))?([^0-9].*|)\z/us, was),
          {:ok, seconds} <- span(value) do
       now = String.to_integer(h) * 3600 + String.to_integer(m) * 60 + seconds_of(s)
       later = Integer.mod(now + seconds, 86_400)
@@ -657,7 +710,7 @@ defmodule Aethrion.Bridge.Ledger do
     sign = if String.match?(value, ~r/\A[\-−]/u), do: -1, else: 1
 
     cond do
-      match = Regex.run(~r/\A[+\-−]\s*(\d+):(\d{2})(?::(\d{2}))?\s*\z/u, value) ->
+      match = Regex.run(~r/\A[+\-−]\s*([0-9]+):([0-9]{2})(?::([0-9]{2}))?\s*\z/u, value) ->
         [h, m | s] = tl(match)
 
         {:ok,
@@ -665,11 +718,11 @@ defmodule Aethrion.Bridge.Ledger do
            (String.to_integer(h) * 3600 + String.to_integer(m) * 60 +
               seconds_of(List.first(s) || ""))}
 
-      match = Regex.run(~r/\A[+\-−]\s*(\d+)\s*(시간|hours?|hrs?|h)\s*\z/iu, value) ->
+      match = Regex.run(~r/\A[+\-−]\s*([0-9]+)\s*(시간|hours?|hrs?|h)\s*\z/iu, value) ->
         {:ok, sign * String.to_integer(Enum.at(match, 1)) * 3600}
 
       # Minutes, said or not: "+30분", "+30 min", "+30".
-      match = Regex.run(~r/\A[+\-−]\s*(\d+)\s*(분|min|minutes?|m|)\s*\D*\z/iu, value) ->
+      match = Regex.run(~r/\A[+\-−]\s*([0-9]+)\s*(분|min|minutes?|m|)\s*[^0-9]*\z/iu, value) ->
         {:ok, sign * String.to_integer(Enum.at(match, 1)) * 60}
 
       true ->
@@ -730,30 +783,42 @@ defmodule Aethrion.Bridge.Ledger do
   # What a value is made of: `{:pair, pre, current, separator, max, post}`,
   # `{:one, pre, number, post}`, or `:text` (a time, a date, a list).
   defp number(value) do
+    # A run of digits too long to be a figure (an id, a serial) is text.
+    if String.match?(value, ~r/[0-9]{16}/), do: :text, else: figure_of(value)
+  end
+
+  defp figure_of(value) do
     cond do
       match =
           Regex.run(
-            ~r/\A(\D*?)(-?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)(\s*\/\s*)((?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)(\D*)\z/u,
+            ~r/\A([^0-9]*?)(-?(?:[0-9]{1,3}(?:,[0-9]{3})+|[0-9]+)(?:\.[0-9]+)?)(\s*\/\s*)((?:[0-9]{1,3}(?:,[0-9]{3})+|[0-9]+)(?:\.[0-9]+)?)([^0-9]*)\z/u,
             value
           ) ->
         [_all, pre, a, sep, b, post] = match
         {:pair, pre, int(a), sep, int(b), {post, commas?(a) or commas?(b)}}
 
-      match = Regex.run(~r/\A(\D*?)(-?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)(\D*)\z/u, value) ->
+      match =
+          Regex.run(
+            ~r/\A([^0-9]*?)(-?(?:[0-9]{1,3}(?:,[0-9]{3})+|[0-9]+)(?:\.[0-9]+)?)([^0-9]*)\z/u,
+            value
+          ) ->
         [_all, pre, a, post] = match
         {:one, pre, int(a), {post, commas?(a)}}
 
       # A number that leads a row or a line: what follows may hold digits too.
       match =
           Regex.run(
-            ~r/\A(-?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)(\s*\/\s*)((?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)(\s*[|·(\[].*)\z/us,
+            ~r/\A(-?(?:[0-9]{1,3}(?:,[0-9]{3})+|[0-9]+)(?:\.[0-9]+)?)(\s*\/\s*)((?:[0-9]{1,3}(?:,[0-9]{3})+|[0-9]+)(?:\.[0-9]+)?)(\s*[|·(\[].*)\z/us,
             value
           ) ->
         [_all, a, sep, b, post] = match
         {:pair, "", int(a), sep, int(b), {post, commas?(a) or commas?(b)}}
 
       match =
-          Regex.run(~r/\A(-?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)(\s*%?\s*[|·(\[].*)\z/us, value) ->
+          Regex.run(
+            ~r/\A(-?(?:[0-9]{1,3}(?:,[0-9]{3})+|[0-9]+)(?:\.[0-9]+)?)(\s*%?\s*[|·(\[].*)\z/us,
+            value
+          ) ->
         [_all, a, post] = match
         {:one, "", int(a), {post, commas?(a)}}
 
@@ -762,13 +827,13 @@ defmodule Aethrion.Bridge.Ledger do
     end
   end
 
-  @number "(?:\\d{1,3}(?:,\\d{3})+|\\d+)(?:\\.\\d+)?"
-  @moved Regex.compile!("\\A([+\\-−])\\s*(#{@number})\\s*[^\\d\\/]*\\z", "u")
-  @pair_set Regex.compile!("\\A\\D*?(-?#{@number})\\s*\\/\\s*(#{@number})\\D*\\z", "u")
-  @one_set Regex.compile!("\\A[^\\d+\\-−]*?(#{@number})\\D*\\z", "u")
-  @moved_first Regex.compile!("\\A([+\\-−])\\s*(#{@number})(?!\\s*\\/|\\d|,\\d)", "u")
+  @number "(?:[0-9]{1,3}(?:,[0-9]{3})+|[0-9]+)(?:\\.[0-9]+)?"
+  @moved Regex.compile!("\\A([+\\-−])\\s*(#{@number})\\s*[^0-9\\/]*\\z", "u")
+  @pair_set Regex.compile!("\\A[^0-9]*?(-?#{@number})\\s*\\/\\s*(#{@number})[^0-9]*\\z", "u")
+  @one_set Regex.compile!("\\A[^0-9+\\-−]*?(#{@number})[^0-9]*\\z", "u")
+  @moved_first Regex.compile!("\\A([+\\-−])\\s*(#{@number})(?!\\s*\\/|[0-9]|,[0-9])", "u")
   @pair_within Regex.compile!("(-?#{@number})\\s*\\/\\s*(#{@number})", "u")
-  @numbers_within Regex.compile!("(?<![\\d,.])([+\\-−]?)\\s*(#{@number})", "u")
+  @numbers_within Regex.compile!("(?<![0-9,.])([+\\-−]?)\\s*(#{@number})", "u")
 
   # What a change asks for: `{:move, by}`, `{:set_pair, now, max}`,
   # `{:set, now}`, or `:text`. For a figure (`loose?`), a change with more
@@ -776,6 +841,7 @@ defmodule Aethrion.Bridge.Ledger do
   # moves, "now 31/48 after the potion" sets.
   defp delta(value, loose?) do
     cond do
+      String.match?(value, ~r/[0-9]{16}/) -> :text
       match = Regex.run(@moved, value) -> move(match)
       match = Regex.run(@pair_set, value) -> set_pair(match)
       # A number with words around it, and no sign: the new value.
@@ -811,16 +877,29 @@ defmodule Aethrion.Bridge.Ledger do
 
   defp set_pair([_all, a, b]), do: {:set_pair, int(a), int(b)}
 
-  defp put_pair({:pair, pre, _a, sep, _b, {post, commas?}}, a, b, open? \\ false) do
+  # A pair is kept within its maximum, and a percentage within 0 to 100,
+  # when it was so before: "12/5 (Fri)" is no current and maximum, and a
+  # bonus of 150% is no share of a whole.
+  defp put_pair({:pair, pre, was_a, sep, was_b, {post, commas?}}, a, b, open? \\ false) do
     b = max(b, 0)
-    bounded = if open?, do: max(a, 0), else: a |> max(0) |> min(b)
+
+    bounded =
+      cond do
+        was_a > was_b -> a
+        open? -> max(a, 0)
+        true -> a |> max(0) |> min(b)
+      end
 
     {pre <> digits(bounded, commas?) <> sep <> digits(b, commas?) <> post,
      if(bounded != a, do: :clamped)}
   end
 
-  defp put_one({:one, pre, _a, {post, commas?}}, a) do
-    bounded = if String.match?(post, ~r/\A\s*%/u), do: a |> max(0) |> min(100), else: a
+  defp put_one({:one, pre, was, {post, commas?}}, a) do
+    bounded =
+      if String.match?(post, ~r/\A\s*%/u) and was >= 0 and was <= 100,
+        do: a |> max(0) |> min(100),
+        else: a
+
     {pre <> digits(bounded, commas?) <> post, if(bounded != a, do: :clamped)}
   end
 
@@ -837,8 +916,9 @@ defmodule Aethrion.Bridge.Ledger do
     [whole, fraction] =
       n |> :erlang.float_to_binary([{:decimals, 2}, :compact]) |> String.split(".")
 
-    sign = if n < 0 and not String.starts_with?(whole, "-"), do: "-", else: ""
-    sign <> digits(String.to_integer(whole), commas?) <> "." <> fraction
+    # "-0.2": the whole part alone has lost the sign.
+    sign = if n < 0, do: "-", else: ""
+    sign <> digits(abs(String.to_integer(whole)), commas?) <> "." <> fraction
   end
 
   defp digits(n, false), do: Integer.to_string(n)
@@ -851,13 +931,22 @@ defmodule Aethrion.Bridge.Ledger do
       |> abs()
       |> Integer.to_string()
       |> String.reverse()
-      |> String.replace(~r/(\d{3})(?=\d)/, "\\1,")
+      |> String.replace(~r/([0-9]{3})(?=[0-9])/, "\\1,")
       |> String.reverse()
 
     sign <> grouped
   end
 
-  defp key(name), do: name |> String.downcase() |> String.replace(~r/\s+/u, " ") |> String.trim()
+  # A field's name as it is looked up: in lower case, its spaces single,
+  # and without the marks before it ("❤️ HP" is "hp"), unless it is all marks.
+  defp key(name) do
+    key = name |> String.downcase() |> String.replace(~r/\s+/u, " ") |> String.trim()
+
+    case String.replace(key, ~r/\A[^\p{L}\p{N}]+/u, "") do
+      "" -> key
+      bare -> bare
+    end
+  end
 
   @doc """
   What the last reply's status block says the ledger did, from the
@@ -1076,6 +1165,11 @@ defmodule Aethrion.Bridge.Ledger do
     {ko, en} = Map.fetch!(@reasons, reason)
     if locale == :ko, do: ko, else: en
   end
+
+  # A field that holds a date ("12/5 (Fri)", "2025.01.01"): its numbers
+  # are no figures, however they are written.
+  defp dated?(name),
+    do: String.match?(name, ~r/date|날짜|일자|日付|日期|birthday|생일|기념일/iu)
 
   # A value that is a figure: a pair, or a number that leads the value
   # ("30 (경계)", "120G", "Lv 5"), not a text with a number in it.

@@ -364,9 +364,10 @@ defmodule Aethrion.Bridge.Ledger.Rules do
   """
   @spec run(values(), [rule()], values() | nil) :: values()
   def run(values, rules, before \\ nil) do
+    # What each rule for a rise has taken up so far: its field as it was.
     counted =
-      for {:rise, name, _changes} <- rules, into: %{} do
-        {name, (before || values) |> Map.get(name, %{now: nil}) |> Map.fetch!(:now)}
+      for {:rise, name, _changes} = rule <- rules, into: %{} do
+        {rule, (before || values) |> Map.get(name, %{now: nil}) |> Map.fetch!(:now)}
       end
 
     # Each field with what it was before this turn, for `Field.before`.
@@ -394,8 +395,8 @@ defmodule Aethrion.Bridge.Ledger.Rules do
       rule when :erlang.map_get(rule, fired) > @max_firings ->
         {:runaway, rule}
 
-      {:rise, name, changes} ->
-        {values, counted} = step(values, name, changes, counted)
+      {:rise, _name, _changes} = rule ->
+        {values, counted} = step(values, rule, counted)
         run(values, rules, counted, fired)
 
       {:when, _condition, changes} = rule ->
@@ -413,8 +414,8 @@ defmodule Aethrion.Bridge.Ledger.Rules do
   defp risen(values, rules, counted) do
     rules
     |> Enum.filter(fn
-      {:rise, name, _changes} ->
-        is_number(counted[name]) and is_map(values[name]) and values[name].now > counted[name]
+      {:rise, name, _changes} = rule ->
+        is_number(counted[rule]) and is_map(values[name]) and values[name].now > counted[rule]
 
       _other ->
         false
@@ -435,17 +436,24 @@ defmodule Aethrion.Bridge.Ledger.Rules do
   # One point of a rise, the changes seeing that point. A point that
   # cannot be paid for is not gained: the field goes back to where what
   # could be paid brought it.
-  defp step(values, name, changes, counted) do
-    step = counted[name] + 1
+  defp step(values, {:rise, name, changes} = rule, counted) do
+    step = counted[rule] + 1
     real = values[name].now
     at_step = put_in(values[name].now, step)
 
     if affordable?(at_step, changes) do
       stepped = fire(at_step, changes)
       next = if stepped[name].now == step, do: put_in(stepped[name].now, real), else: stepped
-      {next, Map.put(counted, name, step)}
+      {next, Map.put(counted, rule, step)}
     else
-      {put_in(values[name].now, counted[name]), counted}
+      # The field goes back for every rule that looks at it.
+      back = counted[rule]
+
+      {put_in(values[name].now, back),
+       Map.new(counted, fn
+         {{:rise, ^name, _changes} = other, n} -> {other, min(n, back)}
+         entry -> entry
+       end)}
     end
   end
 
@@ -516,8 +524,17 @@ defmodule Aethrion.Bridge.Ledger.Rules do
 
   # An expression's value, or `:none` when it cannot be worked out (a field
   # the window lacks, a pair that is none, a division by zero).
+  @limit 1.0e15
+
   defp value(expr, values) do
-    eval(expr, values)
+    case eval(expr, values) do
+      # A number past any a window holds is none.
+      n when is_number(n) and (n > @limit or n < -@limit) -> :none
+      n -> n
+    end
+  rescue
+    # A product too large for a float or for the VM.
+    _error in [ArithmeticError, SystemLimitError, ErlangError] -> :none
   catch
     :none -> :none
   end

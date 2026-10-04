@@ -22,7 +22,7 @@ defmodule Aethrion.Bridge.Ledger.Cells do
           at: {non_neg_integer(), non_neg_integer()}
         }
 
-  @cell ~r/\A(\s*)(\p{L}[\p{L}\p{N}]{0,11})(\s+)(-?\d+)(?![\d.,]\d|\d)/u
+  @cell ~r/\A(\s*)(\p{L}[\p{L}\p{N}]{0,11})(\s+)(-?[0-9]+)(?![0-9.,][0-9]|[0-9])/u
 
   @doc """
   The labelled numbers of a row's value, in order; none unless the row has
@@ -74,7 +74,7 @@ defmodule Aethrion.Bridge.Ledger.Cells do
 
     named =
       for [_all, label, sign, n] <-
-            Regex.scan(~r/(\p{L}[\p{L}\p{N}]{0,11})\s*[:：]?\s*([+\-−]?)\s*(\d+)/u, change),
+            Regex.scan(~r/(\p{L}[\p{L}\p{N}]{0,11})\s*[:：]?\s*([+\-−]?)\s*([0-9]+)/u, change),
           Map.has_key?(labels, key(label)),
           do: {key(label), sign, String.to_integer(n)}
 

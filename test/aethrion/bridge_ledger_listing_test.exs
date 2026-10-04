@@ -51,7 +51,13 @@ defmodule Aethrion.BridgeLedgerListingTest do
                {"타워 단말기 (보급형) / 회복의 물약 (노말) × 2 / 마정석 (최하급) × 1", nil}
 
       assert change(@items, "−마정석 (최하급)") == {"타워 단말기 (보급형) / 회복의 물약 (노말) × 3", nil}
-      assert change(@items, "-회복의 물약 (노말) × 5") == {"타워 단말기 (보급형) / 마정석 (최하급) × 1", nil}
+      # More than there are: none is left, and it is said so.
+      assert change(@items, "-회복의 물약 (노말) × 5") ==
+               {"타워 단말기 (보급형) / 마정석 (최하급) × 1", :clamped}
+
+      # One leaves unless a count says more, as one joins.
+      assert change(@items, "-회복의 물약 (노말)") ==
+               {"타워 단말기 (보급형) / 회복의 물약 (노말) × 2 / 마정석 (최하급) × 1", nil}
     end
 
     test "a remark on what leaves, and a change written with an arrow" do

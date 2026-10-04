@@ -240,7 +240,7 @@ defmodule Aethrion.Bridge.AutoCast do
     {quote, card} = {plain(from), plain(text)}
 
     numbers =
-      ~r/\d+(?:\.\d+)?/
+      ~r/[0-9]+(?:\.[0-9]+)?/
       |> Regex.scan(rule)
       |> List.flatten()
       |> Enum.reject(&(&1 in ["0", "1"]))
@@ -268,7 +268,7 @@ defmodule Aethrion.Bridge.AutoCast do
   # The number stands somewhere in the quote with the few letters on each
   # side of it as the card has them.
   defp in_place?(number, quote, card) do
-    pattern = Regex.compile!("(?<![\\d.])" <> Regex.escape(number) <> "(?!\\.?\\d)")
+    pattern = Regex.compile!("(?<![0-9.])" <> Regex.escape(number) <> "(?!\\.?[0-9])")
 
     pattern
     |> Regex.scan(quote, return: :index)
