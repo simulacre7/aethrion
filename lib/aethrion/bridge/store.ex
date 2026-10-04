@@ -120,7 +120,10 @@ defmodule Aethrion.Bridge.Store do
 
   @impl true
   def handle_call({:replace, key, value}, _from, state) do
-    :ets.insert(state.table, {key, value})
+    # A key forgotten is gone: what is put under it next is kept.
+    if value == nil,
+      do: :ets.delete(state.table, key),
+      else: :ets.insert(state.table, {key, value})
 
     if state.path do
       line = Jason.encode!(%{"key" => key, "value" => value, "replace" => true})
@@ -132,13 +135,16 @@ defmodule Aethrion.Bridge.Store do
 
   # A line that cannot be read (or was written in an older format) is
   # skipped; a key written twice keeps its first value, unless a later
-  # line replaces it.
+  # line replaces it or forgets it.
   defp load(table, path) do
     if File.exists?(path) do
       path
       |> File.stream!()
       |> Enum.each(fn line ->
         case Jason.decode(line) do
+          {:ok, %{"key" => key, "value" => nil, "replace" => true}} when is_binary(key) ->
+            :ets.delete(table, key)
+
           {:ok, %{"key" => key, "value" => value, "replace" => true}} when is_binary(key) ->
             :ets.insert(table, {key, value})
 

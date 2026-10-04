@@ -569,8 +569,9 @@ defmodule Aethrion.AutoCastTest do
       {200, again} = ask(base, [first, reply(one), second], card)
       note = calls() |> List.last() |> List.last() |> Map.fetch!("content")
 
+      # What the first answer came to, without what was refused of it.
       assert note =~
-               "what it does to the window is settled: HP: -12; EXP: +25; Item: -물약 × 1; Mana: +1."
+               "what it does to the window is settled: 기록 · HP 50 / 50 → 38 / 50 · EXP 90 / 100 → 115 / 100 · Item −물약; 규칙 · Level 1 → 2 · EXP 115 / 100 → 15 / 100. Narrate"
 
       refute note =~ "one line for each field"
 
@@ -724,6 +725,10 @@ defmodule Aethrion.AutoCastTest do
       reads = card_reads()
       assert {200, %{"ok" => true}} = call(:delete, base <> "/casts/cards/" <> key)
       assert {200, %{"cards" => []}} = call(:get, base <> "/casts/cards")
+      {200, _again} = ask(base, [user("탑에 들어간다.")], card)
+      assert card_reads() == reads + 1
+      # Read once more and kept: listed again, and not read a third time.
+      assert {200, %{"cards" => [%{"title" => "Tower"}]}} = call(:get, base <> "/casts/cards")
       {200, _again} = ask(base, [user("탑에 들어간다.")], card)
       assert card_reads() == reads + 1
     end

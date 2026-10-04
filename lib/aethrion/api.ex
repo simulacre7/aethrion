@@ -762,7 +762,9 @@ defmodule Aethrion.API do
     with {:ok, state} <- State.parse(kept["cast"]) do
       root = "root:" <> Aethrion.Bridge.root(state)
 
-      if Aethrion.Bridge.Store.get(Aethrion.Bridge.Casts, root) != nil,
+      # Under the root only when it is this card that is kept there (two
+      # cards with no one in them have one root).
+      if Aethrion.Bridge.Store.get(Aethrion.Bridge.Casts, root) == kept,
         do: Aethrion.Bridge.Store.replace(Aethrion.Bridge.Casts, root, revised)
     end
 
@@ -988,7 +990,7 @@ defmodule Aethrion.API do
         # The end of the reply that has not gone out yet: what the filter
         # held back, as the rules left it. (Without a filter all of it went
         # out as it came.)
-        rest = if plan, do: Aethrion.Bridge.Reply.unsent(text, gone), else: ""
+        rest = if plan, do: Aethrion.Bridge.Reply.unsent(text, gone, plan), else: ""
 
         if rest != "", do: emit.({:chunk, chunk.(%{content: rest}, nil)})
         if status, do: emit.({:chunk, chunk.(%{content: "\n\n" <> status}, nil)})

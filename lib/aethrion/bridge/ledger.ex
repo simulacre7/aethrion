@@ -42,6 +42,8 @@ defmodule Aethrion.Bridge.Ledger do
   @max_openings 24
   @max_window 12_000
   @max_replies 6
+  # An opening text this long at the start of a line is the window's ("[Day", "```").
+  @sure_opening 3
   @max_value 400
 
   @typedoc """
@@ -196,24 +198,23 @@ defmodule Aethrion.Bridge.Ledger do
 
   defp clean_name(name), do: Fields.clean_name(name)
 
+  @block ~r/<aethrion-ledger\b[^>]*>(.*?)(?:<\/aethrion-ledger>|\z)/si
+
   @doc """
   The reply without its ledger lines, and the changes they name:
-  `[{name, value}]`, or nil when the model wrote none.
+  `[{name, value}]`, or nil when the model wrote none. Every block of
+  lines is taken, however the tag is cased.
   """
   @spec take(String.t()) :: {String.t(), [{String.t(), String.t()}] | nil}
   def take(text) do
-    case Regex.run(~r/<aethrion-ledger\b[^>]*>(.*?)(?:<\/aethrion-ledger>|\z)/s, text,
-           return: :index
-         ) do
-      [{start, length}, {from, size}] ->
-        rest =
-          binary_part(text, 0, start) <>
-            binary_part(text, start + length, byte_size(text) - start - length)
+    case Regex.scan(@block, text) do
+      [] ->
+        {text, nil}
 
+      blocks ->
         changes =
-          text
-          |> binary_part(from, size)
-          |> String.split("\n")
+          blocks
+          |> Enum.flat_map(fn [_all, lines] -> String.split(lines, "\n") end)
           |> Enum.flat_map(fn line ->
             case Regex.run(~r/\A\s*(?:[-*•]\s*)?([^:：]{1,40}?)\s*[:：]\s*(.+?)\s*\z/u, line) do
               [_all, name, value] -> [{clean_name(name), String.slice(value, 0, @max_value)}]
@@ -222,11 +223,34 @@ defmodule Aethrion.Bridge.Ledger do
           end)
           |> Enum.take(@max_changes)
 
-        {String.trim(rest), changes}
-
-      nil ->
-        {text, nil}
+        {text |> String.replace(@block, "") |> String.trim(), changes}
     end
+  end
+
+  @doc "Whether the reply's ledger lines were cut off (a block that is opened and not closed)."
+  @spec cut_off?(String.t()) :: boolean()
+  def cut_off?(text) do
+    lower = String.downcase(text)
+
+    length(String.split(lower, "<aethrion-ledger")) >
+      length(String.split(lower, "</aethrion-ledger>"))
+  end
+
+  @doc """
+  The window with the fields named given exactly these values (a field
+  the window lacks is left out). For writing back what a turn settled.
+  """
+  @spec put(String.t(), [{String.t(), String.t()}], spec() | nil) :: String.t()
+  def put(window, values, spec \\ nil) do
+    fields = fields(window, spec)
+    by_key = Map.new(fields, &{key(&1.name), &1.name})
+
+    edits =
+      for {name, value} <- values, held = by_key[key(name)], into: %{} do
+        {held, value |> String.replace(~r/[\r\n]/u, " ") |> String.slice(0, 2_000)}
+      end
+
+    rewrite(window, fields, edits)
   end
 
   @doc """
@@ -262,7 +286,8 @@ defmodule Aethrion.Bridge.Ledger do
     by_name = Map.new(fields, &{key(&1.name), &1})
     habits = habits(fields)
     rules = rules(fields, spec)
-    {raised, lowered, watched} = {Rules.raised(rules), Rules.lowered(rules), Rules.watched(rules)}
+    watched = Rules.watched(rules)
+    sets = %{raised: Rules.raised(rules), lowered: Rules.lowered(rules)}
 
     {edits, applied, refused} =
       Enum.reduce(changes, {%{}, [], []}, fn {name, value}, {edits, applied, refused} ->
@@ -276,30 +301,17 @@ defmodule Aethrion.Bridge.Ledger do
           field ->
             # A field named twice: the later change works on the earlier one's result.
             was = Map.get(edits, field.name, field.value)
-            # A pair a rule watches may pass its maximum: the rule takes it up.
+
             habits =
               Map.merge(habits, %{
+                # A pair a rule watches may pass its maximum: the rule takes it up.
                 open?: key(field.name) in watched,
                 dated?: dated?(field.name),
                 close: (spec && spec.close) || ""
               })
 
-            {now, problem} = changed(was, value, habits)
-
-            # What a rule raises when something happens is not the model's to raise.
-            # Nor is what a rule pays from the model's to lower.
             {now, problem} =
-              if (key(field.name) in raised and first(now) > first(was)) or
-                   (key(field.name) in lowered and first(now) < first(was)),
-                 do: {was, :ruled},
-                 else: {now, problem}
-
-            # What the rules say of a person, copied onto the person's
-            # row, is no change to the window, and no fault worth a line.
-            problem =
-              if problem == :unreadable and String.match?(value, ~r/affinity|trust|호감|신뢰/iu),
-                do: nil,
-                else: problem
+              was |> changed(value, habits) |> judged(was, value, key(field.name), sets)
 
             refused = if problem, do: refused ++ [{field.name, value, problem}], else: refused
             applied = Enum.reject(applied, fn {n, _was, _now} -> n == field.name end)
@@ -313,6 +325,23 @@ defmodule Aethrion.Bridge.Ledger do
       end)
 
     {rewrite(window, Map.values(by_name), edits), applied, refused}
+  end
+
+  # A change as the rules let it stand. What a rule raises when something
+  # happens is not the model's to raise, nor what a rule pays from the
+  # model's to lower. And what the rules say of a person, copied onto the
+  # person's row, is no change to the window and no fault worth a line.
+  defp judged({now, problem}, was, value, key, %{raised: raised, lowered: lowered}) do
+    cond do
+      (key in raised and first(now) > first(was)) or (key in lowered and first(now) < first(was)) ->
+        {was, :ruled}
+
+      problem == :unreadable and String.match?(value, ~r/affinity|trust|호감|신뢰/iu) ->
+        {now, nil}
+
+      true ->
+        {now, problem}
+    end
   end
 
   # A change named by a row and one of its labels, as a change to the row.
@@ -367,7 +396,7 @@ defmodule Aethrion.Bridge.Ledger do
           # A pair a change put past its maximum for a rule to take up, and
           # no rule did: back within the maximum it was within before.
           shape = within(shape, before && before[key(field.name)]),
-          {text, problem} = put(shape, now),
+          {text, problem} = shaped(shape, now),
           now != was or problem != nil,
           text != field.value,
           into: %{},
@@ -504,8 +533,10 @@ defmodule Aethrion.Bridge.Ledger do
     end
   end
 
-  defp put({:pair, _pre, _a, _sep, _b, _post} = pair, %{now: a, max: b}), do: put_pair(pair, a, b)
-  defp put({:one, _pre, _a, _post} = one, %{now: a}), do: put_one(one, a)
+  defp shaped({:pair, _pre, _a, _sep, _b, _post} = pair, %{now: a, max: b}),
+    do: put_pair(pair, a, b)
+
+  defp shaped({:one, _pre, _a, _post} = one, %{now: a}), do: put_one(one, a)
 
   # The first number of a value, for telling whether it went up.
   defp first(value) do
@@ -971,9 +1002,7 @@ defmodule Aethrion.Bridge.Ledger do
                   do: {kind, String.slice(rest, 0, 300)}
 
             {refused, done} =
-              Enum.split_with(lines, fn {kind, rest} ->
-                kind in ["기록", "Ledger"] and String.match?(rest, ~r/\A[^·→]+: .*\([^()]*\)\s*\z/u)
-              end)
+              Enum.split_with(lines, fn {kind, rest} -> refusal?(kind <> " · " <> rest) end)
 
             {for({kind, rest} <- done, do: kind <> " · " <> rest),
              for({_kind, rest} <- refused, do: rest)}
@@ -1058,17 +1087,29 @@ defmodule Aethrion.Bridge.Ledger do
 
   @doc """
   What the note says of the window on a turn that was answered before
-  (a reroll): its changes are settled, as facts to narrate.
+  (a reroll): what the turn does to the window is settled, as facts to
+  narrate. `lines` are the record's lines of the first answer.
   """
-  @spec settled_instruction([{String.t(), String.t()}]) :: String.t()
-  def settled_instruction(changes) do
+  @spec settled_instruction([String.t()]) :: String.t()
+  def settled_instruction(lines) do
+    # What was refused then is no fact of the turn.
     facts =
-      case changes do
+      case Enum.reject(lines, &refusal?/1) do
         [] -> "nothing in it changes this turn"
-        changes -> Enum.map_join(changes, "; ", fn {name, value} -> "#{name}: #{value}" end)
+        lines -> Enum.join(lines, "; ")
       end
 
     "The status window is kept by the game's rules and shown by them: do not print it yourself, whatever the card says, and write no <aethrion-ledger> lines. This turn was played before, and what it does to the window is settled: #{facts}. Narrate so that the reply agrees with that: the same gains, losses, and outcome, told anew."
+  end
+
+  # A record line for a change that was not taken: "기록 · Mana: +1 (없는 칸)".
+  defp refusal?(line),
+    do: String.match?(line, ~r/\A(?:기록|Ledger) · [^·→]+: .*\([^()]*\)\s*\z/u)
+
+  @doc "What the note says of the window when a reply is only continued."
+  @spec continued_instruction() :: String.t()
+  def continued_instruction do
+    "The status window is kept by the game's rules and stands in the reply you are continuing: do not print it again, whatever the card says, and write no <aethrion-ledger> lines. Nothing in it changes in this continuation."
   end
 
   # What the card's rules set, as the model is told: "the maximum of HP", "Level".
@@ -1291,7 +1332,7 @@ defmodule Aethrion.Bridge.Ledger do
           # A last line with no line break after it: a window, or the story's.
           window? =
             open != nil and String.starts_with?(String.trim_leading(held), open) and
-              (byte_size(open) >= 6 or window_line?(held))
+              (byte_size(open) >= @sure_opening or window_line?(held))
 
           if not window?, do: emit.(held)
 
@@ -1317,7 +1358,7 @@ defmodule Aethrion.Bridge.Ledger do
 
         cond do
           # A marker long enough to be no accident: the window begins.
-          byte_size(open) >= 6 ->
+          byte_size(open) >= @sure_opening ->
             :held
 
           # A short one ("["): the line decides, once it is whole.
@@ -1364,10 +1405,13 @@ defmodule Aethrion.Bridge.Ledger do
   # Where the reply's own end begins: the first tag, or the window's
   # opening text at the start of a line, whichever comes first.
   defp stop(text, line_start?, open) do
+    # The tags in any case; ASCII letters lowered, so the places stay.
+    lowered = for <<c <- text>>, into: "", do: <<if(c in ?A..?Z, do: c + 32, else: c)>>
+
     tag =
       [@scene, @tag]
       |> Enum.flat_map(fn tag ->
-        case :binary.match(text, tag) do
+        case :binary.match(lowered, tag) do
           {at, _length} -> [at]
           :nomatch -> []
         end

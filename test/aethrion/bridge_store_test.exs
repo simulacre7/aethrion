@@ -64,12 +64,18 @@ defmodule Aethrion.BridgeStoreTest do
     # Kept by the time it returns; a value of nil forgets.
     assert Store.get(:replace_test, "a") == %{"rules" => ["x"]}
     assert Store.replace(:replace_test, "b", nil) == :ok
-    assert Enum.sort(Store.all(:replace_test)) == [{"a", %{"rules" => ["x"]}}, {"b", nil}]
+    assert Store.all(:replace_test) == [{"a", %{"rules" => ["x"]}}]
+    # What is forgotten is gone: the next thing put under the key is kept.
+    Store.put(:replace_test, "b", 2)
+    assert Store.replace(:replace_test, "c", nil) == :ok
+    _ = :sys.get_state(pid)
+    assert Store.get(:replace_test, "b") == 2
 
     stop_supervised!(:replace_test)
     start_supervised!({Store, name: :replace_test, path: path})
     assert Store.get(:replace_test, "a") == %{"rules" => ["x"]}
-    assert Store.get(:replace_test, "b") == nil
+    assert Store.get(:replace_test, "b") == 2
+    assert Store.get(:replace_test, "c") == nil
     # A store that is not running keeps nothing and has nothing.
     assert Store.replace(:not_running, "a", 1) == :ok
     assert Store.all(:not_running) == []

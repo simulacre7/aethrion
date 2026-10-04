@@ -132,7 +132,10 @@ defmodule Aethrion.Bridge.Scene do
         %{name: name, profile: profile} -> name <> "|" <> profile
       end)
 
-    String.replace(status, ~r/\A<aethrion-status\b[^>]*/, ~s(\\0 scene="#{scene}"), global: false)
+    # The scene is written as it is: none of it is read as a place in the pattern.
+    String.replace(status, ~r/\A<aethrion-status\b[^>]*/, &(&1 <> ~s( scene="#{scene}")),
+      global: false
+    )
   end
 
   @doc "The scene a reply's status block carries, or nil."
