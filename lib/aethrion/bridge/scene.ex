@@ -41,10 +41,11 @@ defmodule Aethrion.Bridge.Scene do
 
   @doc """
   The reply without its scene line, and the scene: a list of entries, or
-  nil when the model wrote none (the scene then stays as it was).
+  nil when the model wrote none (the scene then stays as it was). The
+  player, when the card names them (`player`), is no one in the scene.
   """
-  @spec take(String.t()) :: {String.t(), [entry()] | nil}
-  def take(text) do
+  @spec take(String.t(), String.t() | nil) :: {String.t(), [entry()] | nil}
+  def take(text, player \\ nil) do
     case Regex.run(~r/<aethrion-scene\b[^>]*>(.*?)(?:<\/aethrion-scene>|\z)/s, text,
            return: :index
          ) do
@@ -53,7 +54,12 @@ defmodule Aethrion.Bridge.Scene do
           binary_part(text, 0, start) <>
             binary_part(text, start + length, byte_size(text) - start - length)
 
-        {String.trim(rest), entries(binary_part(text, from, size), ~r/[\n;]/)}
+        named = entries(binary_part(text, from, size), ~r/[\n;]/)
+        others = if player, do: Enum.reject(named, &same?(&1.name, player)), else: named
+
+        # A model that lists only the player has not said who is there:
+        # the scene stays as it was.
+        {String.trim(rest), if(named != [] and others == [], do: nil, else: others)}
 
       nil ->
         {text, nil}
@@ -237,7 +243,8 @@ defmodule Aethrion.Bridge.Scene do
   # Minase", "무명" and "무명 (無名)"), or under the same name in the other
   # script: a card written in English and played in Korean has "최승규" in
   # its story and "Choi Seung-gyu" in its image commands.
-  defp same?(a, b) do
+  @doc false
+  def same?(a, b) do
     {ka, kb} = {key(a), key(b)}
     {short, long} = if String.length(ka) <= String.length(kb), do: {ka, kb}, else: {kb, ka}
 

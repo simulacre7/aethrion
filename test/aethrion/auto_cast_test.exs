@@ -117,6 +117,16 @@ defmodule Aethrion.AutoCastTest do
       for {rule, from} <- made_up, do: refute(AutoCast.stated?(rule, from, card), rule)
     end
 
+    test "the player the card names is not one of its people" do
+      answer =
+        ~s|{"characters": [{"name": "무명"}, {"name": "기환 (Kihwan)"}], "player": " 기환 "}|
+
+      assert {:ok, %{player: "기환", characters: [%{"name" => "무명"}]}} = AutoCast.people(answer)
+      # A name that is none.
+      assert {:ok, %{player: nil}} = AutoCast.people(~s({"characters": [], "player": "{{user}}"}))
+      assert {:ok, %{player: nil}} = AutoCast.people(~s({"characters": [], "player": null}))
+    end
+
     test "an answer that is not the JSON asked for is refused" do
       assert AutoCast.people("I cannot read this card.") == {:error, :no_characters_read}
       assert AutoCast.people(~s({"characters": "none"})) == {:error, :no_characters_read}

@@ -100,9 +100,15 @@ defmodule Aethrion.Bridge.AutoCast do
 
   @typedoc """
   What a card was read as: the `cast`, the card's status `window` (its
-  opening and closing text, or nil), and the `key` it is kept under.
+  opening and closing text and its arithmetic, or nil), the `key` it is
+  kept under, and the name the card gives the `player`, if any.
   """
-  @type read :: %{cast: State.t(), window: Aethrion.Bridge.Ledger.spec() | nil, key: String.t()}
+  @type read :: %{
+          cast: State.t(),
+          window: Aethrion.Bridge.Ledger.spec() | nil,
+          key: String.t(),
+          player: String.t() | nil
+        }
 
   @doc """
   What this chat's card was read as, or nil: by the key a reply's status
@@ -150,7 +156,8 @@ defmodule Aethrion.Bridge.AutoCast do
             nil
         end
 
-      %{cast: state, window: window, key: key}
+      player = if is_binary(kept["player"]), do: kept["player"]
+      %{cast: state, window: window, key: key, player: player}
     else
       _error -> nil
     end
@@ -197,10 +204,10 @@ defmodule Aethrion.Bridge.AutoCast do
             "rules" => people.window.rules
           }
 
-      kept = %{"cast" => data, "window" => window}
+      kept = %{"cast" => data, "window" => window, "player" => people.player}
       casts.put.("card:" <> key, kept)
       casts.put.("root:" <> Bridge.root(state), kept)
-      {:ok, %{cast: state, window: people.window, key: key}}
+      {:ok, %{cast: state, window: people.window, key: key, player: people.player}}
     end
   end
 
@@ -283,7 +290,9 @@ defmodule Aethrion.Bridge.AutoCast do
         List the characters the player meets and talks to in this card, the main one first, at most #{@max_people}. The player (the user, {{user}}, or the persona the card describes as the player) is not one of them. Do not list characters only mentioned in passing. If the card is a narrator or a world with no fixed characters, list none.
 
         Answer as JSON:
-        {"title": "the card's name", "characters": [{"name": "as the first message writes it, or when it does not name them, as the card does", "profile": "one or two sentences, in the first message's language: who they are and how they treat the player", "affinity": 0, "trust": 0}], "status_window": null}
+        {"title": "the card's name", "characters": [{"name": "as the first message writes it, or when it does not name them, as the card does", "profile": "one or two sentences, in the first message's language: who they are and how they treat the player", "affinity": 0, "trust": 0}], "player": null, "status_window": null}
+
+        player: the name of the player's own character, when the card or the first message gives one (a persona's name, written where the card had {{user}}), else null.
 
         affinity and trust are how the character feels about the player when the story starts, 0 to 100: 0 a stranger, 30 an acquaintance, 50 a close friend, 80 a lover or someone devoted. Use what the card says; when it does not say, 0.
 
@@ -305,9 +314,13 @@ defmodule Aethrion.Bridge.AutoCast do
     with [json] <- Regex.run(~r/\{.*\}/s, answer),
          {:ok, %{"characters" => characters} = data} when is_list(characters) <-
            Jason.decode(json) do
+      player = player(data["player"])
+
       characters =
         characters
         |> Enum.filter(&(is_map(&1) and is_binary(&1["name"]) and String.trim(&1["name"]) != ""))
+        # The player is not one of the people the player meets.
+        |> Enum.reject(&(player != nil and Aethrion.Bridge.Scene.same?(&1["name"], player)))
         |> Enum.uniq_by(&Card.id_for(String.trim(&1["name"])))
         |> Enum.take(@max_people)
 
@@ -315,6 +328,7 @@ defmodule Aethrion.Bridge.AutoCast do
        %{
          title: title(data["title"]),
          characters: characters,
+         player: player,
          window: window(data["status_window"])
        }}
     else
@@ -352,6 +366,14 @@ defmodule Aethrion.Bridge.AutoCast do
   end
 
   defp rules(_none), do: []
+
+  # The player's name as the card gives it, when it is a name.
+  defp player(name) when is_binary(name) do
+    name = name |> String.trim() |> String.slice(0, 40)
+    if name != "" and not String.match?(name, ~r/\A\{\{|\Auser\z|\Aplayer\z/i), do: name
+  end
+
+  defp player(_none), do: nil
 
   defp title(title) when is_binary(title), do: String.trim(title)
   defp title(_other), do: ""

@@ -858,7 +858,8 @@ defmodule Aethrion.API do
       end
 
       # What is done with the model's reply for a cast read from a card.
-      after_reply = if auto?, do: %{ledger: ledger, spec: spec, locale: locale}
+      after_reply =
+        if auto?, do: %{ledger: ledger, spec: spec, locale: locale, player: auto[:player]}
 
       if data["stream"] == true and is_function(config[:emit], 1) do
         stream_turn(
@@ -882,8 +883,8 @@ defmodule Aethrion.API do
   # written by the ledger, and the status block says what it did.
   defp finished(text, status, nil), do: {String.trim(text), status}
 
-  defp finished(text, status, %{ledger: ledger, spec: spec, locale: locale}) do
-    {text, scene} = Aethrion.Bridge.Scene.take(text)
+  defp finished(text, status, %{ledger: ledger, spec: spec, locale: locale} = after_reply) do
+    {text, scene} = Aethrion.Bridge.Scene.take(text, after_reply[:player])
     {text, changes} = Aethrion.Bridge.Ledger.take(text)
     status = status && Aethrion.Bridge.Scene.mark(status, scene)
 

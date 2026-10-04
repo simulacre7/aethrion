@@ -40,6 +40,17 @@ defmodule Aethrion.BridgeSceneTest do
                Scene.take("<aethrion-scene>{{user}}\nThe Player\n나\nHaruka</aethrion-scene>")
     end
 
+    test "the player the card names is not in the scene; a scene of the player alone says nothing" do
+      reply = "끝.\n<aethrion-scene>무명\n기환 | 무명의 스승</aethrion-scene>"
+      assert {"끝.", [%{name: "무명"}]} = Scene.take(reply, "기환")
+      assert {"끝.", [%{name: "무명"}, %{name: "기환"}]} = Scene.take(reply)
+
+      # The model listed who the player is, not who is with them: as if it wrote no line.
+      alone = "끝.\n<aethrion-scene>기환 (Kihwan) | 무명의 스승</aethrion-scene>"
+      assert Scene.take(alone, "기환") == {"끝.", nil}
+      assert Scene.take("끝.\n<aethrion-scene></aethrion-scene>", "기환") == {"끝.", []}
+    end
+
     test "an empty line is a scene with no one; no line is no scene" do
       assert Scene.take("Alone.<aethrion-scene></aethrion-scene>") == {"Alone.", []}
       assert Scene.take("Alone.") == {"Alone.", nil}
