@@ -283,8 +283,19 @@ defmodule Aethrion.AutoCastTest do
             else:
               "고블린을 벤다.\n\n<aethrion-ledger>\nHP: -12\nEXP: +25\nItem: -물약 × 1\nMana: +1\n</aethrion-ledger>\n<aethrion-scene></aethrion-scene>"
 
-        _more ->
+        3 ->
           "곤봉이 어깨를 친다.\n\n[Status]\n- Level: 2\n- HP: 20 / 50\n- EXP: 15 / 100\n- Vigor: 5\n- Item: 물약 × 1\n[Status]"
+
+        _more ->
+          # The first answer to this turn says nothing of the window; asked again, it does.
+          asked =
+            Aethrion.AutoCastTest.Calls
+            |> Agent.get(& &1)
+            |> Enum.count(fn call -> Enum.count(call, &(&1["role"] == "user")) >= 4 end)
+
+          if asked <= 1,
+            do: "숲은 잠잠하다.",
+            else: "늑대가 문다.\n\n<aethrion-ledger>\nHP: -5\n</aethrion-ledger>"
       end
     end
 
@@ -574,6 +585,17 @@ defmodule Aethrion.AutoCastTest do
       assert three =~ ~r/\A곤봉이 어깨를 친다.\n\n\[Status\]\n- Level: 2\n- HP: 20 \/ 50\n/
       assert length(String.split(three, "[Status]")) == 3
       assert three =~ "기록 · HP 38 / 50 → 20 / 50"
+
+      # An answer that says nothing of the window settles nothing: the
+      # window stays, and a reroll may still say what changed.
+      chat = [first, reply(one), second, reply(two), third, reply(three), user("숲으로 간다.")]
+      {200, four} = ask(base, chat, card)
+      assert four =~ ~r/\A숲은 잠잠하다.\n\n\[Status\]\n- Level: 2\n- HP: 20 \/ 50\n/
+      {200, again} = ask(base, chat, card)
+      assert again =~ ~r/\A늑대가 문다.\n\n\[Status\]\n- Level: 2\n- HP: 15 \/ 50\n/
+      # That one settled it.
+      {200, third_time} = ask(base, chat, card)
+      assert third_time == again
       assert card_reads() == 1
     end
 

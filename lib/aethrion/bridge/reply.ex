@@ -135,7 +135,12 @@ defmodule Aethrion.Bridge.Reply do
       end
 
     # The first answer's changes stand for every later answer to the turn.
-    if plan[:settled] == nil and is_function(plan[:keep], 1), do: plan.keep.(changes)
+    # An answer that said nothing of the window (no lines, no window) has
+    # settled nothing: the model may have forgotten, and a reroll may say.
+    said? = source != "nothing from the model"
+
+    if plan[:settled] == nil and said? and is_function(plan[:keep], 1),
+      do: plan.keep.(changes)
 
     {kept, applied, refused} = Ledger.apply(window, changes, spec)
     {kept, ruled} = Ledger.settle(kept, spec, window)
