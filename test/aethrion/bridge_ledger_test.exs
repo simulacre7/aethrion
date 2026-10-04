@@ -426,12 +426,14 @@ defmodule Aethrion.BridgeLedgerTest do
         {"Stat Point", "3 - 3 = 0"},
         {"Cash", "=2,000,000"},
         {"Time", "=20:30:00"},
+        {"Location", "new text: 산 아래 오두막"},
         {"EXP", "=15 / 266"}
       ]
 
       assert {kept, _applied, refused} = Ledger.apply(window(), changes, @lines)
       assert value(kept, @lines, "EXP") == "15 / 266"
       assert value(kept, @lines, "Time") == "20:30:00"
+      assert value(kept, @lines, "Location") == "산 아래 오두막"
       assert value(kept, @lines, "Strength") == "12"
       assert value(kept, @lines, "HP") == "100 / 130"
       assert value(kept, @lines, "Stat Point") == "0"

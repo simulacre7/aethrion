@@ -505,6 +505,9 @@ defmodule Aethrion.Bridge.Ledger do
       |> String.replace(if(habits.bars?, do: ~r/[\r\n|]/u, else: ~r/[\r\n]/u), " ")
       |> String.trim()
 
+    # A stand-in of the note's, copied before the value ("new text: the inn").
+    value = Regex.replace(~r/\A(?:the )?new (?:text|words|value)\s*[:：]\s*/iu, value, "")
+
     # "=20:30", "= 45": the value said outright, for any field.
     {value, habits} =
       case Regex.run(~r/\A=\s*(\S.*)\z/us, value) do
