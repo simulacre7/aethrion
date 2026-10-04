@@ -38,7 +38,7 @@ Checked with an ensemble card (Sinmarked), a one-on-one card, a dating-sim card 
 
 - A line said on the turn someone first appears is not read as said to them. From the next turn it is.
 - What comes by itself is affinity, trust, memories, and the card's own window kept straight. How much a kill gives or a blow costs is the model's to say, once: a reroll keeps the numbers of the turn's first answer. Fights with dice and endings need [a cast made in the editor](docs/stories.md#building-a-world).
-- A new card's first turn costs one more model call, to read the card.
+- A new card's first turn takes longer: the card is read first, three times at once (three model calls, once a card).
 
 More in the [RisuAI guide](docs/risuai.md#keep-the-card-you-already-use).
 
