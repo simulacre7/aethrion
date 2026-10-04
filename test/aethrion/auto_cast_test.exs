@@ -119,27 +119,46 @@ defmodule Aethrion.AutoCastTest do
         {window, Agent.get(agent, &length/1)}
       end
 
-      # The second reading has more that the card bears out; the third, of
-      # another window, is not this one's.
+      # The rules of the reading the card bears out most, then what the
+      # others have besides; the third, of another window, is not this one's.
+      levels =
+        {"A level gives 5 stat points.",
+         "when Level rises: Stat_Points += if(Level % 5 == 0, 5, 5)"}
+
       assert {%{open: "[Status]", rules: rules}, 0} =
                read.([
-                 reading.("[Status]", [hp, made_up]),
-                 reading.("[Status]", [hp, mp, gift]),
+                 reading.("[Status]", [hp, made_up, levels]),
+                 reading.("[Status]", [mp, gift, {elem(hp, 0), "HP.max = (Vigor * 10)"}]),
                  reading.("[Other]", [hp, mp, gift, hp, mp])
                ])
 
+      # (One rule for what a level gives, and one for the maximum of HP,
+      # however they are spelled.)
       assert rules == [
-               "HP.max = Vigor * 10",
                "MP.max = Attunement * 10",
-               "when Level rises: Stat Points += 5"
+               "when Level rises: Stat Points += 5",
+               "HP.max = (Vigor * 10)"
              ]
 
       # A reading that fails is no loss, and a card with no window is read once.
       assert {%{rules: ["HP.max = Vigor * 10"]}, 0} =
                read.([reading.("[Status]", [hp]), "not json"])
 
+      # A card with no window is read three times as well: one reading may miss a window.
       none = Jason.encode!(%{"characters" => []})
-      assert {nil, 2} = read.([none, none, none])
+      assert {nil, 0} = read.([none, none, none])
+      assert {%{open: "[Status]"}, 0} = read.([none, reading.("[Status]", [hp]), none])
+
+      # The opening text most readings give, or the shorter one that begins it.
+      assert {%{open: "[Day", close: ""}, 0} =
+               read.(
+                 [
+                   reading.("[Day N · Time]", []),
+                   reading.("[Day", []),
+                   reading.("[Day N · Time]", [])
+                 ]
+                 |> Enum.map(&String.replace(&1, ~s("close":"[Status]"), ~s("close":"")))
+               )
 
       # A later reading that exits or throws does not take the caller with it.
       casts = %{put: fn _key, _value -> :ok end}
@@ -461,8 +480,12 @@ defmodule Aethrion.AutoCastTest do
     defp user(line), do: %{"role" => "user", "content" => line}
     defp reply(text), do: %{"role" => "assistant", "content" => text}
 
-    defp card_reads,
-      do: Enum.count(calls(), &(hd(&1)["content"] =~ "You read a role-play character card"))
+    # How many times a card was read: each time is three readings by the model.
+    defp card_reads do
+      calls = Enum.count(calls(), &(hd(&1)["content"] =~ "You read a role-play character card"))
+      assert rem(calls, 3) == 0
+      div(calls, 3)
+    end
 
     test "plays the card in the request, read once", %{base: base} do
       {200, first} = ask(base, [user("세라, 고마워. 덕분에 살았어.")])
@@ -689,8 +712,8 @@ defmodule Aethrion.AutoCastTest do
       # That one settled it.
       {200, third_time} = ask(base, chat, card)
       assert third_time == again
-      # The card was read at its first turn only: three readings, for its rules.
-      assert card_reads() == 3
+      # The card was read at its first turn only.
+      assert card_reads() == 1
     end
 
     test "the ledger's lines and a window printed anyway are held back from a stream", %{
@@ -819,12 +842,11 @@ defmodule Aethrion.AutoCastTest do
       assert {200, %{"ok" => true}} = call(:delete, base <> "/casts/cards/" <> key)
       assert {200, %{"cards" => []}} = call(:get, base <> "/casts/cards")
       {200, _again} = ask(base, [user("탑에 들어간다.")], card)
-      # (A card with a status window is read three times, for its rules.)
-      assert card_reads() == reads + 3
+      assert card_reads() == reads + 1
       # Read once more and kept: listed again, and not read a third time.
       assert {200, %{"cards" => [%{"title" => "Tower"}]}} = call(:get, base <> "/casts/cards")
       {200, _again} = ask(base, [user("탑에 들어간다.")], card)
-      assert card_reads() == reads + 3
+      assert card_reads() == reads + 1
     end
 
     test "another model may read the card, while the server's narrates", %{base: base} do

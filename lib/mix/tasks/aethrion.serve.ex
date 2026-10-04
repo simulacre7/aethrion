@@ -42,7 +42,8 @@ defmodule Mix.Tasks.Aethrion.Serve do
     `--model` narrates (default: the `AETHRION_READ_MODEL` environment
     variable, else `--model`)
   - `--card-model NAME` - a model of the same backend for reading a card
-    once, for the model name `aethrion-auto`: who is in it, its status
+    when it is first played (three readings, at once), for the model name
+    `aethrion-auto`: who is in it, its status
     window, and the arithmetic it states (default: the `AETHRION_CARD_MODEL`
     environment variable, else `--model`). A small model narrates well
     enough and reads a card's rules less surely, so a stronger one here

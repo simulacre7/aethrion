@@ -173,18 +173,22 @@ defmodule Aethrion.Bridge.AutoCast do
   defp kept_rules(rules) when is_list(rules), do: Enum.filter(rules, &is_binary/1)
   defp kept_rules(_none), do: []
 
-  # How many times a card with a status window is read for its rules.
+  # How many times a card is read.
   @readings 3
-  # How long a later reading may take before the first one is made do with.
+  # How long the later readings may take before the first is made do with.
   @reading_timeout 240_000
 
   @doc """
   Reads the card with the model and keeps what it was read as:
   `{:ok, read}`. A model that fails or answers something else gives
-  `{:error, reason}`, and nothing is kept. A card with a status window is
-  read `:readings` times in all (three unless said), the later ones at
-  once, and the rules come from the reading the card bears out most.
-  Other options are the adapter's.
+  `{:error, reason}`, and nothing is kept.
+
+  One reading of a card may leave a rule out, take the window's opening
+  text wrongly, or miss the window. So the card is read `:readings` times
+  (three unless said), at once: who is in it is as the first reading that
+  could be used has it, the window's opening and closing text are what
+  most readings say, and the rules are the ones the card bears out, of
+  all the readings together. Other options are the adapter's.
   """
   @spec read(map(), map(), module(), keyword()) :: {:ok, read()} | {:error, term()}
   def read(card, casts, adapter, opts \\ []) do
@@ -194,25 +198,20 @@ defmodule Aethrion.Bridge.AutoCast do
     # somewhere else would bend every window after it.
     stated = Enum.join([card.prompt, Map.get(card, :rules, ""), card.greeting || ""], "\n")
 
-    with {:ok, answer} <- Aethrion.LLM.chat(adapter, question(card), opts),
-         {:ok, people} <- people(answer),
+    later = later(readings - 1, fn -> reading(card, adapter, opts) end)
+    first = reading(card, adapter, opts, :told)
+    others = later.()
+
+    with {:ok, people} <- first_of([first | others]),
          data = cast_data(people, card),
          {:ok, state} <- State.parse(data) do
       key = key(card)
-      people = update_in(people.window, &grounded(&1, stated))
-      people = surest(people, readings - 1, fn -> again(card, stated, adapter, opts) end)
-
-      window =
-        people.window &&
-          %{
-            "open" => people.window.open,
-            "close" => people.window.close,
-            "rules" => people.window.rules
-          }
+      window = windows_of([first | others], stated)
 
       kept = %{
         "cast" => data,
-        "window" => window,
+        "window" =>
+          window && %{"open" => window.open, "close" => window.close, "rules" => window.rules},
         "player" => people.player,
         "title" => people.title,
         "read_at" => DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.to_iso8601()
@@ -220,59 +219,184 @@ defmodule Aethrion.Bridge.AutoCast do
 
       casts.put.("card:" <> key, kept)
       casts.put.("root:" <> Bridge.root(state), kept)
-      {:ok, %{cast: state, window: people.window, key: key, player: people.player}}
+      {:ok, %{cast: state, window: window, key: key, player: people.player}}
     end
   end
 
-  # A card's arithmetic is read once and kept, and one reading may leave
-  # half of it out. So a card with a status window is read again, and the
-  # reading that the card bears out most (`grounded/2`) gives the rules.
-  # Who is in the card stays as the first reading had it.
-  defp surest(%{window: nil} = people, _more, _again), do: people
-  defp surest(people, more, _again) when more < 1, do: people
+  # One reading: `{:ok, people}` or `{:error, reason}`. A later reading is
+  # a help, not a need: whatever goes wrong in it is no more than an error.
+  defp reading(card, adapter, opts, told \\ :quiet)
 
-  defp surest(people, more, again) do
-    1..more
-    |> Task.async_stream(fn _n -> again.() end, timeout: @reading_timeout, on_timeout: :kill_task)
-    |> Enum.reduce(people, fn
-      {:ok, %{open: open, close: close, rules: rules}}, best
-      when open == best.window.open and close == best.window.close and
-             length(rules) > length(best.window.rules) ->
-        put_in(best.window.rules, rules)
-
-      _other, best ->
-        best
-    end)
+  defp reading(card, adapter, opts, :told) do
+    with {:ok, answer} <- Aethrion.LLM.chat(adapter, question(card), opts), do: people(answer)
   end
 
-  # The card's window as another reading has it, or nil.
-  defp again(card, stated, adapter, opts) do
-    with {:ok, answer} when is_binary(answer) <- Aethrion.LLM.chat(adapter, question(card), opts),
-         {:ok, %{window: %{} = window}} <- people(answer) do
-      grounded(window, stated)
-    else
-      _other -> nil
+  defp reading(card, adapter, opts, :quiet) do
+    case Aethrion.LLM.chat(adapter, question(card), opts) do
+      {:ok, answer} when is_binary(answer) -> people(answer)
+      other -> {:error, other}
     end
   rescue
-    # Another reading is a help, not a need: the first one stands.
-    _error -> nil
+    error -> {:error, error}
   catch
-    _kind, _reason -> nil
+    kind, reason -> {:error, {kind, reason}}
+  end
+
+  # `count` more readings begun at once, each in a process of its own (one
+  # that dies takes nothing with it): a function that waits for them and
+  # gives what they came to.
+  defp later(count, _read) when count < 1, do: fn -> [] end
+
+  defp later(count, read) do
+    {parent, ref} = {self(), make_ref()}
+
+    readers =
+      for n <- 1..count do
+        {pid, monitor} = spawn_monitor(fn -> send(parent, {ref, n, read.()}) end)
+        {n, pid, monitor}
+      end
+
+    deadline = System.monotonic_time(:millisecond) + @reading_timeout
+    fn -> gathered(readers, ref, deadline, %{}) end
+  end
+
+  defp gathered([], ref, _deadline, read) do
+    # (An answer that came as its reader went down.)
+    receive do
+      {^ref, _n, _result} -> :ok
+    after
+      0 -> :ok
+    end
+
+    read |> Enum.sort() |> Enum.map(&elem(&1, 1))
+  end
+
+  defp gathered(readers, ref, deadline, read) do
+    receive do
+      {^ref, n, result} ->
+        {[{_n, _pid, monitor}], rest} = Enum.split_with(readers, &(elem(&1, 0) == n))
+        Process.demonitor(monitor, [:flush])
+        gathered(rest, ref, deadline, Map.put(read, n, result))
+
+      {:DOWN, monitor, :process, _pid, _reason} ->
+        gathered(Enum.reject(readers, &(elem(&1, 2) == monitor)), ref, deadline, read)
+    after
+      max(deadline - System.monotonic_time(:millisecond), 0) ->
+        for {_n, pid, monitor} <- readers do
+          Process.demonitor(monitor, [:flush])
+          Process.exit(pid, :kill)
+        end
+
+        gathered([], ref, deadline, read)
+    end
+  end
+
+  # The first reading that could be used; or why the first could not.
+  defp first_of([first | _others] = readings),
+    do: Enum.find(readings, first, &match?({:ok, _people}, &1))
+
+  # The card's window, of all the readings: its opening and closing text
+  # as most of them have it (the shorter of two openings when one begins
+  # the other: "[Day" for "[Day N · Time]"), and the rules the card bears
+  # out (`grounded/2`), put together: those of the reading with the most,
+  # then what the others have that it has not. A rule about what another
+  # already speaks of is not added (two rules for what a level gives would
+  # give it twice).
+  defp windows_of(readings, stated) do
+    windows = for {:ok, %{window: %{} = window}} <- readings, do: window
+
+    case opening(windows) do
+      nil ->
+        nil
+
+      open ->
+        same = Enum.filter(windows, &String.starts_with?(&1.open, open))
+        close = same |> Enum.map(& &1.close) |> most()
+
+        rules =
+          same
+          |> Enum.map(&grounded(%{&1 | open: open, close: close}, stated).rules)
+          |> Enum.sort_by(&length/1, :desc)
+          |> List.flatten()
+          |> Enum.uniq_by(&about/1)
+
+        %{open: open, close: close, rules: rules}
+    end
+  end
+
+  defp opening([]), do: nil
+
+  defp opening(windows) do
+    opens = Enum.map(windows, & &1.open)
+    said = most(opens)
+
+    # An opening text that begins the one most readings give is the part of
+    # it that is the same in every reply.
+    opens
+    |> Enum.filter(&(&1 != said and byte_size(&1) >= 2 and String.starts_with?(said, &1)))
+    |> Enum.min_by(&byte_size/1, fn -> said end)
+  end
+
+  # What most say; of two said as often, the one said first.
+  defp most(said) do
+    said
+    |> Enum.with_index()
+    |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
+    |> Enum.max_by(fn {_text, places} -> {length(places), -hd(places)} end)
+    |> elem(0)
+  end
+
+  # What a rule is about, however it is spelled: the number it sets (and
+  # how, when it bounds a number by itself), or when it happens and what
+  # it changes.
+  defp about(rule) do
+    plain = &(&1 |> String.downcase() |> String.replace(~r/[^\p{L}\p{N}]+/u, ""))
+
+    case Regex.run(~r/\A\s*when\s+(.+?)\s*:\s*(.+)\z/isu, rule) do
+      [_all, condition, changes] ->
+        changed =
+          changes
+          |> String.split(";")
+          |> Enum.map(&(&1 |> String.split(~r/[+\-]?=/, parts: 2) |> hd() |> plain.()))
+          |> Enum.sort()
+
+        {:when, condition |> plain.() |> String.replace(~r/increases?\z|rise\z/, "rises"),
+         changed}
+
+      nil ->
+        [target | expression] = String.split(rule, "=", parts: 2)
+        {target, expression} = {plain.(target), plain.(Enum.join(expression))}
+
+        # A number bounded by itself: how far it may move in a turn, or
+        # the range it stays within, one rule of each.
+        cond do
+          String.ends_with?(target, "max") or not String.contains?(expression, target) ->
+            {:always, target}
+
+          String.contains?(expression, "before") ->
+            {:always, target, :step}
+
+          true ->
+            {:always, target, :range}
+        end
+    end
   end
 
   # The window with the rules the card bears out. The card's own examples
   # of its window decide first: a rule they contradict is dropped, one they
   # agree with is kept. Where they cannot say, the sentence the reader
   # gave for the rule decides (`stated?/3`).
-  defp grounded(nil, _text), do: nil
-
   defp grounded(window, text) do
     examples = Aethrion.Bridge.Ledger.windows(text, window)
 
     {kept, dropped} =
       Enum.split_with(window.rules, fn {rule, from} ->
         verdicts = Enum.map(examples, &Aethrion.Bridge.Ledger.agrees?(&1, rule, window))
-        false not in verdicts and (true in verdicts or stated?(rule, from, text))
+
+        # (A rule that none of the card's example windows can carry, for
+        # its field names or its form, would never be used.)
+        false not in verdicts and (true in verdicts or stated?(rule, from, text)) and
+          (examples == [] or Enum.any?(examples, &Aethrion.Bridge.Ledger.reads?(&1, rule, window)))
       end)
 
     if dropped != [],
