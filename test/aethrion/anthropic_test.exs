@@ -90,6 +90,40 @@ defmodule Aethrion.LLM.AnthropicTest do
     refute Map.has_key?(body, "temperature")
   end
 
+  test "a conversation: system messages before the chat are the system prompt, later ones stay in place" do
+    opts = stub(message([%{"type" => "text", "text" => "세라가 웃는다."}]))
+
+    messages = [
+      %{"role" => "system", "content" => "A card."},
+      %{"role" => "system", "content" => "[Start a new chat]"},
+      %{"role" => "assistant", "content" => "불이 잘 붙었네요."},
+      %{"role" => "user", "content" => "고마워."},
+      %{"role" => "system", "content" => "Print the status window."},
+      %{"role" => "system", "content" => "[Aethrion: the rules decide these.]"}
+    ]
+
+    assert {:ok, "세라가 웃는다."} = Anthropic.chat(messages, opts)
+    assert_received {:stub_request, request}
+    body = Jason.decode!(request.body)
+    assert body["system"] == "A card.\n\n[Start a new chat]"
+
+    # The notes come last, where the chat app put them, in the user's turn.
+    assert body["messages"] == [
+             %{"role" => "user", "content" => "(the conversation starts)"},
+             %{"role" => "assistant", "content" => "불이 잘 붙었네요."},
+             %{
+               "role" => "user",
+               "content" =>
+                 "고마워.\n\n[System note]\nPrint the status window.\n\n[System note]\n[Aethrion: the rules decide these.]"
+             }
+           ]
+
+    # A single prompt, for an adapter that takes one.
+    assert Aethrion.LLM.transcript(messages) ==
+             {"A card.\n\n[Start a new chat]",
+              "Assistant: 불이 잘 붙었네요.\n\nUser: 고마워.\n\n[System note]\nPrint the status window.\n\n[System note]\n[Aethrion: the rules decide these.]\n\nWrite the next assistant message only, without a label."}
+  end
+
   test "language: asks the model to write in that language" do
     opts = stub(message([%{"type" => "text", "text" => "다정하네."}]))
 

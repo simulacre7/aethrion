@@ -40,17 +40,45 @@ defmodule Aethrion.LLM do
     end
   end
 
+  @doc """
+  A conversation as its system prompt and its turns: the system messages
+  that come before anything is said are the system prompt, and one that
+  comes later stays where it is, as a note in the conversation (a turn
+  with the role `"note"`). A chat app puts a card's instructions for the
+  next reply there, and the bridge its own note: at the end, where the
+  model reads them last, not above the whole chat.
+  """
+  @spec split([map()]) :: {String.t(), [map()]}
+  def split(messages) do
+    {leading, rest} = Enum.split_while(messages, &(&1["role"] == "system"))
+
+    turns =
+      Enum.map(rest, fn
+        %{"role" => "system"} = m -> %{"role" => "note", "content" => m["content"]}
+        m -> %{"role" => m["role"], "content" => m["content"]}
+      end)
+
+    {Enum.map_join(leading, "\n\n", & &1["content"]), turns}
+  end
+
+  @doc false
+  # A note in the conversation, as a model that has no such role reads it.
+  def note(content), do: "[System note]\n" <> content
+
   @doc false
   # A conversation as one system prompt and one transcript, for adapters
   # that take a single prompt.
   def transcript(messages) do
-    {system, rest} = Enum.split_with(messages, &(&1["role"] == "system"))
+    {system, turns} = split(messages)
 
     transcript =
-      Enum.map_join(rest, "\n\n", fn m -> "#{label(m["role"])}: #{m["content"]}" end) <>
+      Enum.map_join(turns, "\n\n", fn
+        %{"role" => "note", "content" => content} -> note(content)
+        m -> "#{label(m["role"])}: #{m["content"]}"
+      end) <>
         "\n\nWrite the next assistant message only, without a label."
 
-    {Enum.map_join(system, "\n\n", & &1["content"]), transcript}
+    {system, transcript}
   end
 
   defp label("assistant"), do: "Assistant"
