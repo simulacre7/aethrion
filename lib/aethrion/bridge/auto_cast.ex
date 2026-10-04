@@ -465,7 +465,12 @@ defmodule Aethrion.Bridge.AutoCast do
   # need not say the heading again).
   defp named?(rule, quote) do
     words = words(rule)
-    missing = Enum.count(words, &(not String.contains?(quote, &1)))
+    # (A name written as one word, "StatPoint", is the sentence's "Stat Point".)
+    joined = String.replace(quote, ~r/[\s_.\-]+/u, "")
+
+    missing =
+      Enum.count(words, &(not String.contains?(quote, &1) and not String.contains?(joined, &1)))
+
     missing <= div(length(words) - 1, 2)
   end
 
@@ -626,7 +631,7 @@ defmodule Aethrion.Bridge.AutoCast do
         1. `Target = expression`, something that always holds: a maximum that follows a stat, "Stamina.max = Body * 4"; a range a number stays within, "Favor = clamp(Favor, 0, 100)"; a limit on how far a number moves in one turn, "Favor = clamp(Favor, Favor.before - 3, Favor.before + 3)".
         2. `when condition: change; change`, something that happens, each change being `Field = expression`, `Field += expression`, or `Field -= expression`; a card whose window has a level and experience toward the next one has its level-up line, in the window's own field names: "when EXP >= EXP.max: Level += 1; EXP -= EXP.max". The condition is a comparison, or `Field rises` for what each point gained gives or costs: "when Level rises: Points += if(Level % 10 == 0, 6, 2)", "when Might rises: Points -= 1".
         An expression has numbers, field names, + - * / ^ %, comparisons (>= <= > < == !=), and, or, and the functions floor, ceil, round, min, max, clamp(x, low, high), if(condition, a, b). No other words, and every line begins with a field name or with `when`.
-        Write only what the card itself states in numbers, for fields of its window, with the card's own numbers: never a guess, never one of the examples above, and nothing about text fields. Where the card gives no number ("the requirement grows with each level", a reputation with no range), there is no rule to write.
+        Write only what the card itself states in numbers, for fields of its window, with the card's own numbers: never a guess, never one of the examples above, and nothing about text fields. When the card shows an example of its window, try each rule on the example's numbers before you write it: with Body 12 and Stamina 31 / 48, `Stamina.max = Body * 4` holds and `Stamina.max = 20 + Body * 4` does not, so the first is the card's rule. A rule the card's example does not bear out is thrown away. Where the card gives no number ("the requirement grows with each level", a reputation with no range), there is no rule to write.
         """
       }
     ]
