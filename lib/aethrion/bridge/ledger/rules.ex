@@ -41,7 +41,7 @@ defmodule Aethrion.Bridge.Ledger.Rules do
   """
 
   @typedoc "A field's numbers: its value, and the maximum of a pair."
-  @type value :: %{now: integer(), max: integer() | nil}
+  @type value :: %{now: number(), max: number() | nil}
 
   @typedoc "A window's numbers, by field name in lower case."
   @type values :: %{String.t() => value()}
@@ -384,7 +384,7 @@ defmodule Aethrion.Bridge.Ledger.Rules do
     risen =
       Enum.find(rules, fn
         {:rise, name, _changes} ->
-          is_integer(counted[name]) and is_map(values[name]) and values[name].now > counted[name]
+          is_number(counted[name]) and is_map(values[name]) and values[name].now > counted[name]
 
         _other ->
           false
@@ -486,8 +486,8 @@ defmodule Aethrion.Bridge.Ledger.Rules do
   defp eval({:field, name, part}, values) do
     case {Map.get(values, name), part} do
       {%{now: now}, :now} -> now
-      {%{max: max}, :max} when is_integer(max) -> max
-      {%{was: was}, :before} when is_integer(was) -> was
+      {%{max: max}, :max} when is_number(max) -> max
+      {%{was: was}, :before} when is_number(was) -> was
       _missing -> throw(:none)
     end
   end

@@ -530,11 +530,18 @@ defmodule Aethrion.Bridge.Ledger do
       |> String.trim()
 
     cond do
-      # "+thing": something joins a list, whatever the field holds now.
-      String.match?(value, ~r/\A[+\-−]\s*[^\d\s]/u) -> Listing.change(was, value, habits)
-      figure?(was) -> counted(was, value, habits)
-      list?(was) -> Listing.change(was, value, habits)
-      true -> counted(was, value, habits)
+      # "+thing" joins a list, not a figure: a load of "12 / 80" is no bag.
+      String.match?(value, ~r/\A[+\-−]\s*[^\d\s]/u) ->
+        if figure?(was), do: {was, :unreadable}, else: Listing.change(was, value, habits)
+
+      figure?(was) ->
+        counted(was, value, habits)
+
+      list?(was) ->
+        Listing.change(was, value, habits)
+
+      true ->
+        counted(was, value, habits)
     end
   end
 
@@ -630,26 +637,27 @@ defmodule Aethrion.Bridge.Ledger do
     cond do
       match =
           Regex.run(
-            ~r/\A(\D*?)(-?(?:\d{1,3}(?:,\d{3})+|\d+))(\s*\/\s*)((?:\d{1,3}(?:,\d{3})+|\d+))(\D*)\z/u,
+            ~r/\A(\D*?)(-?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)(\s*\/\s*)((?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)(\D*)\z/u,
             value
           ) ->
         [_all, pre, a, sep, b, post] = match
         {:pair, pre, int(a), sep, int(b), {post, commas?(a) or commas?(b)}}
 
-      match = Regex.run(~r/\A(\D*?)(-?(?:\d{1,3}(?:,\d{3})+|\d+))(\D*)\z/u, value) ->
+      match = Regex.run(~r/\A(\D*?)(-?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)(\D*)\z/u, value) ->
         [_all, pre, a, post] = match
         {:one, pre, int(a), {post, commas?(a)}}
 
       # A number that leads a row or a line: what follows may hold digits too.
       match =
           Regex.run(
-            ~r/\A(-?(?:\d{1,3}(?:,\d{3})+|\d+))(\s*\/\s*)((?:\d{1,3}(?:,\d{3})+|\d+))(\s*[|·(\[].*)\z/us,
+            ~r/\A(-?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)(\s*\/\s*)((?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)(\s*[|·(\[].*)\z/us,
             value
           ) ->
         [_all, a, sep, b, post] = match
         {:pair, "", int(a), sep, int(b), {post, commas?(a) or commas?(b)}}
 
-      match = Regex.run(~r/\A(-?(?:\d{1,3}(?:,\d{3})+|\d+))(\s*%?\s*[|·(\[].*)\z/us, value) ->
+      match =
+          Regex.run(~r/\A(-?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)(\s*%?\s*[|·(\[].*)\z/us, value) ->
         [_all, a, post] = match
         {:one, "", int(a), {post, commas?(a)}}
 
@@ -663,38 +671,43 @@ defmodule Aethrion.Bridge.Ledger do
   # club)" moves, "now 31/48 after the potion" sets.
   defp delta(value, loose?) do
     cond do
-      match = Regex.run(~r/\A([+\-−])\s*((?:\d{1,3}(?:,\d{3})+|\d+))\s*[^\d\/]*\z/u, value) ->
+      match =
+          Regex.run(~r/\A([+\-−])\s*((?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)\s*[^\d\/]*\z/u, value) ->
         [_all, sign, n] = match
         {:move, if(sign == "+", do: int(n), else: -int(n))}
 
       match =
           Regex.run(
-            ~r/\A\D*?(-?(?:\d{1,3}(?:,\d{3})+|\d+))\s*\/\s*((?:\d{1,3}(?:,\d{3})+|\d+))\D*\z/u,
+            ~r/\A\D*?(-?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)\s*\/\s*((?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)\D*\z/u,
             value
           ) ->
         [_all, a, b] = match
         {:set_pair, int(a), int(b)}
 
-      match = Regex.run(~r/\A\D*?(-?(?:\d{1,3}(?:,\d{3})+|\d+))\D*\z/u, value) ->
+      match = Regex.run(~r/\A\D*?(-?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)\D*\z/u, value) ->
         [_all, a] = match
         {:set, int(a)}
 
       not loose? ->
         :text
 
-      match = Regex.run(~r/\A([+\-−])\s*((?:\d{1,3}(?:,\d{3})+|\d+))(?!\s*\/|\d|,\d)/u, value) ->
+      match =
+          Regex.run(
+            ~r/\A([+\-−])\s*((?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)(?!\s*\/|\d|,\d)/u,
+            value
+          ) ->
         [_all, sign, n] = match
         {:move, if(sign == "+", do: int(n), else: -int(n))}
 
       match =
           Regex.run(
-            ~r/(-?(?:\d{1,3}(?:,\d{3})+|\d+))\s*\/\s*((?:\d{1,3}(?:,\d{3})+|\d+))/u,
+            ~r/(-?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)\s*\/\s*((?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)/u,
             value
           ) ->
         [_all, a, b] = match
         {:set_pair, int(a), int(b)}
 
-      match = Regex.run(~r/(?<![\d,.])(-?(?:\d{1,3}(?:,\d{3})+|\d+))/u, value) ->
+      match = Regex.run(~r/(?<![\d,.])(-?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)/u, value) ->
         [_all, a] = match
         {:set, int(a)}
 
@@ -716,8 +729,22 @@ defmodule Aethrion.Bridge.Ledger do
     {pre <> digits(bounded, commas?) <> post, if(bounded != a, do: :clamped)}
   end
 
-  defp int(text), do: text |> String.replace(",", "") |> String.to_integer()
+  # A number as written: whole, or with a fraction ("12.3").
+  defp int(text) do
+    text = String.replace(text, ",", "")
+    if String.contains?(text, "."), do: String.to_float(text), else: String.to_integer(text)
+  end
+
   defp commas?(text), do: String.contains?(text, ",")
+
+  # A number that has a fraction keeps one.
+  defp digits(n, commas?) when is_float(n) do
+    [whole, fraction] =
+      n |> :erlang.float_to_binary([{:decimals, 2}, :compact]) |> String.split(".")
+
+    sign = if n < 0 and not String.starts_with?(whole, "-"), do: "-", else: ""
+    sign <> digits(String.to_integer(whole), commas?) <> "." <> fraction
+  end
 
   defp digits(n, false), do: Integer.to_string(n)
 
@@ -737,9 +764,55 @@ defmodule Aethrion.Bridge.Ledger do
 
   defp key(name), do: name |> String.downcase() |> String.replace(~r/\s+/u, " ") |> String.trim()
 
-  @doc "What the note asks of the model once the rules keep the window."
-  @spec instruction(String.t(), spec() | nil) :: String.t()
-  def instruction(window, spec \\ nil) do
+  @doc """
+  What the last reply's status block says the ledger did, from the
+  messages as the chat app sent them: the record lines of the latest reply
+  that has a status block (none when the ledger did nothing).
+  """
+  @spec recorded([map()]) :: [String.t()]
+  def recorded(messages) do
+    messages
+    |> Enum.reverse()
+    |> Enum.find_value([], fn
+      %{"role" => "assistant", "content" => content} ->
+        case Regex.run(
+               ~r/<aethrion-turn\b[^>]*>(.*?)<\/aethrion-turn>/s,
+               Aethrion.Bridge.text(content)
+             ) do
+          [_all, turn] ->
+            turn
+            |> String.split("\n")
+            |> Enum.filter(&String.match?(&1, ~r/\A(?:기록|Ledger|규칙|Rules) · .*(?:→|[+−])/u))
+            |> Enum.reject(&String.match?(&1, ~r/\)\s*\z/u))
+            |> Enum.map(&String.slice(&1, 0, 300))
+
+          nil ->
+            nil
+        end
+
+      _other ->
+        nil
+    end)
+  end
+
+  @doc """
+  What the note asks of the model once the rules keep the window.
+  `recorded` is what the ledger did last turn (`recorded/1`): a small
+  model, seeing the player's last request still in the chat, is apt to
+  grant it again.
+  """
+  @spec instruction(String.t(), spec() | nil, [String.t()]) :: String.t()
+  def instruction(window, spec \\ nil, recorded \\ []) do
+    already =
+      case recorded do
+        [] ->
+          ""
+
+        lines ->
+          " Last turn's changes are in the window already; do not write them again (" <>
+            Enum.join(lines, "; ") <> ")."
+      end
+
     fields = fields(window, spec)
     names = Enum.map_join(fields, ", ", & &1.name)
 
@@ -762,7 +835,7 @@ defmodule Aethrion.Bridge.Ledger do
             Enum.join(rules, " | ") <> "."
       end
 
-    "The status window is kept by the game's rules and shown by them: do not print it yourself, whatever the card says. Instead, after everything else, write <aethrion-ledger>...</aethrion-ledger> with one line for each field of the window that this reply changes: `Field: +N` or `Field: -N` for a number that goes up or down (damage taken is `HP: -N`), `Field: N / M` to set both numbers of a pair, or `Field: new text`.#{lists} Use the window's field names (#{names}).#{ruled} Leave out every field that stays as it is, and write the tags with nothing between them when nothing changes. It is not shown to the player."
+    "The status window is kept by the game's rules and shown by them: do not print it yourself, whatever the card says. Instead, after everything else, write <aethrion-ledger>...</aethrion-ledger> with one line for each field of the window that this reply changes: `Field: +N` or `Field: -N` for a number that goes up or down (damage taken is `HP: -N`), `Field: N / M` to set both numbers of a pair, or `Field: new text`.#{lists} Use the window's field names (#{names}).#{ruled}#{already} Leave out every field that stays as it is, and write the tags with nothing between them when nothing changes. It is not shown to the player."
   end
 
   # A field the model is told to treat as a list: counted things, things

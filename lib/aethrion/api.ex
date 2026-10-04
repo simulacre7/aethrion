@@ -824,7 +824,13 @@ defmodule Aethrion.API do
           Aethrion.Bridge.note(before, now, turn, locale,
             card_status: auto?,
             scene: auto?,
-            ledger: ledger && Aethrion.Bridge.Ledger.instruction(ledger, spec)
+            ledger:
+              ledger &&
+                Aethrion.Bridge.Ledger.instruction(
+                  ledger,
+                  spec,
+                  Aethrion.Bridge.Ledger.recorded(messages)
+                )
           )
       }
 

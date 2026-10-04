@@ -491,6 +491,27 @@ defmodule Aethrion.BridgeLedgerTest do
     assert text =~ "For a list (Item), write only what joins or leaves it"
     refute text =~ "The rules work these out themselves"
 
+    # What the ledger did last turn is said, so that it is not asked for again.
+    last = [
+      %{"role" => "user", "content" => "스탯을 올린다."},
+      %{
+        "role" => "assistant",
+        "content" =>
+          ~s(올렸다.\n\n<aethrion-status id="ab">\n<aethrion-turn title="이번 턴 판정">읽기 · 말\n기록 · Stat Point 5 → 0 · Strength 9 → 14\n기록 · Mana: +3 \(없는 칸\)\n규칙 · HP 90 / 90 → 140 / 140</aethrion-turn></aethrion-status>)
+      },
+      %{"role" => "user", "content" => "앞으로 간다."}
+    ]
+
+    assert Ledger.recorded(last) == [
+             "기록 · Stat Point 5 → 0 · Strength 9 → 14",
+             "규칙 · HP 90 / 90 → 140 / 140"
+           ]
+
+    assert Ledger.recorded([%{"role" => "assistant", "content" => "창이 없는 답"}]) == []
+
+    assert Ledger.instruction(window(), @lines, Ledger.recorded(last)) =~
+             "do not write them again (기록 · Stat Point 5 → 0 · Strength 9 → 14; 규칙 · HP 90 / 90 → 140 / 140)."
+
     ruled = Ledger.instruction(window(), Map.put(@lines, :rules, ["HP.max = Strength * 10"]))
     assert ruled =~ "The rules work these out themselves"
     assert ruled =~ "HP.max = Strength * 10."
