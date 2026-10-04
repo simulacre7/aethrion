@@ -114,6 +114,13 @@ defmodule Aethrion.Bridge.Reply do
   def instruction(%{ledger: ledger, spec: spec}, messages) when is_binary(ledger),
     do: Ledger.instruction(ledger, spec, Ledger.recorded(messages))
 
+  # No window in the chat yet: the first one is the model's to print, and
+  # a small model leaves it out of its first reply one time in eight.
+  def instruction(%{ledger: nil, spec: %{open: open}} = plan, _messages)
+      when is_binary(open) and open != "" do
+    if plan[:line?] != false, do: Ledger.first_instruction()
+  end
+
   def instruction(_plan, _messages), do: nil
 
   @doc """

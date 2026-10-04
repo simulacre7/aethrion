@@ -545,4 +545,25 @@ defmodule Aethrion.BridgeLedgerCardsTest do
     assert Listing.change("검술, 방어", "+도약", habits) == {"검술, 방어, 도약", nil}
     assert Listing.change("5G, 3S", "+보석", habits) == {"5G, 3S, 보석", nil}
   end
+
+  describe "before the first window" do
+    alias Aethrion.Bridge.Reply
+
+    test "the model is asked for the card's window while the chat has none" do
+      plan = %{
+        ledger: nil,
+        spec: %{open: "[Status Window]", close: "[Status Window]"},
+        line?: true
+      }
+
+      assert Reply.instruction(plan, []) =~ "the chat has none yet"
+    end
+
+    test "not when a reply is only continued, nor for a card with no window" do
+      spec = %{open: "[Status Window]", close: "[Status Window]"}
+      assert Reply.instruction(%{ledger: nil, spec: spec, line?: false}, []) == nil
+      assert Reply.instruction(%{ledger: nil, spec: nil, line?: true}, []) == nil
+      assert Reply.instruction(nil, []) == nil
+    end
+  end
 end
