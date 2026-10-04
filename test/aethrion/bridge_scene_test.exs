@@ -117,6 +117,36 @@ defmodule Aethrion.BridgeSceneTest do
       assert length(State.sorted_characters(back)) == 3
     end
 
+    test "a name in the other script is the same person" do
+      # A card written in English and played in Korean has both.
+      same = [
+        {"최승규", "Choi Seung-gyu"},
+        {"에르웬", "Erwen"},
+        {"김태민", "Kim Tae-min"},
+        {"한솔", "Hansol"},
+        {"미샤", "Misha"},
+        {"이윤슬", "Lee Yun-seul"},
+        {"연희", "Yeon-hee"},
+        {"최승규 (Choi Seung-gyu)", "최승규"}
+      ]
+
+      for {a, b} <- same do
+        assert Scene.same?(a, b), "#{a} and #{b}"
+        assert Scene.same?(b, a), "#{b} and #{a}"
+      end
+
+      # A name of one consonant is too little to go by.
+      different = [
+        {"레오", "Remi"},
+        {"한솔", "Hansen"},
+        {"시온", "Misha"},
+        {"미샤", "Mina"},
+        {"노아", "Noah"}
+      ]
+
+      for {a, b} <- different, do: refute(Scene.same?(a, b), "#{a} and #{b}")
+    end
+
     test "the cast stops growing at sixteen" do
       entries = for n <- 1..8, do: %{name: "Person #{n}", profile: ""}
       more = for n <- 9..16, do: %{name: "Person #{n}", profile: ""}

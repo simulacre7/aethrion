@@ -586,10 +586,13 @@ defmodule Aethrion.Bridge.Ledger do
   # A number alone says neither which way the figure moves nor that it is
   # the new value: a small model writes "HP: 8" for eight lost, and
   # "Agility: 0" for no change. It is taken as the new value only when
-  # said outright ("= 8", "14 → 8") or with words of its own ("8 left",
-  # "45 (curious)"); the number as it stands changes nothing either way.
+  # said outright ("= 8", "14 → 8"), with words of its own ("8 left",
+  # "45 (curious)"), or when it is the next count; the number as it
+  # stands changes nothing either way.
   defp unsigned?(value, new, now, habits) do
-    not habits[:outright?] and new != now and
+    # One more than it was is a count going on ("Day: 2" after day 1):
+    # the new value and the smallest change agree.
+    not habits[:outright?] and new != now and new != now + 1 and
       String.match?(value, ~r/\A\s*-?[\d,.]+\s*(?:%|\p{L}{0,3})\s*\z/u)
   end
 

@@ -417,11 +417,13 @@ defmodule Aethrion.BridgeLedgerTest do
         {"HP", "8"},
         {"EXP", "15"},
         {"Strength", "0"},
-        # The number as it stands changes nothing, and is no fault.
+        # The number as it stands changes nothing, and is no fault; the
+        # next count is the count going on.
         {"Level", "8"},
+        {"Stat Point", "3"},
         # Said outright, or with words of its own.
         {"HP", "now 100"},
-        {"Stat Point", "2 - 2 = 0"},
+        {"Stat Point", "3 - 3 = 0"},
         {"Cash", "=2,000,000"}
       ]
 

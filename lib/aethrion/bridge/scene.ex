@@ -296,6 +296,9 @@ defmodule Aethrion.Bridge.Scene do
     |> String.replace("ng", "q")
     |> String.replace(~r/ch|j|z/, "c")
     |> String.replace("sh", "s")
+    # An "h" that begins a syllable is ㅎ ("Hansol", "Yeon-hee"); one that
+    # ends it is only how the vowel is spelled ("Noh").
+    |> String.replace(~r/h(?![aeiouwy])/, "")
     |> String.replace(~r/[aeiouwy]/, "")
     |> String.replace(~r/[gkq]/, fn
       "q" -> "q"
@@ -305,7 +308,6 @@ defmodule Aethrion.Bridge.Scene do
     |> String.replace(~r/[bpfv]/, "p")
     |> String.replace("r", "l")
     |> String.replace("x", "s")
-    |> String.replace("h", "")
     |> String.replace(~r/(.)\1+/, "\\1")
   end
 
