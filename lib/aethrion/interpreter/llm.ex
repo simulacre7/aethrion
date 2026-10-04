@@ -36,7 +36,7 @@ defmodule Aethrion.Interpreter.LLM do
   - attack, defend, heal, flee only while a fight is on; otherwise such words are talk.
   - In a fight, a line that does nothing in the fight (cheering, thanks, insults, orders to others) is talk.
   - activity only when the player suggests doing one of the story's activities ("오늘은 같이 그림 그리자"); talking about it is talk.
-  - gift when the player hands something over ("너 주려고 쿠키 사 왔어").
+  - gift when the player hands something over as a present ("너 주려고 쿠키 사 왔어"). Paying a price, buying, selling, or handing over what was asked for in a trade is no gift: such a line is talk, or none.
   - apology when the player apologizes.
   - Thanks, praise, comfort, and invitations are warm; plain questions and remarks are neutral; brush-offs are cold; insults and contempt are hostile.
   """

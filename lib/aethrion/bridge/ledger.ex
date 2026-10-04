@@ -383,6 +383,7 @@ defmodule Aethrion.Bridge.Ledger do
       Enum.reduce(changes, {%{}, [], []}, fn {name, value}, {edits, applied, refused} ->
         # "Hansol L: +1": a row's labelled number, named with its row.
         {name, value} = celled(by_name, name, value)
+        {name, value} = itemed(fields, by_name, name, value)
 
         case Map.get(by_name, key(name)) do
           # What the rules say of a person (affinity, trust), written under
@@ -474,6 +475,22 @@ defmodule Aethrion.Bridge.Ledger do
          true <-
            Enum.any?(Cells.read(was), &(String.downcase(&1.label) == String.downcase(label))) do
       {row, "#{label} #{value}"}
+    else
+      _other -> {name, value}
+    end
+  end
+
+  # "Potion: -1": a thing of a list named as if it were a field, as a
+  # change to the list that holds it.
+  defp itemed(fields, by_name, name, value) do
+    holds? = fn field ->
+      listing?(field) and Enum.any?(Listing.items(field.value), &(key(&1.name) == key(name)))
+    end
+
+    with false <- Map.has_key?(by_name, key(name)),
+         [_all, sign, n] <- Regex.run(~r/\A\s*([+\-−])\s*([0-9]{1,6})\s*(?:개|병|ea)?\s*\z/u, value),
+         [list] <- Enum.filter(fields, holds?) do
+      {list.name, "#{sign}#{name} × #{n}"}
     else
       _other -> {name, value}
     end
@@ -694,6 +711,7 @@ defmodule Aethrion.Bridge.Ledger do
   # something taken from a list that does not have it).
   defp changed(was, value, habits) do
     {value, habits} = said(value, habits)
+    value = come_to(was, value, habits)
 
     cond do
       nothing?(value) and habits[:outright?] != true ->
@@ -706,16 +724,31 @@ defmodule Aethrion.Bridge.Ledger do
       Cells.read(was) != [] ->
         celled_row(was, value)
 
-      # A place is where one is now, however it is written ("Seoul / an
-      # alley"): said anew, not a list for places to pile up in.
       habits[:placed?] and not figure?(was) ->
-        if String.match?(value, ~r/\A(?:[\-−]\s*\S|\+\s*[0-9])/u),
-          do: {was, :unreadable},
-          else: {value |> String.replace(~r/\A\+\s*/u, "") |> arrived(), nil}
+        placed(was, value)
 
       true ->
         worded_or_counted(was, value, habits)
     end
+  end
+
+  # "morning → night", as some write a change of words: what it comes to.
+  # (A figure and a row of numbers read their own arrows, and a value that
+  # had an arrow in it keeps the one it is given.)
+  defp come_to(was, value, habits) do
+    own? =
+      (figure?(was) and not habits[:dated?]) or Cells.read(was) != [] or
+        String.match?(was, ~r/→|->|=>/u) or String.match?(value, ~r/\A[+\-−]/u)
+
+    if own?, do: value, else: arrived(value)
+  end
+
+  # A place is where one is now, however it is written ("Seoul / an
+  # alley"): said anew, not a list for places to pile up in.
+  defp placed(was, value) do
+    if String.match?(value, ~r/\A(?:[\-−]\s*\S|\+\s*[0-9])/u),
+      do: {was, :unreadable},
+      else: {value |> String.replace(~r/\A\+\s*/u, "") |> arrived(), nil}
   end
 
   # "the alley → the van", as some write a move: where it ends.
@@ -825,6 +858,11 @@ defmodule Aethrion.Bridge.Ledger do
 
         match = Regex.run(~r/\A.*(?:→|->|=>)\s*(\S.*)\z/us, value) ->
           {List.last(match), true}
+
+        # "42 + 8": the number it stands at, and what is added to it.
+        match = Regex.run(~r/\A\s*(-?[0-9][0-9,]*)\s*([+\-−])\s*([0-9][0-9,]*)\s*\z/u, value) ->
+          [_all, from, sign, by] = match
+          if int(from) == first(was), do: {sign <> by, false}, else: {value, false}
 
         # "15 - 15 = 0": a sum, with what it comes to after the sign.
         match =
@@ -1429,24 +1467,22 @@ defmodule Aethrion.Bridge.Ledger do
   defp shown({name, was, now}) do
     cond do
       Cells.read(was) != [] and Cells.read(now) != [] ->
-        case Cells.moved(was, now) do
-          [] -> []
-          moved -> ["#{name} " <> Enum.join(moved, ", ")]
-        end
+        named(name, Cells.moved(was, now))
 
+      # (A figure whose words changed and whose number did not shows no line.)
       figure?(was) or figure?(now) ->
-        ["#{name} #{brief(was)} → #{brief(now)}"]
+        if brief(was) == brief(now), do: [], else: ["#{name} #{brief(was)} → #{brief(now)}"]
 
       listing?(%{name: name, value: was}) or listing?(%{name: name, value: now}) ->
-        case Listing.moved(was, now) do
-          [] -> []
-          moved -> ["#{name} " <> Enum.join(moved, ", ")]
-        end
+        named(name, Listing.moved(was, now))
 
       true ->
         []
     end
   end
+
+  defp named(_name, []), do: []
+  defp named(name, moved), do: ["#{name} " <> Enum.join(moved, ", ")]
 
   @reasons %{
     unknown: {"없는 칸", "no such field"},

@@ -59,6 +59,10 @@ defmodule Aethrion.BridgeLedgerCardsTest do
       assert first.([{"Day", "2 · 오전"}]) == "[Day 2 · 오전 · 최심부 총수실]"
       assert first.([{"Day", "2 · 낮 · B6 훈련장"}]) == "[Day 2 · 낮 · B6 훈련장]"
 
+      # A part said anew beside a number that stays shows no line of the number.
+      {_window, applied, []} = Ledger.apply(window, [{"Day", "1 · 새벽"}], spec)
+      assert Ledger.log(applied, [], :ko) == []
+
       # One word says nothing of which part it is.
       assert {^window, [], [{"Day", "오전", :unreadable}]} =
                Ledger.apply(window, [{"Day", "오전"}], spec)
@@ -136,6 +140,56 @@ defmodule Aethrion.BridgeLedgerCardsTest do
     # Not what the rule gave: the line stays, with its reason.
     assert {^paid, [{"스탯 포인트", "-1", :ruled}]} =
              settle.([{"근력", "+2"}, {"체력", "+1"}, {"스탯 포인트", "-1"}])
+  end
+
+  test "things that join and leave a list with only a space between them" do
+    habits = %{separator: " / ", empty: "없음"}
+    was = "낡은 검 / 회복약 × 2 / 이끼 쥐 털뭉치 × 1 / 작은 이빨 × 1"
+
+    assert Listing.change(was, "-회복약 × 1 -이끼 쥐 털뭉치 × 1 -작은 이빨 × 1", habits) ==
+             {"낡은 검 / 회복약 × 1", nil}
+
+    assert Listing.change(was, "+회복약 × 1 -이끼 쥐 털뭉치 × 1 -작은 이빨", habits) ==
+             {"낡은 검 / 회복약 × 3", nil}
+
+    # A sign before a number is the thing's own.
+    assert Listing.change("낡은 검", "+강철 검 +1", habits) == {"낡은 검 / 강철 검 +1", nil}
+
+    assert Listing.change(was, "-회복약 × 1; -이끼 쥐 털뭉치 × 1; -작은 이빨 × 1", habits) ==
+             {"낡은 검 / 회복약 × 1", nil}
+  end
+
+  test "a thing of a list named as a field, and a sum written out" do
+    spec = %{open: "[상태창]", close: "[상태창]"}
+    window = "[상태창]\n- HP: 36 / 50\n- 골드: 42\n- 소지품: 낡은 검 / 회복약 × 2\n[상태창]"
+
+    assert {now, _applied, []} =
+             Ledger.apply(window, [{"회복약", "-1"}, {"골드", "42 + 8"}, {"HP", "36 + 14"}], spec)
+
+    assert now == "[상태창]\n- HP: 50 / 50\n- 골드: 50\n- 소지품: 낡은 검 / 회복약 × 1\n[상태창]"
+
+    # A thing no list holds is no field, and a sum from another number is not this one's.
+    assert {^window, [], [{"마나 물약", "-1", :unknown}, {"골드", "40 + 8", _reason}]} =
+             Ledger.apply(window, [{"마나 물약", "-1"}, {"골드", "40 + 8"}], spec)
+  end
+
+  test "words written as a change from one to another come to the last" do
+    spec = %{open: "[상태창]", close: "[상태창]"}
+    window = "[상태창]\n- 날짜: 1일차 아침\n- 기분: 평온\n- HP: 36 / 50\n- 변화: 구리 → 은\n[상태창]"
+
+    {now, _applied, []} =
+      Ledger.apply(
+        window,
+        [
+          {"날짜", "1일차 저녁 → 2일차 아침"},
+          {"기분", "평온 -> 들뜸"},
+          {"HP", "36 / 50 → 50 / 50"},
+          {"변화", "은 → 금"}
+        ],
+        spec
+      )
+
+    assert now == "[상태창]\n- 날짜: 2일차 아침\n- 기분: 들뜸\n- HP: 50 / 50\n- 변화: 은 → 금\n[상태창]"
   end
 
   test "a list that counts every thing counts a new one as well" do

@@ -255,7 +255,10 @@ defmodule Aethrion.Bridge.Ledger.Listing do
     {steps, _sign} =
       value
       |> String.split(separator || ", ")
-      |> Enum.flat_map(&String.split(&1, ~r/\s*[,\/·]\s*(?=[+\-−]\s*\S)/u))
+      |> Enum.flat_map(&String.split(&1, ~r/\s*[,;\/·]\s*(?=[+\-−]\s*\S)/u))
+      # "+potion × 1 -rat fur × 1": nothing between them but a space. (A
+      # sign before a number is a thing's own: "sword +1".)
+      |> Enum.flat_map(&String.split(&1, ~r/\s+(?=[+\-−][^\p{Nd}\s+\-−])/u))
       |> Enum.map(&String.trim/1)
       |> Enum.reject(&(&1 == ""))
       |> Enum.map_reduce(:plus, fn part, sign ->
