@@ -244,6 +244,7 @@ defmodule Aethrion.AutoCastTest do
         - Vigor: 13
         [Status]
         Vigor: Max HP +10 per point. 100 × (1.15)^(Level − 1) = Max EXP.
+        Both stay between 0 and 300. Both change by 4 at most in a turn.
         """
       }
 
@@ -265,6 +266,21 @@ defmodule Aethrion.AutoCastTest do
               # though the example is within it.
               %{"from" => "- Level: 8", "rule" => "Level = 8"},
               %{"from" => "Level stays low.", "rule" => "Level = clamp(Level, 0, 10)"},
+              # Nor one whose numbers are not in the sentence it is said to come from.
+              %{
+                "from" => "Print the status between [Status] lines",
+                "rule" => "Vigor = clamp(Vigor, 0, 99)"
+              },
+              # A range has to name its number; how far a number moves in a turn,
+              # said of several at once, need not.
+              %{
+                "from" => "Both stay between 0 and 300.",
+                "rule" => "Vigor = clamp(Vigor, 0, 300)"
+              },
+              %{
+                "from" => "Both change by 4 at most in a turn.",
+                "rule" => "Vigor = clamp(Vigor, Vigor.before - 4, Vigor.before + 4)"
+              },
               # The card's sentence, for a rule its example contradicts.
               %{"from" => "Vigor: Max HP +10 per point.", "rule" => "HP.max = 10 + Vigor * 10"},
               %{
@@ -284,6 +300,7 @@ defmodule Aethrion.AutoCastTest do
 
       assert rules == [
                "HP.max = Vigor * 10",
+               "Vigor = clamp(Vigor, Vigor.before - 4, Vigor.before + 4)",
                "EXP.max = floor(100 * 1.15 ^ (Level - 1))",
                "when EXP >= EXP.max: Level += 1; EXP -= EXP.max"
              ]

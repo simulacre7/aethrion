@@ -451,10 +451,16 @@ defmodule Aethrion.Bridge.AutoCast do
   # number ("L = 0") is where the examples begin, not a rule (a maximum
   # that is a number, "EXP.max = 100", is one when the card says so).
   defp borne_out?(rule, from, text, verdicts) do
+    # (How far a number moves in a turn is often said of several at once,
+    # "their affection changes by 5 at most", naming none: for that the
+    # card's sentence with the rule's numbers in it is enough. A range
+    # has to name its number: a wrong one would hold the number fast.)
     borne_out? =
-      if bound?(rule),
-        do: stated?(rule, from, text),
-        else: true in verdicts or stated?(rule, from, text)
+      cond do
+        not bound?(rule) -> true in verdicts or stated?(rule, from, text)
+        String.contains?(rule, ".before") -> stated?(rule, from, text, false)
+        true -> stated?(rule, from, text)
+      end
 
     (not constant?(rule) or (maximum?(rule) and stated?(rule, from, text))) and
       false not in verdicts and borne_out?
@@ -516,7 +522,7 @@ defmodule Aethrion.Bridge.AutoCast do
   # number the rule uses (0 and 1 aside) stands in it with the words
   # around it as the card has them, and the sentence names the fields the
   # rule speaks of.
-  def stated?(rule, from, text) do
+  def stated?(rule, from, text, named? \\ true) do
     {quote, card} = {plain(from), plain(text)}
 
     numbers =
@@ -527,7 +533,7 @@ defmodule Aethrion.Bridge.AutoCast do
       |> Enum.uniq()
 
     String.length(quote) >= 8 and quoted?(quote, card) and
-      Enum.all?(numbers, &in_place?(&1, quote, card)) and named?(rule, quote)
+      Enum.all?(numbers, &in_place?(&1, quote, card)) and (not named? or named?(rule, quote))
   end
 
   # The sentence names the fields the rule speaks of: all of two, and all
