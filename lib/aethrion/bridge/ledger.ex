@@ -1225,81 +1225,81 @@ defmodule Aethrion.Bridge.Ledger do
   """
   @spec instruction(String.t(), spec() | nil, {[String.t()], [String.t()]}) :: String.t()
   def instruction(window, spec \\ nil, recorded \\ {[], []}) do
-    {done, refused} = recorded
-
-    already =
-      case done do
-        [] ->
-          ""
-
-        lines ->
-          " Last turn's changes are in the window already; do not write them again (" <>
-            Enum.join(lines, "; ") <> ")."
-      end
-
-    already =
-      case refused do
-        [] ->
-          already
-
-        lines ->
-          already <>
-            " These lines of yours last turn were not taken, for the reason in brackets; if one still holds, write it again in the form asked for: " <>
-            Enum.join(lines, "; ") <> "."
-      end
-
     fields = fields(window, spec)
     names = Enum.map_join(fields, ", ", & &1.name)
 
-    lists =
-      case Enum.filter(fields, &listing?/1) do
-        [] ->
-          ""
+    "The status window is kept by the game's rules and shown by them: do not print it yourself, whatever the card says. Instead, after everything else, write <aethrion-ledger>...</aethrion-ledger> with one line for each field of the window that this reply changes: `Field: +N` or `Field: -N`, always with its sign, for a number that goes up or down (damage taken is `HP: -N`, experience gained `EXP: +N`), `Field: N / M` to set both numbers of a pair, `Field: =N` to set a number outright, or the field's new words as they should read (a place moved to is `Location: the east gate`, in the story's language).#{lists_note(fields)}#{rows_note(fields)} Use the window's field names (#{names}).#{headings_note(fields)}#{scene_note(fields)}#{ruled_note(fields, spec)}#{already_note(recorded)} Leave out every field that stays as it is, and write the tags with nothing between them when nothing changes. What is listed under This turn and Now (how each character feels) is the rules' own and shown apart from the window: none of it goes in these lines. It is not shown to the player."
+  end
 
-        [first | _rest] = lists ->
-          " For a list (#{Enum.map_join(lists, ", ", & &1.name)}), write only what joins or leaves it, never the whole list: `#{first.name}: +thing × 2` for something gained, `#{first.name}: -thing × 1` for something used or lost."
-      end
+  # Last turn's record, so that it is not written twice, and what was not
+  # taken of it.
+  defp already_note({done, refused}) do
+    done =
+      if done == [],
+        do: "",
+        else:
+          " Last turn's changes are in the window already; do not write them again (" <>
+            Enum.join(done, "; ") <> ")."
 
-    rows =
-      case Enum.filter(fields, &(Cells.read(&1.value) != [])) do
-        [] ->
-          ""
+    if refused == [],
+      do: done,
+      else:
+        done <>
+          " These lines of yours last turn were not taken, for the reason in brackets; if one still holds, write it again in the form asked for: " <>
+          Enum.join(refused, "; ") <> "."
+  end
 
-        [first | _rest] = rows ->
-          label = first.value |> Cells.read() |> hd() |> Map.fetch!(:label)
+  defp lists_note(fields) do
+    case Enum.filter(fields, &listing?/1) do
+      [] ->
+        ""
 
-          " For a row of labelled numbers (#{Enum.map_join(rows, ", ", & &1.name)}), write the numbers that move by their labels, `#{first.name}: #{label} +1`, or write the whole row anew."
-      end
+      [first | _rest] = lists ->
+        " For a list (#{Enum.map_join(lists, ", ", & &1.name)}), write only what joins or leaves it, never the whole list: `#{first.name}: +thing × 2` for something gained, `#{first.name}: -thing × 1` for something used or lost."
+    end
+  end
 
-    ruled =
-      case set_by_rules(fields, spec) do
-        [] ->
-          ""
+  defp rows_note(fields) do
+    case Enum.filter(fields, &(Cells.read(&1.value) != [])) do
+      [] ->
+        ""
 
-        set ->
-          " The game's rules set these themselves, so do not write them, only what leads to them: " <>
-            Enum.join(set, ", ") <>
-            " (" <> Enum.join(rule_texts(fields, spec), " | ") <> ")."
-      end
+      [first | _rest] = rows ->
+        label = first.value |> Cells.read() |> hd() |> Map.fetch!(:label)
 
-    headings =
-      for %{heading?: true, name: name, value: value} <- fields,
-          length(String.split(value, " · ")) >= 2,
-          into: "",
-          do:
-            " #{name} is a heading of several parts (now `#{String.slice(value, 0, 80)}`): when one of them changes, write all of it as it should read, `#{name}: ...` with every part."
+        " For a row of labelled numbers (#{Enum.map_join(rows, ", ", & &1.name)}), write the numbers that move by their labels, `#{first.name}: #{label} +1`, or write the whole row anew."
+    end
+  end
 
-    # When and where: a model that no longer prints the window forgets them first.
-    scene =
-      case Enum.filter(fields, &(placed?(&1.name) or timed?(&1.name) or &1[:heading?] == true)) do
-        [] ->
-          ""
+  defp ruled_note(fields, spec) do
+    case set_by_rules(fields, spec) do
+      [] ->
+        ""
 
-        moving ->
-          " Time passes and places change as the story goes: when this reply moves either, say so (#{Enum.map_join(moving, ", ", & &1.name)})."
-      end
+      set ->
+        " The game's rules set these themselves, so do not write them, only what leads to them: " <>
+          Enum.join(set, ", ") <>
+          " (" <> Enum.join(rule_texts(fields, spec), " | ") <> ")."
+    end
+  end
 
-    "The status window is kept by the game's rules and shown by them: do not print it yourself, whatever the card says. Instead, after everything else, write <aethrion-ledger>...</aethrion-ledger> with one line for each field of the window that this reply changes: `Field: +N` or `Field: -N`, always with its sign, for a number that goes up or down (damage taken is `HP: -N`, experience gained `EXP: +N`), `Field: N / M` to set both numbers of a pair, `Field: =N` to set a number outright, or the field's new words as they should read (a place moved to is `Location: the east gate`, in the story's language).#{lists}#{rows} Use the window's field names (#{names}).#{headings}#{scene}#{ruled}#{already} Leave out every field that stays as it is, and write the tags with nothing between them when nothing changes. What is listed under This turn and Now (how each character feels) is the rules' own and shown apart from the window: none of it goes in these lines. It is not shown to the player."
+  defp headings_note(fields) do
+    for %{heading?: true, name: name, value: value} <- fields,
+        length(String.split(value, " · ")) >= 2,
+        into: "",
+        do:
+          " #{name} is a heading of several parts (now `#{String.slice(value, 0, 80)}`): when one of them changes, write all of it as it should read, `#{name}: ...` with every part."
+  end
+
+  # When and where: a model that no longer prints the window forgets them first.
+  defp scene_note(fields) do
+    case Enum.filter(fields, &(placed?(&1.name) or timed?(&1.name) or &1[:heading?] == true)) do
+      [] ->
+        ""
+
+      moving ->
+        " Time passes and places change as the story goes: when this reply moves either, say so (#{Enum.map_join(moving, ", ", & &1.name)})."
+    end
   end
 
   @doc """
