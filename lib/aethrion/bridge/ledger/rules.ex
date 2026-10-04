@@ -548,6 +548,23 @@ defmodule Aethrion.Bridge.Ledger.Rules do
   defp whole_up(x), do: trunc(Float.ceil(x - 1.0e-9))
 
   @doc """
+  Whether a window's numbers agree with a rule that always holds: true or
+  false, or nil when they cannot say (a rule for what happens, one that
+  looks at the turn before, or a field the window lacks).
+  """
+  @spec agrees?(rule(), values()) :: boolean() | nil
+  def agrees?({:always, {name, part}, expr}, values) do
+    with expected when expected != :none <- value(expr, values),
+         held when held != :none <- value({:field, name, part}, values) do
+      whole(expected) == held
+    else
+      _none -> nil
+    end
+  end
+
+  def agrees?(_rule, _values), do: nil
+
+  @doc """
   The fields a rule works out when something happens (`when ...: Level +=
   1`) and that are not what makes it happen: the model does not raise
   those itself.

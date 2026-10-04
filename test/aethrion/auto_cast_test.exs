@@ -84,6 +84,55 @@ defmodule Aethrion.AutoCastTest do
                )
     end
 
+    test "several rules written on one line are taken apart; a card's example windows decide" do
+      card = %{
+        greeting: nil,
+        rules: "",
+        prompt: """
+        Print the status between [Status] lines, like this:
+        [Status]
+        - Level: 8
+        - HP: 121 / 130
+        - EXP: 23 / 266
+        - Vigor: 13
+        [Status]
+        Vigor: Max HP +10 per point. 100 × (1.15)^(Level − 1) = Max EXP.
+        """
+      }
+
+      answer =
+        Jason.encode!(%{
+          "characters" => [],
+          "status_window" => %{
+            "open" => "[Status]",
+            "close" => "[Status]",
+            "rules" => [
+              # A sentence that is not the card's, for a rule its example bears out.
+              %{"from" => "HP: Health Points.", "rule" => "HP.max = Vigor * 10"},
+              # The card's sentence, for a rule its example contradicts.
+              %{"from" => "Vigor: Max HP +10 per point.", "rule" => "HP.max = 10 + Vigor * 10"},
+              %{
+                "from" => "100 × (1.15)^(Level − 1) = Max EXP.",
+                "rule" =>
+                  "EXP.max = floor(100 * 1.15 ^ (Level - 1)); when EXP >= EXP.max: Level += 1; EXP -= EXP.max"
+              }
+            ]
+          }
+        })
+
+      adapter = Aethrion.AutoCastTest.Reader
+      Process.put(:reader_answer, answer)
+      casts = %{put: fn _key, _value -> :ok end}
+
+      assert {:ok, %{window: %{rules: rules}}} = AutoCast.read(card, casts, adapter)
+
+      assert rules == [
+               "HP.max = Vigor * 10",
+               "EXP.max = floor(100 * 1.15 ^ (Level - 1))",
+               "when EXP >= EXP.max: Level += 1; EXP -= EXP.max"
+             ]
+    end
+
     test "a rule is kept when the card states it, with its numbers where the card has them" do
       card = """
       - EXP: Experience points required to reach the next level. Current EXP = Max EXP → Level Up. 100 × (1.15)^(Level − 1) = Max EXP (truncate decimal points).
@@ -140,6 +189,11 @@ defmodule Aethrion.AutoCastTest do
       refute AutoCast.key(%{prompt: "a prompt", greeting: nil}) ==
                AutoCast.key(%{prompt: "another", greeting: nil})
     end
+  end
+
+  # Answers what the test put in its process dictionary.
+  defmodule Reader do
+    def chat(_messages, _opts), do: {:ok, Process.get(:reader_answer)}
   end
 
   # Reads a card when asked to, narrates otherwise; every call is noted.

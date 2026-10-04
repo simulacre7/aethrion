@@ -71,7 +71,7 @@ defmodule Aethrion.Bridge.Ledger do
     |> Enum.find_value(fn {start, length} ->
       # As the card closes it; or, when that leaves no window (a closing
       # text that also ends the window's heading), to the end of the reply.
-      Enum.find_value([spec.close, ""], fn close ->
+      Enum.find_value(closings(spec.close), fn close ->
         spec = %{spec | close: close}
 
         with stop when is_integer(stop) <- closing(text, start + length, close),
@@ -86,6 +86,11 @@ defmodule Aethrion.Bridge.Ledger do
   end
 
   def window(_text, _spec), do: nil
+
+  # The closing texts to try: the card's, and for one that is a single
+  # bracket (which may only close the window's heading), none.
+  defp closings(close) when close in ["]", ")", "}", ">", "】", "］", "」"], do: [close, ""]
+  defp closings(close), do: [close]
 
   # Where the window that opens before `from` ends.
   defp closing(text, _from, close) when close in [nil, ""],
@@ -111,6 +116,41 @@ defmodule Aethrion.Bridge.Ledger do
             nil -> nil
           end
         end
+    end
+  end
+
+  @doc """
+  Every window in `text`, in order: a card's own examples of its window,
+  say. (`window/2` gives the last one.)
+  """
+  @spec windows(String.t(), spec()) :: [String.t()]
+  def windows(text, spec) do
+    case window(text, spec) do
+      nil ->
+        []
+
+      {before, window, _after} ->
+        # Past a window that is the rest of the text, look no further back
+        # than its opening.
+        windows(String.slice(before, 0, max(String.length(before) - 1, 0)), spec) ++ [window]
+    end
+  end
+
+  @doc """
+  Whether a window's numbers agree with a rule as written (a rule that
+  always holds, such as `HP.max = Vigor * 10`): true, false, or nil when
+  the window cannot say. For checking what a card's reader wrote against
+  the examples the card gives of its window.
+  """
+  @spec agrees?(String.t(), String.t(), spec() | nil) :: boolean() | nil
+  def agrees?(window, rule, spec \\ nil) do
+    fields = fields(window, spec)
+    figures = for field <- fields, figure = figure(field.value), do: {field, figure}
+    values = Map.new(figures, fn {field, {_shape, numbers}} -> {key(field.name), numbers} end)
+
+    case Rules.parse(rule, Map.keys(values)) do
+      {:ok, parsed} -> Rules.agrees?(parsed, values)
+      :error -> nil
     end
   end
 

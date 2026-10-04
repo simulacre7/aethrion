@@ -183,16 +183,7 @@ defmodule Aethrion.Bridge.AutoCast do
       # A rule is kept when the card says it: a formula made up from
       # somewhere else would bend every window after it.
       stated = Enum.join([card.prompt, Map.get(card, :rules, ""), card.greeting || ""], "\n")
-
-      people =
-        update_in(people.window, fn
-          nil ->
-            nil
-
-          window ->
-            rules = for {rule, from} <- window.rules, stated?(rule, from, stated), do: rule
-            %{window | rules: rules}
-        end)
+      people = update_in(people.window, &grounded(&1, stated))
 
       window =
         people.window &&
@@ -207,6 +198,25 @@ defmodule Aethrion.Bridge.AutoCast do
       casts.put.("root:" <> Bridge.root(state), kept)
       {:ok, %{cast: state, window: people.window, key: key, player: people.player}}
     end
+  end
+
+  # The window with the rules the card bears out. The card's own examples
+  # of its window decide first: a rule they contradict is dropped, one they
+  # agree with is kept. Where they cannot say, the sentence the reader
+  # gave for the rule decides (`stated?/3`).
+  defp grounded(nil, _text), do: nil
+
+  defp grounded(window, text) do
+    examples = Aethrion.Bridge.Ledger.windows(text, window)
+
+    rules =
+      for {rule, from} <- window.rules,
+          verdicts = Enum.map(examples, &Aethrion.Bridge.Ledger.agrees?(&1, rule, window)),
+          false not in verdicts,
+          true in verdicts or stated?(rule, from, text),
+          do: rule
+
+    %{window | rules: rules}
   end
 
   @doc false
@@ -353,7 +363,7 @@ defmodule Aethrion.Bridge.AutoCast do
     rules
     |> Enum.flat_map(fn
       %{"rule" => rule, "from" => from} when is_binary(rule) and is_binary(from) ->
-        [{String.trim(rule), from}]
+        for line <- lines(rule), do: {line, from}
 
       _other ->
         []
@@ -364,6 +374,28 @@ defmodule Aethrion.Bridge.AutoCast do
   end
 
   defp rules(_none), do: []
+
+  # A rule line as the reader wrote it may hold several: "A.max = B * 10;
+  # C.max = D * 10", or one that always holds before "when ...". What
+  # follows a `when` is its changes, to the end.
+  defp lines(rule) do
+    {lines, happening} =
+      rule
+      |> String.split(";")
+      |> Enum.map(&String.trim/1)
+      |> Enum.reject(&(&1 == ""))
+      |> Enum.reduce({[], nil}, fn
+        part, {lines, nil} ->
+          if String.match?(part, ~r/\Awhen\b/i),
+            do: {lines, part},
+            else: {lines ++ [part], nil}
+
+        part, {lines, happening} ->
+          {lines, happening <> "; " <> part}
+      end)
+
+    lines ++ List.wrap(happening)
+  end
 
   # The player's name as the card gives it, when it is a name.
   defp player(name) when is_binary(name) do
