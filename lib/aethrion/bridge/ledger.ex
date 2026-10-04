@@ -130,11 +130,16 @@ defmodule Aethrion.Bridge.Ledger do
     open = (spec && spec.open) || ""
     close = (spec && spec.close) || ""
 
+    # An opening text that is the first field's name ("◈무공" before
+    # ": 120") or holds it ("[Date:") is read as part of the window.
+    named? =
+      String.contains?(open, [":", "："]) or
+        String.match?(String.replace_prefix(window, open, ""), ~r/\A[ \t]*[:：]/u)
+
     from =
-      if open != "" and String.starts_with?(window, open) and
-           not String.contains?(open, [":", "："]),
-         do: byte_size(open),
-         else: 0
+      if open != "" and String.starts_with?(window, open) and not named?,
+        do: byte_size(open),
+        else: 0
 
     to =
       if close != "" and String.ends_with?(window, close) and
@@ -494,8 +499,16 @@ defmodule Aethrion.Bridge.Ledger do
 
     flush = fn ->
       case Process.delete(key) do
-        {held, _line_start?} when held != "" -> emit.(held)
-        _held_or_nothing -> :ok
+        {held, _line_start?} when held != "" ->
+          # A last line with no line break after it: a window, or the story's.
+          window? =
+            open != nil and String.starts_with?(String.trim_leading(held), open) and
+              (byte_size(open) >= 6 or window_line?(held))
+
+          if not window?, do: emit.(held)
+
+        _held_or_nothing ->
+          :ok
       end
     end
 
@@ -520,8 +533,8 @@ defmodule Aethrion.Bridge.Ledger do
             :held
 
           # A short one ("["): the line decides, once it is whole.
-          match = :binary.match(rest, "\n") ->
-            {line_end, 1} = match
+          :binary.match(rest, "\n") != :nomatch ->
+            {line_end, 1} = :binary.match(rest, "\n")
             line = binary_part(rest, 0, line_end + 1)
 
             if window_line?(line) do
