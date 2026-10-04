@@ -1,0 +1,241 @@
+defmodule Aethrion.Bridge.Ledger.Fields do
+  @moduledoc """
+  The fields of a card's status window, each line read as what it looks
+  like. Cards write their windows in many shapes, and a field is whatever
+  has a name and a value that can be put back in its place:
+
+  - `Name: value` or `NAME=value` (after a bullet or a mark such as `◈`),
+    the value being the rest of the line;
+  - several of those on one line, split by `|` (or `│`), with a piece that
+    has no name (a line of thought at the end of a one-line window) named
+    `Note`, `Note 2`, and so on;
+  - a row of a table, `Name | 62 | calm | a thought`: the first cell names
+    it, the rest is its value;
+  - a line led by a symbol, `📍 the beach`: the symbol names it;
+  - a heading with something to say, `[Day 3/30 · noon]` or
+    `━━ RECORD No.4 ━━`: its words name it, and what follows them is its
+    value;
+  - any other line of words, a note.
+
+  The window's own markers (`spec`) are no fields, except an opening text
+  that is a heading or the first field's name.
+  """
+
+  @typedoc "A field: its name, its value, and where the value is in the window."
+  @type field :: %{
+          name: String.t(),
+          value: String.t(),
+          at: {non_neg_integer(), non_neg_integer()}
+        }
+
+  @doc "The fields of `window`, in order. `spec` has the window's opening and closing text."
+  @spec read(String.t(), map() | nil) :: [field()]
+  def read(window, spec \\ nil) do
+    open = (spec && spec.open) || ""
+    close = (spec && spec.close) || ""
+    {heading, from} = heading(window, open)
+
+    to =
+      if close != "" and String.ends_with?(window, close) and
+           byte_size(window) - byte_size(close) >= from,
+         do: byte_size(window) - byte_size(close),
+         else: byte_size(window)
+
+    fields =
+      heading ++
+        (~r/[^\n]+/u
+         |> Regex.scan(binary_part(window, from, to - from), return: :index)
+         |> Enum.flat_map(fn [{start, length}] -> line(window, from + start, length) end))
+
+    # Free text counts only next to named values: a window, not a paragraph.
+    if Enum.count(fields, & &1.name) >= 2,
+      do: name_notes(fields),
+      else: Enum.filter(fields, & &1.name)
+  end
+
+  @doc "A field's name as written, without the marks around it."
+  @spec clean_name(String.t()) :: String.t()
+  def clean_name(name),
+    do: name |> String.replace(~r/[\[\]\*`_]/u, "") |> String.trim()
+
+  # The field the opening text makes, and where the rest of the window
+  # begins. An opening text that names the first field ("[Date:", "◈무공"
+  # before ": 120") is left for the first line to read. One with more on
+  # its line ("[Day" before " 3/30 · noon]", "━━ RECORD No." before
+  # "4 ━━") is a heading: its words name a field, the rest of the line is
+  # the value. Otherwise it is a marker, and the window begins after it.
+  defp heading(window, open) do
+    cond do
+      open == "" or not String.starts_with?(window, open) ->
+        {[], 0}
+
+      names_first?(window, open) ->
+        {[], 0}
+
+      true ->
+        after_open = binary_part(window, byte_size(open), byte_size(window) - byte_size(open))
+        [rest] = Regex.run(~r/\A[^\n]*/u, after_open)
+        name = open |> String.replace(~r/\A[^\p{L}\p{N}]+|[^\p{L}\p{N}]+\z/u, "") |> clean_name()
+
+        # The value: the rest of the line, without the bracket that closes it.
+        value = rest |> String.trim() |> String.replace(~r/\s*[\]】］」]\z/u, "")
+        lead = byte_size(rest) - byte_size(String.trim_leading(rest))
+
+        if name != "" and String.match?(value, ~r/[\p{L}\p{N}]/u),
+          do:
+            {[%{name: name, value: value, at: {byte_size(open) + lead, byte_size(value)}}],
+             byte_size(open) + byte_size(rest)},
+          else: {[], byte_size(open)}
+    end
+  end
+
+  defp names_first?(window, open) do
+    after_open = String.replace_prefix(window, open, "")
+
+    String.contains?(open, [":", "：", "=", "|", "│"]) or
+      String.match?(after_open, ~r/\A[ \t]*[:：=]/u)
+  end
+
+  # The fields of one line of the window.
+  defp line(window, start, length) do
+    text = binary_part(window, start, length)
+
+    cells =
+      ~r/[^|│｜]+/u
+      |> Regex.scan(text, return: :index)
+      |> Enum.map(fn [{at, size}] -> {start + at, size} end)
+
+    named = Enum.map(cells, fn {at, size} -> named(window, at, size) end)
+
+    cond do
+      # "Trust: 3% | Anger: 5% | a thought": each piece is a field.
+      Enum.count(named, & &1) >= 2 ->
+        cells
+        |> Enum.zip(named)
+        |> Enum.map(fn {{at, size}, named} ->
+          named || free(binary_part(window, at, size), at)
+        end)
+        |> Enum.reject(&is_nil/1)
+
+      row = row(window, cells, start + length) ->
+        [row]
+
+      true ->
+        [
+          named(window, start, length) || marked(window, start, length) ||
+            headed(window, start, length) || free(text, start)
+        ]
+        |> Enum.reject(&is_nil/1)
+    end
+  end
+
+  @named ~r/\A(\s*(?:[-*•◈▶▪·\[]\s*)?)([^:：=\n]{1,40}?)\s*[:：]\s*(.*?)\s*\z/us
+  @assigned ~r/\A(\s*(?:[-*•◈▶▪·\[]\s*)?)([\p{L}\p{N}_]{1,24})[ \t]*=[ \t]*(.*?)\s*\z/us
+
+  # `Name: value` or `NAME=value`, after a bullet or a mark.
+  defp named(window, start, length) do
+    text = binary_part(window, start, length)
+
+    case Regex.run(@named, text, return: :index) || Regex.run(@assigned, text, return: :index) do
+      [_all, _lead, {name_at, name_length}, {value_at, value_length}] ->
+        name = text |> binary_part(name_at, name_length) |> clean_name()
+
+        if name != "" and value_length > 0,
+          do: %{
+            name: name,
+            value: binary_part(text, value_at, value_length),
+            at: {start + value_at, value_length}
+          }
+
+      nil ->
+        nil
+    end
+  end
+
+  # A row of a table: a short name in the first cell, and the rest of the
+  # line as its value, when that begins with a number ("Tyler | 62 | calm")
+  # or has at least two more cells ("Hansol | Rank 10 | P 0 | the baths").
+  defp row(window, [{name_at, name_size}, {second_at, second_size} | more], line_end) do
+    name = window |> binary_part(name_at, name_size) |> clean_name()
+    second = binary_part(window, second_at, second_size)
+
+    if String.match?(name, ~r/\A\p{L}[^:：=]{0,23}\z/u) and
+         (String.match?(second, ~r/\A\s*-?\d/u) or more != []) do
+      lead = byte_size(second) - byte_size(String.trim_leading(second))
+      from = second_at + lead
+      value = window |> binary_part(from, line_end - from) |> String.trim_trailing()
+      %{name: name, value: value, at: {from, byte_size(value)}}
+    end
+  end
+
+  defp row(_window, _cells, _line_end), do: nil
+
+  # A line led by a symbol ("📍 the beach"): the symbol names it.
+  defp marked(window, start, length) do
+    text = binary_part(window, start, length)
+
+    case Regex.run(
+           ~r/\A\s*([^\p{L}\p{N}\s\[\](){}<>|:：\-=#*`_~.,'"!?━─]{1,4})[ \t]+(\S.*?)\s*\z/us,
+           text,
+           return: :index
+         ) do
+      [_all, {name_at, name_length}, {value_at, value_length}] ->
+        %{
+          name: binary_part(text, name_at, name_length),
+          value: binary_part(text, value_at, value_length),
+          at: {start + value_at, value_length}
+        }
+
+      nil ->
+        nil
+    end
+  end
+
+  # A heading in brackets with something to say ("[Day 3/30 · noon]"),
+  # further down the window.
+  defp headed(window, start, length) do
+    text = binary_part(window, start, length)
+
+    case Regex.run(
+           ~r/\A\s*\[\s*(\p{L}[\p{L}\p{N}_]{0,19})[ \t]+([^\]\n]*[\p{L}\p{N}][^\]\n]*?)\s*\]\s*\z/us,
+           text,
+           return: :index
+         ) do
+      [_all, {name_at, name_length}, {value_at, value_length}] ->
+        %{
+          name: binary_part(text, name_at, name_length),
+          value: binary_part(text, value_at, value_length),
+          at: {start + value_at, value_length}
+        }
+
+      nil ->
+        nil
+    end
+  end
+
+  # Free text between the markers: kept as a note when it reads as a
+  # sentence, not when it is a rule of dashes or a heading.
+  defp free(text, start) do
+    case Regex.run(~r/\A(\s*)(.*?)(\s*)\z/us, text, return: :index) do
+      [_all, _lead, {at, length}, _tail] when length >= 12 ->
+        value = binary_part(text, at, length)
+
+        if String.match?(value, ~r/\p{L}.*\p{L}/us) and not String.match?(value, ~r/\A[\[<#=]/u),
+          do: %{name: nil, value: value, at: {start + at, length}}
+
+      _other ->
+        nil
+    end
+  end
+
+  defp name_notes(fields) do
+    {named, _count} =
+      Enum.map_reduce(fields, 0, fn
+        %{name: nil} = field, 0 -> {%{field | name: "Note"}, 1}
+        %{name: nil} = field, n -> {%{field | name: "Note #{n + 1}"}, n + 1}
+        field, n -> {field, n}
+      end)
+
+    named
+  end
+end

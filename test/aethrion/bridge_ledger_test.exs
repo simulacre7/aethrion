@@ -152,6 +152,84 @@ defmodule Aethrion.BridgeLedgerTest do
       assert Ledger.settle(kept, spec) == {kept, []}
     end
 
+    test "lines of NAME=value between tags" do
+      spec = %{open: "<status>", close: "</status>"}
+
+      reply =
+        "본문.\n\n<status>\n\nDATE=10월 14일 (월)\n\nTIME=09:40\n\nNEWS=안건 상정: 유혈 충돌\n\n</status>"
+
+      assert {"본문.\n\n", found, ""} = Ledger.window(reply, spec)
+
+      assert Enum.map(Ledger.fields(found, spec), &{&1.name, &1.value}) == [
+               {"DATE", "10월 14일 (월)"},
+               {"TIME", "09:40"},
+               {"NEWS", "안건 상정: 유혈 충돌"}
+             ]
+
+      assert {kept, _applied, []} =
+               Ledger.apply(found, [{"TIME", "+0:35"}, {"NEWS", "의사당 폭파"}], spec)
+
+      assert kept ==
+               "<status>\n\nDATE=10월 14일 (월)\n\nTIME=10:15\n\nNEWS=의사당 폭파\n\n</status>"
+    end
+
+    test "a tag and key=value cells on one line" do
+      spec = %{open: "[ROOM|exit=", close: "]"}
+      assert {_head, found, ""} = Ledger.window("본문.\n\n[ROOM|exit=locked|variant=-|day=-]", spec)
+      assert Enum.map(Ledger.fields(found, spec), & &1.name) == ["exit", "variant", "day"]
+      assert {kept, _applied, []} = Ledger.apply(found, [{"exit", "open"}, {"day", "2"}], spec)
+      assert kept == "[ROOM|exit=open|variant=-|day=2]"
+    end
+
+    test "a heading that counts, fields split by a box line, and notes" do
+      spec = %{open: "━━ RECORD No.", close: ""}
+
+      reply =
+        "본문.\n\n━━ RECORD No.1 ━━\nSUBJECT: 기환 │ PLACE: 제2심문실 │ BELL: 3\nHEARD: 0\nENTRY: 대상 연행. 저항 없음.\n증거 확보를 위해 재현을 요구함."
+
+      assert {_head, found, ""} = Ledger.window(reply, spec)
+
+      assert Enum.map(Ledger.fields(found, spec), &{&1.name, &1.value}) == [
+               {"RECORD No", "1 ━━"},
+               {"SUBJECT", "기환"},
+               {"PLACE", "제2심문실"},
+               {"BELL", "3"},
+               {"HEARD", "0"},
+               {"ENTRY", "대상 연행. 저항 없음."},
+               {"Note", "증거 확보를 위해 재현을 요구함."}
+             ]
+
+      changes = [{"RECORD No", "+1"}, {"BELL", "+1"}, {"PLACE", "지하 독방"}, {"Note", "기록 중단."}]
+      assert {kept, _applied, []} = Ledger.apply(found, changes, spec)
+
+      assert kept ==
+               "━━ RECORD No.2 ━━\nSUBJECT: 기환 │ PLACE: 지하 독방 │ BELL: 4\nHEARD: 0\nENTRY: 대상 연행. 저항 없음.\n기록 중단."
+    end
+
+    test "rows of words, rewritten whole" do
+      spec = %{open: "[Day", close: ""}
+
+      reply =
+        "본문.\n\n[Day 1 · 밤 · 총수실]\nPresent: Hansol, Remi, Leo\nVisited: -\nHansol | Rank 10 | P 0 (+0) | L 0 | B2 C동 숙소 | -\nRemi | Rank 10 | P 0 (+0) | L 0 | B2 A동 숙소 | -"
+
+      assert {_head, found, ""} = Ledger.window(reply, spec)
+
+      assert Enum.map(Ledger.fields(found, spec), & &1.name) ==
+               ~w(Day Present Visited Hansol Remi)
+
+      changes = [
+        {"Day", "2 · 아침 식사 · 식당"},
+        {"Visited", "+Hansol"},
+        {"Present", "-Leo"},
+        {"Hansol", "Rank 10 | P 5 (+5) | L 2 | B2 대욕장 | 등 밀기"}
+      ]
+
+      assert {kept, _applied, []} = Ledger.apply(found, changes, spec)
+
+      assert kept ==
+               "[Day 2 · 아침 식사 · 식당]\nPresent: Hansol, Remi\nVisited: Hansol\nHansol | Rank 10 | P 5 (+5) | L 2 | B2 대욕장 | 등 밀기\nRemi | Rank 10 | P 0 (+0) | L 0 | B2 A동 숙소 | -"
+    end
+
     test "a sheet in a code block, its numbers among words" do
       spec = %{open: "```", close: "```"}
 
