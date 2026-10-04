@@ -68,4 +68,57 @@ defmodule Aethrion.ExampleCardsTest do
 
     assert two =~ "- 스탯 포인트: 0\n- 근력: 6\n- 체력: 7\n"
   end
+
+  describe "the bookshop card, a window of one line" do
+    @shop %{
+      open: "[ 날짜:",
+      close: "]",
+      rules: [
+        "친밀 = clamp(친밀, 0, 100)",
+        "경계 = clamp(경계, 0, 100)",
+        "친밀 = clamp(친밀, 친밀.before - 3, 친밀.before + 3)",
+        "경계 = clamp(경계, 경계.before - 5, 경계.before + 5)"
+      ]
+    }
+
+    setup do
+      card = "examples/cards/rainy-bookshop.ko.json" |> File.read!() |> Jason.decode!()
+      {_head, window, ""} = Ledger.window(card["data"]["first_mes"], @shop)
+      %{card: card, window: window}
+    end
+
+    test "its first message has the window its description sets out", %{
+      card: card,
+      window: window
+    } do
+      assert card["spec"] == "chara_card_v2"
+      assert card["data"]["description"] =~ window
+      assert Enum.map(Ledger.fields(window, @shop), & &1.name) == ~w(날짜 시간 장소 친밀 경계 Note)
+      assert Ledger.settle(window, @shop) == {window, []}
+      assert Ledger.instruction(window, @shop) =~ "(날짜, 시간, 장소, 친밀, 경계, Note)"
+
+      assert Ledger.instruction(window, @shop) =~
+               "Note is the window's line of words that has no name (now `비 오는 날 손님이라니, 책이 젖지만 않으면 좋겠는데.`)"
+    end
+
+    test "a turn of it: a number moves only so far, the clock and the thought go on", %{
+      window: window
+    } do
+      changes = [
+        {"시간", "+40분"},
+        {"장소", "서점 2층 다락"},
+        {"친밀", "+8"},
+        {"경계", "-3"},
+        {"Note", "책을 저렇게 조심히 넘기는 사람은 오랜만이네: 차라도 한 잔 낼까."}
+      ]
+
+      assert {changed, _applied, []} = Ledger.apply(window, changes, @shop)
+      assert {settled, ruled} = Ledger.settle(changed, @shop, window)
+
+      assert settled ==
+               "[ 날짜: 3월 2일 (월) | 시간: 15:40 | 장소: 서점 2층 다락 | 친밀: 13% | 경계: 37% | 책을 저렇게 조심히 넘기는 사람은 오랜만이네 — 차라도 한 잔 낼까. ]"
+
+      assert Ledger.rule_log(ruled, :ko) == ["규칙 · 친밀 18% → 13%"]
+    end
+  end
 end

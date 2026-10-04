@@ -1810,7 +1810,7 @@ defmodule Aethrion.Bridge.Ledger do
     fields = fields(window, spec)
     names = Enum.map_join(fields, ", ", & &1.name)
 
-    "The status window is kept by the game's rules and shown by them: do not print it yourself, whatever the card says. Instead, after everything else, write <aethrion-ledger>...</aethrion-ledger> with one line for each field of the window that this reply changes: `Field: +N` or `Field: -N`, always with its sign, for a number that goes up or down (damage taken is `HP: -N`, experience gained `EXP: +N`), `Field: N / M` to set both numbers of a pair, `Field: =N` to set a number outright, or the field's new words as they should read (a place moved to is `Location: the east gate`, in the story's language).#{lists_note(fields)}#{rows_note(fields)} Use the window's field names (#{names}).#{headings_note(fields)}#{scene_note(fields)}#{ruled_note(fields, spec)}#{already_note(recorded)} Leave out every field that stays as it is, and write the tags with nothing between them when nothing changes. What is listed under This turn and Now (how each character feels) is the rules' own and shown apart from the window: none of it goes in these lines. It is not shown to the player."
+    "The status window is kept by the game's rules and shown by them: do not print it yourself, whatever the card says. Instead, after everything else, write <aethrion-ledger>...</aethrion-ledger> with one line for each field of the window that this reply changes: `Field: +N` or `Field: -N`, always with its sign, for a number that goes up or down (damage taken is `HP: -N`, experience gained `EXP: +N`), `Field: N / M` to set both numbers of a pair, `Field: =N` to set a number outright, or the field's new words as they should read (a place moved to is `Location: the east gate`, in the story's language).#{lists_note(fields)}#{rows_note(fields)} Use the window's field names (#{names}).#{headings_note(fields)}#{notes_note(fields)}#{scene_note(fields)}#{ruled_note(fields, spec)}#{already_note(recorded)} Leave out every field that stays as it is, and write the tags with nothing between them when nothing changes. What is listed under This turn and Now (how each character feels) is the rules' own and shown apart from the window: none of it goes in these lines. It is not shown to the player."
   end
 
   # Last turn's record, so that it is not written twice, and what was not
@@ -1887,6 +1887,14 @@ defmodule Aethrion.Bridge.Ledger do
         into: "",
         do:
           " #{name} is a heading of several parts (now `#{String.slice(value, 0, 80)}`): when one of them changes, write all of it as it should read, `#{name}: ...` with every part."
+  end
+
+  # A line of the window with no name (a thought, a summary) is "Note" to
+  # the ledger and nothing to the model, until it is told.
+  defp notes_note(fields) do
+    for %{note?: true, name: name, value: value} <- fields, into: "" do
+      " #{name} is the window's line of words that has no name (now `#{String.slice(value, 0, 80)}`): when it should read otherwise after this reply, write `#{name}: ...` with its new words."
+    end
   end
 
   # When and where: a model that no longer prints the window forgets them first.
