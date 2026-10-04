@@ -23,11 +23,15 @@ defmodule Aethrion.Bridge.Ledger.Fields do
   that is a heading or the first field's name.
   """
 
-  @typedoc "A field: its name, its value, and where the value is in the window."
+  @typedoc """
+  A field: its name, its value, and where the value is in the window. A
+  heading says that it is one (`heading?`).
+  """
   @type field :: %{
-          name: String.t(),
-          value: String.t(),
-          at: {non_neg_integer(), non_neg_integer()}
+          required(:name) => String.t(),
+          required(:value) => String.t(),
+          required(:at) => {non_neg_integer(), non_neg_integer()},
+          optional(:heading?) => true
         }
 
   @doc "The fields of `window`, in order. `spec` has the window's opening and closing text."
@@ -120,14 +124,23 @@ defmodule Aethrion.Bridge.Ledger.Fields do
         [rest] = Regex.run(~r/\A[^\n]*/u, after_open)
         name = open |> String.replace(~r/\A[^\p{L}\p{N}]+|[^\p{L}\p{N}]+\z/u, "") |> clean_name()
 
-        # The value: the rest of the line, without the bracket that closes it.
-        value = rest |> String.trim() |> String.replace(~r/\s*[\]】］」]\z/u, "")
+        # The value: the rest of the line, without the bracket that closes it,
+        # nor the rule drawn after it ("4 ━━").
+        value =
+          rest |> String.trim() |> String.replace(~r/[\s\]】］」━─═=\-–—*~_]+\z/u, "")
+
         lead = byte_size(rest) - byte_size(String.trim_leading(rest))
 
         if name != "" and String.match?(value, ~r/[\p{L}\p{N}]/u),
           do:
-            {[%{name: name, value: value, at: {byte_size(open) + lead, byte_size(value)}}],
-             byte_size(open) + byte_size(rest)},
+            {[
+               %{
+                 name: name,
+                 value: value,
+                 at: {byte_size(open) + lead, byte_size(value)},
+                 heading?: true
+               }
+             ], byte_size(open) + byte_size(rest)},
           else: {[], byte_size(open)}
     end
   end
@@ -253,7 +266,8 @@ defmodule Aethrion.Bridge.Ledger.Fields do
         %{
           name: binary_part(text, name_at, name_length),
           value: binary_part(text, value_at, value_length),
-          at: {start + value_at, value_length}
+          at: {start + value_at, value_length},
+          heading?: true
         }
 
       nil ->

@@ -238,6 +238,9 @@ defmodule Aethrion.Bridge.Ledger do
   @opened ~r/<aethrion-ledger\b[^>\n]*(\/>|>|(?=\n)|\z)/i
   @closed ~r/<\/aethrion-ledger\s*>/i
   @change ~r/\A\s*(?:[-*•]\s*)?([^:：]{1,40}?)\s*[:：]\s*(\S.*)\z/u
+  # A change written as the window writes its fields, `TIME=09:47`: the
+  # value said outright, unless it has a sign (`HP=+5`).
+  @assigned ~r/\A\s*(?:[-*•]\s*)?([\p{L}\p{N}_][\p{L}\p{N}_ ]{0,23}?)[ \t]*=[ \t]*(?=([+\-−]?))(\S.*)\z/u
 
   @doc """
   The reply without its ledger lines, and the changes they name:
@@ -286,14 +289,30 @@ defmodule Aethrion.Bridge.Ledger do
     end
   end
 
-  defp changes(lines), do: lines |> String.split("\n") |> Enum.flat_map(&List.wrap(change(&1)))
+  defp changes(lines), do: lines |> String.split("\n") |> Enum.flat_map(&line_changes/1)
+
+  # A line's changes: one, or several on a line when every piece between
+  # its bars is a change of its own ("BELL: 4 | HEARD: 2").
+  defp line_changes(line) when byte_size(line) > 1_200, do: []
+
+  defp line_changes(line) do
+    pieces = line |> String.split(~r/[|│｜]/u, trim: true) |> Enum.map(&change/1)
+
+    if length(pieces) >= 2 and Enum.all?(pieces),
+      do: pieces,
+      else: List.wrap(change(line))
+  end
 
   # One line of a block as a change, or nil. A line too long to be one is none.
   defp change(line) when byte_size(line) > 1_200, do: nil
 
   defp change(line) do
-    case Regex.run(@change, String.trim_trailing(line)) do
+    line = String.trim_trailing(line)
+
+    case Regex.run(@assigned, line) || Regex.run(@change, line) do
       [_all, name, value] -> {clean_name(name), String.slice(value, 0, @max_value)}
+      [_all, name, "", value] -> {clean_name(name), String.slice("=" <> value, 0, @max_value)}
+      [_all, name, _sign, value] -> {clean_name(name), String.slice(value, 0, @max_value)}
       nil -> nil
     end
   end
@@ -378,12 +397,19 @@ defmodule Aethrion.Bridge.Ledger do
                 # A pair a rule watches may pass its maximum: the rule takes it up.
                 open?: key(field.name) in watched,
                 dated?: dated?(field.name) or weekday?(field.value),
+                placed?: placed?(field.name),
                 close: (spec && spec.close) || "",
                 open: spec && spec.open
               })
 
             {now, problem} =
-              was |> changed(value, habits) |> judged(was, value, key(field.name), sets)
+              case parted(was, value, field) do
+                :unreadable ->
+                  {was, :unreadable}
+
+                value ->
+                  was |> changed(value, habits) |> judged(was, value, key(field.name), sets)
+              end
 
             refused = if problem, do: refused ++ [{field.name, value, problem}], else: refused
             applied = Enum.reject(applied, fn {n, _was, _now} -> n == field.name end)
@@ -398,6 +424,23 @@ defmodule Aethrion.Bridge.Ledger do
 
     {rewrite(window, Map.values(by_name), edits), applied, refused}
   end
+
+  # A heading of several parts ("[Day 1 · night · the keep]") written with
+  # fewer: the parts it leaves out stay as they were. One word for a
+  # heading of several parts says nothing of which part it is.
+  defp parted(was, value, %{heading?: true}) do
+    {parts, said} = {String.split(was, " · "), String.split(String.trim(value), " · ")}
+
+    cond do
+      length(parts) < 2 or String.match?(value, ~r/\A\s*[+\-−=]|→|->/u) -> value
+      length(said) >= length(parts) -> value
+      length(said) >= 2 -> Enum.join(said ++ Enum.drop(parts, length(said)), " · ")
+      String.match?(value, ~r/\A\s*[0-9]/u) -> value
+      true -> :unreadable
+    end
+  end
+
+  defp parted(_was, value, _field), do: value
 
   # A change as the rules let it stand. What a rule raises when something
   # happens is not the model's to raise, nor what a rule pays from the
@@ -659,10 +702,28 @@ defmodule Aethrion.Bridge.Ledger do
       Cells.read(was) != [] ->
         celled_row(was, value)
 
+      # A place is where one is now, however it is written ("Seoul / an
+      # alley"): said anew, not a list for places to pile up in.
+      habits[:placed?] and not figure?(was) ->
+        if String.match?(value, ~r/\A(?:[\-−]\s*\S|\+\s*[0-9])/u),
+          do: {was, :unreadable},
+          else: {value |> String.replace(~r/\A\+\s*/u, "") |> arrived(), nil}
+
       true ->
         worded_or_counted(was, value, habits)
     end
   end
+
+  # "the alley → the van", as some write a move: where it ends.
+  defp arrived(value), do: value |> String.split(~r/\s*(?:→|->|=>)\s*/u) |> List.last()
+
+  # A field that says where the scene is.
+  defp placed?(name),
+    do:
+      String.match?(
+        name,
+        ~r/(?<![\p{L}])(?:location|place|where|area|zone|scene)(?![\p{L}])|위치|장소|현재지|지역|場所|位置|📍/iu
+      )
 
   # A change's value as it may be written into the window, and whether it
   # was said outright ("=20:30", "= 45", for any field).
@@ -725,6 +786,11 @@ defmodule Aethrion.Bridge.Ledger do
 
       figure?(was) ->
         counted(was, value, habits)
+
+      # A time among other words ("Sun., 02:15, (Autumn)") moved by a
+      # length of time, or its clock said anew: the words stay.
+      clocked = clock(was, value) || reclocked(was, value) ->
+        {clocked, nil}
 
       list?(was) ->
         Listing.change(was, value, habits)
@@ -845,6 +911,19 @@ defmodule Aethrion.Bridge.Ledger do
       pad = &String.pad_leading(Integer.to_string(&1), 2, "0")
       clock = pad.(div(later, 3600)) <> ":" <> pad.(div(rem(later, 3600), 60))
       pre <> clock <> if(s == "", do: "", else: ":" <> pad.(rem(later, 60))) <> post
+    else
+      _other -> nil
+    end
+  end
+
+  # A value with one clock in it, given a clock alone: that clock, in its place.
+  defp reclocked(was, value) do
+    clock = ~r/(?<![0-9:])[0-9]{1,2}:[0-9]{2}(?::[0-9]{2})?(?![0-9:])/u
+
+    with true <- String.match?(value, ~r/\A[0-9]{1,2}:[0-9]{2}(?::[0-9]{2})?\z/u),
+         [[{at, size}]] <- Regex.scan(clock, was, return: :index),
+         true <- size < byte_size(was) do
+      binary_part(was, 0, at) <> value <> binary_part(was, at + size, byte_size(was) - at - size)
     else
       _other -> nil
     end
@@ -1190,7 +1269,14 @@ defmodule Aethrion.Bridge.Ledger do
             " (" <> Enum.join(rule_texts(fields, spec), " | ") <> ")."
       end
 
-    "The status window is kept by the game's rules and shown by them: do not print it yourself, whatever the card says. Instead, after everything else, write <aethrion-ledger>...</aethrion-ledger> with one line for each field of the window that this reply changes: `Field: +N` or `Field: -N`, always with its sign, for a number that goes up or down (damage taken is `HP: -N`, experience gained `EXP: +N`), `Field: N / M` to set both numbers of a pair, `Field: =N` to set a number outright, or the field's new words as they should read (a place moved to is `Location: the east gate`, in the story's language).#{lists}#{rows} Use the window's field names (#{names}).#{ruled}#{already} Leave out every field that stays as it is, and write the tags with nothing between them when nothing changes. What is listed under This turn and Now (how each character feels) is the rules' own and shown apart from the window: none of it goes in these lines. It is not shown to the player."
+    headings =
+      for %{heading?: true, name: name, value: value} <- fields,
+          length(String.split(value, " · ")) >= 2,
+          into: "",
+          do:
+            " #{name} is a heading of several parts (now `#{String.slice(value, 0, 80)}`): when one of them changes, write all of it as it should read, `#{name}: ...` with every part."
+
+    "The status window is kept by the game's rules and shown by them: do not print it yourself, whatever the card says. Instead, after everything else, write <aethrion-ledger>...</aethrion-ledger> with one line for each field of the window that this reply changes: `Field: +N` or `Field: -N`, always with its sign, for a number that goes up or down (damage taken is `HP: -N`, experience gained `EXP: +N`), `Field: N / M` to set both numbers of a pair, `Field: =N` to set a number outright, or the field's new words as they should read (a place moved to is `Location: the east gate`, in the story's language).#{lists}#{rows} Use the window's field names (#{names}).#{headings}#{ruled}#{already} Leave out every field that stays as it is, and write the tags with nothing between them when nothing changes. What is listed under This turn and Now (how each character feels) is the rules' own and shown apart from the window: none of it goes in these lines. It is not shown to the player."
   end
 
   @doc """
@@ -1259,7 +1345,7 @@ defmodule Aethrion.Bridge.Ledger do
   # A field the model is told to treat as a list: counted things, things
   # split by " / " or " · ", or a name that says so.
   defp listing?(%{name: name, value: value}) do
-    not figure?(value) and
+    not figure?(value) and not placed?(name) and
       ((list?(value) and (Listing.counted?(value) or Listing.separator(value) in [" / ", " · "])) or
          String.match?(
            name,

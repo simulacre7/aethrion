@@ -190,7 +190,7 @@ defmodule Aethrion.BridgeLedgerTest do
       assert {_head, found, ""} = Ledger.window(reply, spec)
 
       assert Enum.map(Ledger.fields(found, spec), &{&1.name, &1.value}) == [
-               {"RECORD No", "1 ━━"},
+               {"RECORD No", "1"},
                {"SUBJECT", "기환"},
                {"PLACE", "제2심문실"},
                {"BELL", "3"},

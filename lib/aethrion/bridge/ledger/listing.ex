@@ -280,6 +280,10 @@ defmodule Aethrion.Bridge.Ledger.Listing do
       Enum.any?(items, &same?(&1, new)) ->
         counted_up(items, new)
 
+      # A list that counts every thing counts the new one as well.
+      new.count == nil and items != [] and Enum.all?(items, &marked?/1) ->
+        {:ok, items ++ [%{new | count: 1, style: style(items)}]}
+
       true ->
         {:ok, items ++ [new]}
     end
@@ -294,6 +298,10 @@ defmodule Aethrion.Bridge.Ledger.Listing do
       held -> take_away(items, held, gone)
     end
   end
+
+  # A thing with its count after it ("rope × 1"), not an amount ("5G").
+  defp marked?(%{count: count, style: {mark, _unit}}), do: count != nil and is_binary(mark)
+  defp marked?(_item), do: false
 
   # "-rope (used for the trap)": the thing without the remark on it.
   defp without_remark(items, gone) do
