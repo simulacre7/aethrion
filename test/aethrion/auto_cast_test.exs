@@ -625,6 +625,87 @@ defmodule Aethrion.AutoCastTest do
       assert length(String.split(streamed, "[Status]")) == 3
     end
 
+    defp call(method, url, body \\ nil) do
+      request =
+        if body,
+          do: {String.to_charlist(url), [], ~c"application/json", Jason.encode!(body)},
+          else: {String.to_charlist(url), []}
+
+      {:ok, {{_v, status, _r}, _headers, answer}} =
+        :httpc.request(method, request, [], body_format: :binary)
+
+      {status, Jason.decode!(answer)}
+    end
+
+    test "what was read from a card can be looked over, set right, and forgotten", %{base: base} do
+      card = [card: @ledger_card]
+      first = user("탑에 들어간다.")
+      {200, one} = ask(base, [first], card)
+
+      {:ok, {{_v, 200, _r}, _headers, page}} =
+        :httpc.request(:get, {String.to_charlist(base <> "/cards"), []}, [], body_format: :binary)
+
+      assert page =~ "읽은 카드"
+
+      assert {200, %{"cards" => [read]}} = call(:get, base <> "/casts/cards")
+
+      assert %{
+               "key" => key,
+               "title" => "Tower",
+               "people" => [],
+               "window" => %{
+                 "open" => "[Status]",
+                 "close" => "[Status]",
+                 "off" => false,
+                 "rules" => [
+                   "HP.max = Vigor * 10",
+                   "when EXP >= EXP.max: Level += 1; EXP -= EXP.max"
+                 ]
+               }
+             } = read
+
+      assert read["read_at"] =~ ~r/\A\d{4}-\d\d-\d\dT/
+
+      # A rule set right holds from the next turn.
+      window = %{"open" => "[Status]", "close" => "[Status]", "rules" => ["HP.max = Vigor * 20"]}
+
+      assert {200, %{"ok" => true}} =
+               call(:put, base <> "/casts/cards/" <> key, %{"window" => window})
+
+      second = user("고블린을 벤다.")
+      {200, two} = ask(base, [first, reply(one), second], card)
+      assert two =~ "- HP: 38 / 100\n"
+      assert two =~ "HP 38 / 50 → 38 / 100"
+
+      # With the ledger off, the window is the model's again.
+      assert {200, _ok} =
+               call(:put, base <> "/casts/cards/" <> key, %{
+                 "window" => Map.put(window, "off", true)
+               })
+
+      {200, _three} = ask(base, [first, reply(one), second, reply(two), user("버틴다.")], card)
+      note = calls() |> List.last() |> List.last() |> Map.fetch!("content")
+      assert note =~ "If the card asks for a status window or a format of its own, keep it"
+
+      assert {200, %{"cards" => [%{"window" => %{"off" => true}}]}} =
+               call(:get, base <> "/casts/cards")
+
+      # What cannot be kept is refused, and a key nothing was read under is not found.
+      assert {400, %{"error" => %{"message" => message}}} =
+               call(:put, base <> "/casts/cards/" <> key, %{"window" => %{"open" => ""}})
+
+      assert message =~ "opening text"
+      assert {400, _error} = call(:put, base <> "/casts/cards/" <> key, %{})
+      assert {404, _error} = call(:delete, base <> "/casts/cards/nothing")
+
+      # Forgotten, the card is read again when it is next played.
+      reads = card_reads()
+      assert {200, %{"ok" => true}} = call(:delete, base <> "/casts/cards/" <> key)
+      assert {200, %{"cards" => []}} = call(:get, base <> "/casts/cards")
+      {200, _again} = ask(base, [user("탑에 들어간다.")], card)
+      assert card_reads() == reads + 1
+    end
+
     test "another model may read the card, while the server's narrates", %{base: base} do
       reader = fn ->
         Enum.find_value(calls(), &(hd(&1)["content"] =~ "reader model" && hd(&1)["content"]))

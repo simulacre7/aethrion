@@ -161,11 +161,15 @@ defmodule Aethrion.API do
   @editor_path Path.expand("../../priv/api/editor.html", __DIR__)
   @external_resource @editor_path
   @editor_html File.read!(@editor_path)
+  @cards_path Path.expand("../../priv/api/cards.html", __DIR__)
+  @external_resource @cards_path
+  @cards_html File.read!(@cards_path)
 
   @doc false
   # The chat page holds no data, so it loads without a token.
   def handle(_config, "GET", [], _query, _headers, _body), do: {200, :html, @chat_html}
   def handle(_config, "GET", ["editor"], _query, _headers, _body), do: {200, :html, @editor_html}
+  def handle(_config, "GET", ["cards"], _query, _headers, _body), do: {200, :html, @cards_html}
 
   # Browsers ask before a cross-origin call to the OpenAI-compatible routes.
   def handle(_config, "OPTIONS", ["v1" | _rest], _query, _headers, _body),
@@ -276,6 +280,9 @@ defmodule Aethrion.API do
   defp route("POST", ["casts", "check"]), do: {:ok, :cast_check}
   defp route("POST", ["casts", "simulate"]), do: {:ok, :cast_simulate}
   defp route("POST", ["casts", "import-card"]), do: {:ok, :cast_import}
+  defp route("GET", ["casts", "cards"]), do: {:ok, :cards}
+  defp route("PUT", ["casts", "cards", key]), do: {:ok, {:card_revise, key}}
+  defp route("DELETE", ["casts", "cards", key]), do: {:ok, {:card_forget, key}}
   defp route("POST", ["v1", "chat", "completions"]), do: {:ok, :openai_chat}
   defp route("GET", ["v1", "models"]), do: {:ok, :openai_models}
 
@@ -334,6 +341,29 @@ defmodule Aethrion.API do
 
   defp run(config, :cast_current, _query, _body),
     do: {:ok, 200, %{cast: State.to_data(config.cast)}}
+
+  # The cards read for `aethrion-auto`, to look over and set right.
+  defp run(_config, :cards, _query, _body) do
+    {:ok, 200,
+     %{cards: Aethrion.Bridge.AutoCast.cards(Aethrion.Bridge.Store.all(Aethrion.Bridge.Casts))}}
+  end
+
+  defp run(_config, {:card_revise, key}, _query, body) do
+    with {:ok, data} <- decode(body),
+         {:ok, kept} <- card_kept(key),
+         {:ok, revised} <- revised(kept, data) do
+      keep_card(key, kept, revised)
+      {:ok, 200, %{ok: true}}
+    end
+  end
+
+  # A card forgotten is read again the next time it is played.
+  defp run(_config, {:card_forget, key}, _query, _body) do
+    with {:ok, kept} <- card_kept(key) do
+      keep_card(key, kept, nil)
+      {:ok, 200, %{ok: true}}
+    end
+  end
 
   defp run(%{cast: nil}, :cast_card, _query, _body),
     do: {:error, 404, Error.new(:not_found, "this server was started without a cast")}
@@ -706,6 +736,37 @@ defmodule Aethrion.API do
       true ->
         {:error, 400, Error.new(:no_cast, "start the server with --cast to use it as a model")}
     end
+  end
+
+  defp card_kept(key) do
+    case Aethrion.Bridge.Store.get(Aethrion.Bridge.Casts, "card:" <> key) do
+      %{"cast" => _cast} = kept -> {:ok, kept}
+      _none -> {:error, 404, Error.new(:not_found, "no card has been read under this key")}
+    end
+  end
+
+  defp revised(kept, %{"window" => window}) do
+    case Aethrion.Bridge.AutoCast.revise(kept, window) do
+      {:ok, revised} -> {:ok, revised}
+      {:error, message} -> {:error, 400, Error.new(:invalid_request, message)}
+    end
+  end
+
+  defp revised(_kept, _data),
+    do: {:error, 400, Error.new(:invalid_request, "window is required")}
+
+  # A card is kept under its key and under its cast's root: both are set.
+  defp keep_card(key, kept, revised) do
+    Aethrion.Bridge.Store.replace(Aethrion.Bridge.Casts, "card:" <> key, revised)
+
+    with {:ok, state} <- State.parse(kept["cast"]) do
+      root = "root:" <> Aethrion.Bridge.root(state)
+
+      if Aethrion.Bridge.Store.get(Aethrion.Bridge.Casts, root) != nil,
+        do: Aethrion.Bridge.Store.replace(Aethrion.Bridge.Casts, root, revised)
+    end
+
+    :ok
   end
 
   defp card_cast(messages, {adapter, adapter_opts}, stores, card_opts) do

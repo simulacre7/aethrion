@@ -158,6 +158,10 @@ defmodule Aethrion.Bridge.AutoCast do
   defp kept(%{"characters" => _} = data, key), do: kept(%{"cast" => data}, key)
   defp kept(_none, _key), do: nil
 
+  # A window someone has turned off (`cards/1`, `revise/2`) is none: the
+  # model keeps it, as before there was a ledger.
+  defp kept_window(%{"off" => true}), do: nil
+
   defp kept_window(%{"open" => open, "close" => close} = window)
        when is_binary(open) and is_binary(close),
        do: %{open: open, close: close, rules: kept_rules(window["rules"])}
@@ -193,7 +197,14 @@ defmodule Aethrion.Bridge.AutoCast do
             "rules" => people.window.rules
           }
 
-      kept = %{"cast" => data, "window" => window, "player" => people.player}
+      kept = %{
+        "cast" => data,
+        "window" => window,
+        "player" => people.player,
+        "title" => people.title,
+        "read_at" => DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.to_iso8601()
+      }
+
       casts.put.("card:" <> key, kept)
       casts.put.("root:" <> Bridge.root(state), kept)
       {:ok, %{cast: state, window: people.window, key: key, player: people.player}}
@@ -272,6 +283,79 @@ defmodule Aethrion.Bridge.AutoCast do
 
   defp plain(text),
     do: text |> String.downcase() |> String.replace(~r/[\s*_`]+/u, " ") |> String.trim()
+
+  @doc """
+  The cards read so far, for someone to look over, from everything the
+  casts store keeps (`Aethrion.Bridge.Store.all/1`): each with its key, its
+  title, who is in it, the player's name, and its status window (the
+  opening and closing text, the rules, and whether the ledger is off).
+  The latest read first.
+  """
+  @spec cards([{String.t(), term()}]) :: [map()]
+  def cards(kept) do
+    for {"card:" <> key, %{"cast" => %{"characters" => characters}} = value} <- kept do
+      %{
+        key: key,
+        title: text(value["title"]),
+        read_at: text(value["read_at"]),
+        people: for(%{"name" => name} <- characters, do: name),
+        player: value["player"],
+        window:
+          case value["window"] do
+            %{"open" => open} = window ->
+              %{
+                open: open,
+                close: text(window["close"]),
+                rules: kept_rules(window["rules"]),
+                off: window["off"] == true
+              }
+
+            _none ->
+              nil
+          end
+      }
+    end
+    |> Enum.sort_by(& &1.read_at, :desc)
+  end
+
+  defp text(value) when is_binary(value), do: value
+  defp text(_other), do: ""
+
+  @doc """
+  What is kept for a card with its status window as someone has set it:
+  `{:ok, kept}`, or `{:error, reason}`. `window` is `%{"open" => ...,
+  "close" => ..., "rules" => [...], "off" => boolean}`, or nil for a card
+  with no window. The rules are taken as written: one that does not fit
+  the window is left out when it is used (`Aethrion.Bridge.Ledger.Rules`).
+  """
+  @spec revise(map(), map() | nil) :: {:ok, map()} | {:error, String.t()}
+  def revise(kept, nil), do: {:ok, Map.put(kept, "window", nil)}
+
+  def revise(kept, %{"open" => open} = window) when is_binary(open) do
+    close = text(window["close"])
+    rules = window["rules"] || []
+
+    cond do
+      String.trim(open) == "" or String.length(open) > 60 or String.length(close) > 60 ->
+        {:error, "the window's opening text is 1 to 60 letters, its closing text at most 60"}
+
+      not is_list(rules) or length(rules) > @max_window_rules or
+          not Enum.all?(rules, &(is_binary(&1) and String.length(&1) <= @max_rule)) ->
+        {:error, "rules are at most #{@max_window_rules} lines of at most #{@max_rule} letters"}
+
+      true ->
+        {:ok,
+         Map.put(kept, "window", %{
+           "open" => String.trim(open),
+           "close" => String.trim(close),
+           "rules" => rules |> Enum.map(&String.trim/1) |> Enum.reject(&(&1 == "")),
+           "off" => window["off"] == true
+         })}
+    end
+  end
+
+  def revise(_kept, _other),
+    do: {:error, "window is an object with open, close, and rules, or null"}
 
   @doc false
   # The messages that ask the model who is in the card.
