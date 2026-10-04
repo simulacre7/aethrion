@@ -456,7 +456,8 @@ defmodule Aethrion.BridgeLedgerTest do
       assert kept ==
                "[Day 1/30 · Morning]\nTyler | 68 | Smug | Cameras love me.\nLily | 15 | Nervous | ..."
 
-      assert [{"Lily", _value, :unreadable}] = refused
+      # The first is no change to the window, and no fault worth a line.
+      assert refused == []
     end
 
     test "a list is changed a thing at a time" do

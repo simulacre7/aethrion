@@ -271,6 +271,13 @@ defmodule Aethrion.Bridge.Ledger do
                 do: {was, :ruled},
                 else: {now, problem}
 
+            # What the rules say of a person, copied onto the person's
+            # row, is no change to the window, and no fault worth a line.
+            problem =
+              if problem == :unreadable and String.match?(value, ~r/affinity|trust|호감|신뢰/iu),
+                do: nil,
+                else: problem
+
             refused = if problem, do: refused ++ [{field.name, value, problem}], else: refused
             applied = Enum.reject(applied, fn {n, _was, _now} -> n == field.name end)
 
@@ -891,7 +898,7 @@ defmodule Aethrion.Bridge.Ledger do
         [first | _rest] = rows ->
           label = first.value |> Cells.read() |> hd() |> Map.fetch!(:label)
 
-          " For a row of labelled numbers (#{Enum.map_join(rows, ", ", & &1.name)}), write the numbers that move by their labels, each with its sign, `#{first.name}: #{label} +1`, or write the whole row anew."
+          " For a row of labelled numbers (#{Enum.map_join(rows, ", ", & &1.name)}), write the numbers that move by their labels, `#{first.name}: #{label} +1`, or write the whole row anew."
       end
 
     ruled =

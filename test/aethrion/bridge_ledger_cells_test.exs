@@ -31,12 +31,9 @@ defmodule Aethrion.BridgeLedgerCellsTest do
       assert Cells.change(@row, "기분이 좋아 보인다") == :none
     end
 
-    test "a number with no sign is left alone, unless it is the number as it stands" do
-      assert Cells.change(@row, "L 5, C +1") ==
-               {:ok, "Rank 10 | P 0 (+0) | L 0 | C 1 | I 0 | B2 C동 숙소 | -", :unsigned}
-
-      assert Cells.change(@row, "L +2, I: 0") ==
-               {:ok, "Rank 10 | P 0 (+0) | L 2 | C 0 | I 0 | B2 C동 숙소 | -", nil}
+    test "a number with no sign is the new value, as the row writes it" do
+      assert Cells.change(@row, "L 5, C +1, I: 0") ==
+               {:ok, "Rank 10 | P 0 (+0) | L 5 | C 1 | I 0 | B2 C동 숙소 | -", nil}
     end
 
     test "the row written anew" do
@@ -99,6 +96,11 @@ defmodule Aethrion.BridgeLedgerCellsTest do
              ]
     end
 
+    test "what the rules say of the person is no change to the row, and no fault" do
+      assert {rows, []} = turn([{"Hansol", "affinity +14, trust +2"}])
+      assert rows == @window |> String.split("\n") |> Enum.drop(2)
+    end
+
     test "what is not about the row leaves it as it was" do
       assert {rows, ["기록 · Hansol: 기분이 좋아 보인다 (숫자가 아님)"]} = turn([{"Hansol", "기분이 좋아 보인다"}])
       assert rows == @window |> String.split("\n") |> Enum.drop(2)
@@ -106,7 +108,7 @@ defmodule Aethrion.BridgeLedgerCellsTest do
 
     test "the model is told how to write a row's numbers" do
       assert Ledger.instruction(@window, @spec_) =~
-               "For a row of labelled numbers (Hansol, Remi), write the numbers that move by their labels, each with its sign, `Hansol: Rank +1`, or write the whole row anew."
+               "For a row of labelled numbers (Hansol, Remi), write the numbers that move by their labels, `Hansol: Rank +1`, or write the whole row anew."
     end
   end
 end

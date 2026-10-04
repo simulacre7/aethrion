@@ -59,11 +59,11 @@ defmodule Aethrion.Bridge.Ledger.Cells do
   defp key(label), do: String.downcase(label)
 
   @doc """
-  The row after a change that names its numbers by their labels (`L +1,
-  C: +2`): `{:ok, value, problem}`, the problem being `:unsigned` when a
-  number came with no sign and was left alone. `:rewrite` for a change
-  that is the row written anew, and `:none` for one that names no label
-  of the row.
+  The row after a change that names its numbers by their labels:
+  `{:ok, value, nil}`. A number with a sign moves (`L +1, C: +2`); one
+  without is the new value, as the row itself writes it (`L 1`).
+  `:rewrite` for a change that is the row written anew, and `:none` for
+  one that names no label of the row.
   """
   @spec change(String.t(), String.t()) ::
           {:ok, String.t(), atom() | nil} | :rewrite | :none
@@ -90,16 +90,18 @@ defmodule Aethrion.Bridge.Ledger.Cells do
         :none
 
       true ->
-        moves =
-          for {label, sign, n} <- named, sign != "", into: %{} do
-            {label, labels[label].number + if(sign == "+", do: n, else: -n)}
+        # A number with its sign moves; without one it is the number as
+        # the row would write it ("L 1"), so the new value.
+        numbers =
+          for {label, sign, n} <- named, into: %{} do
+            case sign do
+              "" -> {label, n}
+              "+" -> {label, labels[label].number + n}
+              _minus -> {label, labels[label].number - n}
+            end
           end
 
-        # A number with no sign that is not the number as it stands.
-        unsigned? =
-          Enum.any?(named, fn {label, sign, n} -> sign == "" and n != labels[label].number end)
-
-        {:ok, put(row, moves), if(unsigned?, do: :unsigned)}
+        {:ok, put(row, numbers), nil}
     end
   end
 
