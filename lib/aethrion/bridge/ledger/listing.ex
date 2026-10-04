@@ -187,6 +187,13 @@ defmodule Aethrion.Bridge.Ledger.Listing do
   def change(was, value, habits) do
     items = items(was)
 
+    # "+ring → -ring (given away)", as some write a change: what it comes to.
+    value =
+      case String.split(value, ~r/\s*(?:→|->|=>)\s*(?=[+\-−])/u) do
+        [_one] -> value
+        parts -> List.last(parts)
+      end
+
     cond do
       String.match?(value, ~r/\A[+\-−]/u) ->
         {items, problem} = value |> steps(separator(was)) |> Enum.reduce({items, nil}, &step/2)
@@ -274,9 +281,17 @@ defmodule Aethrion.Bridge.Ledger.Listing do
 
   defp move(items, :minus, gone) do
     case Enum.find(items, &same?(&1, gone)) do
-      nil -> {:missing, items}
+      nil -> without_remark(items, gone)
       %{style: {:amount, _space}} = held -> spend(items, held, gone)
       held -> take_away(items, held, gone)
+    end
+  end
+
+  # "-rope (used for the trap)": the thing without the remark on it.
+  defp without_remark(items, gone) do
+    case Regex.run(~r/\A(.+?)\s*\([^()]*\)\z/us, gone.name) do
+      [_all, name] -> move(items, :minus, %{gone | name: name})
+      nil -> {:missing, items}
     end
   end
 

@@ -389,9 +389,17 @@ defmodule Aethrion.BridgeLedgerTest do
     end
 
     test "a clock moves by a length of time; a text that is no list takes no number" do
-      changes = [{"Time", "+0:45"}, {"Time", "+30분"}, {"Location", "+3"}, {"Date", "+1"}]
+      changes = [
+        {"Time", "+0:45"},
+        {"Time", "+30분"},
+        # Minutes, when no unit is said.
+        {"Time", "+10"},
+        {"Location", "+3"},
+        {"Date", "+1"}
+      ]
+
       assert {kept, _applied, refused} = Ledger.apply(window(), changes, @lines)
-      assert value(kept, @lines, "Time") == "18:02:09"
+      assert value(kept, @lines, "Time") == "18:12:09"
       assert value(kept, @lines, "Location") == "협회 본부 로비"
       assert refused == [{"Location", "+3", :unreadable}, {"Date", "+1", :unreadable}]
 

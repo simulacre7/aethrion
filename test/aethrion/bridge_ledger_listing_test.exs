@@ -54,6 +54,13 @@ defmodule Aethrion.BridgeLedgerListingTest do
       assert change(@items, "-회복의 물약 (노말) × 5") == {"타워 단말기 (보급형) / 마정석 (최하급) × 1", nil}
     end
 
+    test "a remark on what leaves, and a change written with an arrow" do
+      assert change("낡은 밧줄, 횃불", "-낡은 밧줄 (덫으로 사용됨)") == {"횃불", nil}
+      # A thing whose name has brackets of its own is found by its name first.
+      assert change("스마트폰 (배터리 없음), 열쇠", "-스마트폰 (배터리 없음)") == {"열쇠", nil}
+      assert change("도금 팔찌, 횃불", "+도금 팔찌 → -도금 팔찌 (건넴)") == {"횃불", nil}
+    end
+
     test "what the list does not have cannot leave it" do
       assert change(@items, "-엘릭서") == {@items, :missing}
     end

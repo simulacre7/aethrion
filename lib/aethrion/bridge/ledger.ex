@@ -516,11 +516,12 @@ defmodule Aethrion.Bridge.Ledger do
            (String.to_integer(h) * 3600 + String.to_integer(m) * 60 +
               seconds_of(List.first(s) || ""))}
 
-      match = Regex.run(~r/\A[+\-−]\s*(\d+)\s*(분|min|minutes?|m)\s*\z/iu, value) ->
-        {:ok, sign * String.to_integer(Enum.at(match, 1)) * 60}
-
       match = Regex.run(~r/\A[+\-−]\s*(\d+)\s*(시간|hours?|hrs?|h)\s*\z/iu, value) ->
         {:ok, sign * String.to_integer(Enum.at(match, 1)) * 3600}
+
+      # Minutes, said or not: "+30분", "+30 min", "+30".
+      match = Regex.run(~r/\A[+\-−]\s*(\d+)\s*(분|min|minutes?|m|)\s*\D*\z/iu, value) ->
+        {:ok, sign * String.to_integer(Enum.at(match, 1)) * 60}
 
       true ->
         :error
