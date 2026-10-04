@@ -586,54 +586,48 @@ defmodule Aethrion.Bridge.Ledger do
         do: value |> String.split(~r/\s*(?:→|->|=>)\s*/u) |> List.last(),
         else: value
 
-    case {number(was), delta(value, figure?)} do
-      {{:pair, _pre, a, _sep, b, _post} = pair, {:move, d}} ->
-        put_pair(pair, a + d, b, habits[:open?])
+    numbered(number(was), delta(value, figure?), value, habits) ||
+      worded(was, value, habits, figure?)
+  end
 
-      {{:pair, _pre, _a, _sep, _b, _post} = pair, {:set_pair, a, b}} ->
-        put_pair(dressed(pair, value), a, b, habits[:open?])
+  # A number moved or set, or nil when the field or the change is none.
+  defp numbered({:pair, _pre, a, _sep, b, _post} = pair, {:move, d}, _value, habits),
+    do: put_pair(pair, a + d, b, habits[:open?])
 
-      {{:pair, _pre, _a, _sep, b, _post} = pair, {:set, a}} ->
-        put_pair(pair, a, b, habits[:open?])
+  defp numbered({:pair, _pre, _a, _sep, _b, _post} = pair, {:set_pair, a, b}, value, habits),
+    do: put_pair(dressed(pair, value), a, b, habits[:open?])
 
-      {{:one, _pre, a, _post} = one, {:move, d}} ->
-        put_one(one, a + d)
+  defp numbered({:pair, _pre, _a, _sep, b, _post} = pair, {:set, a}, _value, habits),
+    do: put_pair(pair, a, b, habits[:open?])
 
-      # "7 / 207" for a number that stands alone: its first.
-      {{:one, _pre, _a, _post} = one, {:set_pair, a, _b}} ->
-        put_one(one, a)
+  defp numbered({:one, _pre, a, _post} = one, {:move, d}, _value, _habits),
+    do: put_one(one, a + d)
 
-      {{:one, _pre, _a, _post} = one, {:set, a}} ->
-        put_one(dressed(one, value), a)
+  # "7 / 207" for a number that stands alone: its first.
+  defp numbered({:one, _pre, _a, _post} = one, {:set_pair, a, _b}, _value, _habits),
+    do: put_one(one, a)
 
-      {:text, {:move, _d}} ->
-        cond do
-          Listing.empty?(was) -> Listing.change(was, value, habits)
-          later = clock(was, value) -> {later, nil}
-          true -> {was, :unreadable}
-        end
+  defp numbered({:one, _pre, _a, _post} = one, {:set, a}, value, _habits),
+    do: put_one(dressed(one, value), a)
 
-      # "+0:45" on a clock, or on a text that is no list: time passes, or
-      # nothing does (a time is no thing to add to a list).
-      {:text, :text} when not figure? ->
-        cond do
-          not String.match?(value, ~r/\A[+\-−]\s*\d/u) or list?(was) ->
-            Listing.change(was, value, habits)
+  defp numbered(_shape, _delta, _value, _habits), do: nil
 
-          later = clock(was, value) ->
-            {later, nil}
+  # A change that is words, or a field that is. A figure stays a figure:
+  # words with no number in them are not one. A text takes the value as it
+  # is said, a list a thing; "+0:45" moves a clock, and is nothing to add
+  # to any other text.
+  defp worded(was, _value, _habits, true), do: {was, :unreadable}
 
-          true ->
-            {was, :unreadable}
-        end
-
-      # A figure stays a figure: words with no number in them are not one.
-      {_figure, :text} when figure? ->
-        {was, :unreadable}
-
-      # A text field: the value as it is said.
-      {_was, _text} ->
+  defp worded(was, value, habits, false) do
+    cond do
+      Listing.empty?(was) or not String.match?(value, ~r/\A[+\-−]\s*\d/u) ->
         Listing.change(was, value, habits)
+
+      later = clock(was, value) ->
+        {later, nil}
+
+      true ->
+        {was, :unreadable}
     end
   end
 
