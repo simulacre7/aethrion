@@ -844,4 +844,22 @@ defmodule Aethrion.BridgeLedgerCardsTest do
                Ledger.apply(window, [{"Location", "+3"}], spec)
     end
   end
+
+  describe "a line for what a rule then did" do
+    test "is no refusal worth a line, however the model wrote it" do
+      before = "[S]\n- Stat Point: 5\n- Strength: 12\n[S]"
+      settled = "[S]\n- Stat Point: 0\n- Strength: 17\n[S]"
+
+      for {value, reason} <- [{"5 → 0", :ruled}, {"=0", :ruled}, {"-5", :ruled}, {"0", :unsigned}] do
+        assert Ledger.unanswered([{"Stat Point", value, reason}], before, settled) == [],
+               "#{value} (#{reason})"
+      end
+
+      # What the rules did not come to is still said.
+      for {value, reason} <- [{"5 → 2", :ruled}, {"+15", :ruled}, {"3", :unsigned}] do
+        refused = [{"Stat Point", value, reason}]
+        assert Ledger.unanswered(refused, before, settled) == refused, "#{value} (#{reason})"
+      end
+    end
+  end
 end

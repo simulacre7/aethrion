@@ -2565,12 +2565,27 @@ defmodule Aethrion.Bridge.Ledger do
     now = Map.new(fields(settled, spec), &{key(&1.name), first(&1.value)})
 
     Enum.reject(refused, fn
-      {name, value, :ruled} ->
-        case delta(String.replace(value, ~r/\A\s*=\s*/u, ""), true) do
-          {:move, by} -> is_map_key(was, key(name)) and now[key(name)] == was[key(name)] + by
-          {:set, to} -> now[key(name)] == to
-          {:set_pair, to, _max} -> now[key(name)] == to
-          :text -> false
+      # (A number with no sign, refused as such, that is what the rules
+      # came to: "Stat Point: 0" for points a rule took in payment.)
+      {name, value, reason} when reason in [:ruled, :unsigned] ->
+        # "5 → 0" names where it ends.
+        value =
+          value
+          |> String.replace(~r/\A\s*=\s*/u, "")
+          |> String.replace(~r/\A.*(?:→|->|=>)\s*(?=[^→>]+\z)/u, "")
+
+        case delta(value, true) do
+          {:move, by} when reason == :ruled ->
+            is_map_key(was, key(name)) and now[key(name)] == was[key(name)] + by
+
+          {:set, to} ->
+            is_map_key(now, key(name)) and now[key(name)] == to
+
+          {:set_pair, to, _max} ->
+            is_map_key(now, key(name)) and now[key(name)] == to
+
+          _other ->
+            false
         end
 
       _other ->
