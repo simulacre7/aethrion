@@ -29,6 +29,8 @@ defmodule Aethrion.Bridge.AutoCast do
   @max_profile 600
   @max_rules 16_000
   @max_window_rules 24
+  # How many numbers a pool of points may be said to raise.
+  @max_spent 16
   @max_rule 240
 
   @doc """
@@ -457,6 +459,9 @@ defmodule Aethrion.Bridge.AutoCast do
     # has to name its number: a wrong one would hold the number fast.)
     borne_out? =
       cond do
+        # A price the card does not number: its sentence is the card's and
+        # names the pool (the numbers it raises it may call "stats").
+        pool = priced(rule) -> stated?(pool <> " = " <> pool, from, text)
         not bound?(rule) -> true in verdicts or stated?(rule, from, text)
         String.contains?(rule, ".before") -> stated?(rule, from, text, false)
         true -> stated?(rule, from, text)
@@ -728,13 +733,15 @@ defmodule Aethrion.Bridge.AutoCast do
 
         affinity and trust are how the character feels about the player when the story starts, 0 to 100: 0 a stranger, 30 an acquaintance, 50 a close friend, 80 a lover or someone devoted. Use what the card says; when it does not say, 0.
 
-        status_window: if the card tells the model to print a status window with every reply (a block of numbers and facts in a fixed format: level, HP, money, trust, date, place), give {"open": "the text that begins the block", "close": "the text that ends it", "rules": []}. Copy open and close from the card's format, and only characters that are the same in every reply, never a blank the model fills in: for a block between two "[Status Window]" lines, both are "[Status Window]"; for one line such as "[ Trust: 3% | Anger: 5% | ... ]", "[ Trust:" and "]"; for a block that begins with a heading such as "[Day N/30 · Time]", "[Day" as open; for a block of lines such as "◈Time: ..." that ends with the reply, "◈Time" as open and "" as close. If the card prints no such block, or only draws one with its own scripts and tells the model not to write the numbers, or the block has a line for each character who is in the scene at the moment (more lines or fewer as they come and go), null.
+        status_window: if the card tells the model to print a status window with every reply (a block of numbers and facts in a fixed format: level, HP, money, trust, date, place), give {"open": "the text that begins the block", "close": "the text that ends it", "rules": [], "spent": null}. Copy open and close from the card's format, and only characters that are the same in every reply, never a blank the model fills in: for a block between two "[Status Window]" lines, both are "[Status Window]"; for one line such as "[ Trust: 3% | Anger: 5% | ... ]", "[ Trust:" and "]"; for a block that begins with a heading such as "[Day N/30 · Time]", "[Day" as open; for a block of lines such as "◈Time: ..." that ends with the reply, "◈Time" as open and "" as close. If the card prints no such block, or only draws one with its own scripts and tells the model not to write the numbers, or the block has a line for each character who is in the scene at the moment (more lines or fewer as they come and go), null.
 
         rules: the arithmetic the card states for the window's numbers, [] when the card states none. Go through the card's sentences that give a number for the window (a formula, a gain per point or per level, a range, a limit on change), and for each write {"from": "that sentence, copied word for word", "rule": "what it says, as one line in the small language below"}. A rule is used only when its sentence is found in the card and has the rule's numbers in it. Use the window's field names exactly as its format writes them; `Field.max` is the second number of a pair such as `HP: 30 / 48`, and `Field.before` is what the field was before the turn. There are only two kinds of line (the examples are not from this card):
         1. `Target = expression`, something that always holds: a maximum that follows a stat, "Stamina.max = Body * 4"; a range a number stays within, "Favor = clamp(Favor, 0, 100)"; a limit on how far a number moves in one turn, "Favor = clamp(Favor, Favor.before - 3, Favor.before + 3)".
-        2. `when condition: change; change`, something that happens, each change being `Field = expression`, `Field += expression`, or `Field -= expression`; a card whose window has a level and experience toward the next one has its level-up line, in the window's own field names: "when EXP >= EXP.max: Level += 1; EXP -= EXP.max". The condition is a comparison, or `Field rises` for what each point gained gives or costs: "when Level rises: Points += if(Level % 10 == 0, 6, 2)", "when Might rises: Points -= 1". Where the card says that a pool of points in the window is what raises other numbers of the window (stat points spent on stats) and names no price, a point costs one in a turn that has points to spend, and with none the number may still rise another way: one line for each such number, "when Might rises: Points -= if(Points > 0 or Points.before > 0, 1, 0)", each with the card's sentence that says the points raise them.
+        2. `when condition: change; change`, something that happens, each change being `Field = expression`, `Field += expression`, or `Field -= expression`; a card whose window has a level and experience toward the next one has its level-up line, in the window's own field names: "when EXP >= EXP.max: Level += 1; EXP -= EXP.max". The condition is a comparison, or `Field rises` for what each point gained gives or costs: "when Level rises: Points += if(Level % 10 == 0, 6, 2)", "when Might rises: Points -= 1".
         An expression has numbers, field names, + - * / ^ %, comparisons (>= <= > < == !=), and, or, and the functions floor, ceil, round, min, max, clamp(x, low, high), if(condition, a, b). No other words, and every line begins with a field name or with `when`.
-        That price aside, write only what the card itself states in numbers, for fields of its window, with the card's own numbers: never a guess, never one of the examples above, and nothing about text fields. When the card shows an example of its window, try each rule on the example's numbers before you write it: with Body 12 and Stamina 31 / 48, `Stamina.max = Body * 4` holds and `Stamina.max = 20 + Body * 4` does not, so the first is the card's rule. A rule the card's example does not bear out is thrown away. Where the card gives no number ("the requirement grows with each level", a reputation with no range), there is no rule to write.
+        Write only what the card itself states in numbers, for fields of its window, with the card's own numbers: never a guess, never one of the examples above, and nothing about text fields. When the card shows an example of its window, try each rule on the example's numbers before you write it: with Body 12 and Stamina 31 / 48, `Stamina.max = Body * 4` holds and `Stamina.max = 20 + Body * 4` does not, so the first is the card's rule. A rule the card's example does not bear out is thrown away. Where the card gives no number ("the requirement grows with each level", a reputation with no range), there is no rule to write.
+
+        spent: when the card says that a pool of points in the window is what raises other numbers of the window (stat points spent on stats), and gives no price for it, {"points": "the pool's field name", "on": ["each field the points raise, as the window writes it"], "from": "the card's sentence that says the points raise them, copied word for word"}; else null.
         """
       }
     ]
@@ -777,10 +784,48 @@ defmodule Aethrion.Bridge.AutoCast do
     {open, close} = {String.trim(open), String.trim(close)}
 
     if open != "" and String.length(open) <= 60 and String.length(close) <= 60,
-      do: %{open: open, close: close, rules: rules(window["rules"])}
+      do: %{
+        open: open,
+        close: close,
+        rules: Enum.take(rules(window["rules"]) ++ spent(window["spent"]), @max_window_rules)
+      }
   end
 
   defp window(_none), do: nil
+
+  # A pool of points that the card says raises other numbers, with no
+  # price given: a point costs one in a turn that has points to spend, and
+  # with none the number may still rise another way (by training, say).
+  # One rule for each number, each with the card's sentence.
+  defp spent(%{"points" => pool, "on" => fields, "from" => from})
+       when is_binary(pool) and is_list(fields) and is_binary(from) do
+    pool = String.trim(pool)
+
+    for field <- Enum.take(fields, @max_spent),
+        is_binary(field),
+        field = String.trim(field),
+        pool != "" and field != "" and field != pool and
+          String.length(field) <= 40 and String.length(pool) <= 40 and
+          not String.match?(pool <> field, ~r/[:;=\n]/u) do
+      {price(field, pool), from}
+    end
+  end
+
+  defp spent(_none), do: []
+
+  defp price(field, pool),
+    do: "when #{field} rises: #{pool} -= if(#{pool} > 0 or #{pool}.before > 0, 1, 0)"
+
+  # The pool of a rule that is such a price, or nil.
+  defp priced(rule) do
+    case Regex.run(
+           ~r/\Awhen (.+) rises: (.+) -= if\(\2 > 0 or \2\.before > 0, 1, 0\)\z/u,
+           rule
+         ) do
+      [_all, _field, pool] -> pool
+      nil -> nil
+    end
+  end
 
   # The card's arithmetic as the model wrote it down: a few short lines
   # (`Aethrion.Bridge.Ledger.Rules` reads them against the window), each

@@ -84,6 +84,42 @@ defmodule Aethrion.AutoCastTest do
                )
     end
 
+    test "a pool of points and what it raises become a price for each" do
+      from = "Stats can be raised through Stat Points without training."
+
+      answer = fn spent ->
+        Jason.encode!(%{
+          "characters" => [],
+          "status_window" => %{"open" => "[S]", "close" => "[S]", "rules" => [], "spent" => spent}
+        })
+      end
+
+      spent = %{
+        "points" => "Stat Point",
+        "on" => ["Vigor", " Strength ", 7, "Stat Point"],
+        "from" => from
+      }
+
+      assert {:ok, %{window: %{rules: rules}}} = AutoCast.people(answer.(spent))
+
+      assert rules == [
+               {"when Vigor rises: Stat Point -= if(Stat Point > 0 or Stat Point.before > 0, 1, 0)",
+                from},
+               {"when Strength rises: Stat Point -= if(Stat Point > 0 or Stat Point.before > 0, 1, 0)",
+                from}
+             ]
+
+      # Nothing said, or said in another shape: no price.
+      for none <- [
+            nil,
+            "Stat Point",
+            %{"points" => "Stat Point"},
+            %{"points" => "A: B", "on" => ["X"], "from" => from}
+          ] do
+        assert {:ok, %{window: %{rules: []}}} = AutoCast.people(answer.(none))
+      end
+    end
+
     test "a card with a status window is read again, and the surest reading gives the rules" do
       card = %{
         greeting: nil,
@@ -306,6 +342,52 @@ defmodule Aethrion.AutoCastTest do
              ]
     end
 
+    test "a price is kept when the card's sentence names the pool, and dropped when it does not" do
+      card = %{
+        greeting: nil,
+        rules: "",
+        prompt: """
+        Print the status between [Status] lines, like this:
+        [Status]
+        - Stat Point: 2
+        - Vigor: 13
+        - Luck: 4
+        [Status]
+        Stats can be raised through Stat Points without training. Luck brings better loot.
+        """
+      }
+
+      read = fn from ->
+        answer =
+          Jason.encode!(%{
+            "characters" => [],
+            "status_window" => %{
+              "open" => "[Status]",
+              "close" => "[Status]",
+              "rules" => [],
+              "spent" => %{"points" => "Stat Point", "on" => ["Vigor", "Luck"], "from" => from}
+            }
+          })
+
+        Process.put(:reader_answer, answer)
+        casts = %{put: fn _key, _value -> :ok end}
+
+        assert {:ok, %{window: %{rules: rules}}} =
+                 AutoCast.read(card, casts, Aethrion.AutoCastTest.Reader)
+
+        rules
+      end
+
+      assert read.("Stats can be raised through Stat Points without training.") == [
+               "when Vigor rises: Stat Point -= if(Stat Point > 0 or Stat Point.before > 0, 1, 0)",
+               "when Luck rises: Stat Point -= if(Stat Point > 0 or Stat Point.before > 0, 1, 0)"
+             ]
+
+      # A sentence of the card's that says nothing of the points, or one that is not the card's.
+      assert read.("Luck brings better loot.") == []
+      assert read.("Each stat point raises a stat by one.") == []
+    end
+
     test "a rule is kept when the card states it, with its numbers where the card has them" do
       card = """
       - EXP: Experience points required to reach the next level. Current EXP = Max EXP → Level Up. 100 × (1.15)^(Level − 1) = Max EXP (truncate decimal points).
@@ -359,15 +441,18 @@ defmodule Aethrion.AutoCastTest do
       rule =
         "when Strength rises: Stat Point -= if(Stat Point > 0 or Stat Point.before > 0, 1, 0)"
 
+      # (The price is the card's when its sentence names the pool.)
+      pool = "Stat Point = Stat Point"
+
       assert AutoCast.stated?(
-               rule,
+               pool,
                "Stats can be raised through Stat Points without training.",
                card
              )
 
       # A sentence that is not the card's, or says nothing of the points.
-      refute AutoCast.stated?(rule, "Each stat point raises one stat by one.", card)
-      refute AutoCast.stated?(rule, "A potion costs 100G.", card)
+      refute AutoCast.stated?(pool, "Each stat point raises one stat by one.", card)
+      refute AutoCast.stated?(pool, "A potion costs 100G.", card)
 
       # In a turn that has points, a point is paid for each, and no more
       # is had than was paid for; in a turn with none the number rises
