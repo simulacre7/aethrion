@@ -2228,7 +2228,7 @@ defmodule Aethrion.Bridge.Ledger do
   @doc "What the note says of the window before there is one in the chat."
   @spec first_instruction() :: String.t()
   def first_instruction do
-    "The card has a status window shown with every reply, and the chat has none yet: end this reply with the whole window, in the card's own format, filled in for where the story stands. Where it shows something listed here (how a character feels about the player), it shows these numbers, fitted to the card's scale. A separate window shows these rules' numbers, so do not print them a second time on your own."
+    "The card has a status window shown with every reply, and the chat has none yet: print the whole window in this reply, where the card says and in the card's own format, filled in for where the story stands. Where it shows something listed here (how a character feels about the player), it shows these numbers, fitted to the card's scale. A separate window shows these rules' numbers, so do not print them a second time on your own."
   end
 
   @doc "What the note says of the window when a reply is only continued."
