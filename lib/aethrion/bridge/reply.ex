@@ -176,6 +176,14 @@ defmodule Aethrion.Bridge.Reply do
     {kept, applied, refused} = Ledger.apply(window, changes, spec)
     {kept, ruled} = Ledger.settle(kept, spec, window)
     refused = Ledger.unanswered(refused, window, kept, spec)
+    # What the story spent and the lines left out: asked about, not changed.
+    refused =
+      refused ++
+        if(source == "nothing from the model",
+          do: [],
+          else: Ledger.unsaid(text, window, changes, spec)
+        )
+
     {shown, by_rule} = Ledger.net(applied, ruled)
     lines = Ledger.log(shown, refused, locale) ++ Ledger.rule_log(by_rule, locale)
 

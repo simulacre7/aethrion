@@ -482,14 +482,14 @@ defmodule Aethrion.BridgeLedgerTest do
         # The note's own stand-in, copied as it stands.
         {"🎒", "new text"},
         {"🎒", "그대로"},
-        {"Chloe", "12"}
+        {"Chloe", "0"}
       ]
 
       assert {kept, [], refused} = Ledger.apply(window, changes, spec)
       assert kept == window
-      assert refused == [{"🎒", "그대로", :unreadable}, {"Chloe", "12", :unsigned}]
+      assert refused == [{"🎒", "그대로", :unreadable}, {"Chloe", "0", :unsigned}]
 
-      # A number alone that is greater than the one that stands is what it grew to.
+      # A number alone, for a number that stands alone, is that number now.
       assert {grown, [{"Chloe", _was, _now}], []} = Ledger.apply(window, [{"Chloe", "25"}], spec)
       assert grown =~ "Chloe | 25 | Curious"
 

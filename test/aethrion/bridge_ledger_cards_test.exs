@@ -323,26 +323,56 @@ defmodule Aethrion.BridgeLedgerCardsTest do
              "He said ] and left.\n]"
   end
 
-  test "a number alone: what a plain number grew to, and no more" do
+  test "a number alone is a plain number's new value; for a pair, and for nothing, it is refused" do
     spec = %{open: "[Status]", close: "[Status]"}
     window = "[Status]\n- Level: 10\n- 골드: 42\n- HP: 36 / 50\n- Dexterity: 104\n[Status]"
 
     assert {now, _applied, refused} =
              Ledger.apply(
                window,
-               [{"Level", "11"}, {"골드", "50"}, {"Dexterity", "0"}, {"HP", "8"}, {"HP", "45"}],
+               [{"Level", "11"}, {"골드", "35"}, {"Dexterity", "0"}, {"HP", "8"}, {"HP", "45"}],
                spec
              )
 
-    assert now == "[Status]\n- Level: 11\n- 골드: 50\n- HP: 36 / 50\n- Dexterity: 104\n[Status]"
+    assert now == "[Status]\n- Level: 11\n- 골드: 35\n- HP: 36 / 50\n- Dexterity: 104\n[Status]"
 
     assert refused == [
              {"Dexterity", "0", :unsigned},
              {"HP", "8", :unsigned},
              {"HP", "45", :unsigned}
            ]
+  end
 
-    assert {^window, [], [{"골드", "35", :unsigned}]} = Ledger.apply(window, [{"골드", "35"}], spec)
+  test "a thing the story spends and the lines leave out is asked about, not taken" do
+    spec = %{open: "[상태창]", close: "[상태창]"}
+    window = "[상태창]\n- HP: 36 / 50\n- 소지품: 낡은 검 / 회복약 × 2 / 이끼 쥐 털뭉치 × 1\n[상태창]"
+    story = "기환은 낡은 검을 고쳐 쥐었다. 회복약을 한 병 더 마셨으니 팔의 상처는 완전히 아물었다."
+
+    assert Ledger.unsaid(story, window, [{"HP", "+14"}], spec) ==
+             [{"소지품", "-회복약 × 1", :unsaid}]
+
+    # Said in the lines, or only thought of in the story: nothing to ask.
+    assert Ledger.unsaid(story, window, [{"소지품", "-회복약 × 1"}], spec) == []
+    assert Ledger.unsaid("회복약을 마실까 망설이다 도로 넣었다.", window, [], spec) == []
+
+    assert Ledger.unsaid("She drank the 회복약 in one gulp.", window, [], spec) == [
+             {"소지품", "-회복약 × 1", :unsaid}
+           ]
+
+    assert Ledger.log([], [{"소지품", "-회복약 × 1", :unsaid}], :ko) ==
+             ["기록 · 소지품: -회복약 × 1 (이야기에서는 썼는데 적히지 않음)"]
+
+    # The next turn's note asks about it.
+    messages = [
+      %{
+        "role" => "assistant",
+        "content" =>
+          "이야기.\n\n<aethrion-status id=\"a\"><aethrion-turn title=\"이번 턴 판정\">기록 · HP 36 / 50 → 50 / 50\n기록 · 소지품: -회복약 × 1 (이야기에서는 썼는데 적히지 않음)</aethrion-turn></aethrion-status>"
+      }
+    ]
+
+    assert {["기록 · HP 36 / 50 → 50 / 50"], ["소지품: -회복약 × 1 (이야기에서는 썼는데 적히지 않음)"]} =
+             Ledger.recorded(messages)
   end
 
   test "a list that counts every thing counts a new one as well" do

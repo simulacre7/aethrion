@@ -39,6 +39,8 @@ defmodule Aethrion.Bridge.Ledger do
   @tag "<aethrion-ledger"
   @scene "<aethrion-scene"
   @max_changes 40
+  # A record line for a thing the story spent and the lines left out.
+  @unsaid_line ~r/\s*\((?:이야기에서는 썼는데 적히지 않음|spent in the story, not written)\)\s*\z/u
   @max_openings 60
   # How many blank lines a window with no closing text may run over.
   @max_blanks 60
@@ -1140,23 +1142,24 @@ defmodule Aethrion.Bridge.Ledger do
   defp numbered({:one, _pre, _a, _post} = one, {:set_pair, a, _b}, _value, _habits),
     do: put_one(one, a)
 
-  # (A number that stands alone and is given a greater one has grown to
-  # it: "Level: 11" after level 10, "Gold: 50" after 42. A lesser one may
-  # be what is left or what was lost, and "0" is said for no change.)
+  # (A number that stands alone and is given another is that number now:
+  # "Level: 11" after level 10, "Gold: 35" after 42. So a small model
+  # writes it: of 60-odd such lines in a night's sessions, none was a move.
+  # Only "0" is said for no change as often as for nothing left.)
   defp numbered({:one, pre, now, _post} = one, {:set, a}, value, habits) do
-    if lead?(pre) and a < now and unsigned?(value, a, now, habits),
+    if lead?(pre) and a == 0 and unsigned?(value, a, now, habits),
       do: {elem(put_one(one, now), 0), :unsigned},
       else: put_one(dressed(one, value), a)
   end
 
   defp numbered(_shape, _delta, _value, _habits), do: nil
 
-  # A number alone says neither which way the figure moves nor that it is
-  # the new value: a small model writes "HP: 8" for eight lost, and
-  # "Agility: 0" for no change. It is taken as the new value only when
-  # said outright ("= 8", "14 → 8"), with words of its own ("8 left",
-  # "45 (curious)"), or when it is the next count; the number as it
-  # stands changes nothing either way.
+  # A number alone, for a pair, says neither which way the figure moves
+  # nor that it is the new value: a small model writes "HP: 8" for eight
+  # lost, and "Agility: 0" for no change. It is taken as the new value
+  # only when said outright ("= 8", "14 → 8"), with words of its own ("8
+  # left", "45 (curious)"), or when it is the next count; the number as
+  # it stands changes nothing either way.
   defp unsigned?(value, new, now, habits) do
     # One more than it was is a count going on ("Day: 2" after day 1):
     # the new value and the smallest change agree.
@@ -1526,12 +1529,24 @@ defmodule Aethrion.Bridge.Ledger do
           " Last turn's changes are in the window already; do not write them again (" <>
             Enum.join(done, "; ") <> ")."
 
-    if refused == [],
+    # What the story spent and the lines left out is asked for by itself.
+    {unsaid, refused} = Enum.split_with(refused, &String.match?(&1, @unsaid_line))
+
+    done =
+      if refused == [],
+        do: done,
+        else:
+          done <>
+            " These lines of yours last turn were not taken, for the reason in brackets; if one still holds, write it again in the form asked for: " <>
+            Enum.join(refused, "; ") <> "."
+
+    if unsaid == [],
       do: done,
       else:
         done <>
-          " These lines of yours last turn were not taken, for the reason in brackets; if one still holds, write it again in the form asked for: " <>
-          Enum.join(refused, "; ") <> "."
+          " IMPORTANT: last turn's story told of something being spent, and your lines left it out, so the window still has it. Unless it was not the player's, write it now, with this turn's lines: " <>
+          Enum.map_join(unsaid, "; ", &("`" <> String.replace(&1, @unsaid_line, "") <> "`")) <>
+          "."
   end
 
   defp lists_note(fields) do
@@ -1661,6 +1676,45 @@ defmodule Aethrion.Bridge.Ledger do
          ))
   end
 
+  # Words for a thing spent: drunk, eaten, thrown, sold, handed over.
+  # (Not "used": a sword is used and kept.)
+  @spent_after "마셨|마시고|마신|들이켰|들이키고|삼켰|삼키고|먹었|먹고|먹은|발랐|바르고|던졌|던지고|팔았|팔고|건넸|건네주|넘겼|넘겨주|내밀었|내민다"
+  @spent_before "drank|drunk|drinks|ate|eats|eaten|swallowed|swallows|quaffed|threw|throws|sold|sells|gave away|handed over"
+
+  @doc """
+  What the story tells of and the model's lines leave out: a thing of a
+  list that the reply says was drunk, eaten, thrown, sold, or handed
+  over, with no line for it. `[{field, "-thing × 1", :unsaid}]`, at most
+  two. Nothing is changed for these: the story may speak of someone
+  else's potion. They go into the record as lines not taken, so that the
+  player sees them and the model is asked about them next turn.
+  """
+  @spec unsaid(String.t(), String.t(), [{String.t(), String.t()}] | nil, spec() | nil) ::
+          [{String.t(), String.t(), :unsaid}]
+  def unsaid(story, window, changes, spec \\ nil) do
+    said = Enum.map_join(changes || [], "\n", fn {name, value} -> name <> " " <> value end)
+    {story, said} = {String.downcase(story), String.downcase(said)}
+
+    hints =
+      for field <- fields(window, spec),
+          listing?(field),
+          item <- Listing.items(field.value),
+          thing = item.name |> String.replace(~r/\s*\([^()]*\)\z/u, "") |> String.downcase(),
+          String.length(thing) >= 2,
+          not String.contains?(said, thing),
+          spent?(story, thing),
+          do: {field.name, "-#{item.name}" <> if(item.count, do: " × 1", else: ""), :unsaid}
+
+    Enum.take(hints, 2)
+  end
+
+  defp spent?(story, thing) do
+    thing = Regex.escape(thing)
+
+    Regex.match?(~r/#{thing}[^.!?\n。]{0,30}?(?:#{@spent_after})/u, story) or
+      Regex.match?(~r/(?<![\p{L}])(?:#{@spent_before})(?![\p{L}])[^.!?\n]{0,30}?#{thing}/u, story)
+  end
+
   @doc """
   The turn's record without what came to nothing: a change that a rule
   then put back ("EXP 337 / 351 → 337 / 385" and "EXP 337 / 385 → 337 /
@@ -1779,7 +1833,8 @@ defmodule Aethrion.Bridge.Ledger do
     missing: {"가지고 있지 않음", "not held"},
     ruled: {"규칙이 정함", "set by the rules"},
     unreadable: {"숫자가 아님", "not a number"},
-    unsigned: {"+나 -가 없음", "no + or -"}
+    unsigned: {"+나 -가 없음", "no + or -"},
+    unsaid: {"이야기에서는 썼는데 적히지 않음", "spent in the story, not written"}
   }
 
   defp reason(reason, locale) do
