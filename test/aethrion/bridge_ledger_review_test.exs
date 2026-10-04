@@ -1131,27 +1131,29 @@ defmodule Aethrion.BridgeLedgerReviewTest do
       Reply.finish(raw, "<aethrion-status></aethrion-status>", plan)
     end
 
+    # (The limits are for what goes wrong by a power, minutes where there
+    # were moments: a shared CI machine takes five times a laptop's time.)
     test "time: a bag of many things and a long story; a line of many steps" do
       window =
         "[Status]\n- HP: 30 / 48\n- Item: " <> String.duplicate("+1, ", 474) <> "+1\n[Status]"
 
       story = String.duplicate("+1, ", 12_250)
       {time, _hints} = :timer.tc(fn -> Ledger.unsaid(story, window, [{"HP", "-1"}], @st) end)
-      assert time < 1_500_000
+      assert time < 8_000_000
 
       steps = String.slice(String.duplicate("+1, ", 100), 0, 399)
 
       {time, _result} =
         :timer.tc(fn -> Ledger.apply(window, List.duplicate({"Item", steps}, 40), @st) end)
 
-      assert time < 3_000_000
+      assert time < 15_000_000
 
       {time, _result} =
         :timer.tc(fn ->
           Ledger.apply(window, [{"HP.max", String.duplicate(" ", 20_000)}], @st)
         end)
 
-      assert time < 500_000
+      assert time < 3_000_000
     end
 
     test "N/A leaves a list, a place, a date as they are; a number that stands alone stays above nothing" do
