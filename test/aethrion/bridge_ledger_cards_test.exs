@@ -618,6 +618,18 @@ defmodule Aethrion.BridgeLedgerCardsTest do
       assert note =~ "do not tell of one in the story"
     end
 
+    test "rules that say one thing of several fields are told as one" do
+      price = &"when #{&1} rises: Stat Point -= if(Stat Point > 0 or Stat Point.before > 0, 1, 0)"
+      spec = %{@pyros | rules: @pyros.rules ++ [price.("Vigor"), price.("Will")]}
+
+      window =
+        "[Status Window]\n- Level: 3\n- EXP: 52 / 132\n- Stat Point: 0\n- Vigor: 10\n- Will: 9\n[Status Window]"
+
+      note = Ledger.instruction(window, spec)
+      assert note =~ "when Vigor or Will rises: Stat Point -= if("
+      assert length(String.split(note, "Stat Point -= if(")) == 2
+    end
+
     test "a card with no such rule is told nothing of the kind" do
       spec = %{open: "[ 날짜:", close: "]", rules: ["친밀 = clamp(친밀, 0, 100)"]}
       refute Ledger.instruction("[ 날짜: 3일 | 친밀: 10% | 경계: 40% ]", spec) =~ "stays at"

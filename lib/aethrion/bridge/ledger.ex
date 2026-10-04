@@ -2220,7 +2220,7 @@ defmodule Aethrion.Bridge.Ledger do
       set ->
         " The game's rules set these themselves, so do not write them, only what leads to them: " <>
           Enum.join(set, ", ") <>
-          " (" <> Enum.join(rule_texts(fields, spec), " | ") <> ")."
+          " (" <> Enum.join(fields |> rule_texts(spec) |> together(), " | ") <> ")."
     end
   end
 
@@ -2283,6 +2283,26 @@ defmodule Aethrion.Bridge.Ledger do
     for %{note?: true, name: name, value: value} <- fields, into: "" do
       " #{name} is the window's line of words that has no name (now `#{String.slice(value, 0, 80)}`): when it should read otherwise after this reply, write `#{name}: ...` with its new words."
     end
+  end
+
+  # Rules that say one thing of several fields ("when Vigor rises: ...",
+  # "when Will rises: ...", the same for each stat) are told as one.
+  defp together(texts) do
+    texts
+    |> Enum.map(fn text ->
+      case Regex.run(~r/\A\s*when\s+(.+?)\s+rises\s*:\s*(.+)\z/isu, text) do
+        [_all, name, change] -> {change, name}
+        nil -> {nil, text}
+      end
+    end)
+    |> Enum.chunk_by(fn {change, _text} -> change end)
+    |> Enum.flat_map(fn
+      [{nil, _text} | _rest] = plain ->
+        Enum.map(plain, &elem(&1, 1))
+
+      [{change, _name} | _rest] = alike ->
+        ["when " <> Enum.map_join(alike, " or ", &elem(&1, 1)) <> " rises: " <> change]
+    end)
   end
 
   # A named line of prose (a thought, the day's news, a record's entry):
