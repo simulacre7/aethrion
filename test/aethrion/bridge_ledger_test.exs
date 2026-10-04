@@ -487,7 +487,7 @@ defmodule Aethrion.BridgeLedgerTest do
 
       assert {kept, [], refused} = Ledger.apply(window, changes, spec)
       assert kept == window
-      assert refused == [{"🎒", "그대로", :unreadable}, {"Chloe", "0", :unsigned}]
+      assert refused == [{"Chloe", "0", :unsigned}]
 
       # A number alone, for a number that stands alone, is that number now.
       assert {grown, [{"Chloe", _was, _now}], []} = Ledger.apply(window, [{"Chloe", "25"}], spec)
@@ -724,7 +724,9 @@ defmodule Aethrion.BridgeLedgerTest do
     end
 
     test "what only looked like a beginning is passed on at the end" do
-      assert streamed(["끝이다 <aethrion-led"], nil) == "끝이다 <aethrion-led"
+      assert streamed(["끝이다 <aet"], nil) == "끝이다 <aet"
+      # A tag that was cut off is the model's own all the same, and is not shown.
+      assert streamed(["끝이다 <aethrion-led"], nil) == "끝이다 "
       assert streamed(["끝.\n[Status"], "[Status Window]") == "끝.\n[Status"
     end
   end

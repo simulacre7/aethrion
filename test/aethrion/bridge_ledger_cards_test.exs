@@ -426,6 +426,61 @@ defmodule Aethrion.BridgeLedgerCardsTest do
              Ledger.apply(window, [{"Stat Point", "-15"}, {"평판", "-10"}, {"Karma", "-3"}], spec)
   end
 
+  test "words for nothing changing change nothing, in brackets or not" do
+    spec = %{open: "[Date:", close: "]"}
+
+    window =
+      "[Date:1900-03-03 (Fri)|Belongings:backpack, compass, rusted sword|Currencies:0G, 0S, 6C|Mood:calm]"
+
+    for said <- [
+          "(no change)",
+          "no change",
+          "unchanged",
+          "same as before",
+          "(변화 없음)",
+          "그대로",
+          "N/A"
+        ] do
+      assert Ledger.apply(
+               window,
+               [{"Belongings", said}, {"Mood", said}, {"Currencies", said}],
+               spec
+             ) ==
+               {window, [], []}
+    end
+
+    # A card's own name for a change is the field it is a change of.
+    assert {now, _applied, [{"ReputationChange", _value, :unknown}]} =
+             Ledger.apply(
+               window,
+               [{"CurrencyChange", "+2C"}, {"ReputationChange", "Carbonis +20"}],
+               spec
+             )
+
+    assert now =~ "|Currencies:0G, 0S, 8C|"
+  end
+
+  test "ledger tags as a model misspells them" do
+    assert Ledger.take("Story.\n<aethrion-ledger>\nexit=open\nvariant=재회</aetherion-ledger>") ==
+             {"Story.", [{"exit", "=open"}, {"variant", "=재회"}]}
+
+    assert Ledger.take("Story.\n<aetherion-ledger>\nHP: -3\n</ledger>\nMore.") ==
+             {"Story.\n\nMore.", [{"HP", "-3"}]}
+
+    refute Ledger.cut_off?("x\n<aetherion-ledger>\nHP: -3\n</aetherion-ledger>")
+  end
+
+  test "a heading's number alone keeps its other parts; the rules' own under any name" do
+    spec = %{open: "[Day", close: ""}
+    window = "[Day 1/30 · Morning]\nHP: 3/5\nMP: 1/2"
+
+    assert {"[Day 2/30 · Morning]\nHP: 3/5\nMP: 1/2", _applied, []} =
+             Ledger.apply(window, [{"Day", "2/30"}], spec)
+
+    assert Ledger.apply(window, [{"Isolde affinity", "+10"}, {"이솔데 호감도", "+3"}], spec) ==
+             {window, [], []}
+  end
+
   test "a list that counts every thing counts a new one as well" do
     habits = %{separator: ", ", empty: "None"}
 

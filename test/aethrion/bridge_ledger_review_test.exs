@@ -554,7 +554,7 @@ defmodule Aethrion.BridgeLedgerReviewTest do
       assert Ledger.take("She nods <aethrion-ledge") == {"She nods", nil}
 
       assert Ledger.take("Story.\n<aethrion-ledger>\nHP: -12\n</ledger>\nMore story.") ==
-               {"Story.\nMore story.", [{"HP", "-12"}]}
+               {"Story.\n\nMore story.", [{"HP", "-12"}]}
     end
 
     test "the name as the window writes it, and the rules' own under a person's name" do

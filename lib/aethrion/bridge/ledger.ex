@@ -36,7 +36,9 @@ defmodule Aethrion.Bridge.Ledger do
 
   alias Aethrion.Bridge.Ledger.{Cells, Fields, Listing, Rules}
 
-  @tag "<aethrion-ledger"
+  # Where the model's own lines for the rules begin, in a stream: its tags,
+  # however it spells what comes after the first letters.
+  @tag "<aeth"
   @scene "<aethrion-scene"
   @max_changes 40
   # A record line for a thing the story spent and the lines left out.
@@ -270,8 +272,9 @@ defmodule Aethrion.Bridge.Ledger do
 
   defp clean_name(name), do: Fields.clean_name(name)
 
-  @opened ~r/<aethrion-ledger\b[^>\n]*(\/>|>|(?=\n)|\z)/i
-  @closed ~r/<\/aethrion-ledger\s*(?:>|\z)/i
+  # (Also as a model misspells them: "<aetherion-ledger>", "</ledger>".)
+  @opened ~r/<aeth[a-z]*-ledger\b[^>\n]*(\/>|>|(?=\n)|\z)/i
+  @closed ~r/<\/(?:[a-z]+-)?ledger\s*(?:>|\z)/i
   # A tag the reply was cut off in, or a closing tag written wrongly.
   @torn ~r/[ \t]*<\/?aeth[a-z\-]*\s*\z|^[ \t]*<\/[a-z\-]*ledger[a-z\-]*>?[ \t]*$\n?/im
   @change ~r/\A\s*(?:[-*•]\s*)?([^:：]{1,40}?)\s*[:：]\s*(\S.*)\z/u
@@ -540,6 +543,7 @@ defmodule Aethrion.Bridge.Ledger do
     {name, value} = celled(book.by_name, name, value)
     {name, value} = itemed(book.fields, book.by_name, name, value)
     {name, value} = maxed(book.by_name, book.rules, name, value)
+    name = change_of(book.by_name, name)
     field = Map.get(book.as_written, written(name)) || Map.get(book.by_name, key(name))
 
     cond do
@@ -553,7 +557,7 @@ defmodule Aethrion.Bridge.Ledger do
       # What the rules say of a person (affinity, trust), written under
       # the person's name: the rules' own.
       String.match?(value, ~r/\A\s*(?:affinity|trust|호감|신뢰)/iu) or
-          String.match?(name, ~r/\A\s*(?:affinity|trust|호감도?|신뢰도?)\s*[-_ :]/iu) ->
+          String.match?(name, ~r/(?<![\p{L}])(?:affinity|trust)(?![\p{L}])|호감|신뢰/iu) ->
         :nothing
 
       true ->
@@ -612,7 +616,8 @@ defmodule Aethrion.Bridge.Ledger do
       length(parts) < 2 or String.match?(value, ~r/\A\s*[+\-−=]|→|->/u) -> value
       length(said) >= length(parts) -> value
       length(said) >= 2 -> Enum.join(said ++ Enum.drop(parts, length(said)), " · ")
-      String.match?(value, ~r/\A\s*[0-9]/u) -> value
+      # Its number alone ("1/30" for "1/30 · Morning"): the first part.
+      String.match?(value, ~r/\A\s*[0-9]/u) -> Enum.join([value | tl(parts)], " · ")
       true -> :unreadable
     end
   end
@@ -665,6 +670,19 @@ defmodule Aethrion.Bridge.Ledger do
       {list.name, "#{sign}#{name} × #{n}"}
     else
       _other -> {name, value}
+    end
+  end
+
+  # "CurrencyChange: +2C", as a card's own log names a change: the one
+  # field whose name begins as it does ("Currencies").
+  defp change_of(by_name, name) do
+    with false <- is_map_key(by_name, key(name)),
+         [_all, base] <- Regex.run(~r/\A(.{3,}?)[\s_\-]*(?:changes?|변화|변동)\z/iu, key(name)),
+         stem = String.slice(base, 0, max(String.length(base) - 1, 3)),
+         [found] <- Enum.filter(Map.keys(by_name), &String.starts_with?(&1, stem)) do
+      by_name[found].name
+    else
+      _other -> name
     end
   end
 
@@ -897,6 +915,9 @@ defmodule Aethrion.Bridge.Ledger do
     end
   end
 
+  # Words that say a field stays as it is.
+  @unchanged ~r/\A(?:no changes?|unchanged|not changed|same(?: as (?:before|above|last turn))?|as (?:is|before)|n\/a|변화\s*없음|변동\s*없음|변경\s*없음|그대로|동일|유지|変化なし|変更なし|そのまま)\z/u
+
   @stand_ins [
     "new text",
     "the new text",
@@ -1039,7 +1060,13 @@ defmodule Aethrion.Bridge.Ledger do
   # The note's own stand-ins copied as they stand, and "±0" or "+0", said
   # to say that nothing changes, are no change.
   defp nothing?(value) do
-    String.downcase(value) in @stand_ins or
+    # As said, without the brackets around it: "(no change)".
+    said =
+      value
+      |> String.downcase()
+      |> String.replace(~r/\A[\s(\[（「]+|[\s)\]）」.]+\z/u, "")
+
+    said in @stand_ins or String.match?(said, @unchanged) or
       String.match?(value, ~r/\A\s*(?:±|\+\/?-|[+\-−])\s*0+\s*\z/u)
   end
 
