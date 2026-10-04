@@ -1509,7 +1509,7 @@ defmodule Aethrion.Bridge.Ledger do
     case number(value) do
       {:pair, pre, _a, _sep, _b, {post, _commas?}}
       when post != "" and (was_pre != "" or was_post != "") ->
-        if lead?(was_pre) and not lead?(pre),
+        if (lead?(was_pre) and not lead?(pre)) or not own_words?(post, was_post),
           do: pair,
           else: {:pair, pre, a, sep, b, {post, commas?}}
 
@@ -1522,13 +1522,25 @@ defmodule Aethrion.Bridge.Ledger do
     case number(value) do
       {:one, pre, _a, {post, _commas?}}
       when post != "" and (was_pre != "" or was_post != "") ->
-        if lead?(was_pre) and not lead?(pre),
+        if (lead?(was_pre) and not lead?(pre)) or not own_words?(post, was_post),
           do: one,
           else: {:one, pre, a, {post, commas?}}
 
       _same ->
         one
     end
+  end
+
+  # Whether what a new value has after its number is the field's words to
+  # be: not a bracket left over from the model's working ("+10 (65 → 75)"
+  # comes to "75)"), nor the working itself ("75 (+10)"), nor a remark on a
+  # row, whose cells stay ("62 | calm | a thought").
+  defp own_words?(post, was_post) do
+    working =
+      ~r/\A\s*\(\s*(?:[+\-−=]?\s*[0-9][0-9,.]*%?|[+\-−]?[0-9][0-9,.]*\s*(?:→|->|=>)\s*[+\-−]?[0-9][0-9,.]*)\s*\)\s*\z/u
+
+    not String.match?(post, ~r/\A[\s)\]]*\z/u) and not String.match?(post, working) and
+      (not String.match?(was_post, ~r/\A\s*[|│｜]/u) or String.match?(post, ~r/[|│｜]/u))
   end
 
   # What the window's lists look like: the text between their things, and

@@ -484,6 +484,27 @@ defmodule Aethrion.BridgeLedgerCardsTest do
              {window, [], []}
   end
 
+  test "a row's number said with the model's working keeps the row's cells" do
+    spec = %{open: "[Day", close: ""}
+    window = "[Day 2/30 · Night]\nTyler | 65 | Calm | A thought.\nRae | 42 | Wary | Another."
+
+    for said <- ["+10 (65 → 75)", "65 → 75 (+10)", "75 (+10)", "+10 → 75", "(65 → 75)", "=75"] do
+      {now, applied, []} = Ledger.apply(window, [{"Tyler", said}], spec)
+      assert now =~ "\nTyler | 75 | Calm | A thought.\n", said
+      assert Ledger.log(applied, [], :ko) == ["기록 · Tyler 65 → 75"]
+    end
+
+    # Words of its own for a number that has words: those are taken.
+    assert {"Mood: 45 (curious)\nHP: 3/5", _applied, []} =
+             Ledger.apply("Mood: 30 (wary)\nHP: 3/5", [{"Mood", "45 (curious)"}])
+
+    assert {"Mood: 45 (wary)\nHP: 36 / 50", _applied, []} =
+             Ledger.apply("Mood: 30 (wary)\nHP: 22 / 50", [
+               {"Mood", "45 (+15)"},
+               {"HP", "36 / 50 (+14)"}
+             ])
+  end
+
   test "a list that counts every thing counts a new one as well" do
     habits = %{separator: ", ", empty: "None"}
 
