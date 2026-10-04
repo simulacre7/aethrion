@@ -505,6 +505,13 @@ defmodule Aethrion.Bridge.Ledger do
       |> String.replace(if(habits.bars?, do: ~r/[\r\n|]/u, else: ~r/[\r\n]/u), " ")
       |> String.trim()
 
+    # "=20:30", "= 45": the value said outright, for any field.
+    {value, habits} =
+      case Regex.run(~r/\A=\s*(\S.*)\z/us, value) do
+        [_all, said] -> {said, Map.put(habits, :outright?, true)}
+        nil -> {value, habits}
+      end
+
     cond do
       # The note's own stand-ins, copied as they stand, are no change.
       String.downcase(value) in @stand_ins ->
@@ -549,7 +556,7 @@ defmodule Aethrion.Bridge.Ledger do
         _one_part -> {value, false}
       end
 
-    habits = Map.put(habits, :outright?, outright?)
+    habits = Map.put(habits, :outright?, outright? or habits[:outright?] == true)
 
     numbered(number(was), delta(value, figure?), value, habits) ||
       worded(was, value, habits, figure?)
