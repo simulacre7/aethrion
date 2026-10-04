@@ -777,4 +777,48 @@ defmodule Aethrion.BridgeLedgerCardsTest do
       assert ["Day", "Gold", "Mood"] = window |> Ledger.fields(spec) |> Enum.map(& &1.name)
     end
   end
+
+  describe "a window of lines wrapped in tags" do
+    @tracker %{open: "**<scene>", close: "<rbd>**", rules: []}
+
+    @sheet "**<scene>Kim's location: Market Street | Date: 01/01/00 | Time: 13:00</scene>\n<hp>Kim's Health Points: 100 | Status: Healthy<hp>\n<skills>Abilities: None<skills>\n<rbd>Return By Death: Market Street | Date: 01/01/00 | Time: 13:00 | Miasma: Unperceivable.<rbd>**"
+
+    test "the tags are no part of a name or a value" do
+      assert @sheet |> Ledger.fields(@tracker) |> Enum.map(&{&1.name, &1.value}) == [
+               {"Kim's location", "Market Street"},
+               {"Date", "01/01/00"},
+               {"Time", "13:00"},
+               {"Kim's Health Points", "100"},
+               {"Status", "Healthy"},
+               {"Abilities", "None"},
+               {"Return By Death", "Market Street"},
+               {"Date 2", "01/01/00"},
+               {"Time 2", "13:00"},
+               {"Miasma", "Unperceivable."}
+             ]
+    end
+
+    test "a field named as someone's is found without the owner" do
+      changes = [{"Location", "The Guild"}, {"Health Points", "-12"}, {"Time", "13:35"}]
+      {kept, applied, []} = Ledger.apply(@sheet, changes, @tracker)
+      assert length(applied) == 3
+
+      assert kept =~
+               "**<scene>Kim's location: The Guild | Date: 01/01/00 | Time: 13:35</scene>\n<hp>Kim's Health Points: 88 | Status: Healthy<hp>"
+
+      # The checkpoint below keeps its own place and time.
+      assert kept =~ "<rbd>Return By Death: Market Street | Date: 01/01/00 | Time: 13:00 |"
+    end
+
+    test "a bare name that a field has is that field, whoever else owns one" do
+      spec = %{open: "[S]", close: "[S]", rules: []}
+      window = "[S]\n- HP: 10 / 20\n- Mira's HP: 5 / 9\n[S]"
+      {kept, _applied, []} = Ledger.apply(window, [{"HP", "-3"}], spec)
+      assert kept == "[S]\n- HP: 7 / 20\n- Mira's HP: 5 / 9\n[S]"
+
+      # Two owners and no bare field: it is not guessed whose.
+      window = "[S]\n- Kim's HP: 10 / 20\n- Mira's HP: 5 / 9\n[S]"
+      assert {^window, [], [{"HP", "-3", :unknown}]} = Ledger.apply(window, [{"HP", "-3"}], spec)
+    end
+  end
 end

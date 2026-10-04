@@ -74,21 +74,42 @@ At the start of the night the same test gave 85%, and 94% midway. Most of what w
 
 For what is left, the reply's story is looked through: a thing of a list that the story says was drunk, eaten, thrown, sold, or handed over, with no line for it, is listed under this turn's rulings as not written, and nothing is changed (the story may speak of someone else's potion). In the run at 94%, five things spent in the story had no line (a potion drunk, things sold): it caught 4 of the 5. The model is then asked for the line next turn; in a test of that turn alone, 8 answers of 8 wrote it.
 
+## When The Story Runs Ahead
+
+The rules keep the level: it rises when the experience is there. The small model tells of a level gained when it is not: three kills at 12 EXP each, and "Level 4!" at 52 of 132. The window stays at 3, and the reply's own story is at odds with it. In one session this went on for four turns, and each time the model also raised stats with the points of the level it had told of.
+
+So the note now says where each waiting rule stands (`Level stays at 3 (EXP is 52 / 132, 80 short)`), and a line the model wrote for what only the rules set is named next turn as something that did not happen (before, it was listed with the lines to write again).
+
+Four turns of that session, each played again twelve times from the same history, on the note before and after:
+
+| | before | after |
+|---|---|---|
+| replies with a line for Level, which is the rules' to set | 15 of 48 | 2 of 48 |
+| stories that tell of a level-up the window does not have | 10 of 48 | 5 of 48 |
+| stories that say how much EXP is still needed | 0 of 48 | 3 of 48 |
+
+Half as often, not never. In the next two full sessions, 1 turn of 60 had such a story (6 of 60 in the two before).
+
 ## Other Cards
 
-The same code played eight to fourteen turns each of eleven community cards and the example card, with Haiku narrating and Opus reading. Their windows come in these shapes, all kept by the ledger:
+The same code played eight to fourteen turns each of twenty-six community cards and the two example cards, with Haiku narrating and Opus reading. Fourteen have a window the ledger keeps. Their windows come in these shapes:
 
 - a block of `- Name: value` lines between two markers (RPG windows with levels, pairs, and inventories);
 - one line of `Name: value` pieces split by `|`, with a thought at the end;
 - a heading of several parts (`[Day 1 · night · a place]`) over a table of rows, one person a row, with labelled numbers in the rows;
 - lines led by a mark (`◈Time: ...`) with no closing text;
-- `<status>` with `NAME=value` lines;
+- a heading led by a mark (`🧭[Year 527 · morning · spring]`) over `- Name: value` lines;
 - a record sheet with a heading that counts (`━━ RECORD No.4 ━━`) and fields split by `│`;
 - one line of `name=value` pieces split by `|`.
 
-Two more cards draw their windows with their own scripts and tell the model not to write the numbers: those are left alone.
+And these are left to the model, as before the ledger:
 
-What unit tests had not found, these sessions and the thirty-turn ones did: an inventory replaced by `(no change)`, a list taken for a date because an item was of grade `(일반)` (which reads as a day of the week), a level that stayed at 1 because the model had wrapped the experience itself, a row emptied by `+10 (65 → 75)`, a closing tag spelled `</aetherion-ledger>`. After each session every turn's window is checked for a field gone or a value that looks broken.
+- windows the card draws with its own scripts, the model being told not to write the numbers (three cards);
+- a window that is mostly prose: a line for what each of five people is thinking, the day's news. Kept, with only the named fields changed, those lines stayed as they were for five turns; the model alone writes them anew with every reply;
+- a window of cells with no names, told apart by their place (`[Status:image|title|summary|Time: 22:10|place|...]`);
+- a window with a line for each character now in the scene, more or fewer as they come and go.
+
+What unit tests had not found, these sessions and the thirty-turn ones did: an inventory replaced by `(no change)`, a list taken for a date because an item was of grade `(일반)` (which reads as a day of the week), a level that stayed at 1 because the model had wrapped the experience itself, a row emptied by `+10 (65 → 75)`, a closing tag spelled `</aetherion-ledger>`, a window in brackets cut at a bracket inside it (and the rest of it left in the middle of the reply), a window in parts cut at its first blank line, a line in brackets that lost its closing bracket. After each session every turn's window is checked for a field gone or a value that looks broken.
 
 ## What This Does Not Show
 

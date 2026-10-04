@@ -837,6 +837,7 @@ defmodule Aethrion.Bridge.Ledger do
     {name, value} = itemed(book.things, book.by_name, name, value)
     {name, value} = maxed(book.by_name, book.rules, name, value)
     name = change_of(book.by_name, name)
+    name = owned(book.by_name, name)
     field = Map.get(book.as_written, written(name)) || Map.get(book.by_name, key(name))
 
     cond do
@@ -1041,6 +1042,27 @@ defmodule Aethrion.Bridge.Ledger do
 
   # A short name is the field's own; a longer one may end otherwise
   # ("currency" for "currencies").
+  # A field the window names as someone's ("Kim's Health Points", "기환의
+  # 체력") is that one when a change names it without the owner, and no
+  # field has the bare name.
+  defp owned(by_name, name) do
+    bare = key(name)
+
+    with false <- is_map_key(by_name, bare),
+         [found] <-
+           Enum.filter(Map.keys(by_name), fn field ->
+             String.ends_with?(field, " " <> bare) and
+               String.match?(
+                 binary_part(field, 0, byte_size(field) - byte_size(bare) - 1),
+                 ~r/\A[^\s]{1,24}(?:['’]s|의)\z/u
+               )
+           end) do
+      by_name[found].name
+    else
+      _other -> name
+    end
+  end
+
   defp stem_of?(field, base) do
     if String.length(base) <= 3,
       do: field == base,

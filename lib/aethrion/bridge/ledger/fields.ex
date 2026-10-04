@@ -170,11 +170,17 @@ defmodule Aethrion.Bridge.Ledger.Fields do
     end
   end
 
+  # An opening text that is left for the first line to read: one that
+  # names the first field, or a tag with the first fields on its line
+  # ("**<scene>Location: ... | Time: 13:00</scene>"; the line is read as
+  # any other wrapped in a tag).
   defp names_first?(window, open) do
     after_open = String.replace_prefix(window, open, "")
 
     String.contains?(open, [":", "：", "=", "|", "│"]) or
-      String.match?(after_open, ~r/\A[ \t]*[:：=]/u)
+      String.match?(after_open, ~r/\A[ \t]*[:：=]/u) or
+      (String.match?(open, ~r/\A\**<\p{L}[\p{L}\p{N}_\-]{0,23}>\z/u) and
+         String.match?(after_open, ~r/\A[ \t]*[^\s<]/u))
   end
 
   @max_line 2_000
@@ -186,7 +192,7 @@ defmodule Aethrion.Bridge.Ledger.Fields do
   defp line(window, start, length) do
     # Without the blanks around it: a line of spaces is not gone through
     # for a name.
-    {start, length} = trimmed(window, start, length)
+    {start, length} = window |> trimmed(start, length) |> untagged(window)
     text = binary_part(window, start, length)
 
     cells =
@@ -223,6 +229,23 @@ defmodule Aethrion.Bridge.Ledger.Fields do
 
     fields = Enum.map(pieces, fn {at, size} -> named(window, at, size) end)
     if length(fields) >= 2 and Enum.all?(fields), do: fields
+  end
+
+  # A line wrapped in a tag ("<hp>Health: 100 | Status: fine<hp>", closed
+  # with a slash or without, in bold or not) is read as what is inside it;
+  # so is one that only begins with the tag (the window's closing text
+  # may be what closes it).
+  defp untagged({start, length}, window) do
+    text = binary_part(window, start, length)
+
+    case Regex.run(
+           ~r/\A(\**<([\p{L}][\p{L}\p{N}_\-]{0,23})>\s*)(.*?)\s*(?:<\/?\2>\**)?\z/us,
+           text,
+           return: :index
+         ) do
+      [_all, {0, lead}, _tag, {_at, inner}] when inner > 0 -> {start + lead, inner}
+      _other -> {start, length}
+    end
   end
 
   # The fields of a line that holds several, between bars; nil for a line
