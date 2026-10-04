@@ -34,7 +34,7 @@ Thirty turns a session. Where a row has several sessions, each is given.
 |---|---|---|---|---|---|---|---|
 | Claude Opus 5.5 | the model | 3 of 30 | 0 / 0 / 0 | 0 | 3 | 10 of 10 | 5 |
 | Claude Haiku 4.5 | the model | 30 of 30 | 30 / 22 / 0 | 0 | 18 | 10 of 10 | 44 |
-| Claude Haiku 4.5 | Aethrion, the card read by Haiku | 0 and 0 of 30 | 0 / 0 / 0 | 0 | 0 | 0 of 20 | 10 and 7 |
+| Claude Haiku 4.5 | Aethrion, the card read by Haiku | 0 of 30, three times | 0 / 0 / 0 | 0 | 0 | 0 of 30 | 10, 7 and 16 |
 | Claude Haiku 4.5 | Aethrion, the card read by Opus (`--card-model`) | 0 of 30, four times | 0 / 0 / 0 | 0 | 0 | 0 of 40 | 4, 2, 5 and 6 |
 | Claude Opus 5.5 | Aethrion | 0 of 30 | 0 / 0 / 0 | 0 | 0 | 0 of 10 | 3 |
 
@@ -94,7 +94,7 @@ Half as often, not never. In the eleven full sessions the small model narrated a
 
 ## Other Cards
 
-The same code played eight to fourteen turns each of twenty-six community cards and the two example cards, with Haiku narrating and Opus reading. Fourteen have a window the ledger keeps. Their windows come in these shapes:
+The same code played eight to fourteen turns each of twenty-six community cards and the two example cards, with Haiku narrating and Opus reading. Ten of the community cards have a window the ledger keeps. Their windows come in these shapes:
 
 - a block of `- Name: value` lines between two markers (RPG windows with levels, pairs, and inventories);
 - one line of `Name: value` pieces split by `|`, with a thought at the end;
@@ -102,16 +102,19 @@ The same code played eight to fourteen turns each of twenty-six community cards 
 - lines led by a mark (`◈Time: ...`) with no closing text;
 - a heading led by a mark (`🧭[Year 527 · morning · spring]`) over `- Name: value` lines;
 - a record sheet with a heading that counts (`━━ RECORD No.4 ━━`) and fields split by `│`;
-- one line of `name=value` pieces split by `|`.
+- one line of `name=value` pieces split by `|`;
+- lines wrapped in tags (`<hp>Kim's Health Points: 100 | Status: Healthy<hp>`), with place and time a second time below, for a checkpoint.
 
-And these are left to the model, as before the ledger:
+The other sixteen are left to the model, as before the ledger:
 
-- windows the card draws with its own scripts, the model being told not to write the numbers (three cards);
-- a window that is mostly prose: a line for what each of five people is thinking, the day's news. Kept, with only the named fields changed, those lines stayed as they were for five turns; the model alone writes them anew with every reply;
-- a window of cells with no names, told apart by their place (`[Status:image|title|summary|Time: 22:10|place|...]`);
-- a window with a line for each character now in the scene, more or fewer as they come and go.
+- six print no window;
+- three draw theirs with their own scripts, the model being told not to write the numbers;
+- three have a window that is mostly prose: a line for what each of five people is thinking, the day's news. Kept, with only the named fields changed, those lines stayed as they were for turns (the news of one card for all eight); the model alone writes them anew with every reply;
+- one has cells with no names, told apart by their place (`[Status:image|title|summary|Time: 22:10|place|...]`);
+- one has a line for each character now in the scene, more or fewer as they come and go;
+- in two the model prints another window than the format the card describes, which is then not found, and nothing is done to it.
 
-What unit tests had not found, these sessions and the thirty-turn ones did: an inventory replaced by `(no change)`, a list taken for a date because an item was of grade `(일반)` (which reads as a day of the week), a level that stayed at 1 because the model had wrapped the experience itself, a row emptied by `+10 (65 → 75)`, a closing tag spelled `</aetherion-ledger>`, a window in brackets cut at a bracket inside it (and the rest of it left in the middle of the reply), a window in parts cut at its first blank line, a line in brackets that lost its closing bracket. After each session every turn's window is checked for a field gone or a value that looks broken.
+What unit tests had not found, these sessions and the thirty-turn ones did: an inventory replaced by `(no change)`, a list taken for a date because an item was of grade `(일반)` (which reads as a day of the week), a level that stayed at 1 because the model had wrapped the experience itself, a row emptied by `+10 (65 → 75)`, a closing tag spelled `</aetherion-ledger>`, a window in brackets cut at a bracket inside it (and the rest of it left in the middle of the reply), a window in parts cut at its first blank line, a line in brackets that lost its closing bracket, tags taken into the names and values of the lines they wrap, a place (`24-hour store`) taken for a number, and a crash on a long line of Korean after a window. After each session every turn's window is checked for a field gone or a value that looks broken.
 
 ## What This Does Not Show
 
