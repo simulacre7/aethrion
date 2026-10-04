@@ -247,7 +247,7 @@ defmodule Aethrion.Bridge.Ledger do
     by_name = Map.new(fields, &{key(&1.name), &1})
     habits = habits(fields)
     rules = rules(fields, spec)
-    {raised, watched} = {Rules.raised(rules), Rules.watched(rules)}
+    {raised, lowered, watched} = {Rules.raised(rules), Rules.lowered(rules), Rules.watched(rules)}
 
     {edits, applied, refused} =
       Enum.reduce(changes, {%{}, [], []}, fn {name, value}, {edits, applied, refused} ->
@@ -266,10 +266,12 @@ defmodule Aethrion.Bridge.Ledger do
             {now, problem} = changed(was, value, habits)
 
             # What a rule raises when something happens is not the model's to raise.
+            # Nor is what a rule pays from the model's to lower.
             {now, problem} =
-              if key(field.name) in raised and first(now) > first(was),
-                do: {was, :ruled},
-                else: {now, problem}
+              if (key(field.name) in raised and first(now) > first(was)) or
+                   (key(field.name) in lowered and first(now) < first(was)),
+                 do: {was, :ruled},
+                 else: {now, problem}
 
             # What the rules say of a person, copied onto the person's
             # row, is no change to the window, and no fault worth a line.

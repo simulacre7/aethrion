@@ -28,7 +28,8 @@ defmodule Aethrion.Bridge.Ledger.Rules do
     looks at, or it would never stop.
   - `when Field rises: change; change` happens once for each point the
     field went up this turn (`when Level rises: Stat Point += 5`), whoever
-    raised it.
+    raised it. So does a cost: `when Strength rises: Stat Point -= 1` (what
+    is paid from does not go below nothing).
   - An expression has numbers, fields, `+ - * / ^ %`, comparisons, `and`,
     `or`, and `floor`, `ceil`, `round`, `min`, `max`, `clamp(x, low,
     high)`, `if(condition, a, b)`. A number put in a field is cut to a
@@ -440,6 +441,8 @@ defmodule Aethrion.Bridge.Ledger.Rules do
         {_n, :none} -> values
         {n, _was} when kind == :set -> put(values, target, n)
         {n, was} when kind == :add -> put(values, target, was + n)
+        # What is paid from does not go below nothing.
+        {n, was} when kind == :sub and was >= 0 -> put(values, target, max(was - n, 0))
         {n, was} when kind == :sub -> put(values, target, was - n)
       end
     end)
@@ -613,7 +616,9 @@ defmodule Aethrion.Bridge.Ledger.Rules do
   those itself.
   """
   @spec raised([rule()]) :: [String.t()]
-  def raised(rules) do
+  def raised(rules), do: moved_by(rules, :add)
+
+  defp moved_by(rules, kind) do
     for rule <- rules,
         {watched, changes} <-
           (case rule do
@@ -621,11 +626,19 @@ defmodule Aethrion.Bridge.Ledger.Rules do
              {:rise, name, changes} -> [{[name], changes}]
              _always -> []
            end),
-        {:add, {name, :now}, _expr} <- changes,
+        {^kind, {name, :now}, _expr} <- changes,
         name not in watched,
         uniq: true,
         do: name
   end
+
+  @doc """
+  The fields a rule takes from when something happens (`when Strength
+  rises: Points -= 1`) and that are not what makes it happen: the model
+  does not lower those itself, or they would be paid twice.
+  """
+  @spec lowered([rule()]) :: [String.t()]
+  def lowered(rules), do: moved_by(rules, :sub)
 
   @doc """
   The pairs a rule watches for passing their maximum (`when EXP >=

@@ -549,6 +549,20 @@ defmodule Aethrion.BridgeLedgerTest do
                Ledger.apply(bar, [{"EXP", "+30"}], %{open: "[", close: "]"})
     end
 
+    test "what a rule pays from is not the model's to lower: it would be paid twice" do
+      spec = Map.put(@lines, :rules, ["when Strength rises: Stat Point -= 1"])
+      changes = [{"Strength", "+2"}, {"Stat Point", "-2"}]
+
+      assert {kept, _applied, [{"Stat Point", "-2", :ruled}]} =
+               Ledger.apply(window(), changes, spec)
+
+      assert {settled, ruled} = Ledger.settle(kept, spec, window())
+      assert value(settled, spec, "Strength") == "14"
+      assert value(settled, spec, "Stat Point") == "0"
+      assert Ledger.rule_log(ruled, :ko) == ["규칙 · Stat Point 2 → 0"]
+      assert Ledger.instruction(window(), spec) =~ "only what leads to them: Stat Point, Level ("
+    end
+
     test "without rules, a pair is still kept within its maximum" do
       assert {settled, [{"HP", "150 / 130", "130 / 130"}]} =
                Ledger.settle(String.replace(window(), "121 / 130", "150 / 130"), @lines)
