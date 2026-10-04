@@ -1282,8 +1282,11 @@ defmodule Aethrion.Bridge.Ledger do
     )
   end
 
-  defp figure(%{name: name, value: value}),
-    do: if(dated?(%{name: name, value: value}), do: nil, else: figure(value))
+  # (A date is no number to work with, nor is a place whose name begins
+  # with one: "24-hour store", "2층 복도".)
+  defp figure(%{name: name, value: value} = field) do
+    if dated?(%{name: name, value: value}) or placed?(field), do: nil, else: figure(value)
+  end
 
   defp figure(value) do
     if figure?(value) do
@@ -1345,6 +1348,10 @@ defmodule Aethrion.Bridge.Ledger do
 
       # A date is said anew, whatever numbers it holds; it is not moved by one.
       habits[:dated?] ->
+        if String.match?(value, ~r/\A[+\-−]\s*[0-9]/u), do: {was, :unreadable}, else: {value, nil}
+
+      # So is a place whose name begins with a number ("24-hour store").
+      habits[:placed?] == true and figure?(was) ->
         if String.match?(value, ~r/\A[+\-−]\s*[0-9]/u), do: {was, :unreadable}, else: {value, nil}
 
       # A row of labelled numbers; or one of cells ("Affection 30 | cheerful

@@ -821,4 +821,27 @@ defmodule Aethrion.BridgeLedgerCardsTest do
       assert {^window, [], [{"HP", "-3", :unknown}]} = Ledger.apply(window, [{"HP", "-3"}], spec)
     end
   end
+
+  describe "a place whose name begins with a number" do
+    test "is said anew like any place, and is no number of the window" do
+      spec = %{open: "[Time:", close: "]", rules: []}
+
+      window =
+        "[Time: Mon., 02:15 AM | Location: 24-hour convenience store, Mapo-gu | Gold: 5 | HP: 10 / 20]"
+
+      {kept, applied, []} =
+        Ledger.apply(window, [{"Location", "Alleyway behind the store, Mapo-gu"}], spec)
+
+      assert kept =~ "| Location: Alleyway behind the store, Mapo-gu | Gold: 5 |"
+      assert [{"Location", _was, "Alleyway behind the store, Mapo-gu"}] = applied
+
+      {kept, _applied, []} = Ledger.apply(window, [{"Location", "2층 복도"}], spec)
+      {kept, _applied, []} = Ledger.apply(kept, [{"Location", "3번 출구 앞"}], spec)
+      assert kept =~ "| Location: 3번 출구 앞 | Gold: 5 |"
+
+      # A number is not added to it.
+      assert {^window, [], [{"Location", "+3", :unreadable}]} =
+               Ledger.apply(window, [{"Location", "+3"}], spec)
+    end
+  end
 end
