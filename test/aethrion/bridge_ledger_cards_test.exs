@@ -202,6 +202,22 @@ defmodule Aethrion.BridgeLedgerCardsTest do
       )
 
     assert now == "[상태창]\n- 날짜: 2일차 아침\n- 기분: 들뜸\n- HP: 50 / 50\n- 변화: 은 → 금\n[상태창]"
+
+    # One thing becoming another, the first under another name than the window's.
+    assert {"- Weapon: 강철 쌍검 (노말)\n- HP: 3 / 5", _applied, []} =
+             Ledger.apply("- Weapon: Crude Iron Sword (Normal)\n- HP: 3 / 5", [
+               {"Weapon", "조잡한 철검 (노말) → 강철 쌍검 (노말)"}
+             ])
+
+    # An arrow within brackets: without the bracket that closed it.
+    assert {"◈시간: 가을 저녁 (戌時)\n◈무공: 15", _applied, []} =
+             Ledger.apply("◈시간: 가을 저녁 (酉時)\n◈무공: 15", [{"시간", "가을 저녁 (酉時 → 戌時)"}], %{
+               open: "◈시간",
+               close: ""
+             })
+
+    assert {"◈시간: 戌時 (밤)\n◈무공: 15", _applied, []} =
+             Ledger.apply("◈시간: 申時\n◈무공: 15", [{"시간", "申時 → 戌時 (밤)"}], %{open: "◈시간", close: ""})
   end
 
   test "the forms a small model wrote over a night of sessions" do

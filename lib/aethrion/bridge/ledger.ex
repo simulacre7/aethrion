@@ -1111,8 +1111,11 @@ defmodule Aethrion.Bridge.Ledger do
   defp moves?(was, value, habits) do
     parts = String.split(value, ~r/\s*(?:→|->|=>)\s*/u)
 
+    # ("→" is how a model writes one thing becoming another, whatever it
+    # calls the thing that was; "->" may be the words' own.)
     habits[:dated?] == true or habits[:placed?] == true or habits[:timed?] == true or
-      same_words?(hd(parts), was) or same_words?(List.last(parts), was)
+      same_words?(hd(parts), was) or same_words?(List.last(parts), was) or
+      String.contains?(value, "→")
   end
 
   # The same words, or the one within the other ("calm" for "calm (resting)").
@@ -1132,10 +1135,33 @@ defmodule Aethrion.Bridge.Ledger do
 
   # "the alley → the van", as some write a move: where it ends.
   defp arrived(value) do
-    value
-    |> String.split(~r/\s*(?:→|->|=>)\s*/u)
-    |> Enum.reject(&(String.trim(&1) == ""))
-    |> List.last() || value
+    # "evening (dusk → night)": what the brackets come to, where they stand.
+    value =
+      Regex.replace(
+        ~r/\(([^()]*?)\s*(?:→|->|=>)\s*([^()]*?)\)/u,
+        value,
+        fn _all, _from, to ->
+          "(" <> (to |> String.split(~r/\s*(?:→|->|=>)\s*/u) |> List.last()) <> ")"
+        end
+      )
+
+    last =
+      value
+      |> String.split(~r/\s*(?:→|->|=>)\s*/u)
+      |> Enum.reject(&(String.trim(&1) == ""))
+      |> List.last()
+
+    unbracketed(last || value)
+  end
+
+  # "(dusk → night)" comes to "night)": without the bracket that closed
+  # what the arrow was in.
+  defp unbracketed(text) do
+    count = fn marks -> length(Regex.scan(marks, text)) end
+
+    if count.(~r/[)\]）］]/u) > count.(~r/[(\[（［]/u),
+      do: String.replace(text, ~r/\s*[)\]）］]\s*\z/u, ""),
+      else: text
   end
 
   # A field that says when the scene is.
