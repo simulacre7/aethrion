@@ -67,7 +67,6 @@ defmodule Aethrion.Interpreter do
     }
 
     interpreter = Keyword.get(opts, :interpreter, __MODULE__.Rules)
-    min = Keyword.get(opts, :min_confidence, 0.5)
 
     result =
       try do
@@ -89,29 +88,36 @@ defmodule Aethrion.Interpreter do
           else: fallback(request, opts, {:invalid_response, []})
 
       {:ok, [_ | _] = readings} ->
-        cond do
-          not Enum.all?(readings, &reading?/1) ->
-            fallback(request, opts, {:invalid_readings, readings})
-
-          Enum.any?(readings, &(&1.confidence < min)) ->
-            fallback(request, opts, :unsure)
-
-          true ->
-            # The rules standing in for themselves would read the same.
-            case interpreter != __MODULE__.Rules and invalid(state, readings) do
-              problem when is_binary(problem) ->
-                fallback(request, opts, {:invalid_event, problem})
-
-              _valid ->
-                {:ok, readings, %{interpreter: interpreter, status: :ok}}
-            end
-        end
+        taken(readings, request, interpreter, opts)
 
       {:error, reason} ->
         fallback(request, opts, reason)
 
       other ->
         fallback(request, opts, {:invalid_response, other})
+    end
+  end
+
+  # The interpreter's readings when they can be taken, the rules' otherwise.
+  defp taken(readings, %Request{state: state} = request, interpreter, opts) do
+    min = Keyword.get(opts, :min_confidence, 0.5)
+
+    cond do
+      not Enum.all?(readings, &reading?/1) ->
+        fallback(request, opts, {:invalid_readings, readings})
+
+      Enum.any?(readings, &(&1.confidence < min)) ->
+        fallback(request, opts, :unsure)
+
+      true ->
+        # The rules standing in for themselves would read the same.
+        case interpreter != __MODULE__.Rules and invalid(state, readings) do
+          problem when is_binary(problem) ->
+            fallback(request, opts, {:invalid_event, problem})
+
+          _valid ->
+            {:ok, readings, %{interpreter: interpreter, status: :ok}}
+        end
     end
   end
 

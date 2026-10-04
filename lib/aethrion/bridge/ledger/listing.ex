@@ -189,39 +189,43 @@ defmodule Aethrion.Bridge.Ledger.Listing do
 
     cond do
       String.match?(value, ~r/\A[+\-−]/u) ->
-        {items, problem} =
-          value
-          |> steps(separator(was))
-          |> Enum.reduce({items, nil}, fn {sign, item}, {items, problem} ->
-            case move(items, sign, item) do
-              {:ok, items} -> {items, problem}
-              {problem, items} -> {items, problem}
-            end
-          end)
-
+        {items, problem} = value |> steps(separator(was)) |> Enum.reduce({items, nil}, &step/2)
         {written(items, was, habits), problem}
 
-      # One counted thing where the whole list was asked for: the rest stays.
-      length(items) >= 2 and Enum.any?(items, & &1.count) and separator(value) == nil and
-        not empty?(value) and changed_item(value).count != nil ->
-        new = changed_item(value)
-
-        items =
-          cond do
-            gained?(value) ->
-              elem(move(items, :plus, new), 1)
-
-            Enum.any?(items, &same?(&1, new)) ->
-              Enum.map(items, &if(same?(&1, new), do: %{&1 | count: new.count}, else: &1))
-
-            true ->
-              items ++ [new]
-          end
-
-        {written(items, was, habits), nil}
+      one_of_many?(items, value) ->
+        {written(one(items, value), was, habits), nil}
 
       true ->
         {value, nil}
+    end
+  end
+
+  defp step({sign, item}, {items, problem}) do
+    case move(items, sign, item) do
+      {:ok, items} -> {items, problem}
+      {problem, items} -> {items, problem}
+    end
+  end
+
+  # One counted thing where the whole list of counted things was asked for.
+  defp one_of_many?(items, value) do
+    length(items) >= 2 and Enum.any?(items, & &1.count) and separator(value) == nil and
+      not empty?(value) and changed_item(value).count != nil
+  end
+
+  # The list with that one thing gained, or counted anew: the rest stays.
+  defp one(items, value) do
+    new = changed_item(value)
+
+    cond do
+      gained?(value) ->
+        elem(move(items, :plus, new), 1)
+
+      Enum.any?(items, &same?(&1, new)) ->
+        Enum.map(items, &if(same?(&1, new), do: %{&1 | count: new.count}, else: &1))
+
+      true ->
+        items ++ [new]
     end
   end
 
@@ -270,27 +274,30 @@ defmodule Aethrion.Bridge.Ledger.Listing do
 
   defp move(items, :minus, gone) do
     case Enum.find(items, &same?(&1, gone)) do
-      nil ->
-        {:missing, items}
-
-      # An amount stays in the list at nothing.
-      %{style: {:amount, _space}, count: count} = held ->
-        left = count - (gone.count || count)
-        items = Enum.map(items, &if(same?(&1, held), do: %{&1 | count: max(left, 0)}, else: &1))
-        if left < 0, do: {:clamped, items}, else: {:ok, items}
-
-      held ->
-        left = (held.count || 1) - (gone.count || held.count || 1)
-
-        {:ok,
-         Enum.flat_map(items, fn item ->
-           cond do
-             not same?(item, held) -> [item]
-             left <= 0 -> []
-             true -> [%{item | count: left}]
-           end
-         end)}
+      nil -> {:missing, items}
+      %{style: {:amount, _space}} = held -> spend(items, held, gone)
+      held -> take_away(items, held, gone)
     end
+  end
+
+  # An amount stays in the list at nothing.
+  defp spend(items, %{count: count} = held, gone) do
+    left = count - (gone.count || count)
+    items = Enum.map(items, &if(same?(&1, held), do: %{&1 | count: max(left, 0)}, else: &1))
+    if left < 0, do: {:clamped, items}, else: {:ok, items}
+  end
+
+  defp take_away(items, held, gone) do
+    left = (held.count || 1) - (gone.count || held.count || 1)
+
+    {:ok,
+     Enum.flat_map(items, fn item ->
+       cond do
+         not same?(item, held) -> [item]
+         left <= 0 -> []
+         true -> [%{item | count: left}]
+       end
+     end)}
   end
 
   defp counted_up(items, new) do

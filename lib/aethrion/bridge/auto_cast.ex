@@ -145,26 +145,24 @@ defmodule Aethrion.Bridge.AutoCast do
   # What is kept under a key, read back: the cast with the card's window,
   # or (as an older server kept it) the cast alone.
   defp kept(%{"cast" => data} = kept, key) do
-    with {:ok, state} <- State.parse(data) do
-      window =
-        case kept["window"] do
-          %{"open" => open, "close" => close} = window
-          when is_binary(open) and is_binary(close) ->
-            %{open: open, close: close, rules: kept_rules(window["rules"])}
+    case State.parse(data) do
+      {:ok, state} ->
+        player = if is_binary(kept["player"]), do: kept["player"]
+        %{cast: state, window: kept_window(kept["window"]), key: key, player: player}
 
-          _none ->
-            nil
-        end
-
-      player = if is_binary(kept["player"]), do: kept["player"]
-      %{cast: state, window: window, key: key, player: player}
-    else
-      _error -> nil
+      {:error, _error} ->
+        nil
     end
   end
 
   defp kept(%{"characters" => _} = data, key), do: kept(%{"cast" => data}, key)
   defp kept(_none, _key), do: nil
+
+  defp kept_window(%{"open" => open, "close" => close} = window)
+       when is_binary(open) and is_binary(close),
+       do: %{open: open, close: close, rules: kept_rules(window["rules"])}
+
+  defp kept_window(_none), do: nil
 
   defp kept_rules(rules) when is_list(rules), do: Enum.filter(rules, &is_binary/1)
   defp kept_rules(_none), do: []

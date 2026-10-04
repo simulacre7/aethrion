@@ -813,10 +813,11 @@ defmodule Aethrion.API do
     with {:ok, {before, now, turn}} <-
            replay_chat(cast, chat, read, turn_opts.to, turn_opts.checkpoints, auto?) do
       replayed = System.monotonic_time(:millisecond)
-      spec = if auto?, do: auto.window
-      # The window as it stood, once a reply has shown one; a request to
-      # continue a reply (no new line) leaves it alone.
-      ledger = if spec && turn.line != nil, do: Aethrion.Bridge.Ledger.current(chat, spec)
+      # What is done with the model's reply for a cast read from a card:
+      # its own status window is kept for it.
+      plan =
+        if auto?,
+          do: Aethrion.Bridge.Reply.plan(auto, chat, %{line?: turn.line != nil, locale: locale})
 
       note = %{
         "role" => "system",
@@ -824,13 +825,7 @@ defmodule Aethrion.API do
           Aethrion.Bridge.note(before, now, turn, locale,
             card_status: auto?,
             scene: auto?,
-            ledger:
-              ledger &&
-                Aethrion.Bridge.Ledger.instruction(
-                  ledger,
-                  spec,
-                  Aethrion.Bridge.Ledger.recorded(messages)
-                )
+            ledger: Aethrion.Bridge.Reply.instruction(plan, messages)
           )
       }
 
@@ -857,105 +852,28 @@ defmodule Aethrion.API do
         )
       end
 
-      # What is done with the model's reply for a cast read from a card.
-      after_reply =
-        if auto?, do: %{ledger: ledger, spec: spec, locale: locale, player: auto[:player]}
-
       if data["stream"] == true and is_function(config[:emit], 1) do
         stream_turn(
           config.emit,
           data,
           {adapter, messages, opts},
-          {status, locale, after_reply},
+          {status, locale, plan},
           finish
         )
       else
         replied = Aethrion.LLM.chat(adapter, messages, opts)
         finish.(replied)
-        reply(data, replied, status, after_reply)
+        reply(data, replied, status, plan)
       end
     end
   end
 
-  # The model's reply as the player gets it: `{text, status}`. For a cast
-  # read from a card, the model's lines for the rules are taken out (who is
-  # with the player, what the status window changed), the window is
-  # written by the ledger, and the status block says what it did.
-  defp finished(text, status, nil), do: {String.trim(text), status}
-
-  defp finished(text, status, %{ledger: ledger, spec: spec, locale: locale} = after_reply) do
-    {text, scene} = Aethrion.Bridge.Scene.take(text, after_reply[:player])
-    {text, changes} = Aethrion.Bridge.Ledger.take(text)
-    status = status && Aethrion.Bridge.Scene.mark(status, scene)
-
-    case ledger do
-      nil ->
-        # The first window is the model's to print; the card's arithmetic
-        # is worked out on it all the same.
-        case spec && Aethrion.Bridge.Ledger.window(text, spec) do
-          {head, printed, tail} ->
-            {settled, ruled} = Aethrion.Bridge.Ledger.settle(printed, spec)
-            lines = Aethrion.Bridge.Ledger.rule_log(ruled, locale)
-
-            {String.trim(head <> settled <> tail),
-             status && Aethrion.Bridge.Ledger.note(status, lines, turn_title(locale))}
-
-          _none ->
-            {String.trim(text), status}
-        end
-
-      window ->
-        # A window the model printed anyway is taken out; without ledger
-        # lines, what it changed stands in for them.
-        {text, printed} =
-          case Aethrion.Bridge.Ledger.window(text, spec) do
-            {head, printed, tail} -> {head <> tail, printed}
-            nil -> {text, nil}
-          end
-
-        source =
-          cond do
-            changes != nil -> "the model's ledger lines"
-            printed != nil -> "a window the model printed"
-            true -> "nothing from the model"
-          end
-
-        changes =
-          cond do
-            changes != nil -> changes
-            printed != nil -> Aethrion.Bridge.Ledger.differences(window, printed, spec)
-            true -> []
-          end
-
-        {kept, applied, refused} = Aethrion.Bridge.Ledger.apply(window, changes, spec)
-        {kept, ruled} = Aethrion.Bridge.Ledger.settle(kept, spec, window)
-
-        Logger.info(
-          "Aethrion ledger: #{length(applied)} changed, #{length(refused)} refused, #{length(ruled)} by rule, from #{source}" <>
-            if(printed != nil and source != "a window the model printed",
-              do: " (it printed a window too)",
-              else: ""
-            )
-        )
-
-        lines =
-          Aethrion.Bridge.Ledger.log(applied, refused, locale) ++
-            Aethrion.Bridge.Ledger.rule_log(ruled, locale)
-
-        {String.trim(text) <> "\n\n" <> kept,
-         status && Aethrion.Bridge.Ledger.note(status, lines, turn_title(locale))}
-    end
-  end
-
-  defp turn_title(:ko), do: "이번 턴 판정"
-  defp turn_title(_en), do: "This turn"
-
-  defp reply(data, replied, status, after_reply) do
+  defp reply(data, replied, status, plan) do
     case replied do
       # A reply to a request to continue one adds to it: no new turn, no
       # second status block.
       {:ok, text} ->
-        case finished(text, status, after_reply) do
+        case Aethrion.Bridge.Reply.finish(text, status, plan) do
           {text, nil} -> completion(data, text)
           {text, status} -> completion(data, text <> "\n\n" <> status)
         end
@@ -968,7 +886,7 @@ defmodule Aethrion.API do
   # The reply as server-sent events while the model writes it, the status
   # block last. Once the first event is out, a failing model can only be
   # told as an error event: the status code has gone.
-  defp stream_turn(emit, data, {adapter, messages, opts}, {status, locale, after_reply}, done) do
+  defp stream_turn(emit, data, {adapter, messages, opts}, {status, locale, plan}, done) do
     chunk = sse_chunker(data)
     emit.(:start)
     emit.({:chunk, chunk.(%{role: "assistant", content: ""}, nil)})
@@ -987,53 +905,21 @@ defmodule Aethrion.API do
       end
     end
 
-    # The model's lines for the rules are held back from the player, and
-    # so is a status window the ledger keeps.
-    {on_delta, flush} =
-      case after_reply do
-        nil ->
-          {send_delta, fn -> :ok end}
-
-        %{ledger: ledger, spec: spec} ->
-          {on_delta, _flush} =
-            Aethrion.Bridge.Ledger.filter(send_delta, if(ledger, do: spec.open))
-
-          {on_delta, fn -> :ok end}
-      end
-
+    # For a cast read from a card, the model's lines for the rules are held
+    # back from the player, and so is a status window the ledger keeps.
+    on_delta = Aethrion.Bridge.Reply.filter(send_delta, plan)
     replied = Aethrion.LLM.stream_chat(adapter, messages, opts, on_delta)
-    flush.()
     done.(replied)
     gone = Process.delete(sent)
 
     case replied do
       {:ok, text} ->
-        {text, status} = finished(text, status, after_reply)
+        {text, status} = Aethrion.Bridge.Reply.finish(text, status, plan)
 
         # The end of the reply that has not gone out yet: what the filter
         # held back, as the rules left it. (Without a filter all of it went
         # out as it came.)
-        head = String.trim_trailing(gone)
-
-        rest =
-          if after_reply != nil and String.starts_with?(text, head),
-            do: binary_part(text, byte_size(head), byte_size(text) - byte_size(head)),
-            else: ""
-
-        # The blank lines that went out after the head are not sent again.
-        space = binary_part(gone, byte_size(head), byte_size(gone) - byte_size(head))
-
-        rest =
-          cond do
-            space == "" ->
-              rest
-
-            String.starts_with?(rest, space) ->
-              binary_part(rest, byte_size(space), byte_size(rest) - byte_size(space))
-
-            true ->
-              String.trim_leading(rest)
-          end
+        rest = if plan, do: Aethrion.Bridge.Reply.unsent(text, gone), else: ""
 
         if rest != "", do: emit.({:chunk, chunk.(%{content: rest}, nil)})
         if status, do: emit.({:chunk, chunk.(%{content: "\n\n" <> status}, nil)})

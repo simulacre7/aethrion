@@ -97,76 +97,78 @@ defmodule Aethrion.Bridge.Ledger.Rules do
   defp lex(" " <> rest, names, acc), do: lex(rest, names, acc)
 
   defp lex(text, names, acc) do
-    cond do
-      found = Enum.find(names, fn {spelling, _name} -> named?(text, spelling) end) ->
-        {spelling, name} = found
-        rest = binary_part(text, byte_size(spelling), byte_size(text) - byte_size(spelling))
+    case field(text, names) || number(text) || symbol(text) || word(text) do
+      {token, rest} -> lex(rest, names, [token | acc])
+      nil -> :error
+    end
+  end
 
-        case Regex.run(~r/\A\.(max|maximum|now|current|cur|before|was|previous|prev)\b/u, rest) do
-          [suffix, part] ->
-            part =
-              cond do
-                part in ["max", "maximum"] -> :max
-                part in ["before", "was", "previous", "prev"] -> :before
-                true -> :now
-              end
+  # A field's name, with the part of it a suffix asks for.
+  defp field(text, names) do
+    with {spelling, name} <- Enum.find(names, fn {spelling, _name} -> named?(text, spelling) end) do
+      rest = after_token(text, spelling)
 
-            rest = binary_part(rest, byte_size(suffix), byte_size(rest) - byte_size(suffix))
-            lex(rest, names, [{:field, name, part} | acc])
+      case Regex.run(~r/\A\.(max|maximum|now|current|cur|before|was|previous|prev)\b/u, rest) do
+        [suffix, part] -> {{:field, name, part(part)}, after_token(rest, suffix)}
+        nil -> {{:field, name, :now}, rest}
+      end
+    end
+  end
 
-          nil ->
-            lex(rest, names, [{:field, name, :now} | acc])
-        end
+  defp part(part) when part in ["max", "maximum"], do: :max
+  defp part(part) when part in ["before", "was", "previous", "prev"], do: :before
+  defp part(_now), do: :now
 
-      match = Regex.run(~r/\A\d+(?:\.\d+)?/, text) ->
-        [number] = match
-        {value, ""} = Float.parse(number)
-        lex(after_token(text, number), names, [{:num, value} | acc])
+  defp number(text) do
+    with [number] <- Regex.run(~r/\A\d+(?:\.\d+)?/, text) do
+      {value, ""} = Float.parse(number)
+      {{:num, value}, after_token(text, number)}
+    end
+  end
 
-      match = Regex.run(~r/\A(>=|<=|==|!=|\+=|-=|≥|≤|≠|&&|\|\|)/u, text) ->
-        [op | _] = match
+  # Signs as written, with the sign each is read as; the longer ones first.
+  @symbols [
+             {">=", ">="},
+             {"<=", "<="},
+             {"==", "=="},
+             {"!=", "!="},
+             {"+=", "+="},
+             {"-=", "-="},
+             {"≥", ">="},
+             {"≤", "<="},
+             {"≠", "!="},
+             {"&&", "and"},
+             {"||", "or"},
+             {"×", "*"},
+             {"÷", "/"},
+             {"−", "-"}
+           ] ++ Enum.map(~w(+ - * / ^ % \( \) , = > < : ;), &{&1, &1})
 
-        token =
-          case op do
-            "≥" -> ">="
-            "≤" -> "<="
-            "≠" -> "!="
-            "&&" -> "and"
-            "||" -> "or"
-            op -> op
-          end
+  defp symbol(text) do
+    Enum.find_value(@symbols, fn {written, sign} ->
+      if String.starts_with?(text, written), do: {{:op, sign}, after_token(text, written)}
+    end)
+  end
 
-        lex(after_token(text, op), names, [{:op, token} | acc])
+  @words %{
+    "and" => {:op, "and"},
+    "or" => {:op, "or"},
+    "when" => {:op, "when"},
+    "then" => {:op, ":"},
+    "rises" => {:op, "rises"},
+    "rise" => {:op, "rises"},
+    "increases" => {:op, "rises"},
+    "increase" => {:op, "rises"}
+  }
 
-      match = Regex.run(~r/\A[+\-*\/^%(),=><:;×÷−]/u, text) ->
-        [op] = match
-
-        token =
-          case op do
-            "×" -> "*"
-            "÷" -> "/"
-            "−" -> "-"
-            op -> op
-          end
-
-        lex(after_token(text, op), names, [{:op, token} | acc])
-
-      match = Regex.run(~r/\A[a-z_]+/, text) ->
-        [word] = match
-
-        token =
-          cond do
-            word in @functions -> {:fun, word}
-            word in ["and", "or", "when"] -> {:op, word}
-            word == "then" -> {:op, ":"}
-            word in ["rises", "rise", "increases", "increase"] -> {:op, "rises"}
-            true -> throw(:error)
-          end
-
-        lex(after_token(text, word), names, [token | acc])
-
-      true ->
-        :error
+  # A word of the language; any other word makes the line no rule.
+  defp word(text) do
+    with [word] <- Regex.run(~r/\A[a-z_]+/, text) do
+      cond do
+        word in @functions -> {{:fun, word}, after_token(text, word)}
+        token = @words[word] -> {token, after_token(text, word)}
+        true -> throw(:error)
+      end
     end
   end
 
@@ -500,38 +502,36 @@ defmodule Aethrion.Bridge.Ledger.Rules do
   defp eval({:op, :or, a, b}, values),
     do: flag(eval(a, values) != 0 or eval(b, values) != 0)
 
-  defp eval({:op, op, a, b}, values) do
-    {a, b} = {eval(a, values), eval(b, values)}
+  defp eval({:op, op, a, b}, values), do: operate(op, eval(a, values), eval(b, values))
 
-    case op do
-      :plus -> a + b
-      :minus -> a - b
-      :times -> a * b
-      :over -> if b == 0, do: throw(:none), else: a / b
-      :rem -> if whole(b) == 0, do: throw(:none), else: rem(whole(a), whole(b))
-      :pow -> power(a, b)
-      :gte -> flag(a >= b)
-      :lte -> flag(a <= b)
-      :gt -> flag(a > b)
-      :lt -> flag(a < b)
-      :eq -> flag(a == b)
-      :neq -> flag(a != b)
-    end
+  defp eval({:call, name, args}, values), do: call(name, Enum.map(args, &eval(&1, values)))
+
+  defp operate(:plus, a, b), do: a + b
+  defp operate(:minus, a, b), do: a - b
+  defp operate(:times, a, b), do: a * b
+  defp operate(:over, _a, b) when b == 0, do: throw(:none)
+  defp operate(:over, a, b), do: a / b
+  defp operate(:pow, a, b), do: power(a, b)
+  defp operate(:gte, a, b), do: flag(a >= b)
+  defp operate(:lte, a, b), do: flag(a <= b)
+  defp operate(:gt, a, b), do: flag(a > b)
+  defp operate(:lt, a, b), do: flag(a < b)
+  defp operate(:eq, a, b), do: flag(a == b)
+  defp operate(:neq, a, b), do: flag(a != b)
+
+  defp operate(:rem, a, b) do
+    if whole(b) == 0, do: throw(:none), else: rem(whole(a), whole(b))
   end
 
-  defp eval({:call, name, args}, values) do
-    case {name, Enum.map(args, &eval(&1, values))} do
-      {"floor", [x]} -> whole_down(x)
-      {"ceil", [x]} -> whole_up(x)
-      {"round", [x]} -> round(x)
-      {"abs", [x]} -> abs(x)
-      {"min", [_one | _more] = xs} -> Enum.min(xs)
-      {"max", [_one | _more] = xs} -> Enum.max(xs)
-      {"clamp", [x, low, high]} -> x |> max(low) |> min(high)
-      {"if", [condition, a, b]} -> if condition != 0, do: a, else: b
-      _other -> throw(:none)
-    end
-  end
+  defp call("floor", [x]), do: whole_down(x)
+  defp call("ceil", [x]), do: whole_up(x)
+  defp call("round", [x]), do: round(x)
+  defp call("abs", [x]), do: abs(x)
+  defp call("min", [_one | _more] = xs), do: Enum.min(xs)
+  defp call("max", [_one | _more] = xs), do: Enum.max(xs)
+  defp call("clamp", [x, low, high]), do: x |> max(low) |> min(high)
+  defp call("if", [condition, a, b]), do: if(condition != 0, do: a, else: b)
+  defp call(_name, _args), do: throw(:none)
 
   defp power(a, b) do
     :math.pow(a, b)

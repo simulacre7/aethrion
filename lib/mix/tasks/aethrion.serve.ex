@@ -133,16 +133,20 @@ defmodule Mix.Tasks.Aethrion.Serve do
             backend_opts,
             label,
             blank_to_nil(opts[:read_model] || System.get_env("AETHRION_READ_MODEL"))
-          ) ++
-          case blank_to_nil(opts[:card_model] || System.get_env("AETHRION_CARD_MODEL")) do
-            nil -> []
-            model -> [card_opts: [model: model]]
-          end
+          ) ++ card_reading(opts)
       )
 
     announce(Aethrion.API.port(api), opts[:bind] || "127.0.0.1", cast, data, token, label)
 
     unless iex_running?(), do: Process.sleep(:infinity)
+  end
+
+  # The model that reads a card for `aethrion-auto`, when it is not the narrating one.
+  defp card_reading(opts) do
+    case blank_to_nil(opts[:card_model] || System.get_env("AETHRION_CARD_MODEL")) do
+      nil -> []
+      model -> [card_opts: [model: model]]
+    end
   end
 
   # The cast's file name, for the card RisuAI imports: "campfire.json" is

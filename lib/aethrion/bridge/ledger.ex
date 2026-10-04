@@ -172,15 +172,9 @@ defmodule Aethrion.Bridge.Ledger do
   defp body(window, spec) do
     open = (spec && spec.open) || ""
     close = (spec && spec.close) || ""
-    after_open = String.replace_prefix(window, open, "")
-
-    said? =
-      String.contains?(open, [":", "："]) or String.match?(after_open, ~r/\A[ \t]*[:：]/u) or
-        (String.match?(open, ~r/\A\[\s*\p{L}/u) and
-           String.match?(after_open, ~r/\A[^\n\]]*[\p{L}\p{N}][^\n\]]*\]/u))
 
     from =
-      if open != "" and String.starts_with?(window, open) and not said?,
+      if open != "" and String.starts_with?(window, open) and not said?(window, open),
         do: byte_size(open),
         else: 0
 
@@ -191,6 +185,16 @@ defmodule Aethrion.Bridge.Ledger do
          else: byte_size(window)
 
     {from, to}
+  end
+
+  # Whether the opening text is part of what the window says: it names the
+  # first field, or heads a line in brackets that has more to say.
+  defp said?(window, open) do
+    after_open = String.replace_prefix(window, open, "")
+
+    String.contains?(open, [":", "："]) or String.match?(after_open, ~r/\A[ \t]*[:：]/u) or
+      (String.match?(open, ~r/\A\[\s*\p{L}/u) and
+         String.match?(after_open, ~r/\A[^\n\]]*[\p{L}\p{N}][^\n\]]*\]/u))
   end
 
   # The fields of one line of the window.
@@ -882,45 +886,49 @@ defmodule Aethrion.Bridge.Ledger do
   @spec log([{String.t(), String.t(), String.t()}], [{String.t(), String.t(), atom()}], :ko | :en) ::
           [String.t()]
   def log(applied, refused, locale) do
-    {changed, kept, unknown, clamped, missing, ruled, unreadable} =
-      if locale == :ko,
-        do: {"기록", "→", "없는 칸", "한도에 맞춤", "가지고 있지 않음", "규칙이 정함", "숫자가 아님"},
-        else:
-          {"Ledger", "→", "no such field", "kept within bounds", "not held", "set by the rules",
-           "not a number"}
+    label = if locale == :ko, do: "기록", else: "Ledger"
 
-    shown =
-      Enum.flat_map(applied, fn {name, was, now} ->
-        cond do
-          figure?(was) or figure?(now) ->
-            ["#{name} #{brief(was)} #{kept} #{brief(now)}"]
-
-          list?(was) or list?(now) ->
-            case Listing.moved(was, now) do
-              [] -> []
-              moved -> ["#{name} " <> Enum.join(moved, ", ")]
-            end
-
-          true ->
-            []
-        end
-      end)
-
-    changes = if shown == [], do: [], else: ["#{changed} · " <> Enum.join(shown, " · ")]
+    changes =
+      case Enum.flat_map(applied, &shown/1) do
+        [] -> []
+        shown -> ["#{label} · " <> Enum.join(shown, " · ")]
+      end
 
     changes ++
       for {name, value, reason} <- refused do
-        reason =
-          case reason do
-            :unknown -> unknown
-            :clamped -> clamped
-            :missing -> missing
-            :ruled -> ruled
-            :unreadable -> unreadable
-          end
-
-        "#{changed} · #{name}: #{value} (#{reason})"
+        "#{label} · #{name}: #{value} (#{reason(reason, locale)})"
       end
+  end
+
+  # A change as the turn's record shows it: a figure before and after, or
+  # what joined and left a list; a text said anew is in the window to read.
+  defp shown({name, was, now}) do
+    cond do
+      figure?(was) or figure?(now) ->
+        ["#{name} #{brief(was)} → #{brief(now)}"]
+
+      list?(was) or list?(now) ->
+        case Listing.moved(was, now) do
+          [] -> []
+          moved -> ["#{name} " <> Enum.join(moved, ", ")]
+        end
+
+      true ->
+        []
+    end
+  end
+
+  @reasons %{
+    unknown: {"없는 칸", "no such field"},
+    clamped: {"한도에 맞춤", "kept within bounds"},
+    missing: {"가지고 있지 않음", "not held"},
+    ruled: {"규칙이 정함", "set by the rules"},
+    unreadable: {"숫자가 아님", "not a number"}
+  }
+
+  defp reason(reason, locale) do
+    {ko, en} = Map.fetch!(@reasons, reason)
+    if locale == :ko, do: ko, else: en
   end
 
   # A value that is a figure: a pair, or a number that leads the value
