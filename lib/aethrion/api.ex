@@ -817,7 +817,13 @@ defmodule Aethrion.API do
       # its own status window is kept for it.
       plan =
         if auto?,
-          do: Aethrion.Bridge.Reply.plan(auto, chat, %{line?: turn.line != nil, locale: locale})
+          do:
+            Aethrion.Bridge.Reply.plan(auto, chat, %{
+              line?: turn.line != nil,
+              locale: locale,
+              id: turn[:id],
+              store: turn_opts.readings
+            })
 
       note = %{
         "role" => "system",
@@ -862,25 +868,27 @@ defmodule Aethrion.API do
         )
       else
         replied = Aethrion.LLM.chat(adapter, messages, opts)
+        # The reply is made before the turn is kept: what it settles is kept with it.
+        finished = finished(replied, status, plan)
         finish.(replied)
-        reply(data, replied, status, plan)
+        reply(data, finished)
       end
     end
   end
 
-  defp reply(data, replied, status, plan) do
-    case replied do
-      # A reply to a request to continue one adds to it: no new turn, no
-      # second status block.
-      {:ok, text} ->
-        case Aethrion.Bridge.Reply.finish(text, status, plan) do
-          {text, nil} -> completion(data, text)
-          {text, status} -> completion(data, text <> "\n\n" <> status)
-        end
+  # The model's reply as the player gets it: `{:ok, {text, status}}`.
+  defp finished({:ok, text}, status, plan),
+    do: {:ok, Aethrion.Bridge.Reply.finish(text, status, plan)}
 
-      {:error, reason} ->
-        {:error, 502, Error.new(:model_failed, "the model did not answer: #{inspect(reason)}")}
-    end
+  defp finished({:error, _reason} = error, _status, _plan), do: error
+
+  # A reply to a request to continue one adds to it: no new turn, no
+  # second status block.
+  defp reply(data, {:ok, {text, nil}}), do: completion(data, text)
+  defp reply(data, {:ok, {text, status}}), do: completion(data, text <> "\n\n" <> status)
+
+  defp reply(_data, {:error, reason}) do
+    {:error, 502, Error.new(:model_failed, "the model did not answer: #{inspect(reason)}")}
   end
 
   # The reply as server-sent events while the model writes it, the status
@@ -909,13 +917,13 @@ defmodule Aethrion.API do
     # back from the player, and so is a status window the ledger keeps.
     on_delta = Aethrion.Bridge.Reply.filter(send_delta, plan)
     replied = Aethrion.LLM.stream_chat(adapter, messages, opts, on_delta)
-    done.(replied)
     gone = Process.delete(sent)
+    # The reply is made before the turn is kept: what it settles is kept with it.
+    finished = finished(replied, status, plan)
+    done.(replied)
 
-    case replied do
-      {:ok, text} ->
-        {text, status} = Aethrion.Bridge.Reply.finish(text, status, plan)
-
+    case finished do
+      {:ok, {text, status}} ->
         # The end of the reply that has not gone out yet: what the filter
         # held back, as the rules left it. (Without a filter all of it went
         # out as it came.)

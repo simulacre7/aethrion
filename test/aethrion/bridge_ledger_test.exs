@@ -261,8 +261,8 @@ defmodule Aethrion.BridgeLedgerTest do
       assert refused == [{"Mana", "+3", :unknown}, {"Karma", "나쁨", :unknown}]
     end
 
-    test "a number told to move by words is left alone; a text can be said anew" do
-      {after_turn, applied, []} =
+    test "a text told to move by a number is left alone; a text can be said anew" do
+      {after_turn, applied, [{"Location", "+1", :unreadable}]} =
         Ledger.apply(window(), [{"Location", "+1"}, {"Time", "16:52:30"}], @lines)
 
       assert value(after_turn, @lines, "Location") == "협회 본부 로비"
@@ -308,6 +308,20 @@ defmodule Aethrion.BridgeLedgerTest do
       assert value(kept, @lines, "EXP") == "60 / 266"
       assert value(kept, @lines, "Strength") == "12"
       assert refused == [{"Strength", "아주 강함", :unreadable}]
+    end
+
+    test "a clock moves by a length of time; a text that is no list takes no number" do
+      changes = [{"Time", "+0:45"}, {"Time", "+30분"}, {"Location", "+3"}, {"Date", "+1"}]
+      assert {kept, _applied, refused} = Ledger.apply(window(), changes, @lines)
+      assert value(kept, @lines, "Time") == "18:02:09"
+      assert value(kept, @lines, "Location") == "협회 본부 로비"
+      assert refused == [{"Location", "+3", :unreadable}, {"Date", "+1", :unreadable}]
+
+      # Around midnight, and without seconds.
+      line = "[ Time: 23:40 | Mood: calm ]"
+
+      assert {"[ Time: 01:40 | Mood: calm ]", _applied, []} =
+               Ledger.apply(line, [{"Time", "+2 hours"}], %{open: "[", close: "]"})
     end
 
     test "a list is changed a thing at a time" do

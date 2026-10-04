@@ -607,7 +607,25 @@ defmodule Aethrion.Bridge.Ledger do
         put_one(dressed(one, value), a)
 
       {:text, {:move, _d}} ->
-        if Listing.empty?(was), do: Listing.change(was, value, habits), else: {was, nil}
+        cond do
+          Listing.empty?(was) -> Listing.change(was, value, habits)
+          later = clock(was, value) -> {later, nil}
+          true -> {was, :unreadable}
+        end
+
+      # "+0:45" on a clock, or on a text that is no list: time passes, or
+      # nothing does (a time is no thing to add to a list).
+      {:text, :text} when not figure? ->
+        cond do
+          not String.match?(value, ~r/\A[+\-−]\s*\d/u) or list?(was) ->
+            Listing.change(was, value, habits)
+
+          later = clock(was, value) ->
+            {later, nil}
+
+          true ->
+            {was, :unreadable}
+        end
 
       # A figure stays a figure: words with no number in them are not one.
       {_figure, :text} when figure? ->
@@ -616,6 +634,49 @@ defmodule Aethrion.Bridge.Ledger do
       # A text field: the value as it is said.
       {_was, _text} ->
         Listing.change(was, value, habits)
+    end
+  end
+
+  # A clock ("05:00", "16:47:09") moved by a length of time ("+0:45",
+  # "+30분", "+2 hours"), around midnight; nil when either is not that.
+  defp clock(was, value) do
+    with [_all, pre, h, m, s, post] <-
+           Regex.run(~r/\A(\D*?)(\d{1,2}):(\d{2})(?::(\d{2}))?(\D.*|)\z/us, was),
+         {:ok, seconds} <- span(value) do
+      now = String.to_integer(h) * 3600 + String.to_integer(m) * 60 + seconds_of(s)
+      later = Integer.mod(now + seconds, 86_400)
+      pad = &String.pad_leading(Integer.to_string(&1), 2, "0")
+      clock = pad.(div(later, 3600)) <> ":" <> pad.(div(rem(later, 3600), 60))
+      pre <> clock <> if(s == "", do: "", else: ":" <> pad.(rem(later, 60))) <> post
+    else
+      _other -> nil
+    end
+  end
+
+  defp seconds_of(""), do: 0
+  defp seconds_of(s), do: String.to_integer(s)
+
+  # A length of time as a change writes it, in seconds.
+  defp span(value) do
+    sign = if String.match?(value, ~r/\A[\-−]/u), do: -1, else: 1
+
+    cond do
+      match = Regex.run(~r/\A[+\-−]\s*(\d+):(\d{2})(?::(\d{2}))?\s*\z/u, value) ->
+        [h, m | s] = tl(match)
+
+        {:ok,
+         sign *
+           (String.to_integer(h) * 3600 + String.to_integer(m) * 60 +
+              seconds_of(List.first(s) || ""))}
+
+      match = Regex.run(~r/\A[+\-−]\s*(\d+)\s*(분|min|minutes?|m)\s*\z/iu, value) ->
+        {:ok, sign * String.to_integer(Enum.at(match, 1)) * 60}
+
+      match = Regex.run(~r/\A[+\-−]\s*(\d+)\s*(시간|hours?|hrs?|h)\s*\z/iu, value) ->
+        {:ok, sign * String.to_integer(Enum.at(match, 1)) * 3600}
+
+      true ->
+        :error
     end
   end
 
@@ -869,6 +930,21 @@ defmodule Aethrion.Bridge.Ledger do
       end
 
     "The status window is kept by the game's rules and shown by them: do not print it yourself, whatever the card says. Instead, after everything else, write <aethrion-ledger>...</aethrion-ledger> with one line for each field of the window that this reply changes: `Field: +N` or `Field: -N` for a number that goes up or down (damage taken is `HP: -N`), `Field: N / M` to set both numbers of a pair, or `Field: new text`.#{lists} Use the window's field names (#{names}).#{ruled}#{already} Leave out every field that stays as it is, and write the tags with nothing between them when nothing changes. It is not shown to the player."
+  end
+
+  @doc """
+  What the note says of the window on a turn that was answered before
+  (a reroll): its changes are settled, as facts to narrate.
+  """
+  @spec settled_instruction([{String.t(), String.t()}]) :: String.t()
+  def settled_instruction(changes) do
+    facts =
+      case changes do
+        [] -> "nothing in it changes this turn"
+        changes -> Enum.map_join(changes, "; ", fn {name, value} -> "#{name}: #{value}" end)
+      end
+
+    "The status window is kept by the game's rules and shown by them: do not print it yourself, whatever the card says, and write no <aethrion-ledger> lines. This turn was played before, and what it does to the window is settled: #{facts}. Narrate so that the reply agrees with that: the same gains, losses, and outcome, told anew."
   end
 
   # What the card's rules set, as the model is told: "the maximum of HP", "Level".

@@ -10,8 +10,14 @@ defmodule Aethrion.Bridge.Reply do
   written by the ledger from the changes, with the card's arithmetic worked
   out and what the ledger did added to this turn's rulings.
 
+  A turn's changes are settled by its first answer. They are kept under
+  the turn's id (in the store the turn's readings are kept in), and a
+  reroll of the turn is told them as facts and gets the same window: the
+  story may differ, the numbers do not.
+
   `plan/3` settles what a turn needs before the model is asked: the window
-  as it stood, and what the note says about it. `finish/3` makes the reply.
+  as it stood, what the note says about it, and the changes when the turn
+  was answered before. `finish/3` makes the reply.
   """
 
   require Logger
@@ -24,10 +30,12 @@ defmodule Aethrion.Bridge.Reply do
   none), the language of the record, and the name the card gives the player.
   """
   @type plan :: %{
-          ledger: String.t() | nil,
-          spec: Ledger.spec() | nil,
-          locale: :ko | :en,
-          player: String.t() | nil
+          required(:ledger) => String.t() | nil,
+          required(:spec) => Ledger.spec() | nil,
+          required(:locale) => :ko | :en,
+          required(:player) => String.t() | nil,
+          optional(:settled) => [{String.t(), String.t()}] | nil,
+          optional(:keep) => ([{String.t(), String.t()}] -> any())
         }
 
   @doc """
@@ -35,17 +43,29 @@ defmodule Aethrion.Bridge.Reply do
   the window as it stood in `chat`, once a reply has shown one. A request
   to continue a reply (`line?` false) leaves the window alone.
   """
-  @spec plan(map(), [map()], %{line?: boolean(), locale: :ko | :en}) :: plan()
-  def plan(auto, chat, %{line?: line?, locale: locale}) do
+  @spec plan(map(), [map()], map()) :: plan()
+  def plan(auto, chat, %{line?: line?, locale: locale} = turn) do
     spec = auto[:window]
+    ledger = if spec && line?, do: Ledger.current(chat, spec)
+    key = if ledger && is_binary(turn[:id]) && turn[:store], do: "ledger:" <> turn.id
 
     %{
-      ledger: if(spec && line?, do: Ledger.current(chat, spec)),
+      ledger: ledger,
       spec: spec,
       locale: locale,
-      player: auto[:player]
+      player: auto[:player],
+      # What this turn changed when it was first answered, if it was.
+      settled: key && settled(turn.store.get.(key)),
+      keep:
+        if(key, do: &turn.store.put.(key, %{"changes" => Enum.map(&1, fn {n, v} -> [n, v] end)}))
     }
   end
+
+  defp settled(%{"changes" => changes}) when is_list(changes) do
+    for [name, value] <- changes, is_binary(name), is_binary(value), do: {name, value}
+  end
+
+  defp settled(_none), do: nil
 
   @doc """
   What the note asks of the model about the window (`Ledger.instruction/3`),
@@ -53,6 +73,10 @@ defmodule Aethrion.Bridge.Reply do
   request's, for what the ledger did last turn.
   """
   @spec instruction(plan() | nil, [map()]) :: String.t() | nil
+  def instruction(%{ledger: ledger, settled: settled}, _messages)
+      when is_binary(ledger) and is_list(settled),
+      do: Ledger.settled_instruction(settled)
+
   def instruction(%{ledger: ledger, spec: spec}, messages) when is_binary(ledger),
     do: Ledger.instruction(ledger, spec, Ledger.recorded(messages))
 
@@ -93,7 +117,7 @@ defmodule Aethrion.Bridge.Reply do
     end
   end
 
-  defp window(text, changes, %{ledger: window, spec: spec, locale: locale}) do
+  defp window(text, changes, %{ledger: window, spec: spec, locale: locale} = plan) do
     # A window the model printed anyway is taken out; without ledger
     # lines, what it changed stands in for them.
     {text, printed} =
@@ -102,7 +126,15 @@ defmodule Aethrion.Bridge.Reply do
         nil -> {text, nil}
       end
 
-    {changes, source} = changes(changes, printed, window, spec)
+    {changes, source} =
+      case plan[:settled] do
+        nil -> changes(changes, printed, window, spec)
+        settled -> {settled, "the turn's first answer"}
+      end
+
+    # The first answer's changes stand for every later answer to the turn.
+    if plan[:settled] == nil and is_function(plan[:keep], 1), do: plan.keep.(changes)
+
     {kept, applied, refused} = Ledger.apply(window, changes, spec)
     {kept, ruled} = Ledger.settle(kept, spec, window)
 

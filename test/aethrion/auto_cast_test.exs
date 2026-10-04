@@ -221,7 +221,13 @@ defmodule Aethrion.AutoCastTest do
           "문이 열린다.\n\n[Status]\n- Level: 1\n- HP: 30 / 30\n- EXP: 90 / 100\n- Vigor: 5\n- Item: 물약 × 2\n[Status]\n<aethrion-scene></aethrion-scene>"
 
         2 ->
-          "고블린을 벤다.\n\n<aethrion-ledger>\nHP: -12\nEXP: +25\nItem: -물약 × 1\nMana: +1\n</aethrion-ledger>\n<aethrion-scene></aethrion-scene>"
+          # Asked again for a turn already answered, it tells it otherwise
+          # and would change other numbers.
+          if List.last(messages)["content"] =~ "This turn was played before",
+            do:
+              "이번엔 단칼에 벤다.\n\n<aethrion-ledger>\nHP: -40\nEXP: +900\n</aethrion-ledger>\n<aethrion-scene></aethrion-scene>",
+            else:
+              "고블린을 벤다.\n\n<aethrion-ledger>\nHP: -12\nEXP: +25\nItem: -물약 × 1\nMana: +1\n</aethrion-ledger>\n<aethrion-scene></aethrion-scene>"
 
         _more ->
           "곤봉이 어깨를 친다.\n\n[Status]\n- Level: 2\n- HP: 20 / 50\n- EXP: 15 / 100\n- Vigor: 5\n- Item: 물약 × 1\n[Status]"
@@ -492,9 +498,21 @@ defmodule Aethrion.AutoCastTest do
       assert two =~
                "기록 · HP 50 / 50 → 38 / 50 · EXP 90 / 100 → 115 / 100 · Item −물약\n기록 · Mana: +1 (없는 칸)\n규칙 · Level 1 → 2 · EXP 115 / 100 → 15 / 100"
 
-      # A reroll starts again from the window before it.
+      # A reroll tells the turn anew, and its numbers stand: the model is
+      # told what the first answer settled, and what it would change now is
+      # not taken.
       {200, again} = ask(base, [first, reply(one), second], card)
-      assert again == two
+      note = calls() |> List.last() |> List.last() |> Map.fetch!("content")
+
+      assert note =~
+               "what it does to the window is settled: HP: -12; EXP: +25; Item: -물약 × 1; Mana: +1."
+
+      refute note =~ "one line for each field"
+
+      assert again =~
+               ~r/\A이번엔 단칼에 벤다.\n\n\[Status\]\n- Level: 2\n- HP: 38 \/ 50\n- EXP: 15 \/ 100\n/
+
+      assert String.replace(again, "이번엔 단칼에 벤다.", "고블린을 벤다.") == two
 
       # A window printed where changes were asked for: its differences are the changes.
       third = user("버틴다.")
@@ -542,8 +560,10 @@ defmodule Aethrion.AutoCastTest do
             do: content
       end
 
-      # What is streamed comes to what an unstreamed reply is.
-      assert stream.([first, reply(one), second]) == two
+      # What is streamed comes to what an unstreamed reply is (the turn
+      # was answered once: its numbers stand).
+      assert stream.([first, reply(one), second]) ==
+               String.replace(two, "고블린을 벤다.", "이번엔 단칼에 벤다.")
 
       third = user("버틴다.")
       streamed = stream.([first, reply(one), second, reply(two), third])
