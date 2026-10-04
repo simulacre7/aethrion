@@ -1189,6 +1189,11 @@ defmodule Aethrion.Bridge.Ledger do
       |> String.trim()
       # A stand-in of the note's, copied before the value ("new text: the inn").
       |> String.replace(~r/\A(?:the )?new (?:text|words|value)\s*[:：]\s*/iu, "")
+      # The value as it stands, said to stand: "2025-10-05 (Fri) (no change)".
+      |> String.replace(
+        ~r/(?<=\S)\s*\((?:no changes?|unchanged|not changed|same(?: as before)?|변화\s*없음|변동\s*없음|변경\s*없음|그대로|동일|유지)\)\s*\z/iu,
+        ""
+      )
 
     {value, habits} =
       case Regex.run(~r/\A=\s*(\S.*)\z/us, value) do

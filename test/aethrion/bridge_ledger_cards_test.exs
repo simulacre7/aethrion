@@ -464,6 +464,21 @@ defmodule Aethrion.BridgeLedgerCardsTest do
                {window, [], []}
     end
 
+    # The value as it stands, said to stand.
+    dated = "[Date:1900-03-03 (Fri)|Belongings:backpack|Currencies:0G, 0S, 6C|Mood:calm]"
+
+    assert Ledger.apply(
+             dated,
+             [{"Date", "1900-03-03 (Fri) (no change)"}, {"Mood", "calm (변화 없음)"}],
+             spec
+           ) ==
+             {dated, [], []}
+
+    assert {now, _applied, []} =
+             Ledger.apply(dated, [{"Date", "1900-03-04 (Sat) (no change)"}], spec)
+
+    assert now =~ "[Date:1900-03-04 (Sat)|"
+
     # "N/A" is a value: a field may come to hold nothing that applies.
     assert {now, _applied, []} = Ledger.apply(window, [{"Mood", "N/A"}], spec)
     assert now =~ "|Mood:N/A]"
