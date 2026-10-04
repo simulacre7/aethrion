@@ -445,6 +445,9 @@ defmodule Aethrion.Bridge.Ledger do
       sets: %{raised: Rules.raised(rules), lowered: Rules.lowered(rules)}
     }
 
+    # Whether at most one plain number is given a lesser number with no sign.
+    book = Map.put(book, :lone?, Enum.count(changes, &bare_lesser?(book, &1)) <= 1)
+
     {edits, applied, refused} =
       Enum.reduce(changes, {%{}, [], []}, fn {name, value}, {edits, applied, refused} = so_far ->
         case named(book, name, value) do
@@ -527,10 +530,23 @@ defmodule Aethrion.Bridge.Ledger do
     end
   end
 
+  # A number with no sign, less than the plain number it is written for.
+  defp bare_lesser?(book, {name, value}) do
+    with true <- String.match?(value, ~r/\A\s*[0-9][0-9,.]*\s*(?:%|\p{L}{0,3})\s*\z/u),
+         {%{value: was}, _value} <- named(book, name, value),
+         {:one, pre, now, _post} <- number(was),
+         {:one, _pre, to, _post} <- number(value) do
+      lead?(pre) and to < now
+    else
+      _other -> false
+    end
+  end
+
   # One field's value after a change, and what was wrong with the change.
   defp one(book, field, was, value) do
     habits =
       Map.merge(book.habits, %{
+        lone?: book.lone?,
         # A pair a rule watches may pass its maximum: the rule takes it up.
         open?: key(field.name) in book.watched,
         dated?: dated?(field),
@@ -1145,11 +1161,14 @@ defmodule Aethrion.Bridge.Ledger do
   # (A number that stands alone and is given another is that number now:
   # "Level: 11" after level 10, "Gold: 35" after 42. So a small model
   # writes it: of 60-odd such lines in a night's sessions, none was a move.
-  # Only "0" is said for no change as often as for nothing left.)
+  # But "0" is said for no change as often as for nothing left, and
+  # several lesser numbers in one reply may be a list of what moved
+  # ("Strength: 2, Agility: 3"): those are refused.)
   defp numbered({:one, pre, now, _post} = one, {:set, a}, value, habits) do
-    if lead?(pre) and a == 0 and unsigned?(value, a, now, habits),
-      do: {elem(put_one(one, now), 0), :unsigned},
-      else: put_one(dressed(one, value), a)
+    if lead?(pre) and (a == 0 or (a < now and habits[:lone?] == false)) and
+         unsigned?(value, a, now, habits),
+       do: {elem(put_one(one, now), 0), :unsigned},
+       else: put_one(dressed(one, value), a)
   end
 
   defp numbered(_shape, _delta, _value, _habits), do: nil

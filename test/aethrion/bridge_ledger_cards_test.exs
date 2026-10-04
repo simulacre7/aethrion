@@ -330,17 +330,27 @@ defmodule Aethrion.BridgeLedgerCardsTest do
     assert {now, _applied, refused} =
              Ledger.apply(
                window,
-               [{"Level", "11"}, {"골드", "35"}, {"Dexterity", "0"}, {"HP", "8"}, {"HP", "45"}],
+               [{"Level", "11"}, {"골드", "35"}, {"HP", "8"}, {"HP", "45"}],
                spec
              )
 
     assert now == "[Status]\n- Level: 11\n- 골드: 35\n- HP: 36 / 50\n- Dexterity: 104\n[Status]"
+    assert refused == [{"HP", "8", :unsigned}, {"HP", "45", :unsigned}]
 
-    assert refused == [
-             {"Dexterity", "0", :unsigned},
-             {"HP", "8", :unsigned},
-             {"HP", "45", :unsigned}
-           ]
+    assert {^window, [], [{"Dexterity", "0", :unsigned}]} =
+             Ledger.apply(window, [{"Dexterity", "0"}], spec)
+
+    # Several lesser numbers in one reply may be a list of what moved: none is taken.
+    assert {^window, [], [{"Level", "1", :unsigned}, {"Dexterity", "5", :unsigned}]} =
+             Ledger.apply(window, [{"Level", "1"}, {"Dexterity", "5"}], spec)
+
+    assert {^window, [], [{"골드", "35", :unsigned}, {"Dexterity", "0", :unsigned}]} =
+             Ledger.apply(window, [{"골드", "35"}, {"Dexterity", "0"}], spec)
+
+    assert {now, _applied, []} =
+             Ledger.apply(window, [{"Level", "11"}, {"Dexterity", "109"}], spec)
+
+    assert now =~ "- Level: 11\n" and now =~ "- Dexterity: 109\n"
   end
 
   test "a thing the story spends and the lines leave out is asked about, not taken" do
