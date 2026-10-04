@@ -28,26 +28,26 @@ And each reroll: whether the window's numbers and inventory came out the same in
 
 ## Results
 
-Thirty turns a session. Where a row has two sessions, both are given.
+Thirty turns a session. Where a row has several sessions, each is given.
 
 | narrating model | the window is kept by | turns that break a rule | maxima / EXP max / bounds | no window | stat points | rerolls with other numbers | level after 30 turns |
 |---|---|---|---|---|---|---|---|
 | Claude Opus 5.5 | the model | 3 of 30 | 0 / 0 / 0 | 0 | 3 | 10 of 10 | 5 |
 | Claude Haiku 4.5 | the model | 30 of 30 | 30 / 22 / 0 | 0 | 18 | 10 of 10 | 44 |
-| Claude Haiku 4.5 | Aethrion, the card read by Haiku | 2 and 6 of 30 | 0 / 0 / 0 | 0 and 1 | 2 and 5 | 0 of 20 | 4 and 3 |
-| Claude Haiku 4.5 | Aethrion, the card read by Opus (`--card-model`) | 1 and 14 of 30 | 0 / 0 / 0 | 1 and 0 | 0 and 14 | 0 of 20 | 3 and 20 |
-| Claude Haiku 4.5 | Aethrion, and a price for stat points added by hand | 0 of 30 | 0 / 0 / 0 | 0 | 0 | 0 of 10 | 14 |
+| Claude Haiku 4.5 | Aethrion, the card read by Haiku | 0 and 0 of 30 | 0 / 0 / 0 | 0 | 0 | 0 of 20 | 10 and 7 |
+| Claude Haiku 4.5 | Aethrion, the card read by Opus (`--card-model`) | 0 of 30, four times | 0 / 0 / 0 | 0 | 0 | 0 of 40 | 4, 2, 5 and 6 |
 | Claude Opus 5.5 | Aethrion | 0 of 30 | 0 / 0 / 0 | 0 | 0 | 0 of 10 | 3 |
 
 Reading it:
 
 - **The small model alone loses the window.** Its first window already has maximums the stats do not give, the EXP a level takes drifts from the formula, and levels come too fast: 44 after thirty turns, where the large model reached 5.
-- **With the ledger, the same small model keeps the card's rules.** The maximums, the EXP formula, level-ups with what is left over carried on, and the points a level gives are worked out by the rules, so there is nothing for the model to get wrong there: none of those was broken in any turn of these sessions.
-- **What is left is the model's account of spending stat points**: a stat raised with no point taken for it, or by more than was spent. The card says that stat points raise stats and names no price, so no rule charges for them. The large model alone slips in the same place. How often depends on the story: a session where the player levels fast and spends at every turn broke the rule in 14 turns, one that levels slowly in none. With a price added on `/cards` (`when Strength rises: Stat Point -= 1`, one line a stat), a point that is not there cannot be spent, and nothing was broken in thirty turns.
-- **No window.** The first window is the model's to print (there is none yet to keep). In two sessions the small model's first reply had none; it printed one at the second turn, and the ledger went on from there. Asked alone, 7 first replies of 8 had the window. The note now asks for the window while the chat has none: 25 first replies of 25 had it.
+- **With the ledger, the same small model keeps the card's rules.** The maximums, the EXP formula, level-ups with what is left over carried on, the points a level gives, and the points a stat costs are worked out by the rules, so there is nothing for the model to get wrong there.
+- **Stat points were the last thing to hold.** The card says that stat points raise stats and names no price. Left to say it itself, the small model raised the stat and forgot the points (the same five points were spent in six turns of one session), or raised more than it had. The large model alone slips in the same place. So the card reader now notes which pool of points the card says raises which numbers, and the price is one point each: held in a turn that has points, waived in a turn with none, since this card, like many, lets a stat rise by training too. Before that, sessions with the ledger had stat points unaccounted for in 0 to 16 turns of thirty.
+- **No window.** The first window is the model's to print (there is none yet to keep). In two earlier sessions the small model's first reply had none; it printed one at the second turn, and the ledger went on from there. Asked alone, 7 first replies of 8 had the window. The note now asks for the window while the chat has none: 25 first replies of 25 had it, and every session since.
 - **Rerolls.** Left to the model, every reroll gave other numbers, with the large model too: a reroll is a new roll of the dice for everything. With the ledger, a turn's changes are settled by its first answer, and a reroll tells the same outcome again.
+- **The level reached** differs with the story, and with how much experience the model hands out: the rules see to it that a level takes what the card says, not that a kill gives a fair amount.
 
-The table is from the last build of the night it was measured in. On the builds before it, some twenty more sessions with the ledger gave the same picture: no maximum, formula, or bound broken wherever the card's rules had been read, no reroll with other numbers, and between 0 and 16 turns of thirty with stat points unaccounted for.
+The rows with the ledger are from the builds at the end of the night it was measured in. Some thirty sessions on the builds before them gave the picture those builds were made from: no maximum, formula, or bound broken wherever the card's rules had been read, no reroll with other numbers, and what is told above of stat points, of the first window, and of [the story running ahead](#when-the-story-runs-ahead).
 
 ## The Reader Matters
 
@@ -90,7 +90,7 @@ Four turns of that session, each played again twelve times from the same history
 | stories that tell of a level-up the window does not have | 10 of 48 | 5 of 48 |
 | stories that say how much EXP is still needed | 0 of 48 | 3 of 48 |
 
-Half as often, not never. In the next two full sessions, 1 turn of 60 had such a story (6 of 60 in the two before).
+Half as often, not never. In the eleven full sessions the small model narrated after that, 1 turn of 330 had such a story (6 of 60 in the two before).
 
 ## Other Cards
 
@@ -115,8 +115,9 @@ What unit tests had not found, these sessions and the thirty-turn ones did: an i
 
 ## What This Does Not Show
 
-- One or two sessions a row. The rows differ in what the story did, so the level reached is a rough sign, not a measure.
-- The ledger keeps the books; it does not judge. How much EXP a kill gives and how hard a blow lands are still the model's to say, once a turn.
+- One to four sessions a row, one card, one simulated player who fights and spends points. Nothing broken in thirty turns is not nothing ever: it is what these sessions showed. The rows differ in what the story did, so the level reached is a rough sign, not a measure.
+- The ledger keeps the books; it does not judge. How much EXP a kill gives and how hard a blow lands are still the model's to say, once a turn. A small model that writes the level itself, with the experience counted down to fit, is taken at its word.
+- The price of a stat point is read from a card that names none. A stat that rises while points are waiting is paid for with them, also when the story meant training.
 - Nor does anything in the card price loot. The small model is generous with it: by the end of some sessions it had sold monster cores for hundreds of millions. The ledger added those sums up correctly.
 - Time. With the ledger the model no longer writes the 37 lines of the window with every reply, and a turn took about 30 to 45 seconds where the small model alone took 42; but the sessions shared one machine, several at a time, so the seconds are not a measurement.
 - The checks in RisuAI's own app are still to do for the ledger; it was checked in SillyTavern and through the API.
