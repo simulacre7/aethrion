@@ -175,6 +175,8 @@ defmodule Aethrion.Bridge.AutoCast do
 
   # How many times a card with a status window is read for its rules.
   @readings 3
+  # How long a later reading may take before the first one is made do with.
+  @reading_timeout 240_000
 
   @doc """
   Reads the card with the model and keeps what it was read as:
@@ -231,7 +233,7 @@ defmodule Aethrion.Bridge.AutoCast do
 
   defp surest(people, more, again) do
     1..more
-    |> Task.async_stream(fn _n -> again.() end, timeout: :infinity, on_timeout: :kill_task)
+    |> Task.async_stream(fn _n -> again.() end, timeout: @reading_timeout, on_timeout: :kill_task)
     |> Enum.reduce(people, fn
       {:ok, %{open: open, close: close, rules: rules}}, best
       when open == best.window.open and close == best.window.close and
@@ -254,6 +256,8 @@ defmodule Aethrion.Bridge.AutoCast do
   rescue
     # Another reading is a help, not a need: the first one stands.
     _error -> nil
+  catch
+    _kind, _reason -> nil
   end
 
   # The window with the rules the card bears out. The card's own examples

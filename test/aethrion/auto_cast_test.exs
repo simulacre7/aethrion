@@ -140,6 +140,15 @@ defmodule Aethrion.AutoCastTest do
 
       none = Jason.encode!(%{"characters" => []})
       assert {nil, 2} = read.([none, none, none])
+
+      # A later reading that exits or throws does not take the caller with it.
+      casts = %{put: fn _key, _value -> :ok end}
+      {:ok, calls} = Agent.start_link(fn -> 0 end)
+
+      first = reading.("[Status]", [hp])
+
+      assert {:ok, %{window: %{rules: ["HP.max = Vigor * 10"]}}} =
+               AutoCast.read(card, casts, Aethrion.AutoCastTest.Exits, calls: calls, first: first)
     end
 
     test "several rules written on one line are taken apart; a card's example windows decide" do
@@ -254,6 +263,17 @@ defmodule Aethrion.AutoCastTest do
   end
 
   # Answers what the test put in its process dictionary.
+  defmodule Exits do
+    # The first reading answers; the later ones exit or throw.
+    def chat(_messages, opts) do
+      case Agent.get_and_update(opts[:calls], &{&1, &1 + 1}) do
+        0 -> {:ok, opts[:first]}
+        1 -> exit(:timeout)
+        _later -> throw(:oops)
+      end
+    end
+  end
+
   defmodule Readers do
     # One answer a reading, in turn (the later readings run in tasks).
     def chat(_messages, opts) do

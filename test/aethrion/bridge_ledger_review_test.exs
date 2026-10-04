@@ -451,24 +451,32 @@ defmodule Aethrion.BridgeLedgerReviewTest do
       assert {^lines, [], [{"Mood", _value, :unreadable}]} =
                Ledger.apply(lines, [{"Mood", "new text:"}])
 
-      # A place written with a colon would read as a field of another name.
-      marks = "📍 the beach\n❤️ 30\n⭐ 3"
+      # A place written with a colon, after a mark, would read as a field of
+      # another name: it is written with a dash.
+      marks = "📍 the beach\n❤️ 30\n💬 I wonder who this is"
 
-      assert {^marks, [], [{"📍", "Seoul: Gangnam station", :unreadable}]} =
-               Ledger.apply(marks, [{"📍", "Seoul: Gangnam station"}, {"⭐", "+1"}])
-               |> then(fn {_now, applied, refused} ->
-                 {marks, applied -- [{"⭐", "3", "4"}], refused}
-               end)
+      assert {"📍 Seoul — Gangnam station\n❤️ 31\n💬 He said — run, at 14:30", _applied, []} =
+               Ledger.apply(marks, [
+                 {"📍", "Seoul: Gangnam station"},
+                 {"❤️", "+1"},
+                 {"💬", "He said: run, at 14:30"}
+               ])
 
-      assert {"📍 the beach\n❤️ 30\n⭐ 4", [{"⭐", "3", "4"}], [_refused]} =
-               Ledger.apply(marks, [{"📍", "Seoul: Gangnam station"}, {"⭐", "+1"}])
+      # A note in a line of its own, too short to be read back as one, is refused;
+      # between bars it is a note whatever its length.
+      lines = "[Status]\nHP: 3/5\nMP: 1/2\nShe wonders who this could be.\n[Status]"
 
-      # A note too short to be read back as one.
+      assert {^lines, [], [{"Note", "Hm.", :unsound}]} =
+               Ledger.apply(lines, [{"Note", "Hm."}], %{open: "[Status]", close: "[Status]"})
+
       spec = %{open: "[ Trust:", close: "]"}
       note = "[ Trust: 3% | Anger: 5% | I wonder who this person is ]"
 
-      assert {^note, [], [{"Note", "Who is he?", :unreadable}]} =
+      assert {"[ Trust: 3% | Anger: 5% | Who is he? ]", _applied, []} =
                Ledger.apply(note, [{"Note", "Who is he?"}], spec)
+
+      assert Ledger.log([], [{"Note", "Hm.", :unsound}], :en) ==
+               ["Ledger · Note: Hm. (would change the window's fields)"]
     end
 
     test "names that only sound like a date or a place" do
@@ -699,6 +707,170 @@ defmodule Aethrion.BridgeLedgerReviewTest do
       # What went out with CR LF is how the finished reply begins.
       assert Reply.unsent("Line one.\nLine two.\n\nHP: 25 / 48", "Line one.\r\nLine two.\r\n") ==
                "\nHP: 25 / 48"
+    end
+  end
+
+  describe "a fourth review" do
+    @status %{open: "[S]", close: "[/S]"}
+
+    test "time: brackets never closed in a list, runs of blanks, many fields of one name" do
+      bags = Enum.map_join(1..5, "\n", fn n -> "Bag#{n}: " <> String.duplicate("(a, ", 495) end)
+      window = "[S]\nHP: 30 / 48\n" <> bags <> "\n[/S]"
+      changes = for n <- 1..40, do: {"Bag#{rem(n, 5) + 1}", "+x"}
+      {time, _result} = :timer.tc(fn -> Ledger.apply(window, changes, @status) end)
+      assert time < 3_000_000
+
+      blanks = "She nods." <> String.duplicate(" ", 50_000) <> "He leaves."
+      {time, {_story, nil}} = :timer.tc(fn -> Ledger.take(blanks) end)
+      assert time < 500_000
+
+      same = "[S]\n" <> String.duplicate("HP: 1/2\n", 600) <> "[/S]"
+      {time, fields} = :timer.tc(fn -> Ledger.fields(same, @status) end)
+      assert time < 1_500_000
+      assert length(fields) == 600
+    end
+
+    test "what was streamed up to a blank on the story's last line is followed by the window on a line of its own" do
+      text = "The goblin hits you.\n\n[Status]\nHP: 25 / 48\nMP: 3 / 5"
+      gone = "The goblin hits you. "
+      spec = %{open: "[Status]", close: ""}
+
+      shown = gone <> Reply.unsent(text, gone)
+
+      assert Ledger.current([%{"role" => "assistant", "content" => shown}], spec) ==
+               "[Status]\nHP: 25 / 48\nMP: 3 / 5"
+
+      assert Reply.unsent("The end.", "The end. ") == ""
+    end
+
+    test "an aside in brackets is not the window; nor are lines of speech under a heading" do
+      spec = %{open: "[", close: "]"}
+
+      current = fn content ->
+        Ledger.current([%{"role" => "assistant", "content" => content}], spec)
+      end
+
+      assert current.(
+               "You open the chest.\n[System: Quest accepted | Reward: 50 gold]\n\n[Day 3 · noon]\nHP: 30 / 48\nMP: 3 / 5"
+             ) ==
+               "[Day 3 · noon]\nHP: 30 / 48\nMP: 3 / 5"
+
+      assert current.(
+               "[ Trust: 3% | Anger: 5% | hm, who is this ]\n\n[Later]\nMina: hello.\nJisoo: hi."
+             ) ==
+               "[ Trust: 3% | Anger: 5% | hm, who is this ]"
+    end
+
+    test "a window after marks, blanks, or a number at the start of its line" do
+      for lines <- [
+            "　HP: 10/20\n　MP: 5/5",
+            "❤️ HP: 10/20\n💙 MP: 5/5",
+            String.duplicate(" ", 20) <> "HP: 10/20\n" <> String.duplicate(" ", 20) <> "MP: 5/5",
+            "1. HP: 10/20\n2. MP: 5/5"
+          ] do
+        assert Ledger.window("story.\n\n" <> lines, %{open: "HP:", close: ""}) != nil, lines
+      end
+
+      assert Ledger.window("story.\n\nEnemy HP: 10/20\nMP: 5/5", %{open: "HP:", close: ""}) == nil
+    end
+
+    test "names that end in a number, and a title on the opening line" do
+      assert Enum.map(
+               Ledger.fields("Player 1: 30 / 48\nPlayer 2: 12 / 20\nSlot 3: 15 arrows"),
+               & &1.name
+             ) ==
+               ["Player 1", "Player 2", "Slot 3"]
+
+      assert {"Player 1: 5 / 9\nPlayer 2: 12 / 20", _applied, []} =
+               Ledger.apply("Player 1: 5 / 9\nPlayer 2: 9 / 20", [{"Player 2", "+3"}])
+
+      spec = %{open: "***", close: "***"}
+      window = "*** Status ***\nHP: 3/5\nMP: 1/2\nShe wonders who he might be.\n***"
+
+      assert {"*** Status ***\nHP: 3/5\nMP: 1/2\nHe seems kind after all.\n***", _applied, []} =
+               Ledger.apply(window, [{"Note", "He seems kind after all."}], spec)
+    end
+
+    test "lists: a bracket never closed, a count or an end after an arrow, nothing gained" do
+      habits = %{separator: ", ", empty: "None"}
+
+      {list, nil} = Listing.change("Potion × 3, Rope × 1", "+Sword (broken", habits)
+      assert Listing.change(list <> ", Key × 1", "-Key", habits) == {list, nil}
+
+      assert Listing.change("Potion × 3, Smile :(, Key × 1", "-Key", habits) ==
+               {"Potion × 3, Smile :(", nil}
+
+      assert Listing.change("Potion × 3, Rope × 1", "Potion × 3 → 2", habits) ==
+               {"Potion × 2, Rope × 1", nil}
+
+      assert Listing.change("Potion × 3, Rope × 1", "Rope → none", habits) == {"Potion × 3", nil}
+      assert Listing.change("Potion × 3, Rope × 1", "Rope → used", habits) == {"Potion × 3", nil}
+
+      assert Listing.change("Potion × 3, Rope × 1", "Rope → Potion", habits) ==
+               {"Potion × 4", nil}
+
+      for said <- ["nothing gained", "No items gained"] do
+        assert {"HP: 3/5\nInventory: Potion × 3, Rope × 1", [], [_refused]} =
+                 Ledger.apply("HP: 3/5\nInventory: Potion × 3, Rope × 1", [{"Inventory", said}])
+      end
+    end
+
+    test "words and numbers: arrows from part of the old words, a maximum with a fraction, marks of bold" do
+      value = fn window, name, change ->
+        {now, _applied, refused} = Ledger.apply(window, [{name, change}])
+        {Enum.find(Ledger.fields(now), &(&1.name == name)).value, refused}
+      end
+
+      assert value.("HP: 3/5\nMood: calm (resting)", "Mood", "calm → tense") == {"tense", []}
+      assert value.("HP: 3/5\nMood: calm", "Mood", "tense → calm") == {"calm", []}
+      assert value.("HP: 3/5\n기분: 평온함", "기분", "평온 → 긴장") == {"긴장", []}
+
+      assert value.("Stamina: 78.5 / 120\nHP: 3/5", "Stamina", "+1") == {"79.5 / 120", []}
+
+      assert {"Stamina: 78.5 / 130\nHP: 3/5", _applied, []} =
+               Ledger.apply("Stamina: 78.5 / 120\nHP: 3/5", [{"Stamina.max", "+10"}])
+
+      assert {"Karma: -7\nHP: 3/5", [], [{"Karma", "0", :unsigned}]} =
+               Ledger.apply("Karma: -7\nHP: 3/5", [{"Karma", "0"}])
+
+      assert Ledger.take("ok\n<aethrion-ledger>\nMood: **tense**\n</aethrion-ledger>") ==
+               {"ok", [{"Mood", "tense"}]}
+
+      assert value.("EXP: 90 / 300\nLevel: 6", "EXP", "+150 (90 → 240); so → Level 7, EXP resets") ==
+               {"240 / 300", []}
+
+      assert value.("Gold: 1,250 G\nHP: 3/5", "Gold", "+50 (now 1,300); → shop 2") ==
+               {"1,300 G", []}
+    end
+
+    test "a row with one labelled number takes a number" do
+      rows = "Mina | Affection 30 | cheerful | lobby\nTyler | Affection 10 | gloomy | room"
+
+      mina = fn change ->
+        rows |> Ledger.apply([{"Mina", change}]) |> elem(0) |> String.split("\n") |> hd()
+      end
+
+      assert mina.("+2") == "Mina | Affection 32 | cheerful | lobby"
+      assert mina.("-3 (annoyed)") == "Mina | Affection 27 | cheerful | lobby"
+      assert mina.("=35") == "Mina | Affection 35 | cheerful | lobby"
+      assert Ledger.instruction(rows) =~ "`Mina: Affection +1`"
+    end
+
+    test "tags closed wrongly are closed; a line of the story that only looks like a marker stays" do
+      wrong = "The goblin hits you.\n<aethrion-ledger>\nHP: -5\n</ledger>"
+      assert Ledger.take(wrong) == {"The goblin hits you.", [{"HP", "-5"}]}
+      refute Ledger.cut_off?(wrong)
+      refute Ledger.cut_off?("x\n<aethrion-ledger>\nHP: -5\n</aethrion-ledgers>")
+      assert Ledger.cut_off?("x </aethrion-ledger>\n<aethrion-ledger>\nHP: -5")
+
+      # The story's own lines.
+      assert Ledger.take("He typed:\n</ledger>\nand saved.") ==
+               {"He typed:\n</ledger>\nand saved.", nil}
+
+      assert Ledger.unmarked("Morning.\n━━━━━━━━\nEvening.", %{open: "━━━━━━━━", close: ""}) ==
+               "Morning.\n━━━━━━━━\nEvening."
+
+      assert Ledger.unmarked("Status\nfine.", %{open: "Status", close: ""}) == "Status\nfine."
     end
   end
 end

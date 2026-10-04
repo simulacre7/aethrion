@@ -40,6 +40,10 @@ defmodule Aethrion.Bridge.Ledger.Listing do
     "[]"
   ]
 
+  # Words after a thing for what became of it.
+  @gained ~r/\s+(?:추가\s*)?(?:획득|얻\S*|입수|added|gained|obtained|acquired)\s*\z/iu
+  @used ~r/\s+(?:사용|소모|소비|잃\S*|판매|used|lost|sold|consumed|spent)\s*\z/iu
+
   @typedoc """
   One thing of a list: its name, how many (nil when it carries no count),
   and how the count is written: `{mark, unit}` around the number after the
@@ -110,22 +114,28 @@ defmodule Aethrion.Bridge.Ledger.Listing do
   # The things of a list, split where its separator stands outside
   # brackets: "Kit (flint, matches), Guidebook" is two things.
   defp apart(text, separator) do
-    text
-    |> String.split(separator)
-    |> Enum.reduce([], fn
-      piece, [last | rest] = pieces ->
-        if unclosed?(last), do: [last <> separator <> piece | rest], else: [piece | pieces]
+    pieces = String.split(text, separator)
 
-      piece, [] ->
-        [piece]
-    end)
-    |> Enum.reverse()
+    {glued, depth} =
+      Enum.reduce(pieces, {[], 0}, fn
+        piece, {[last | rest], depth} when depth > 0 ->
+          {[last <> separator <> piece | rest], max(depth + depth_of(piece), 0)}
+
+        piece, {glued, _depth} ->
+          {[piece | glued], max(depth_of(piece), 0)}
+      end)
+
+    # A bracket that is never closed ("Smile :(") holds nothing together.
+    if depth > 0, do: pieces, else: Enum.reverse(glued)
   end
 
-  defp unclosed?(text) do
+  # How many more brackets a text opens than it closes.
+  defp depth_of(text) do
     count = fn marks -> length(Regex.scan(marks, text)) end
-    count.(~r/[(（]/u) > count.(~r/[)）]/u)
+    count.(~r/[(（]/u) - count.(~r/[)）]/u)
   end
+
+  defp unclosed?(text), do: depth_of(text) > 0
 
   # A list in brackets: `["a", "b"]`.
   defp unwrap(value) do
@@ -256,27 +266,48 @@ defmodule Aethrion.Bridge.Ledger.Listing do
   # "Slash → Slash II": a thing of the list under a new name, the rest as it was.
   defp renamed(items, value) do
     with [old, new] <- String.split(value, ~r/\s*(?:→|->|=>)\s*/u),
-         true <- String.trim(new) != "",
+         new = String.trim(new),
+         true <- new != "",
          held when held != nil <- Enum.find(items, &same?(&1, changed_item(old))) do
-      new = changed_item(new)
+      others = Enum.reject(items, &(&1 == held))
+      named = changed_item(new)
 
-      Enum.map(items, fn item ->
-        if item == held,
-          do: %{
+      cond do
+        # "Potion × 3 → 2": its count.
+        String.match?(new, ~r/\A[0-9]+\z/) ->
+          recounted(items, held, String.to_integer(new))
+
+        # "Rope → none", "Rope → used": gone.
+        empty?(new) or String.match?(" " <> new, @used) ->
+          others
+
+        # Under the name of a thing the list has: one more of that.
+        Enum.any?(others, &same?(&1, named)) ->
+          elem(move(others, :plus, %{named | count: named.count || held.count}), 1)
+
+        true ->
+          as = %{
             held
-            | name: new.name,
-              count: new.count || held.count,
-              style: held.style || new.style
-          },
-          else: item
-      end)
+            | name: named.name,
+              count: named.count || held.count,
+              style: held.style || named.style
+          }
+
+          Enum.map(items, &if(&1 == held, do: as, else: &1))
+      end
     else
       _other -> nil
     end
   end
 
-  @gained ~r/\s+(?:추가\s*)?(?:획득|얻\S*|입수|added|gained|obtained|acquired)\s*\z/iu
-  @used ~r/\s+(?:사용|소모|소비|잃\S*|판매|used|lost|sold|consumed|spent)\s*\z/iu
+  defp recounted(items, held, 0), do: Enum.reject(items, &(&1 == held))
+
+  defp recounted(items, held, count),
+    do:
+      Enum.map(
+        items,
+        &if(&1 == held, do: %{held | count: count, style: held.style || style(items)}, else: &1)
+      )
 
   # "Potion × 1 used, mana stone × 5 gained": every thing with the word
   # for what became of it, and no signs.
@@ -291,6 +322,8 @@ defmodule Aethrion.Bridge.Ledger.Listing do
     steps =
       Enum.map(parts, fn part ->
         cond do
+          # "nothing gained", "no items used": no thing.
+          String.match?(part, ~r/\A(?:nothing|none|no \S+|없음|아무것도)\b/iu) -> nil
           String.match?(part, @gained) -> {:plus, changed_item(String.replace(part, @gained, ""))}
           String.match?(part, @used) -> {:minus, changed_item(String.replace(part, @used, ""))}
           true -> nil

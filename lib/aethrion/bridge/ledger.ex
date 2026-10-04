@@ -83,15 +83,33 @@ defmodule Aethrion.Bridge.Ledger do
       # A short opening text ("[") may stand in many places: the last ones.
       |> Enum.take(@max_openings)
 
-    # As the card closes it, at any of its openings; or, when that leaves
-    # no window (a closing text that also ends the window's heading), to
-    # the end of the block.
-    Enum.find_value(closings(spec.close), fn close ->
-      found(text, openings, %{spec | close: close})
-    end)
+    # As the card closes it, at any of its openings; and, for a closing
+    # text that may only end the window's heading ("]"), as a block to the
+    # end. Of the two the later one is the window, when it holds a number:
+    # a bracketed aside in the story is no window, nor are lines of speech
+    # under a heading.
+    case Enum.map(closings(spec.close), &found(text, openings, %{spec | close: &1})) do
+      [closed] ->
+        closed
+
+      [closed, nil] ->
+        closed
+
+      [nil, block] ->
+        block
+
+      [closed, block] ->
+        if later?(block, closed) and figures?(block, spec), do: block, else: closed
+    end
   end
 
   def window(_text, _spec), do: nil
+
+  defp later?({before, _window, _after}, {other, _other_window, _other_after}),
+    do: byte_size(before) > byte_size(other)
+
+  defp figures?({_before, window, _after}, spec),
+    do: Enum.any?(fields(window, %{spec | close: ""}), &figure?(&1.value))
 
   defp found(text, openings, spec) do
     # A window with no closing text is a block of lines, and begins one:
@@ -113,12 +131,13 @@ defmodule Aethrion.Bridge.Ledger do
     end)
   end
 
-  # Whether the text at `start` begins its line, after a bullet or a mark at most.
+  # Whether the text at `start` begins its line, after marks or blanks at most.
   defp begins_line?(text, {start, _length}) do
-    from = max(start - 16, 0)
+    from = max(start - 80, 0)
     before = text |> binary_part(from, start - from) |> String.replace_invalid("")
 
-    String.match?(before, ~r/(?:\A|\n)[ \t\-*•◈▶▪·>]*\z/u) and
+    # Marks, blanks, a number ("1. "): no words.
+    String.match?(before, ~r/(?:\A|\n)[^\p{L}\n]*\z/u) and
       (from == 0 or String.contains?(before, "\n"))
   end
 
@@ -274,9 +293,9 @@ defmodule Aethrion.Bridge.Ledger do
 
   # (Also as a model misspells them: "<aetherion-ledger>", "</ledger>".)
   @opened ~r/<aeth[a-z]*-ledger\b[^>\n]*(\/>|>|(?=\n)|\z)/i
-  @closed ~r/<\/(?:[a-z]+-)?ledger\s*(?:>|\z)/i
-  # A tag the reply was cut off in, or a closing tag written wrongly.
-  @torn ~r/[ \t]*<\/?aeth[a-z\-]*\s*\z|^[ \t]*<\/[a-z\-]*ledger[a-z\-]*>?[ \t]*$\n?/im
+  @closed ~r/<\/(?:[a-z]+-)?ledger[a-z]*\s*(?:>|\z)/i
+  # A tag the reply was cut off in, at its very end.
+  @torn ~r/<\/?aeth[a-z\-]*\s*\z/i
   @change ~r/\A\s*(?:[-*•]\s*)?([^:：]{1,40}?)\s*[:：]\s*(\S.*)\z/u
   # A change written as the window writes its fields, `TIME=09:47`: the
   # value said outright, unless it has a sign (`HP=+5`).
@@ -290,43 +309,49 @@ defmodule Aethrion.Bridge.Ledger do
   changes: the story after it stays in the reply.
   """
   @spec take(String.t()) :: {String.t(), [{String.t(), String.t()}] | nil}
-  def take(text), do: take(text, [], nil)
+  def take(text) do
+    {story, changes, _cut?} = taken(text, [], nil, false)
+    {story, changes}
+  end
 
-  defp take(text, kept, changes) do
+  # The story, the changes, and whether a block was left open.
+  defp taken(text, kept, changes, cut?) do
     case Regex.run(@opened, text, return: :index) do
       nil ->
-        {(kept ++ [text]) |> Enum.join() |> String.replace(@torn, "") |> String.trim(),
-         changes && Enum.take(changes, @max_changes)}
+        {(kept ++ [text])
+         |> Enum.join()
+         |> String.trim()
+         |> String.replace(@torn, "")
+         |> String.trim(), changes && Enum.take(changes, @max_changes), cut?}
 
       [{start, length} | _ending] ->
         head = binary_part(text, 0, start)
         rest = binary_part(text, start + length, byte_size(text) - start - length)
 
         # A tag that closes itself has no lines.
-        {lines, rest} =
+        {lines, rest, closed?} =
           if String.ends_with?(binary_part(text, start, length), "/>"),
-            do: {"", String.replace_prefix(rest, "\n", "")},
+            do: {"", String.replace_prefix(rest, "\n", ""), true},
             else: block(rest)
 
-        take(rest, kept ++ [head], (changes || []) ++ changes(lines))
+        taken(rest, kept ++ [head], (changes || []) ++ changes(lines), cut? or not closed?)
     end
   end
 
-  # A block's lines, and the reply after it.
+  # A block's lines, the reply after it, and whether it was closed.
   defp block(rest) do
     case Regex.run(@closed, rest, return: :index) do
       [{stop, length}] ->
         {binary_part(rest, 0, stop),
-         binary_part(rest, stop + length, byte_size(rest) - stop - length)}
+         binary_part(rest, stop + length, byte_size(rest) - stop - length), true}
 
       # Not closed: the lines that read as changes, up to the first that does not.
       nil ->
         # (A blank line ends them: what follows it is the story, though a
         # line of it may read "Name: words".)
-        {blanks, rest} = rest |> String.split("\n") |> Enum.split_while(&(String.trim(&1) == ""))
+        {_blanks, rest} = rest |> String.split("\n") |> Enum.split_while(&(String.trim(&1) == ""))
         {lines, story} = Enum.split_while(rest, &(change(&1) != nil))
-        _ = blanks
-        {Enum.join(lines, "\n"), Enum.join(story, "\n")}
+        {Enum.join(lines, "\n"), Enum.join(story, "\n"), false}
     end
   end
 
@@ -367,7 +392,7 @@ defmodule Aethrion.Bridge.Ledger do
 
   # "**Location:** the east gate": the marks of bold around the name.
   defp unmarked_value(value) do
-    case String.replace(value, ~r/\A[*_`]+\s*/u, "") do
+    case value |> String.replace(~r/\A[*_`]+\s*/u, "") |> String.replace(~r/\s*[*`]+\z/u, "") do
       "" -> value
       plain -> plain
     end
@@ -375,15 +400,7 @@ defmodule Aethrion.Bridge.Ledger do
 
   @doc "Whether the reply's ledger lines were cut off (a block that is opened and not closed)."
   @spec cut_off?(String.t()) :: boolean()
-  def cut_off?(text) do
-    # As `take/1` reads them: a tag that closes itself opens nothing.
-    opened =
-      @opened
-      |> Regex.scan(text)
-      |> Enum.count(fn [all | _ending] -> not String.ends_with?(all, "/>") end)
-
-    opened > length(Regex.scan(@closed, text))
-  end
+  def cut_off?(text), do: text |> taken([], nil, false) |> elem(2)
 
   @doc """
   The window with the fields named given exactly these values (a field
@@ -528,7 +545,7 @@ defmodule Aethrion.Bridge.Ledger do
 
       {rewrite(window, fields, Map.new(kept)),
        Enum.reject(applied, fn {name, _was, _now} -> is_map_key(broken, name) end),
-       refused ++ for({name, now} <- broken, do: {name, now, :unreadable})}
+       refused ++ for({name, now} <- broken, do: {name, now, :unsound})}
     end
   end
 
@@ -565,6 +582,14 @@ defmodule Aethrion.Bridge.Ledger do
     end
   end
 
+  # A line led by a mark ("📍 the beach") would read as a field of another
+  # name with a colon in it ("📍 Seoul: the station"): a dash, there.
+  defp after_mark(%{name: name}, now) do
+    if String.match?(name, ~r/[\p{L}\p{N}]/u),
+      do: now,
+      else: String.replace(now, ~r/\s*(?<![0-9])[:：]\s*|\s*[:：](?![0-9])\s*/u, " — ")
+  end
+
   # A number with no sign, less than the plain number it is written for.
   defp bare_lesser?(book, {name, value}) do
     with true <- String.match?(value, ~r/\A\s*[0-9][0-9,.]*\s*(?:%|\p{L}{0,3})\s*\z/u),
@@ -593,8 +618,14 @@ defmodule Aethrion.Bridge.Ledger do
       })
 
     case parted(was, value, field) do
-      :unreadable -> {was, :unreadable}
-      value -> was |> changed(value, habits) |> judged(was, value, key(field.name), book.sets)
+      :unreadable ->
+        {was, :unreadable}
+
+      value ->
+        {now, problem} =
+          was |> changed(value, habits) |> judged(was, value, key(field.name), book.sets)
+
+        {after_mark(field, now), problem}
     end
   end
 
@@ -609,6 +640,14 @@ defmodule Aethrion.Bridge.Ledger do
       |> String.trim()
       |> String.replace(~r/\A[\[【［「]\s*|\s*[\]】］」]\z/u, "")
       |> String.replace(~r/\A#{Regex.escape(name)}(?![\p{L}\p{N}])[ \t.:]*/iu, "")
+
+    # "1 · night · the keep → the yard": each part where it comes to.
+    value =
+      cond do
+        not String.match?(value, ~r/→|->|=>/u) or String.match?(value, ~r/\A[+\-−]/u) -> value
+        same_words?(hd(String.split(value, ~r/\s*(?:→|->|=>)\s*/u)), was) -> arrived(value)
+        true -> value |> String.split(" · ") |> Enum.map_join(" · ", &arrived/1)
+      end
 
     {parts, said} = {String.split(was, " · "), String.split(value, " · ")}
 
@@ -695,7 +734,7 @@ defmodule Aethrion.Bridge.Ledger do
          {:pair, _pre, a, _sep, b, _post} <- number(was) do
       if {key(base), :max} in for({:always, target, _expr} <- rules, do: target),
         do: {base, :ruled},
-        else: new_maximum(name, value, base, trunc(a), trunc(b))
+        else: new_maximum(name, value, base, a, b)
     else
       _other -> {name, value}
     end
@@ -703,15 +742,19 @@ defmodule Aethrion.Bridge.Ledger do
 
   defp new_maximum(name, value, base, now, max) do
     said = String.replace(value, ~r/\A\s*=\s*/u, "")
-    {said, _outright?} = come_to_number(Integer.to_string(max), said)
+    {said, _outright?} = come_to_number(whole(max), said)
 
     case delta(said, true) do
-      {:move, by} -> {base, "=#{now} / #{trunc(max + by)}"}
-      {:set, to} -> {base, "=#{now} / #{trunc(to)}"}
-      {:set_pair, _now, to} -> {base, "=#{now} / #{trunc(to)}"}
+      {:move, by} -> {base, "=#{whole(now)} / #{whole(max + by)}"}
+      {:set, to} -> {base, "=#{whole(now)} / #{whole(to)}"}
+      {:set_pair, _now, to} -> {base, "=#{whole(now)} / #{whole(to)}"}
       :text -> {name, value}
     end
   end
+
+  # A number as it is written: without a fraction of nothing.
+  defp whole(n) when is_float(n) and trunc(n) == n, do: Integer.to_string(trunc(n))
+  defp whole(n), do: to_string(n)
 
   # The window with the fields in `edits` (by name) given their new values.
   defp rewrite(window, fields, edits) do
@@ -971,26 +1014,34 @@ defmodule Aethrion.Bridge.Ledger do
   # (A figure and a row of numbers read their own arrows, and a value that
   # had an arrow in it keeps the one it is given.)
   defp come_to(was, value, habits) do
-    # ("+ring → -ring" is a list's own; "+20 minutes → 14:40" comes to a time.)
-    own? =
-      (figure?(was) and not habits[:dated?]) or Cells.read(was) != [] or list?(was) or
-        String.match?(was, ~r/→|->|=>/u) or
-        (String.match?(value, ~r/\A[+\-−]/u) and
-           not String.match?(arrived(value), ~r/\A[0-9]{1,2}:[0-9]{2}/u))
-
-    # Where and when move on, whatever they moved from; other words are
-    # a change only from what they were ("calm → tense" for "calm"), and
-    # else may be words with an arrow of their own.
-    moves? =
-      habits[:dated?] == true or habits[:placed?] == true or habits[:timed?] == true or
-        same_words?(hd(String.split(value, ~r/\s*(?:→|->|=>)\s*/u)), was)
-
-    if own? or not moves?, do: value, else: arrived(value)
+    if own_arrow?(was, value, habits) or not moves?(was, value, habits),
+      do: value,
+      else: arrived(value)
   end
 
+  # ("+ring → -ring" is a list's own; "+20 minutes → 14:40" comes to a time.)
+  defp own_arrow?(was, value, habits) do
+    (figure?(was) and not habits[:dated?]) or Cells.read(was) != [] or list?(was) or
+      String.match?(was, ~r/→|->|=>/u) or
+      (String.match?(value, ~r/\A[+\-−]/u) and
+         not String.match?(arrived(value), ~r/\A[0-9]{1,2}:[0-9]{2}/u))
+  end
+
+  # Where and when move on, whatever they moved from; other words are a
+  # change only from what they were ("calm → tense" for "calm"), and else
+  # may be words with an arrow of their own.
+  defp moves?(was, value, habits) do
+    parts = String.split(value, ~r/\s*(?:→|->|=>)\s*/u)
+
+    habits[:dated?] == true or habits[:placed?] == true or habits[:timed?] == true or
+      same_words?(hd(parts), was) or same_words?(List.last(parts), was)
+  end
+
+  # The same words, or the one within the other ("calm" for "calm (resting)").
   defp same_words?(a, b) do
     plain = &(&1 |> String.downcase() |> String.replace(~r/\s+/u, " ") |> String.trim())
-    plain.(a) == plain.(b)
+    {a, b} = {plain.(a), plain.(b)}
+    a != "" and b != "" and (String.contains?(a, b) or String.contains?(b, a))
   end
 
   # A place is where one is now, however it is written ("Seoul / an
@@ -1080,11 +1131,27 @@ defmodule Aethrion.Bridge.Ledger do
       :rewrite ->
         {value, nil}
 
-      # A row with no labelled numbers is written anew with its cells.
       :none ->
-        if Cells.labelled(was) == [] and String.match?(value, ~r/[|│｜]/u),
-          do: {value, nil},
-          else: {was, :unreadable}
+        cond do
+          # A row with no labelled numbers is written anew with its cells.
+          Cells.labelled(was) == [] and String.match?(value, ~r/[|│｜]/u) -> {value, nil}
+          moved = one_cell(was, value) -> {moved, nil}
+          true -> {was, :unreadable}
+        end
+    end
+  end
+
+  # A number for a row that has one labelled number: that one.
+  defp one_cell(was, value) do
+    with [%{label: label, number: now}] <- Cells.labelled(was),
+         true <- String.match?(value, ~r/\A\s*[+\-−=]?\s*[0-9][0-9,]*\s*(?:\([^()]*\))?\s*\z/u) do
+      case delta(String.replace(value, ~r/\A\s*=\s*|\s*\([^()]*\)\s*\z/u, ""), true) do
+        {:move, by} -> Cells.put(was, %{String.downcase(label) => now + by})
+        {:set, to} -> Cells.put(was, %{String.downcase(label) => to})
+        _other -> nil
+      end
+    else
+      _other -> nil
     end
   end
 
@@ -1164,13 +1231,16 @@ defmodule Aethrion.Bridge.Ledger do
     end
   end
 
-  # What follows the last arrow, said outright; or, when that is no number
-  # ("+150 (90 → 240); so → Level 7, EXP resets"), the move the change
-  # leads with.
+  # What follows the last arrow, said outright; or, when that is not a
+  # number alone ("+150 (90 → 240); so → Level 7, EXP resets"), the move
+  # the change leads with.
   defp arrowed(value, last) do
     lead = Regex.run(~r/\A\s*([+\-−])\s*([0-9][0-9,]*)(?![0-9,.]|\s*\/)/u, value)
 
-    if lead != nil and delta(last, true) == :text,
+    number? =
+      String.match?(last, ~r/\A[+\-−]?[0-9][0-9,.]*(?:\s*\/\s*[0-9][0-9,.]*)?\s*[^0-9]{0,8}\z/u)
+
+    if lead != nil and not number?,
       do: {Enum.at(lead, 1) <> Enum.at(lead, 2), false},
       else: {last, true}
   end
@@ -1645,12 +1715,12 @@ defmodule Aethrion.Bridge.Ledger do
   end
 
   defp rows_note(fields) do
-    case Enum.filter(fields, &(Cells.read(&1.value) != [])) do
+    case Enum.filter(fields, &(Cells.read(&1.value) != [] or one_labelled?(&1.value))) do
       [] ->
         ""
 
       [first | _rest] = rows ->
-        label = first.value |> Cells.read() |> hd() |> Map.fetch!(:label)
+        label = first.value |> Cells.labelled() |> hd() |> Map.fetch!(:label)
 
         " For a row of labelled numbers (#{Enum.map_join(rows, ", ", & &1.name)}), write the numbers that move by their labels, `#{first.name}: #{label} +1`, or write the whole row anew."
     end
@@ -1667,6 +1737,10 @@ defmodule Aethrion.Bridge.Ledger do
           " (" <> Enum.join(rule_texts(fields, spec), " | ") <> ")."
     end
   end
+
+  # A row of cells with one labelled number in it ("Affection 30 | cheerful | the lobby").
+  defp one_labelled?(value),
+    do: String.match?(value, ~r/[|│｜]/u) and not figure?(value) and Cells.labelled(value) != []
 
   defp headings_note(fields) do
     for %{heading?: true, name: name, value: value} <- fields,
@@ -1827,10 +1901,12 @@ defmodule Aethrion.Bridge.Ledger do
   def unmarked(text, nil), do: text
 
   def unmarked(text, spec) do
+    # (A rule of dashes, or a plain word, may be a line of the story.)
     markers =
       for marker <- [spec.open, spec.close],
           marker = String.trim(marker),
           byte_size(marker) >= 4,
+          String.match?(marker, ~r/[\p{L}\p{N}]/u) and String.match?(marker, ~r/[^\p{L}\p{N}\s]/u),
           do: marker
 
     if markers == [],
@@ -1919,6 +1995,7 @@ defmodule Aethrion.Bridge.Ledger do
     ruled: {"규칙이 정함", "set by the rules"},
     unreadable: {"숫자가 아님", "not a number"},
     unsigned: {"+나 -가 없음", "no + or -"},
+    unsound: {"상태창의 칸이 달라짐", "would change the window's fields"},
     unsaid: {"이야기에서는 썼는데 적히지 않음", "spent in the story, not written"}
   }
 

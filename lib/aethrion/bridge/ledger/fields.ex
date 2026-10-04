@@ -86,28 +86,31 @@ defmodule Aethrion.Bridge.Ledger.Fields do
   defp apart(fields) do
     taken = MapSet.new(fields, &key(&1.name))
 
-    {fields, _seen} =
-      Enum.map_reduce(fields, {MapSet.new(), taken}, fn field, {seen, taken} ->
-        field =
-          if MapSet.member?(seen, key(field.name)),
-            do:
-              field
-              |> Map.put(:written, field.name)
-              |> Map.put(:name, next_name(field.name, taken)),
-            else: field
+    {fields, _state} =
+      Enum.map_reduce(fields, {MapSet.new(), taken, %{}}, fn field, {seen, taken, next} ->
+        own = key(field.name)
 
-        {field, {MapSet.put(seen, key(field.name)), MapSet.put(taken, key(field.name))}}
+        if MapSet.member?(seen, own) do
+          {name, n} = next_name(field.name, taken, Map.get(next, own, 2))
+          field = field |> Map.put(:written, field.name) |> Map.put(:name, name)
+
+          {field,
+           {MapSet.put(seen, key(name)), MapSet.put(taken, key(name)), Map.put(next, own, n + 1)}}
+        else
+          {field, {MapSet.put(seen, own), taken, next}}
+        end
       end)
 
     fields
   end
 
-  # The name with the next number no field has.
-  defp next_name(name, taken) do
-    Enum.find_value(2..500, name, fn n ->
-      numbered = "#{name} #{n}"
-      if not MapSet.member?(taken, key(numbered)), do: numbered
-    end)
+  # The name with the next number no field has, from `n` on.
+  defp next_name(name, taken, n) do
+    numbered = "#{name} #{n}"
+
+    if MapSet.member?(taken, key(numbered)) and n < 100_000,
+      do: next_name(name, taken, n + 1),
+      else: {numbered, n}
   end
 
   # The field the opening text makes, and where the rest of the window
@@ -141,9 +144,13 @@ defmodule Aethrion.Bridge.Ledger.Fields do
         lead = byte_size(rest) - byte_size(String.trim_leading(rest))
 
         cond do
-          # An opening text that is only a mark ("📍") leads the first line.
+          # An opening text that is only a mark leads the first line when
+          # that is a field ("📍 the beach"), and else stands in a title
+          # ("*** Status ***"), which is no field.
           name == "" and not String.match?(open, ~r/[\[\]<>(){}]/u) ->
-            {[], 0}
+            if marked(window, 0, byte_size(open) + byte_size(rest)),
+              do: {[], 0},
+              else: {[], byte_size(open) + byte_size(rest)}
 
           name != "" and String.match?(value, ~r/[\p{L}\p{N}]/u) ->
             {[
@@ -186,37 +193,46 @@ defmodule Aethrion.Bridge.Ledger.Fields do
       |> Enum.map(fn [{at, size}] -> trimmed(window, start + at, size) end)
       |> Enum.reject(fn {_at, size} -> size == 0 end)
 
+    cond do
+      length == 0 -> []
+      several = several(window, cells) -> several
+      row = row(window, cells, start + length) -> [row]
+      true -> List.wrap(alone(window, text, start, length))
+    end
+  end
+
+  # The fields of a line that holds several, between bars; nil for a line
+  # that is one field, or a row.
+  defp several(window, cells) do
     named = Enum.map(cells, fn {at, size} -> named(window, at, size) end)
     marked = Enum.map(cells, fn {at, size} -> marked(window, at, size) end)
+    either = Enum.zip_with(named, marked, &(&1 || &2))
 
     cond do
-      length == 0 ->
-        []
-
       # "Trust: 3% | Anger: 5% | a thought": each piece is a field.
-      Enum.count(named, & &1) >= 2 ->
-        pieces(window, cells, named)
-
+      Enum.count(named, & &1) >= 2 -> pieces(window, cells, named)
       # "⏰ 14:30 | 📍 the school | ❤️ 30": each piece led by its mark.
-      length(cells) >= 2 and Enum.all?(Enum.zip(named, marked), fn {n, m} -> n || m end) ->
-        pieces(window, cells, Enum.zip_with(named, marked, &(&1 || &2)))
-
-      row = row(window, cells, start + length) ->
-        [row]
-
-      true ->
-        [
-          named(window, start, length) || marked(window, start, length) ||
-            headed(window, start, length) || free(text, start)
-        ]
-        |> Enum.reject(&is_nil/1)
+      length(cells) >= 2 and Enum.all?(either) -> pieces(window, cells, either)
+      true -> nil
     end
+  end
+
+  # A line that is one field, or a note, or nothing.
+  defp alone(window, text, start, length) do
+    # "[Day 3 · 14:30]": a heading, before its colon is read as a name's.
+    heading =
+      (String.starts_with?(text, "[") and String.ends_with?(text, "]")) &&
+        headed(window, start, length)
+
+    heading || named(window, start, length) || marked(window, start, length) ||
+      headed(window, start, length) || free(text, start)
   end
 
   defp pieces(window, cells, fields) do
     cells
     |> Enum.zip(fields)
-    |> Enum.map(fn {{at, size}, field} -> field || free(binary_part(window, at, size), at) end)
+    # (Between bars a piece with no name is a note, however short.)
+    |> Enum.map(fn {{at, size}, field} -> field || free(binary_part(window, at, size), at, 2) end)
     |> Enum.reject(&is_nil/1)
   end
 
@@ -240,8 +256,9 @@ defmodule Aethrion.Bridge.Ledger.Fields do
         name = text |> binary_part(name_at, name_length) |> clean_name()
         value = binary_part(text, value_at, value_length)
 
-        # ("⏰ 09:47" names nothing with its colon: that is a clock.)
-        clock? = String.match?(name, ~r/[0-9]{1,2}\z/) and String.match?(value, ~r/\A[0-9]{2}/)
+        # ("⏰ 09:47" names nothing with its colon, which stands between
+        # digits: that is a clock. "Player 2: 12 / 20" is a field.)
+        clock? = String.match?(text, ~r/\A[^:：=\n]*[0-9][:：][0-9]{2}(?![0-9])/u)
 
         if name != "" and value_length > 0 and not clock?,
           do: %{name: name, value: value, at: {start + value_at, value_length}}
@@ -315,9 +332,9 @@ defmodule Aethrion.Bridge.Ledger.Fields do
 
   # Free text between the markers: kept as a note when it reads as a
   # sentence, not when it is a rule of dashes or a heading.
-  defp free(text, start) do
+  defp free(text, start, least \\ 12) do
     case Regex.run(~r/\A(\s*)(.*?)(\s*)\z/us, text, return: :index) do
-      [_all, _lead, {at, length}, _tail] when length >= 12 ->
+      [_all, _lead, {at, length}, _tail] when length >= least ->
         value = binary_part(text, at, length)
 
         if String.match?(value, ~r/\p{L}.*\p{L}/us) and not String.match?(value, ~r/\A[\[<#=]/u),

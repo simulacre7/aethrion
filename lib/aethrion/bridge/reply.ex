@@ -262,7 +262,11 @@ defmodule Aethrion.Bridge.Reply do
       cond do
         space == "" -> rest
         String.starts_with?(rest, space) -> String.replace_prefix(rest, space, "")
-        true -> String.trim_leading(rest)
+        String.contains?(space, "\n") -> String.trim_leading(rest)
+        # Only blanks went out after the story's last line: what follows
+        # (the window) begins a line of its own.
+        String.trim(rest) == "" -> ""
+        true -> "\n\n" <> String.trim_leading(rest)
       end
     else
       # From where the two part: the story the filter held, and the window.
