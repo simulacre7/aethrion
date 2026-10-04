@@ -556,7 +556,12 @@ defmodule Aethrion.Bridge.Ledger.Rules do
   def agrees?({:always, {name, part}, expr}, values) do
     with expected when expected != :none <- value(expr, values),
          held when held != :none <- value({:field, name, part}, values) do
-      whole(expected) == held
+      cond do
+        whole(expected) != held -> false
+        # A range holds of any number within it: the window does not bear it out.
+        name in mentioned(expr) -> nil
+        true -> true
+      end
     else
       _none -> nil
     end

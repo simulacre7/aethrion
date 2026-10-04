@@ -808,63 +808,48 @@ defmodule Aethrion.Bridge.Ledger do
     end
   end
 
-  # What a change asks for. For a figure (`loose?`), a change with more
-  # words than asked for is read by its first number: "-17 (a goblin's
-  # club)" moves, "now 31/48 after the potion" sets.
+  @number "(?:\\d{1,3}(?:,\\d{3})+|\\d+)(?:\\.\\d+)?"
+  @moved Regex.compile!("\\A([+\\-−])\\s*(#{@number})\\s*[^\\d\\/]*\\z", "u")
+  @pair_set Regex.compile!("\\A\\D*?(-?#{@number})\\s*\\/\\s*(#{@number})\\D*\\z", "u")
+  @one_set Regex.compile!("\\A[^\\d+\\-−]*?(#{@number})\\D*\\z", "u")
+  @moved_first Regex.compile!("\\A([+\\-−])\\s*(#{@number})(?!\\s*\\/|\\d|,\\d)", "u")
+  @pair_within Regex.compile!("(-?#{@number})\\s*\\/\\s*(#{@number})", "u")
+  @numbers_within Regex.compile!("(?<![\\d,.])([+\\-−]?)\\s*(#{@number})", "u")
+
+  # What a change asks for: `{:move, by}`, `{:set_pair, now, max}`,
+  # `{:set, now}`, or `:text`. For a figure (`loose?`), a change with more
+  # words than asked for is read by its number: "-17 (a goblin's club)"
+  # moves, "now 31/48 after the potion" sets.
   defp delta(value, loose?) do
     cond do
-      match =
-          Regex.run(~r/\A([+\-−])\s*((?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)\s*[^\d\/]*\z/u, value) ->
-        [_all, sign, n] = match
-        {:move, if(sign == "+", do: int(n), else: -int(n))}
-
-      match =
-          Regex.run(
-            ~r/\A\D*?(-?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)\s*\/\s*((?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)\D*\z/u,
-            value
-          ) ->
-        [_all, a, b] = match
-        {:set_pair, int(a), int(b)}
-
+      match = Regex.run(@moved, value) -> move(match)
+      match = Regex.run(@pair_set, value) -> set_pair(match)
       # A number with words around it, and no sign: the new value.
-      match = Regex.run(~r/\A[^\d+\-−]*?((?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)\D*\z/u, value) ->
-        [_all, a] = match
-        {:set, int(a)}
-
-      not loose? ->
-        :text
-
-      match =
-          Regex.run(
-            ~r/\A([+\-−])\s*((?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)(?!\s*\/|\d|,\d)/u,
-            value
-          ) ->
-        [_all, sign, n] = match
-        {:move, if(sign == "+", do: int(n), else: -int(n))}
-
-      match =
-          Regex.run(
-            ~r/(-?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)\s*\/\s*((?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)/u,
-            value
-          ) ->
-        [_all, a, b] = match
-        {:set_pair, int(a), int(b)}
-
-      # One number among words: a change when it carries a sign ("ego -2"),
-      # else the new value ("level 9 reached"). Several numbers say too much.
-      match =
-          Regex.scan(~r/(?<![\d,.])([+\-−]?)\s*((?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)/u, value) ->
-        case match do
-          [[_all, "", n]] -> {:set, int(n)}
-          [[_all, "+", n]] -> {:move, int(n)}
-          [[_all, _minus, n]] -> {:move, -int(n)}
-          _several -> :text
-        end
-
-      true ->
-        :text
+      match = Regex.run(@one_set, value) -> {:set, int(Enum.at(match, 1))}
+      loose? -> loose_delta(value)
+      true -> :text
     end
   end
+
+  defp loose_delta(value) do
+    cond do
+      match = Regex.run(@moved_first, value) -> move(match)
+      match = Regex.run(@pair_within, value) -> set_pair(match)
+      true -> one_among_words(Regex.scan(@numbers_within, value))
+    end
+  end
+
+  # One number among words: a change when it carries a sign ("ego -2"),
+  # else the new value ("level 9 reached"). Several numbers say too much.
+  defp one_among_words([[_all, "", n]]), do: {:set, int(n)}
+  defp one_among_words([[_all, "+", n]]), do: {:move, int(n)}
+  defp one_among_words([[_all, _minus, n]]), do: {:move, -int(n)}
+  defp one_among_words(_none_or_several), do: :text
+
+  defp move([_all, "+", n]), do: {:move, int(n)}
+  defp move([_all, _minus, n]), do: {:move, -int(n)}
+
+  defp set_pair([_all, a, b]), do: {:set_pair, int(a), int(b)}
 
   defp put_pair({:pair, pre, _a, sep, _b, {post, commas?}}, a, b, open? \\ false) do
     b = max(b, 0)
