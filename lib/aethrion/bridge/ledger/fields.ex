@@ -50,11 +50,18 @@ defmodule Aethrion.Bridge.Ledger.Fields do
          do: byte_size(window) - byte_size(close),
          else: byte_size(window)
 
+    # What a line is read by: whether the window joins its fields with
+    # "&", and the tag its closing text closes.
+    about = %{
+      joined?: joined?(binary_part(window, from, to - from)),
+      closed: closed_tag(close)
+    }
+
     fields =
       heading ++
         (~r/[^\n]+/u
          |> Regex.scan(binary_part(window, from, to - from), return: :index)
-         |> Enum.flat_map(fn [{start, length}] -> line(window, from + start, length) end))
+         |> Enum.flat_map(fn [{start, length}] -> line(window, from + start, length, about) end))
 
     # Free text counts only next to named values: a window, not a paragraph.
     if Enum.count(fields, & &1.name) >= 2,
@@ -180,19 +187,19 @@ defmodule Aethrion.Bridge.Ledger.Fields do
     String.contains?(open, [":", "：", "=", "|", "│"]) or
       String.match?(after_open, ~r/\A[ \t]*[:：=]/u) or
       (String.match?(open, ~r/\A\**<\p{L}[\p{L}\p{N}_\-]{0,23}>\z/u) and
-         String.match?(after_open, ~r/\A[ \t]*[^\s<]/u))
+         String.match?(after_open, ~r/\A[ \t]*[^\s<][^\n]*?[:：=]/u))
   end
 
   @max_line 2_000
 
   # The fields of one line of the window. A line too long to be a field is
   # none.
-  defp line(_window, _start, length) when length > @max_line, do: []
+  defp line(_window, _start, length, _about) when length > @max_line, do: []
 
-  defp line(window, start, length) do
+  defp line(window, start, length, about) do
     # Without the blanks around it: a line of spaces is not gone through
     # for a name.
-    {start, length} = window |> trimmed(start, length) |> untagged(window)
+    {start, length} = window |> trimmed(start, length) |> untagged(window, about.closed)
     text = binary_part(window, start, length)
 
     cells =
@@ -205,46 +212,93 @@ defmodule Aethrion.Bridge.Ledger.Fields do
       length == 0 -> []
       several = several(window, cells) -> several
       row = row(window, cells, start + length) -> [row]
-      joined = joined(window, text, start) -> joined
+      joined = about.joined? && joined(window, text, start) -> joined
       true -> List.wrap(alone(window, text, start, length))
     end
   end
 
   # The fields of a line that joins them with "&" ("Item: a sword &
   # Currency: 3 silver"): two at least, each with its name. A piece with
-  # no name belongs to the value before it ("Item: sword & shield").
+  # no name of its own belongs to the value before it ("Item: sword &
+  # shield", "Outfit: a shirt & jeans (colour: blue)").
   defp joined(window, text, start) do
     pieces =
-      ~r/[^&]+/u
-      |> Regex.scan(text, return: :index)
-      |> Enum.map(fn [{at, size}] -> {start + at, size} end)
-      |> Enum.reduce([], fn {at, size}, acc ->
-        case {named(window, at, size), acc} do
-          {nil, [{before, _size} | rest]} -> [{before, at + size - before} | rest]
-          {_field, acc} -> [{at, size} | acc]
-        end
-      end)
-      |> Enum.reverse()
-      |> Enum.map(fn {at, size} -> trimmed(window, at, size) end)
+      Enum.map(amp_pieces(text), fn {at, size} -> trimmed(window, start + at, size) end)
 
     fields = Enum.map(pieces, fn {at, size} -> named(window, at, size) end)
     if length(fields) >= 2 and Enum.all?(fields), do: fields
   end
 
+  # Whether the window joins fields with "&" at all: some line of it has
+  # three such pieces. (Two may be a value with an "&" in it: "Kim & Lee:
+  # rivals".)
+  defp joined?(body) do
+    body
+    |> String.split("\n")
+    |> Enum.any?(fn line ->
+      String.contains?(line, "&") and byte_size(line) <= @max_line and
+        length(amp_pieces(line)) >= 3
+    end)
+  end
+
+  # The pieces of a line between its "&"s, as places in it; a piece that
+  # does not begin a field stays with the one before.
+  defp amp_pieces(text) do
+    ~r/[^&]+/u
+    |> Regex.scan(text, return: :index)
+    |> Enum.reduce([], fn
+      [{at, size}], [] ->
+        [{at, size}]
+
+      [{at, size}], [{before, _size} | rest] = acc ->
+        if begins_field?(text, at, size),
+          do: [{at, size} | acc],
+          else: [{before, at + size - before} | rest]
+    end)
+    |> Enum.reverse()
+  end
+
+  # A piece after "&" begins a field with a plain name and a colon, when
+  # no bracket or quote is left open before it.
+  defp begins_field?(text, at, size) do
+    before = binary_part(text, 0, at)
+    count = fn mark -> length(String.split(before, mark)) - 1 end
+
+    String.match?(
+      binary_part(text, at, size),
+      ~r/\A\s*\p{L}[\p{L}\p{N} _'’\-]{0,30}?\s*[:：]\s*\S/u
+    ) and count.("(") == count.(")") and count.("[") <= count.("]") + 1 and
+      rem(count.("\""), 2) == 0
+  end
+
   # A line wrapped in a tag ("<hp>Health: 100 | Status: fine<hp>", closed
   # with a slash or without, in bold or not) is read as what is inside it;
-  # so is one that only begins with the tag (the window's closing text
-  # may be what closes it).
-  defp untagged({start, length}, window) do
+  # so is one that begins with the tag the window's closing text closes.
+  # (A tag that only leads a line may be whose line it is: "<Mina>
+  # Affection: 30".)
+  defp untagged({start, length}, window, closed) do
     text = binary_part(window, start, length)
 
     case Regex.run(
-           ~r/\A(\**<([\p{L}][\p{L}\p{N}_\-]{0,23})>\s*)(.*?)\s*(?:<\/?\2>\**)?\z/us,
+           ~r/\A(\**<([\p{L}][\p{L}\p{N}_\-]{0,23})>\s*)(.*?)\s*(<\/?\2>\**)?\z/us,
            text,
            return: :index
          ) do
-      [_all, {0, lead}, _tag, {_at, inner}] when inner > 0 -> {start + lead, inner}
-      _other -> {start, length}
+      [_all, {0, lead}, {tag_at, tag_size}, {_at, inner} | closing] when inner > 0 ->
+        tag = text |> binary_part(tag_at, tag_size) |> String.downcase()
+        wrapped? = match?([{at, size}] when at >= 0 and size > 0, closing)
+        if wrapped? or tag == closed, do: {start + lead, inner}, else: {start, length}
+
+      _other ->
+        {start, length}
+    end
+  end
+
+  # The tag a window's closing text closes ("<rbd>**": "rbd"), or nil.
+  defp closed_tag(close) do
+    case Regex.run(~r/<\/?(\p{L}[\p{L}\p{N}_\-]{0,23})>\**\s*\z/u, close) do
+      [_all, tag] -> String.downcase(tag)
+      nil -> nil
     end
   end
 
@@ -370,6 +424,10 @@ defmodule Aethrion.Bridge.Ledger.Fields do
     end
   end
 
+  # A name that a heading of words alone still says something under
+  # ("[Weather Rainy]", "[날씨 맑음]").
+  @state ~r/\A(?:location|place|time|date|day|weather|mood|season|scene|chapter|장소|위치|시간|날짜|날씨|기분|분위기|계절|장면)\z/iu
+
   # A heading in brackets with something to say ("[Day 3/30 · noon]"),
   # further down the window.
   defp headed(window, start, length) do
@@ -385,7 +443,9 @@ defmodule Aethrion.Bridge.Ledger.Fields do
 
         # Words alone are a part's title ("[Player Character]"), which
         # says nothing that changes.
-        if String.match?(value, ~r/[0-9·•|\/:：,~\-–—]/u),
+        name = binary_part(text, name_at, name_length)
+
+        if String.match?(value, ~r/[0-9·•|\/:：,~\-–—]/u) or String.match?(name, @state),
           do: %{
             name: binary_part(text, name_at, name_length),
             value: value,

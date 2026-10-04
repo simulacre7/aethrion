@@ -157,7 +157,12 @@ defmodule Aethrion.Bridge.Ledger do
   # call them by in a change, and stays the model's to print.
   defp named?(fields) do
     notes = Enum.count(fields, &(&1[:note?] == true))
-    length(fields) >= 2 and notes <= length(fields) - notes
+
+    # (A date, a time, and a place with no names before two numbers that
+    # have them is a window: there is something to keep count of.)
+    length(fields) >= 2 and
+      (notes <= length(fields) - notes or
+         Enum.any?(fields, &(&1[:note?] != true and figure(&1) != nil)))
   end
 
   # A mark that opens the window may lead every line of it ("◈Time: ...",
@@ -240,9 +245,11 @@ defmodule Aethrion.Bridge.Ledger do
   defp balanced(text, from, {opener, close}) do
     reach = min(byte_size(text) - from, @max_window)
 
-    ~r/#{Regex.escape(opener)}|#{Regex.escape(close)}/u
-    |> Regex.scan(binary_part(text, from, reach), return: :index)
-    |> Enum.reduce_while(1, fn [{at, size}], depth ->
+    # (Matched as bytes: the span may end inside a character.)
+    text
+    |> :binary.matches([opener, close], scope: {from, reach})
+    |> Enum.reduce_while(1, fn {at, size}, depth ->
+      at = at - from
       depth = if binary_part(text, from + at, size) == opener, do: depth + 1, else: depth - 1
       if depth == 0, do: {:halt, {:stop, from + at + size}}, else: {:cont, depth}
     end)
@@ -287,9 +294,11 @@ defmodule Aethrion.Bridge.Ledger do
       # A part's title in brackets ("[Player Character]") stands for the
       # line under it.
       following =
-        if String.match?(following, ~r/\A\s*[\[【][^\[\]【】\n]{1,40}[\]】]\s*\z/u) and below != [],
-          do: hd(below),
-          else: following
+        if String.match?(following, ~r/\A\s*[\[【][^\[\]【】\n]{1,40}[\]】]\s*\z/u) and
+             below != [] and
+             String.match?(hd(below), ~r/\A\s*\S{0,4}\s*[^:：=\n"“”'「」]{1,40}[:：=]/u),
+           do: hd(below),
+           else: following
 
       goes_on? =
         length(fields(so_far, spec)) < 2 or (lead != "" and lead(following) == lead)
@@ -394,13 +403,16 @@ defmodule Aethrion.Bridge.Ledger do
   before. A window that is mostly lines of prose (what each character is
   thinking, the scene in a sentence) is written anew by the model with
   every reply; kept, with only what the model names changed, its lines go
-  stale. So a window is kept when it has at least as many numbers and
-  lists as lines of prose.
+  stale. So a window with no number or list is kept only when it has no
+  line of prose, and one with numbers when its prose is not much more.
   """
   @spec keeps?(String.t(), spec() | nil) :: boolean()
   def keeps?(window, spec) do
     {figures, prose} = kinds(window, spec)
-    prose <= figures
+    # (With numbers to keep, one line of prose more than those is borne:
+    # a mood that grows into a sentence does not hand the window over in
+    # the middle of a chat.)
+    if figures == 0, do: prose == 0, else: prose <= figures + 1
   end
 
   @doc false
@@ -1054,7 +1066,7 @@ defmodule Aethrion.Bridge.Ledger do
              String.ends_with?(field, " " <> bare) and
                String.match?(
                  binary_part(field, 0, byte_size(field) - byte_size(bare) - 1),
-                 ~r/\A[^\s]{1,24}(?:['’]s|의)\z/u
+                 ~r/\A(?:[^\s]{1,24}['’]s|[^\s]{2,24}의)\z/u
                )
            end) do
       by_name[found].name
@@ -1285,7 +1297,9 @@ defmodule Aethrion.Bridge.Ledger do
   # (A date is no number to work with, nor is a place whose name begins
   # with one: "24-hour store", "2층 복도".)
   defp figure(%{name: name, value: value} = field) do
-    if dated?(%{name: name, value: value}) or placed?(field), do: nil, else: figure(value)
+    if dated?(%{name: name, value: value}) or (placed?(field) and worded?(value)),
+      do: nil,
+      else: figure(value)
   end
 
   defp figure(value) do
@@ -1296,6 +1310,9 @@ defmodule Aethrion.Bridge.Ledger do
       end
     end
   end
+
+  # ("Zone: 3" and "Area Control: 45%" are numbers, whatever their names.)
+  defp worded?(value), do: String.match?(value, ~r/\p{L}/u)
 
   defp shaped({:pair, _pre, _a, _sep, _b, _post} = pair, %{now: a, max: b}),
     do: put_pair(pair, a, b)
@@ -1520,7 +1537,7 @@ defmodule Aethrion.Bridge.Ledger do
 
   # A date, or a place that reads as a number ("24-hour store", "2층 복도").
   defp said_anew?(was, habits),
-    do: habits[:dated?] == true or (habits[:placed?] == true and figure?(was))
+    do: habits[:dated?] == true or (habits[:placed?] == true and figure?(was) and worded?(was))
 
   # A row of labelled numbers: the numbers named move; the row written
   # anew replaces it; anything else is not about this row.

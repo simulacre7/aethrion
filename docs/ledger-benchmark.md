@@ -62,7 +62,7 @@ So a card is read three times at once, and what is read is checked against the c
 
 Before these, the Haiku-read row was a matter of luck. In two of the night's sessions all three readings had written the maximums with a base of 100: the rules were thrown away with nothing in their place, the model's own first window stood, and every turn had a maximum that its stat did not give. In the two sessions of the table and in six more readings of the card, Haiku's reading had every maximum.
 
-Later in the night a Haiku-read session gave no points for a level in thirty turns. Each reading had quoted the card's sentence about them only as far as "an extra 10 points for every level ending in 5 or 0", and written the rule with the 15 that the card's line goes on to say ("gaining 15 points in total"): the rule was dropped for a number its sentence did not have. A rule's number is now looked for in the whole line of the card that the quote begins in.
+Later in the night a Haiku-read session gave no points for a level in thirty turns. Each reading had quoted the card's sentence about them only as far as "an extra 10 points for every level ending in 5 or 0", and written the rule with the 15 that the card's line goes on to say ("gaining 15 points in total"): the rule was dropped for a number its sentence did not have. A rule's number is now looked for in the rest of the card's sentence too, where the quote stops short of its end.
 
 A stronger reader costs three calls a card, once (`--card-model`), and what was read can be looked over and set right on `/cards`.
 
@@ -109,7 +109,7 @@ The other sixteen are left to the model, as before the ledger:
 
 - six print no window;
 - three draw theirs with their own scripts, the model being told not to write the numbers;
-- three have a window that is mostly prose: a line for what each of five people is thinking, the day's news. Kept, with only the named fields changed, those lines stayed as they were for turns (the news of one card for all eight); the model alone writes them anew with every reply;
+- three have a window that is mostly prose (no number to keep and a line of prose, or more lines of prose than numbers and one): a line for what each of five people is thinking, the day's news. Kept, with only the named fields changed, those lines stayed as they were for turns (the news of one card for all eight); the model alone writes them anew with every reply;
 - one has cells with no names, told apart by their place (`[Status:image|title|summary|Time: 22:10|place|...]`);
 - one has a line for each character now in the scene, more or fewer as they come and go;
 - in two the model prints another window than the format the card describes, which is then not found, and nothing is done to it.

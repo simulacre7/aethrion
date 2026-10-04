@@ -40,6 +40,7 @@ defmodule Aethrion.Bridge.Reply do
           required(:player) => String.t() | nil,
           optional(:line?) => boolean(),
           optional(:first?) => boolean(),
+          optional(:own) => String.t() | nil,
           optional(:settled) => settled() | nil,
           optional(:keep) => (settled() -> any())
         }
@@ -71,6 +72,7 @@ defmodule Aethrion.Bridge.Reply do
       player: auto[:player],
       line?: line?,
       first?: spec != nil and found == nil,
+      own: if(ledger == nil, do: found),
       settled: key && settled(turn.store.get.(key)),
       keep: if(key, do: &turn.store.put.(key, kept(&1)))
     }
@@ -151,14 +153,21 @@ defmodule Aethrion.Bridge.Reply do
 
   # The first window is the model's to print; the card's arithmetic is
   # worked out on it all the same.
-  defp window(text, _changes, %{ledger: nil, spec: spec, locale: locale}) do
+  defp window(text, changes, %{ledger: nil, spec: spec, locale: locale} = plan) do
     case Ledger.window(text, spec) do
       {head, printed, tail} ->
         {settled, ruled} = Ledger.settle(printed, spec)
         {String.trim(head <> settled <> tail), Ledger.rule_log(ruled, locale)}
 
+      # A window left to the model (mostly prose) that the model, used to
+      # the ledger, did not print, writing its lines instead: they are
+      # applied to the window that stands, as they were the turn before.
       nil ->
-        {String.trim(text), []}
+        own = plan[:own]
+
+        if changes != [] and is_binary(own),
+          do: window(text, changes, %{plan | ledger: own}),
+          else: {String.trim(text), []}
     end
   end
 

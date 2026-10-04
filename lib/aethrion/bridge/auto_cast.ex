@@ -541,33 +541,34 @@ defmodule Aethrion.Bridge.AutoCast do
 
     # (A small reader cuts the sentence short: "Gain 5 points upon
     # leveling up. Gain an extra 10 points for every fifth level" for a
-    # rule with the 15 that the card's line goes on to say. A number may
-    # stand in the rest of the card's line.)
-    lines = lines_of(quote, text)
+    # rule with the 15 that the card's sentence goes on to say. A number
+    # may stand in the rest of that sentence, and no further.)
+    rest = rest_of_sentence(quote, card)
 
     String.length(quote) >= 8 and quoted?(quote, card) and
-      Enum.all?(numbers, &(in_place?(&1, quote, card) or in_line?(&1, lines))) and
+      Enum.all?(numbers, &(in_place?(&1, quote, card) or in_rest?(&1, rest))) and
       (not named? or named?(rule, quote))
   end
 
-  # The lines of the card that the quote begins in (three at most).
-  defp lines_of(quote, text) do
-    piece = quote |> String.graphemes() |> Enum.take(@piece) |> Enum.join()
+  # What the card says after the quote, to the end of the sentence the
+  # quote stops in; "" for a quote that ends its sentence, or is not found.
+  defp rest_of_sentence(quote, card) do
+    piece = quote |> String.graphemes() |> Enum.take(-@piece) |> Enum.join()
 
-    if String.length(piece) < 8 do
-      []
+    with false <- String.length(piece) < 8,
+         false <- String.match?(quote, ~r/[.!?。…]["')\]」』]*\z/u),
+         [_before, after_quote | _more] <- String.split(card, piece, parts: 2) do
+      # (A point between digits is a decimal's, not the sentence's end.)
+      [rest] = Regex.run(~r/\A(?:[^.!?。\n]|\.(?=[0-9]))*/u, after_quote)
+      String.slice(rest, 0, 160)
     else
-      text
-      |> String.split("\n")
-      |> Enum.map(&plain/1)
-      |> Enum.filter(&String.contains?(&1, piece))
-      |> Enum.take(3)
+      _other -> ""
     end
   end
 
-  defp in_line?(number, lines) do
+  defp in_rest?(number, rest) do
     pattern = Regex.compile!("(?<![0-9.])" <> Regex.escape(number) <> "(?!\\.?[0-9])")
-    Enum.any?(lines, &Regex.match?(pattern, &1))
+    Regex.match?(pattern, rest)
   end
 
   # The sentence names the fields the rule speaks of: all of two, and all

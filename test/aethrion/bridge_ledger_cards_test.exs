@@ -569,7 +569,7 @@ defmodule Aethrion.BridgeLedgerCardsTest do
       spec = %{open: "<LIVE>", close: "</LIVE>", rules: []}
 
       window =
-        "<LIVE>\n[cam: 현관 · CAM 4]\n[rating: 41만 명]\n[sera: 하 실장 얼굴이 하얗다. 정전 하나에? 저 사람이?]\n[taeseok: 또 다들 하 실장만 부른다. 아버지까지.]\n[sia: 오빠가 내 메시지 읽고도 표정이 없다. 원래 저래.]\n</LIVE>"
+        "<LIVE>\n[cam: 현관 · CAM 4]\n[rating: 41만 명]\n[sera: 하 실장 얼굴이 하얗다. 정전 하나에? 저 사람이?]\n[taeseok: 또 다들 하 실장만 부른다. 아버지까지.]\n[sia: 오빠가 내 메시지 읽고도 표정이 없다. 원래 저래.]\n[jia: 바쁜 오빠 멋있다. 라이브 세팅은 내가 하지 뭐.]\n[yoonjae: 9시 20분에 아가씨가 할 말이 뭔지 모른다. 그게 제일 무섭다.]\n</LIVE>"
 
       refute Ledger.keeps?(window, spec)
       chat = [%{"role" => "assistant", "content" => "조명이 켜진다.\n\n" <> window}]
@@ -761,12 +761,35 @@ defmodule Aethrion.BridgeLedgerCardsTest do
       assert [%{name: "Gear", value: "Sword & Shield"}, %{name: "Gold"}] =
                Ledger.fields(window, spec)
 
-      window = "[Sheet]\n- Gear: Sword & Shield & Gold: 5\n- Day: 2\n[Sheet]"
+      # Nor in a window that does not join its fields so: a name and a
+      # colon after an & may be a remark.
+      for value <- [
+            "T-shirt & jeans (color: blue)",
+            "Poisoned & Burning (3 turns: -5 HP)",
+            "Kim & Lee: rivals",
+            "\"R&D said: no budget\"",
+            "민아 & 준 (호감도: 30)"
+          ] do
+        window = "[Sheet]\n- Gear: #{value}\n- Gold: 5\n[Sheet]"
+
+        assert [%{name: "Gear", value: ^value}, %{name: "Gold", value: "5"}] =
+                 Ledger.fields(window, spec)
+
+        {kept, _applied, []} = Ledger.apply(window, [{"Gear", "a red dress"}], spec)
+        assert kept == "[Sheet]\n- Gear: a red dress\n- Gold: 5\n[Sheet]"
+      end
+
+      # In one that does, a piece with no plain name of its own stays
+      # with the value before it.
+      window =
+        "[Sheet]\n- A: 1 & B: 2 & C: 3\n- Gear: Sword & Shield (grade: fine) & Gold: 5\n[Sheet]"
 
       assert [
-               %{name: "Gear", value: "Sword & Shield"},
-               %{name: "Gold", value: "5"},
-               %{name: "Day"}
+               _a,
+               _b,
+               _c,
+               %{name: "Gear", value: "Sword & Shield (grade: fine)"},
+               %{name: "Gold", value: "5"}
              ] =
                Ledger.fields(window, spec)
     end
@@ -860,6 +883,138 @@ defmodule Aethrion.BridgeLedgerCardsTest do
         refused = [{"Stat Point", value, reason}]
         assert Ledger.unanswered(refused, before, settled) == refused, "#{value} (#{reason})"
       end
+    end
+  end
+
+  describe "the seventh review" do
+    alias Aethrion.Bridge.Reply
+
+    test "a long text of Korean after a window in brackets does not raise" do
+      spec = %{open: "[ Trust:", close: "]", rules: []}
+      window = "[ Trust: 3% | Anger: 5% | 생각 ]"
+
+      for lead <- ["a", "aa", "aaa"] do
+        text = window <> "\n" <> lead <> String.duplicate("가", 5000)
+        assert {"", ^window, _story} = Ledger.window(text, spec)
+      end
+
+      # (Brackets of several bytes, and one that is never closed.)
+      spec = %{open: "【", close: "】", rules: []}
+      text = "【 HP: 3 | MP: 5 】\n" <> String.duplicate("가", 5000)
+      assert {"", "【 HP: 3 | MP: 5 】", _story} = Ledger.window(text, spec)
+      assert Ledger.window("【 HP: 3 | MP: 5 \n" <> String.duplicate("가", 5000), spec) == nil
+    end
+
+    test "a number is a number, whatever place its name speaks of" do
+      spec = %{
+        open: "[Status]",
+        close: "[Status]",
+        rules: ["Scene Tension = clamp(Scene Tension, 0, 100)", "when Zone rises: Gold += 10"]
+      }
+
+      window =
+        "[Status]\n- Scene Tension: 40\n- Zone: 3\n- 지역 평판: 30\n- Area Control: 45%\n- Gold: 5\n[Status]"
+
+      changes = [
+        {"Scene Tension", "+70"},
+        {"Zone", "+1"},
+        {"지역 평판", "+5"},
+        {"Area Control", "-5"}
+      ]
+
+      {kept, applied, []} = Ledger.apply(window, changes, spec)
+      assert length(applied) == 4
+      {kept, _ruled} = Ledger.settle(kept, spec, window)
+
+      assert kept ==
+               "[Status]\n- Scene Tension: 100\n- Zone: 4\n- 지역 평판: 35\n- Area Control: 40%\n- Gold: 15\n[Status]"
+    end
+
+    test "a number that the card says of something else on the same line states nothing" do
+      alias Aethrion.Bridge.AutoCast
+
+      card =
+        "Stats: Each point of Vigor raises max HP by 5. Each point of Will raises max MP by 10. Level cap is 50.\nOther line."
+
+      refute AutoCast.stated?(
+               "HP.max = Vigor * 10",
+               "Each point of Vigor raises max HP by 5.",
+               card
+             )
+
+      refute AutoCast.stated?("HP.max = Vigor * 50", "Each point of Vigor raises max HP", card)
+      assert AutoCast.stated?("HP.max = Vigor * 5", "Each point of Vigor raises max HP", card)
+
+      korean = "체력은 활력 1당 5씩 오른다. 마력은 지력 1당 50씩 오른다. 최대 100."
+      refute AutoCast.stated?("체력.max = 활력 * 50", "체력은 활력 1당 5씩 오른다.", korean)
+    end
+
+    test "a window that grows a line of prose is not handed over, and one handed over loses no change" do
+      spec = %{open: "[Status]", close: "[Status]", rules: []}
+
+      window =
+        "[Status]\n- HP: 10 / 20\n- Affection: 30\n- Mood: calm\n- Outfit: white blouse and navy skirt\n- Thought: I wonder what he wants\n[Status]"
+
+      assert Ledger.keeps?(window, spec)
+      {kept, _applied, []} = Ledger.apply(window, [{"Mood", "a little tense tonight"}], spec)
+      assert Ledger.keeps?(kept, spec)
+
+      # A window of people's thoughts with two numbers is the model's; ledger
+      # lines written for it all the same are applied to it.
+      prose =
+        "[Status]\n- HP: 10 / 20\n- Affection: 30\n- Mina: I wonder what he wants from me\n- Jun: she never looks at me now\n- Sera: the rain will not stop tonight\n- Hana: nobody asked what I think\n[Status]"
+
+      refute Ledger.keeps?(prose, spec)
+      chat = [%{"role" => "assistant", "content" => "Rain.\n\n" <> prose}]
+      plan = Reply.plan(%{window: spec}, chat, %{line?: true, locale: :en})
+      assert plan.ledger == nil
+
+      reply = "He leaves.\n<aethrion-ledger>\nAffection: +5\n</aethrion-ledger>"
+      {text, _status} = Reply.finish(reply, nil, plan)
+      assert text =~ "- Affection: 35\n"
+      assert String.starts_with?(text, "He leaves.")
+    end
+
+    test "cells with no names before numbers that have them are a window" do
+      spec = %{open: "[", close: "]", rules: []}
+      window = "[ 3월 5일 화요일 | 오후 3시 | 학교 옥상 | 호감도: 30 | 신뢰: 5 ]"
+      assert {"이야기\n\n", ^window, ""} = Ledger.window("이야기\n\n" <> window, spec)
+      {kept, _applied, []} = Ledger.apply(window, [{"호감도", "+1"}], spec)
+      assert kept =~ "| 호감도: 31 |"
+    end
+
+    test "a heading of words that names a state is a field; a tag before a heading is not a marker" do
+      spec = %{open: "[Status]", close: "[Status]", rules: []}
+      window = "[Status]\n[Location Seoul Station]\n[날씨 맑음]\n- HP: 10 / 20\n[Status]"
+      {kept, applied, []} = Ledger.apply(window, [{"Location", "Busan"}, {"날씨", "흐림"}], spec)
+      assert length(applied) == 2
+      assert kept == "[Status]\n[Location Busan]\n[날씨 흐림]\n- HP: 10 / 20\n[Status]"
+
+      spec = %{open: "<Status>", close: "", rules: []}
+      window = "<Status> Day 3 · noon\nHP: 10\nMP: 5"
+      assert {kept, [_one], []} = Ledger.apply(window, [{"Status", "Day 4 · morning"}], spec)
+      assert kept == "<Status> Day 4 · morning\nHP: 10\nMP: 5"
+    end
+
+    test "smaller reaches: an owner, a title over speech, a tag that says whose line it is" do
+      spec = %{open: "[S]", close: "[S]", rules: []}
+      window = "[S]\n- 회의 시간: 14:00\n- HP: 10 / 20\n[S]"
+
+      assert {^window, [], [{"시간", "15:00", :unknown}]} =
+               Ledger.apply(window, [{"시간", "15:00"}], spec)
+
+      spec = %{open: "- HP", close: "", rules: []}
+
+      text =
+        "- HP: 10 / 20\n- MP: 5\n\n[Later that night]\n- \"Hello,\" she said.\n- \"Who are you?\"\n\nThe end."
+
+      assert {"", "- HP: 10 / 20\n- MP: 5", _story} = Ledger.window(text, spec)
+
+      spec = %{open: "[S]", close: "[S]", rules: []}
+      window = "[S]\n<Mina> Affection: 30\n<Jun> Affection: 10\n[S]"
+      names = window |> Ledger.fields(spec) |> Enum.map(& &1.name)
+      assert Enum.all?(names, &String.contains?(&1, "Affection"))
+      assert Enum.any?(names, &String.contains?(&1, "Mina"))
     end
   end
 end
