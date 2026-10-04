@@ -83,6 +83,12 @@ defmodule Aethrion.BridgeLedgerCellsTest do
                 ]}
     end
 
+    test "a change written as the row is, with its bar" do
+      assert {["Hansol | Rank 10 | P 0 (+0) | L 1 | C 2 | I 0 | B2 C동 숙소 | -", _remi],
+              ["기록 · Hansol L 0 → 1, C 0 → 2"]} =
+               turn([{"Hansol | L", "+1 / C: +2 (조직의 따뜻함 체감)"}])
+    end
+
     test "a row written anew is taken, and its numbers held to the rules" do
       assert {["Hansol | Rank 9 | P 12 (+12) | L 3 | C 1 | I 0 | B2 대욕장 | 등 밀기", _remi], record} =
                turn([{"Hansol", "Rank 9 | P 12 (+12) | L 8 | C 1 | I 0 | B2 대욕장 | 등 밀기"}])

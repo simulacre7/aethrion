@@ -287,8 +287,11 @@ defmodule Aethrion.Bridge.Ledger do
 
   # A change named by a row and one of its labels, as a change to the row.
   defp celled(by_name, name, value) do
+    # "Hansol | L: +1", as the row itself is written.
+    spaced = name |> String.replace(~r/[|│｜]/u, " ") |> String.trim()
+
     with false <- Map.has_key?(by_name, key(name)),
-         [_all, row, label] <- Regex.run(~r/\A(.+)\s+(\S+)\z/u, String.trim(name)),
+         [_all, row, label] <- Regex.run(~r/\A(.+?)\s+(\S+)\z/u, spaced),
          %{value: was} <- Map.get(by_name, key(row)),
          true <-
            Enum.any?(Cells.read(was), &(String.downcase(&1.label) == String.downcase(label))) do
