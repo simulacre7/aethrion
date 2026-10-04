@@ -576,15 +576,19 @@ defmodule Aethrion.BridgeLedgerTest do
       %{"role" => "user", "content" => "앞으로 간다."}
     ]
 
-    assert Ledger.recorded(last) == [
-             "기록 · Stat Point 5 → 0 · Strength 9 → 14",
-             "규칙 · HP 90 / 90 → 140 / 140"
-           ]
+    assert Ledger.recorded(last) ==
+             {["기록 · Stat Point 5 → 0 · Strength 9 → 14", "규칙 · HP 90 / 90 → 140 / 140"],
+              ["Mana: +3 (없는 칸)"]}
 
-    assert Ledger.recorded([%{"role" => "assistant", "content" => "창이 없는 답"}]) == []
+    assert Ledger.recorded([%{"role" => "assistant", "content" => "창이 없는 답"}]) == {[], []}
 
-    assert Ledger.instruction(window(), @lines, Ledger.recorded(last)) =~
+    told = Ledger.instruction(window(), @lines, Ledger.recorded(last))
+
+    assert told =~
              "do not write them again (기록 · Stat Point 5 → 0 · Strength 9 → 14; 규칙 · HP 90 / 90 → 140 / 140)."
+
+    # And what was not taken, so that the model can say it again as asked.
+    assert told =~ "write it again in the form asked for: Mana: +3 (없는 칸)."
 
     ruled = Ledger.instruction(window(), Map.put(@lines, :rules, ["HP.max = Strength * 10"]))
 

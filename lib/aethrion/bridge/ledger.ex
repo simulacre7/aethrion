@@ -876,25 +876,33 @@ defmodule Aethrion.Bridge.Ledger do
 
   @doc """
   What the last reply's status block says the ledger did, from the
-  messages as the chat app sent them: the record lines of the latest reply
-  that has a status block (none when the ledger did nothing).
+  messages as the chat app sent them: `{recorded, refused}`, the record
+  lines of the latest reply that has a status block, and the changes it
+  did not take (as the model wrote them, with why).
   """
-  @spec recorded([map()]) :: [String.t()]
+  @spec recorded([map()]) :: {[String.t()], [String.t()]}
   def recorded(messages) do
     messages
     |> Enum.reverse()
-    |> Enum.find_value([], fn
+    |> Enum.find_value({[], []}, fn
       %{"role" => "assistant", "content" => content} ->
         case Regex.run(
                ~r/<aethrion-turn\b[^>]*>(.*?)<\/aethrion-turn>/s,
                Aethrion.Bridge.text(content)
              ) do
           [_all, turn] ->
-            turn
-            |> String.split("\n")
-            |> Enum.filter(&String.match?(&1, ~r/\A(?:기록|Ledger|규칙|Rules) · .*(?:→|[+−])/u))
-            |> Enum.reject(&String.match?(&1, ~r/\)\s*\z/u))
-            |> Enum.map(&String.slice(&1, 0, 300))
+            lines =
+              for line <- String.split(turn, "\n"),
+                  [_all, kind, rest] <- [Regex.run(~r/\A(기록|Ledger|규칙|Rules) · (.*)\z/us, line)],
+                  do: {kind, String.slice(rest, 0, 300)}
+
+            {refused, done} =
+              Enum.split_with(lines, fn {kind, rest} ->
+                kind in ["기록", "Ledger"] and String.match?(rest, ~r/\A[^·→]+: .*\([^()]*\)\s*\z/u)
+              end)
+
+            {for({kind, rest} <- done, do: kind <> " · " <> rest),
+             for({_kind, rest} <- refused, do: rest)}
 
           nil ->
             nil
@@ -907,20 +915,34 @@ defmodule Aethrion.Bridge.Ledger do
 
   @doc """
   What the note asks of the model once the rules keep the window.
-  `recorded` is what the ledger did last turn (`recorded/1`): a small
-  model, seeing the player's last request still in the chat, is apt to
-  grant it again.
+  `recorded` is what the ledger did and did not take last turn
+  (`recorded/1`): a small model, seeing the player's last request still in
+  the chat, is apt to grant it again, and has no other way to learn that a
+  line of its own was not read.
   """
-  @spec instruction(String.t(), spec() | nil, [String.t()]) :: String.t()
-  def instruction(window, spec \\ nil, recorded \\ []) do
+  @spec instruction(String.t(), spec() | nil, {[String.t()], [String.t()]}) :: String.t()
+  def instruction(window, spec \\ nil, recorded \\ {[], []}) do
+    {done, refused} = recorded
+
     already =
-      case recorded do
+      case done do
         [] ->
           ""
 
         lines ->
           " Last turn's changes are in the window already; do not write them again (" <>
             Enum.join(lines, "; ") <> ")."
+      end
+
+    already =
+      case refused do
+        [] ->
+          already
+
+        lines ->
+          already <>
+            " These lines of yours last turn were not taken, for the reason in brackets; if one still holds, write it again in the form asked for: " <>
+            Enum.join(lines, "; ") <> "."
       end
 
     fields = fields(window, spec)
