@@ -343,6 +343,48 @@ defmodule Aethrion.AutoCastTest do
       for {rule, from} <- made_up, do: refute(AutoCast.stated?(rule, from, card), rule)
     end
 
+    test "a price of one point is the card's when its sentence says the points raise the number" do
+      card = """
+      - Status Window: Displays Level, Class, Stats, etc. Stats can be raised through Stat Points without training.
+      - Vigor (생명력): Max HP +10 per point. A potion costs 100G.
+      """
+
+      rule =
+        "when Strength rises: Stat Point -= if(Stat Point > 0 or Stat Point.before > 0, 1, 0)"
+
+      assert AutoCast.stated?(
+               rule,
+               "Stats can be raised through Stat Points without training.",
+               card
+             )
+
+      # A sentence that is not the card's, or says nothing of the points.
+      refute AutoCast.stated?(rule, "Each stat point raises one stat by one.", card)
+      refute AutoCast.stated?(rule, "A potion costs 100G.", card)
+
+      # In a turn that has points, a point is paid for each, and no more
+      # is had than was paid for; in a turn with none the number rises
+      # all the same (by training, say).
+      spec = %{open: "[S]", close: "[S]", rules: [rule]}
+
+      after_raise = fn window ->
+        {kept, _applied, _refused} =
+          Aethrion.Bridge.Ledger.apply(window, [{"Strength", "+3"}], spec)
+
+        {kept, _ruled} = Aethrion.Bridge.Ledger.settle(kept, spec, window)
+        kept
+      end
+
+      assert after_raise.("[S]\n- Stat Point: 5\n- Strength: 12\n[S]") ==
+               "[S]\n- Stat Point: 2\n- Strength: 15\n[S]"
+
+      assert after_raise.("[S]\n- Stat Point: 2\n- Strength: 12\n[S]") ==
+               "[S]\n- Stat Point: 0\n- Strength: 14\n[S]"
+
+      assert after_raise.("[S]\n- Stat Point: 0\n- Strength: 12\n[S]") ==
+               "[S]\n- Stat Point: 0\n- Strength: 15\n[S]"
+    end
+
     test "the player the card names is not one of its people" do
       answer =
         ~s|{"characters": [{"name": "무명"}, {"name": "기환 (Kihwan)"}], "player": " 기환 "}|
