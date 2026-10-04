@@ -335,6 +335,26 @@ defmodule Aethrion.BridgeLedgerTest do
       assert Ledger.log([], refused, :ko) == ["기록 · HP: 8 (+나 -가 없음)", "기록 · EXP: 15 (+나 -가 없음)"]
     end
 
+    test "a row that leads with its number keeps doing so, whatever a change says of it" do
+      spec = %{open: "[Day", close: ""}
+
+      window =
+        "[Day 1/30 · Morning]\nTyler | 70 | Smug | Cameras love me.\nLily | 15 | Nervous | ..."
+
+      changes = [
+        # The rules' own facts, copied where the window's changes were asked for.
+        {"Lily", "affinity +14, trust +2, joy +28 → happy emotion"},
+        {"Tyler", "tension +8 → anxious condition, ego -2"}
+      ]
+
+      assert {kept, _applied, refused} = Ledger.apply(window, changes, spec)
+
+      assert kept ==
+               "[Day 1/30 · Morning]\nTyler | 68 | Smug | Cameras love me.\nLily | 15 | Nervous | ..."
+
+      assert [{"Lily", _value, :unreadable}] = refused
+    end
+
     test "a list is changed a thing at a time" do
       changes = [{"Item", "+마정석 (최하급) × 2"}, {"Item", "-타워 단말기 (보급형)"}, {"Item", "-엘릭서"}]
       assert {kept, applied, refused} = Ledger.apply(window(), changes, @lines)

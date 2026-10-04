@@ -692,12 +692,15 @@ defmodule Aethrion.Bridge.Ledger do
   # The number's field as the new value writes it, when the field has
   # words around its number and the new value brings its own ("45 (호기심)"
   # over "30 (경계)", "길드 3층" over "명월탑 1층"); as it was written
-  # before, for a number alone or a field that is one.
+  # before, for a number alone or a field that is one. A figure keeps
+  # leading the value: words before the number are not taken.
   defp dressed({:pair, was_pre, a, sep, b, {was_post, commas?}} = pair, value) do
     case number(value) do
       {:pair, pre, _a, _sep, _b, {post, _commas?}}
       when (pre != "" or post != "") and (was_pre != "" or was_post != "") ->
-        {:pair, pre, a, sep, b, {post, commas?}}
+        if lead?(was_pre) and not lead?(pre),
+          do: pair,
+          else: {:pair, pre, a, sep, b, {post, commas?}}
 
       _same ->
         pair
@@ -708,7 +711,9 @@ defmodule Aethrion.Bridge.Ledger do
     case number(value) do
       {:one, pre, _a, {post, _commas?}}
       when (pre != "" or post != "") and (was_pre != "" or was_post != "") ->
-        {:one, pre, a, {post, commas?}}
+        if lead?(was_pre) and not lead?(pre),
+          do: one,
+          else: {:one, pre, a, {post, commas?}}
 
       _same ->
         one
@@ -781,7 +786,8 @@ defmodule Aethrion.Bridge.Ledger do
         [_all, a, b] = match
         {:set_pair, int(a), int(b)}
 
-      match = Regex.run(~r/\A\D*?(-?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)\D*\z/u, value) ->
+      # A number with words around it, and no sign: the new value.
+      match = Regex.run(~r/\A[^\d+\-−]*?((?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)\D*\z/u, value) ->
         [_all, a] = match
         {:set, int(a)}
 
@@ -804,9 +810,16 @@ defmodule Aethrion.Bridge.Ledger do
         [_all, a, b] = match
         {:set_pair, int(a), int(b)}
 
-      match = Regex.run(~r/(?<![\d,.])(-?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)/u, value) ->
-        [_all, a] = match
-        {:set, int(a)}
+      # One number among words: a change when it carries a sign ("ego -2"),
+      # else the new value ("level 9 reached"). Several numbers say too much.
+      match =
+          Regex.scan(~r/(?<![\d,.])([+\-−]?)\s*((?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)/u, value) ->
+        case match do
+          [[_all, "", n]] -> {:set, int(n)}
+          [[_all, "+", n]] -> {:move, int(n)}
+          [[_all, _minus, n]] -> {:move, -int(n)}
+          _several -> :text
+        end
 
       true ->
         :text
@@ -933,7 +946,7 @@ defmodule Aethrion.Bridge.Ledger do
             " (" <> Enum.join(rule_texts(fields, spec), " | ") <> ")."
       end
 
-    "The status window is kept by the game's rules and shown by them: do not print it yourself, whatever the card says. Instead, after everything else, write <aethrion-ledger>...</aethrion-ledger> with one line for each field of the window that this reply changes: `Field: +N` or `Field: -N`, always with its sign, for a number that goes up or down (damage taken is `HP: -N`, experience gained `EXP: +N`), `Field: N / M` to set both numbers of a pair, or `Field: new text`.#{lists} Use the window's field names (#{names}).#{ruled}#{already} Leave out every field that stays as it is, and write the tags with nothing between them when nothing changes. It is not shown to the player."
+    "The status window is kept by the game's rules and shown by them: do not print it yourself, whatever the card says. Instead, after everything else, write <aethrion-ledger>...</aethrion-ledger> with one line for each field of the window that this reply changes: `Field: +N` or `Field: -N`, always with its sign, for a number that goes up or down (damage taken is `HP: -N`, experience gained `EXP: +N`), `Field: N / M` to set both numbers of a pair, or `Field: new text`.#{lists} Use the window's field names (#{names}).#{ruled}#{already} Leave out every field that stays as it is, and write the tags with nothing between them when nothing changes. What is listed under This turn and Now (how each character feels) is the rules' own and shown apart from the window: none of it goes in these lines. It is not shown to the player."
   end
 
   @doc """

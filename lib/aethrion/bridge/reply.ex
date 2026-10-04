@@ -126,6 +126,8 @@ defmodule Aethrion.Bridge.Reply do
         nil -> {text, nil}
       end
 
+    Logger.debug("Aethrion ledger lines: #{inspect(changes)}")
+
     {changes, source} =
       case plan[:settled] do
         nil -> changes(changes, printed, window, spec)
