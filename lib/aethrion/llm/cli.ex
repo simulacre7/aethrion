@@ -9,11 +9,18 @@ defmodule Aethrion.LLM.CLI do
   | `:command` | `"claude"` | `"claude"` or `"codex"`                          |
   | `:model`   | the CLI's  | passed as `--model`                              |
   | `:timeout` | `60_000`   | milliseconds for one call                        |
+  | `:thinking`| `false`    | let the Claude Code CLI think before it answers  |
 
   Each call runs the tool once, with no tools of its own, in a temporary
   directory (so it does not read the project it is started from). A call
   takes seconds, slower than an HTTP API; for a model served locally
   (Ollama, LM Studio, llama.cpp), `Aethrion.LLM.OpenAICompatible` is faster.
+
+  The Claude Code CLI thinks before it answers by default, which costs far
+  more than the answer when a line is hard to place (a small model spent
+  4,500 thinking tokens and a minute on one short choice). Aethrion's calls
+  are short choices and narration, so thinking is off (`MAX_THINKING_TOKENS=0`
+  for the tool) unless `thinking: true`.
   """
 
   @behaviour Aethrion.LLM.Adapter
@@ -107,7 +114,7 @@ defmodule Aethrion.LLM.CLI do
       {rest, text}
     end
 
-    case execute(path, args, dir, Keyword.get(opts, :timeout, 60_000), {on_data, {"", []}}) do
+    case execute(path, args, dir, opts, {on_data, {"", []}}) do
       {:ok, {_pending, text}, 0} ->
         case IO.iodata_to_binary(text) do
           "" -> {:error, :empty_response}
@@ -151,7 +158,7 @@ defmodule Aethrion.LLM.CLI do
       end
 
     try do
-      case execute(path, args, dir, Keyword.get(opts, :timeout, 60_000)) do
+      case execute(path, args, dir, opts) do
         {:ok, text, 0} ->
           {:ok, if(command == "codex", do: read_out(out), else: String.trim(text))}
 
@@ -170,14 +177,22 @@ defmodule Aethrion.LLM.CLI do
   # about it; the prompt is in the arguments, each its own word). On a
   # timeout, or if the caller goes away first, the tool and every process it
   # started are stopped.
-  defp execute(path, args, dir, timeout, reader \\ nil) do
+  defp execute(path, args, dir, opts, reader \\ nil) do
+    timeout = Keyword.get(opts, :timeout, 60_000)
+
+    env =
+      if Keyword.get(opts, :thinking, false),
+        do: [],
+        else: [{~c"MAX_THINKING_TOKENS", ~c"0"}]
+
     port =
       Port.open({:spawn_executable, "/bin/sh"}, [
         :binary,
         :exit_status,
         :hide,
         args: ["-c", ~s(exec "$0" "$@" < /dev/null), path | args],
-        cd: dir
+        cd: dir,
+        env: env
       ])
 
     # A tool that already finished has no pid left to ask for.

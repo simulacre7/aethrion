@@ -36,16 +36,21 @@ defmodule Aethrion.Bridge.Scene do
   @doc "What the note asks of the model."
   @spec instruction() :: String.t()
   def instruction do
-    "After everything else, end your reply with one more line: <aethrion-scene>...</aethrion-scene>, listing the named people who are with the player now and can be talked to, one per line. For someone listed under Now, the name alone; for someone new, `Name | who they are, in a few words`. Leave out the player, and leave it empty when the player is alone. It is not shown to the player."
+    "After everything else, end your reply with one more line: <aethrion-scene>...</aethrion-scene>, listing the named people who are with the player now and can be talked to, one per line. For someone listed under Now, the name alone, written exactly as it is listed there; for someone new, `Name | who they are, in a few words`. Leave out the player, and leave it empty when the player is alone. It is not shown to the player."
   end
 
   @doc """
   The reply without its scene line, and the scene: a list of entries, or
-  nil when the model wrote none (the scene then stays as it was).
+  nil when the model wrote none (the scene then stays as it was). The
+  player, when the card names them (`player`), is no one in the scene.
   """
-  @spec take(String.t()) :: {String.t(), [entry()] | nil}
-  def take(text) do
-    case Regex.run(~r/<aethrion-scene\b[^>]*>(.*?)(?:<\/aethrion-scene>|\z)/s, text,
+  @spec take(String.t(), String.t() | nil) :: {String.t(), [entry()] | nil}
+  def take(text, player \\ nil) do
+    # (To its closing tag; or, when the model left that out, to the next
+    # tag of ours or the end.)
+    case Regex.run(
+           ~r/<aethrion-scene\b[^>]*>(.*?)(?:<\/aethrion-scene>|(?=<\/?(?:aeth|ledger))|\z)/s,
+           text,
            return: :index
          ) do
       [{start, length}, {from, size}] ->
@@ -53,7 +58,12 @@ defmodule Aethrion.Bridge.Scene do
           binary_part(text, 0, start) <>
             binary_part(text, start + length, byte_size(text) - start - length)
 
-        {String.trim(rest), entries(binary_part(text, from, size), ~r/[\n;]/)}
+        named = entries(binary_part(text, from, size), ~r/[\n;]/)
+        others = if player, do: Enum.reject(named, &same?(&1.name, player)), else: named
+
+        # A model that lists only the player has not said who is there:
+        # the scene stays as it was.
+        {String.trim(rest), if(named != [] and others == [], do: nil, else: others)}
 
       nil ->
         {text, nil}
@@ -126,9 +136,10 @@ defmodule Aethrion.Bridge.Scene do
         %{name: name, profile: profile} -> name <> "|" <> profile
       end)
 
-    Regex.replace(~r/\A<aethrion-status((?: id="[0-9a-f]+")?)>/, status, fn _all, id ->
-      ~s(<aethrion-status#{id} scene="#{scene}">)
-    end)
+    # The scene is written as it is: none of it is read as a place in the pattern.
+    String.replace(status, ~r/\A<aethrion-status\b[^>]*/, &(&1 <> ~s( scene="#{scene}")),
+      global: false
+    )
   end
 
   @doc "The scene a reply's status block carries, or nil."
@@ -235,15 +246,76 @@ defmodule Aethrion.Bridge.Scene do
       else: id
   end
 
-  # The same person under a shorter or a fuller name: "Haruka" and "Haruka
-  # Minase", "무명" and "무명 (無名)".
-  defp same?(a, b) do
-    {a, b} = {key(a), key(b)}
-    {short, long} = if String.length(a) <= String.length(b), do: {a, b}, else: {b, a}
+  # The same person under a shorter or a fuller name ("Haruka" and "Haruka
+  # Minase", "무명" and "무명 (無名)"), or under the same name in the other
+  # script: a card written in English and played in Korean has "최승규" in
+  # its story and "Choi Seung-gyu" in its image commands.
+  @doc false
+  def same?(a, b) do
+    {ka, kb} = {key(a), key(b)}
+    {short, long} = if String.length(ka) <= String.length(kb), do: {ka, kb}, else: {kb, ka}
 
     short != "" and
       (short == long or String.starts_with?(long, short <> " ") or
-         String.ends_with?(long, " " <> short))
+         String.ends_with?(long, " " <> short) or sounds_alike?(ka, kb))
+  end
+
+  # A Hangul name and a Latin one that are the same consonants, as Korean
+  # is romanized (give or take one, for the ways a family name is spelled).
+  defp sounds_alike?(a, b) do
+    case {String.match?(a, ~r/\p{Hangul}/u), String.match?(b, ~r/\p{Hangul}/u)} do
+      {true, false} -> korean?(a, b)
+      {false, true} -> korean?(b, a)
+      _same_script -> false
+    end
+  end
+
+  # A family name that begins with no consonant in Hangul is often spelled
+  # with one in Latin letters: 이 as Lee, 임 as Lim, 유 as Ryu.
+  defp korean?(hangul, latin) do
+    {h, l} = {hangul_consonants(hangul), latin_consonants(latin)}
+
+    alike?(h, l) or
+      (String.match?(hangul, ~r/\A[\x{C544}-\x{C78F}]/u) and String.starts_with?(l, "l") and
+         alike?("l" <> h, l))
+  end
+
+  defp alike?(a, b) when a == b, do: String.length(a) >= 2
+
+  defp alike?(a, b),
+    do: min(String.length(a), String.length(b)) >= 4 and String.jaro_distance(a, b) >= 0.9
+
+  @initials ~w(k k n t t l m p p s s) ++ [""] ++ ~w(c c c k t p h)
+  @finals [""] ++ ~w(k k k n n n t l k m l l l p l m p p t t q t t k t p t)
+
+  # The consonants of Hangul syllables, in classes that Latin spellings share.
+  defp hangul_consonants(name) do
+    for <<c::utf8 <- name>>, c in 0xAC00..0xD7A3, into: "" do
+      n = c - 0xAC00
+      Enum.at(@initials, div(n, 588)) <> Enum.at(@finals, rem(n, 28))
+    end
+  end
+
+  defp latin_consonants(name) do
+    name
+    |> String.downcase()
+    |> String.replace(~r/[^a-z]/, "")
+    |> String.replace("ng", "q")
+    |> String.replace(~r/ch|j|z/, "c")
+    |> String.replace("sh", "s")
+    # An "h" that begins a syllable is ㅎ ("Hansol", "Yeon-hee"); one that
+    # ends it is only how the vowel is spelled ("Noh").
+    |> String.replace(~r/h(?![aeiouwy])/, "")
+    |> String.replace(~r/[aeiouwy]/, "")
+    |> String.replace(~r/[gkq]/, fn
+      "q" -> "q"
+      _k -> "k"
+    end)
+    |> String.replace(~r/[dt]/, "t")
+    |> String.replace(~r/[bpfv]/, "p")
+    |> String.replace("r", "l")
+    |> String.replace("x", "s")
+    |> String.replace(~r/(.)\1+/, "\\1")
   end
 
   defp key(name),

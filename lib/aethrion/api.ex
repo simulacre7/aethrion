@@ -61,6 +61,9 @@ defmodule Aethrion.API do
   - `:token` - when set, requests need `Authorization: Bearer <token>`
   - `:allow_hosts` - names besides this machine's that may reach the server
     without a token, such as a Docker Compose service name (`["aethrion"]`)
+  - `:card_opts` - adapter options for reading a card for `aethrion-auto`
+    (`Aethrion.Bridge.AutoCast`), over the narrating model's: `[model:
+    "..."]` has a stronger model read each card once
   - `:intent` - options for interpreting `say` text (`:adapter`,
     `:adapter_opts`), default `Aethrion.LLM.FakeAdapter`
   - `:render_timeout` (ms, default 15_000)
@@ -122,6 +125,7 @@ defmodule Aethrion.API do
       intent: Keyword.get(opts, :intent, []),
       interpreter: Keyword.get(opts, :interpreter, Aethrion.Interpreter.Rules),
       interpreter_opts: Keyword.get(opts, :interpreter_opts, []),
+      card_opts: Keyword.get(opts, :card_opts, []),
       cast: Keyword.get(opts, :cast),
       model: Keyword.get(opts, :model),
       render_timeout: Keyword.get(opts, :render_timeout, 15_000),
@@ -157,11 +161,15 @@ defmodule Aethrion.API do
   @editor_path Path.expand("../../priv/api/editor.html", __DIR__)
   @external_resource @editor_path
   @editor_html File.read!(@editor_path)
+  @cards_path Path.expand("../../priv/api/cards.html", __DIR__)
+  @external_resource @cards_path
+  @cards_html File.read!(@cards_path)
 
   @doc false
   # The chat page holds no data, so it loads without a token.
   def handle(_config, "GET", [], _query, _headers, _body), do: {200, :html, @chat_html}
   def handle(_config, "GET", ["editor"], _query, _headers, _body), do: {200, :html, @editor_html}
+  def handle(_config, "GET", ["cards"], _query, _headers, _body), do: {200, :html, @cards_html}
 
   # Browsers ask before a cross-origin call to the OpenAI-compatible routes.
   def handle(_config, "OPTIONS", ["v1" | _rest], _query, _headers, _body),
@@ -272,6 +280,9 @@ defmodule Aethrion.API do
   defp route("POST", ["casts", "check"]), do: {:ok, :cast_check}
   defp route("POST", ["casts", "simulate"]), do: {:ok, :cast_simulate}
   defp route("POST", ["casts", "import-card"]), do: {:ok, :cast_import}
+  defp route("GET", ["casts", "cards"]), do: {:ok, :cards}
+  defp route("PUT", ["casts", "cards", key]), do: {:ok, {:card_revise, key}}
+  defp route("DELETE", ["casts", "cards", key]), do: {:ok, {:card_forget, key}}
   defp route("POST", ["v1", "chat", "completions"]), do: {:ok, :openai_chat}
   defp route("GET", ["v1", "models"]), do: {:ok, :openai_models}
 
@@ -331,6 +342,29 @@ defmodule Aethrion.API do
   defp run(config, :cast_current, _query, _body),
     do: {:ok, 200, %{cast: State.to_data(config.cast)}}
 
+  # The cards read for `aethrion-auto`, to look over and set right.
+  defp run(_config, :cards, _query, _body) do
+    {:ok, 200,
+     %{cards: Aethrion.Bridge.AutoCast.cards(Aethrion.Bridge.Store.all(Aethrion.Bridge.Casts))}}
+  end
+
+  defp run(_config, {:card_revise, key}, _query, body) do
+    with {:ok, data} <- decode(body),
+         {:ok, kept} <- card_kept(key),
+         {:ok, revised} <- revised(kept, data) do
+      keep_card(key, kept, revised)
+      {:ok, 200, %{ok: true}}
+    end
+  end
+
+  # A card forgotten is read again the next time it is played.
+  defp run(_config, {:card_forget, key}, _query, _body) do
+    with {:ok, kept} <- card_kept(key) do
+      keep_card(key, kept, nil)
+      {:ok, 200, %{ok: true}}
+    end
+  end
+
   defp run(%{cast: nil}, :cast_card, _query, _body),
     do: {:error, 404, Error.new(:not_found, "this server was started without a cast")}
 
@@ -383,14 +417,14 @@ defmodule Aethrion.API do
       [readings, checkpoints, casts] = Enum.map(staged, &elem(&1, 0))
 
       try do
-        with {:ok, cast} <-
+        with {:ok, cast, auto} <-
                bridge_cast(config, data, messages, {adapter, adapter_opts}, %{
                  casts: casts,
                  checkpoints: checkpoints
                }),
-             {:ok, to, status?} <-
-               bridge_model(cast, data["model"], auto_model?(data["model"])) do
+             {:ok, to, status?} <- bridge_model(cast, data["model"], auto != nil) do
           bridge_turn(config, data, messages, cast, %{
+            auto: auto,
             to: to,
             status?: status?,
             generator: {adapter, adapter_opts},
@@ -688,26 +722,73 @@ defmodule Aethrion.API do
   # The cast a request plays: the server's, or for `aethrion-auto` the one
   # read from the card in the request (`Aethrion.Bridge.AutoCast`), once
   # for each card.
+  # How long the model may take over one reply through the bridge (ms).
+  @reply_timeout 180_000
+
   defp bridge_cast(config, data, messages, generator, stores) do
     cond do
       auto_model?(data["model"]) ->
-        card_cast(messages, generator, stores)
+        card_cast(messages, generator, stores, Map.get(config, :card_opts, []))
 
       match?(%State{}, config.cast) ->
-        {:ok, config.cast}
+        {:ok, config.cast, nil}
 
       true ->
         {:error, 400, Error.new(:no_cast, "start the server with --cast to use it as a model")}
     end
   end
 
-  defp card_cast(messages, {adapter, adapter_opts}, stores) do
+  defp card_kept(key) do
+    case Aethrion.Bridge.Store.get(Aethrion.Bridge.Casts, "card:" <> key) do
+      %{"cast" => _cast} = kept -> {:ok, kept}
+      _none -> {:error, 404, Error.new(:not_found, "no card has been read under this key")}
+    end
+  end
+
+  defp revised(kept, %{"window" => window}) do
+    case Aethrion.Bridge.AutoCast.revise(kept, window) do
+      {:ok, revised} -> {:ok, revised}
+      {:error, message} -> {:error, 400, Error.new(:invalid_request, message)}
+    end
+  end
+
+  defp revised(_kept, _data),
+    do: {:error, 400, Error.new(:invalid_request, "window is required")}
+
+  # A card is kept under its key and under its cast's root: both are set.
+  defp keep_card(key, kept, revised) do
+    Aethrion.Bridge.Store.replace(Aethrion.Bridge.Casts, "card:" <> key, revised)
+
+    with {:ok, state} <- State.parse(kept["cast"]) do
+      root = "root:" <> Aethrion.Bridge.root(state)
+
+      # Under the root only when it is this card that is kept there (two
+      # cards with no one in them have one root).
+      if Aethrion.Bridge.Store.get(Aethrion.Bridge.Casts, root) == kept,
+        do: Aethrion.Bridge.Store.replace(Aethrion.Bridge.Casts, root, revised)
+    end
+
+    :ok
+  end
+
+  defp card_cast(messages, {adapter, adapter_opts}, stores, card_opts) do
     {all, chat} = Aethrion.Bridge.transcript(messages)
     card = Aethrion.Bridge.AutoCast.card(all, chat)
 
+    # The cast, and what else the card was read as: its key, its status window.
     case Aethrion.Bridge.AutoCast.find(chat, card, stores) do
-      %State{} = cast -> {:ok, cast}
-      nil -> read_card(card, stores.casts, adapter, adapter_opts ++ [max_tokens: 1_500])
+      %{cast: cast} = read ->
+        {:ok, cast, Map.delete(read, :cast)}
+
+      nil ->
+        # The card is read once: a model other than the narrating one may do it.
+        opts =
+          adapter_opts
+          |> Keyword.merge(card_opts)
+          |> Keyword.merge(max_tokens: 2_500)
+          |> Keyword.put_new(:timeout, @reply_timeout)
+
+        read_card(card, stores.casts, adapter, opts)
     end
   end
 
@@ -715,16 +796,29 @@ defmodule Aethrion.API do
     started = System.monotonic_time(:millisecond)
 
     case Aethrion.Bridge.AutoCast.read(card, casts, adapter, opts) do
-      {:ok, cast} ->
+      {:ok, %{cast: cast} = read} ->
         names =
           case State.sorted_characters(cast) do
             [] -> "no one yet"
             people -> Enum.map_join(people, ", ", & &1.name)
           end
 
+        window =
+          case read.window do
+            nil ->
+              "no status window"
+
+            %{open: open, close: close} = window ->
+              "status window #{inspect(open)} to #{inspect(close)}" <>
+                case Map.get(window, :rules, []) do
+                  [] -> ", no rules"
+                  rules -> ", rules: " <> Enum.join(rules, " | ")
+                end
+          end
+
         took = seconds(System.monotonic_time(:millisecond) - started)
-        Logger.info("Aethrion read a new card: #{names} · #{took}")
-        {:ok, cast}
+        Logger.info("Aethrion read a new card: #{names} · #{window} · #{took}")
+        {:ok, cast, Map.delete(read, :cast)}
 
       {:error, reason} ->
         {:error, 502,
@@ -764,32 +858,56 @@ defmodule Aethrion.API do
         [
           interpreter: config.interpreter,
           interpreter_opts: config.interpreter_opts,
-          intent: config.intent
+          intent: config.intent,
+          # In a card's own story much of what the player does concerns no
+          # one in the cast: the reader may say so.
+          allow_none: turn_opts[:auto] != nil
         ],
         turn_opts.readings
       )
 
     started = System.monotonic_time(:millisecond)
 
-    # A cast read from a card: the story may bring people in.
-    auto? = auto_model?(data["model"])
+    # A cast read from a card: the story may bring people in, and the card's
+    # own status window is kept for it.
+    auto = turn_opts[:auto]
+    auto? = auto != nil
 
     with {:ok, {before, now, turn}} <-
            replay_chat(cast, chat, read, turn_opts.to, turn_opts.checkpoints, auto?) do
       replayed = System.monotonic_time(:millisecond)
-      # A card read on the way in keeps its own status window.
+      # What is done with the model's reply for a cast read from a card:
+      # its own status window is kept for it.
+      plan =
+        if auto?,
+          do:
+            Aethrion.Bridge.Reply.plan(auto, chat, %{
+              line?: turn.line != nil,
+              locale: locale,
+              id: turn[:id],
+              store: turn_opts.readings
+            })
+
       note = %{
         "role" => "system",
         "content" =>
-          Aethrion.Bridge.note(before, now, turn, locale, card_status: auto?, scene: auto?)
+          Aethrion.Bridge.note(before, now, turn, locale,
+            card_status: auto?,
+            scene: auto?,
+            ledger: Aethrion.Bridge.Reply.instruction(plan, messages)
+          )
       }
 
       messages = all ++ [note]
-      opts = adapter_opts ++ generation_opts(data)
+      # A card's whole prompt goes to the model: a reply may take longer
+      # than the adapters' own default allows.
+      opts = Keyword.put_new(adapter_opts ++ generation_opts(data), :timeout, @reply_timeout)
 
       status =
-        if turn_opts.status? and turn.line != nil,
-          do: Aethrion.Bridge.status(now, turn, locale, before, scene: auto?)
+        if turn_opts.status? and turn.line != nil do
+          block = Aethrion.Bridge.status(now, turn, locale, before, scene: auto?)
+          if auto?, do: Aethrion.Bridge.put_attr(block, "card", auto.key), else: block
+        end
 
       # A turn is kept once the model has answered.
       finish = fn replied ->
@@ -804,71 +922,77 @@ defmodule Aethrion.API do
       end
 
       if data["stream"] == true and is_function(config[:emit], 1) do
-        stream_turn(config.emit, data, {adapter, messages, opts}, {status, locale, auto?}, finish)
+        stream_turn(
+          config.emit,
+          data,
+          {adapter, messages, opts},
+          {status, locale, plan},
+          finish
+        )
       else
         replied = Aethrion.LLM.chat(adapter, messages, opts)
+        # The reply is made before the turn is kept: what it settles is kept with it.
+        finished = finished(replied, status, plan)
         finish.(replied)
-        reply(data, replied, status, auto?)
+        reply(data, finished)
       end
     end
   end
 
-  defp reply(data, replied, status, scene?) do
-    case replied do
-      # A reply to a request to continue one adds to it: no new turn, no
-      # second status block.
-      {:ok, text} when status != nil ->
-        {text, scene} = scene(text, scene?)
-        completion(data, String.trim(text) <> "\n\n" <> Aethrion.Bridge.Scene.mark(status, scene))
+  # The model's reply as the player gets it: `{:ok, {text, status}}`.
+  defp finished({:ok, text}, status, plan),
+    do: {:ok, Aethrion.Bridge.Reply.finish(text, status, plan)}
 
-      {:ok, text} ->
-        {text, _scene} = scene(text, scene?)
-        completion(data, String.trim(text))
+  defp finished({:error, _reason} = error, _status, _plan), do: error
 
-      {:error, reason} ->
-        {:error, 502, Error.new(:model_failed, "the model did not answer: #{inspect(reason)}")}
-    end
+  # A reply to a request to continue one adds to it: no new turn, no
+  # second status block.
+  defp reply(data, {:ok, {text, nil}}), do: completion(data, text)
+  defp reply(data, {:ok, {text, status}}), do: completion(data, text <> "\n\n" <> status)
+
+  defp reply(_data, {:error, reason}) do
+    {:error, 502, Error.new(:model_failed, "the model did not answer: #{inspect(reason)}")}
   end
-
-  # The line the model ends its reply with for a cast read from a card
-  # (who is with the player), taken out of the reply.
-  defp scene(text, true), do: Aethrion.Bridge.Scene.take(text)
-  defp scene(text, false), do: {text, nil}
 
   # The reply as server-sent events while the model writes it, the status
   # block last. Once the first event is out, a failing model can only be
   # told as an error event: the status code has gone.
-  defp stream_turn(emit, data, {adapter, messages, opts}, {status, locale, scene?}, done) do
+  defp stream_turn(emit, data, {adapter, messages, opts}, {status, locale, plan}, done) do
     chunk = sse_chunker(data)
     emit.(:start)
     emit.({:chunk, chunk.(%{role: "assistant", content: ""}, nil)})
 
-    # Leading blank lines are left out, as a whole reply is trimmed.
-    started = :atomics.new(1, [])
+    # Leading blank lines are left out, as a whole reply is trimmed. What
+    # has gone out is kept, to send only the rest once the reply is whole.
+    sent = {__MODULE__, make_ref()}
+    Process.put(sent, "")
 
     send_delta = fn delta ->
-      delta = if :atomics.get(started, 1) == 0, do: String.trim_leading(delta), else: delta
+      delta = if Process.get(sent) == "", do: String.trim_leading(delta), else: delta
 
       if delta != "" do
-        :atomics.put(started, 1, 1)
+        Process.put(sent, Process.get(sent) <> delta)
         emit.({:chunk, chunk.(%{content: delta}, nil)})
       end
     end
 
-    # The scene line is held back from the player.
-    {on_delta, flush} =
-      if scene?,
-        do: Aethrion.Bridge.Scene.filter(send_delta),
-        else: {send_delta, fn -> :ok end}
-
+    # For a cast read from a card, the model's lines for the rules are held
+    # back from the player, and so is a status window the ledger keeps.
+    on_delta = Aethrion.Bridge.Reply.filter(send_delta, plan)
     replied = Aethrion.LLM.stream_chat(adapter, messages, opts, on_delta)
-    flush.()
+    gone = Process.delete(sent)
+    # The reply is made before the turn is kept: what it settles is kept with it.
+    finished = finished(replied, status, plan)
     done.(replied)
 
-    case replied do
-      {:ok, text} ->
-        {_text, scene} = scene(text, scene?)
-        status = status && Aethrion.Bridge.Scene.mark(status, scene)
+    case finished do
+      {:ok, {text, status}} ->
+        # The end of the reply that has not gone out yet: what the filter
+        # held back, as the rules left it. (Without a filter all of it went
+        # out as it came.)
+        rest = if plan, do: Aethrion.Bridge.Reply.unsent(text, gone), else: ""
+
+        if rest != "", do: emit.({:chunk, chunk.(%{content: rest}, nil)})
         if status, do: emit.({:chunk, chunk.(%{content: "\n\n" <> status}, nil)})
         emit.({:chunk, chunk.(%{}, "stop") <> "data: [DONE]\n\n"})
 
@@ -879,7 +1003,7 @@ defmodule Aethrion.API do
 
         # Chat apps such as RisuAI skip an error event, so the reply says it too.
         emit.({:chunk, chunk.(%{content: stream_failed(locale)}, "stop")})
-        emit.({:chunk, "data: " <> Jason.encode!(error) <> "\n\ndata: [DONE]\n\n"})
+        emit.({:chunk, "data: " <> Jason.encode!(error) <> "\n\n" <> "data: [DONE]\n\n"})
     end
 
     emit.(:done)

@@ -51,6 +51,36 @@ defmodule Aethrion.BridgeStoreTest do
     assert cache.get.("b") == nil
   end
 
+  test "replace puts a value in place of what was kept, and a restart remembers it", %{
+    tmp_dir: dir
+  } do
+    path = Path.join(dir, "store.jsonl")
+    pid = start_supervised!({Store, name: :replace_test, path: path})
+
+    Store.put(:replace_test, "a", 1)
+    Store.put(:replace_test, "b", 1)
+    _ = :sys.get_state(pid)
+    assert Store.replace(:replace_test, "a", %{rules: ["x"]}) == :ok
+    # Kept by the time it returns; a value of nil forgets.
+    assert Store.get(:replace_test, "a") == %{"rules" => ["x"]}
+    assert Store.replace(:replace_test, "b", nil) == :ok
+    assert Store.all(:replace_test) == [{"a", %{"rules" => ["x"]}}]
+    # What is forgotten is gone: the next thing put under the key is kept.
+    Store.put(:replace_test, "b", 2)
+    assert Store.replace(:replace_test, "c", nil) == :ok
+    _ = :sys.get_state(pid)
+    assert Store.get(:replace_test, "b") == 2
+
+    stop_supervised!(:replace_test)
+    start_supervised!({Store, name: :replace_test, path: path})
+    assert Store.get(:replace_test, "a") == %{"rules" => ["x"]}
+    assert Store.get(:replace_test, "b") == 2
+    assert Store.get(:replace_test, "c") == nil
+    # A store that is not running keeps nothing and has nothing.
+    assert Store.replace(:not_running, "a", 1) == :ok
+    assert Store.all(:not_running) == []
+  end
+
   test "what was kept first stays: an answered turn is not rewritten by a racing one" do
     pid = start_supervised!({Store, name: :first_test})
     Store.put(:first_test, "a", 1)

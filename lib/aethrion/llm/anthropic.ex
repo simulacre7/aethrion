@@ -86,9 +86,10 @@ defmodule Aethrion.LLM.Anthropic do
   end
 
   @doc """
-  A reply to a whole conversation: system messages become the system
-  prompt, and turns of the same role are joined, as the API wants them
-  alternating and starting with the user.
+  A reply to a whole conversation: the system messages before the chat
+  become the system prompt, one inside the chat stays in its place as a
+  note (`Aethrion.LLM.split/1`), and turns of the same role are joined, as
+  the API wants them alternating and starting with the user.
   """
   def chat(messages, opts \\ []) do
     {system, turns} = conversation(messages)
@@ -153,19 +154,25 @@ defmodule Aethrion.LLM.Anthropic do
     end
   end
 
-  # System messages become the system prompt, and turns of the same role
-  # are joined, as the API wants them alternating and starting with the user.
+  # The system messages before the chat become the system prompt; one
+  # inside the chat stays in its place as a note in a user turn; and turns
+  # of the same role are joined, as the API wants them alternating and
+  # starting with the user.
   defp conversation(messages) do
-    {system, rest} = Enum.split_with(messages, &(&1["role"] == "system"))
+    {system, rest} = Aethrion.LLM.split(messages)
 
     turns =
       rest
-      |> Enum.map(
-        &%{
-          role: if(&1["role"] == "assistant", do: "assistant", else: "user"),
-          content: &1["content"]
-        }
-      )
+      |> Enum.map(fn
+        %{"role" => "assistant", "content" => content} ->
+          %{role: "assistant", content: content}
+
+        %{"role" => "note", "content" => content} ->
+          %{role: "user", content: Aethrion.LLM.note(content)}
+
+        %{"content" => content} ->
+          %{role: "user", content: content}
+      end)
       |> Enum.chunk_by(& &1.role)
       |> Enum.map(fn [first | _] = same ->
         %{first | content: Enum.map_join(same, "\n\n", & &1.content)}
@@ -178,7 +185,7 @@ defmodule Aethrion.LLM.Anthropic do
           turns
       end)
 
-    {Enum.map_join(system, "\n\n", & &1["content"]), turns}
+    {system, turns}
   end
 
   @doc "Returns true when an API key can be resolved."

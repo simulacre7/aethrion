@@ -76,6 +76,22 @@ defmodule Aethrion.Bridge.Store do
     :ok
   end
 
+  @doc "Everything kept, as `{key, value}` (in no order)."
+  def all(name) do
+    if :ets.whereis(name) != :undefined, do: :ets.tab2list(name), else: []
+  end
+
+  @doc """
+  Puts `value` in place of what was kept under `key` (`put/3` keeps what
+  was there first), and waits until it is kept. For what someone edits by
+  hand; a nil value forgets the key.
+  """
+  def replace(name, key, value) do
+    if :ets.whereis(name) != :undefined,
+      do: GenServer.call(name, {:replace, key, normalize(value)}),
+      else: :ok
+  end
+
   # As it would come back from the file.
   defp normalize(value), do: value |> Jason.encode!() |> Jason.decode!()
 
@@ -102,14 +118,36 @@ defmodule Aethrion.Bridge.Store do
     {:noreply, state}
   end
 
+  @impl true
+  def handle_call({:replace, key, value}, _from, state) do
+    # A key forgotten is gone: what is put under it next is kept.
+    if value == nil,
+      do: :ets.delete(state.table, key),
+      else: :ets.insert(state.table, {key, value})
+
+    if state.path do
+      line = Jason.encode!(%{"key" => key, "value" => value, "replace" => true})
+      File.write!(state.path, line <> "\n", [:append])
+    end
+
+    {:reply, :ok, state}
+  end
+
   # A line that cannot be read (or was written in an older format) is
-  # skipped; a key written twice keeps its first value.
+  # skipped; a key written twice keeps its first value, unless a later
+  # line replaces it or forgets it.
   defp load(table, path) do
     if File.exists?(path) do
       path
       |> File.stream!()
       |> Enum.each(fn line ->
         case Jason.decode(line) do
+          {:ok, %{"key" => key, "value" => nil, "replace" => true}} when is_binary(key) ->
+            :ets.delete(table, key)
+
+          {:ok, %{"key" => key, "value" => value, "replace" => true}} when is_binary(key) ->
+            :ets.insert(table, {key, value})
+
           {:ok, %{"key" => key, "value" => value}} when is_binary(key) ->
             :ets.insert_new(table, {key, value})
 

@@ -19,26 +19,39 @@ defmodule Aethrion.Bridge.AutoCast do
   those are added in the editor, and played with the model name `aethrion`.
   """
 
+  require Logger
+
   alias Aethrion.{Bridge, Card, State}
 
   @max_prompt 24_000
   @max_greeting 4_000
   @max_people 6
   @max_profile 600
+  @max_rules 16_000
+  @max_window_rules 24
+  # How many numbers a pool of points may be said to raise.
+  @max_spent 16
+  @max_rule 240
 
   @doc """
   What a request says about its card: the app's prompt before the chat
-  proper (`prompt`) and the card's first message (`greeting`, nil when the
-  chat starts with the player).
+  proper (`prompt`), the card's first message (`greeting`, nil when the
+  chat starts with the player), and `rules`, what the app adds inside or
+  after the chat (a card's instructions for every reply: its status
+  window is usually there) and what of a long prompt speaks of a status
+  window.
   """
-  @spec card([map()], [map()]) :: %{prompt: String.t(), greeting: String.t() | nil}
+  @spec card([map()], [map()]) :: %{
+          prompt: String.t(),
+          greeting: String.t() | nil,
+          rules: String.t()
+        }
   def card(all, chat) do
-    prompt =
+    whole =
       all
       |> Enum.take(length(all) - length(chat))
       |> Enum.filter(&(&1["role"] == "system"))
       |> Enum.map_join("\n\n", & &1["content"])
-      |> String.slice(0, @max_prompt)
 
     greeting =
       case chat do
@@ -49,7 +62,35 @@ defmodule Aethrion.Bridge.AutoCast do
           nil
       end
 
-    %{prompt: prompt, greeting: greeting}
+    inside =
+      chat
+      |> Enum.filter(
+        &(&1["role"] == "system" and not String.match?(&1["content"], ~r/\A\[Aethrion:/))
+      )
+      |> Enum.map(& &1["content"])
+
+    rules =
+      (inside ++ hints(String.slice(whole, @max_prompt, 400_000)))
+      |> Enum.join("\n\n")
+      |> String.slice(0, @max_rules)
+
+    %{prompt: String.slice(whole, 0, @max_prompt), greeting: greeting, rules: rules}
+  end
+
+  # What the part of a long prompt the reader does not get says about a
+  # status window: the text around each mention, three at most.
+  defp hints(rest) do
+    ~r/status window|상태창|스테이터스|\[status/iu
+    |> Regex.scan(rest, return: :index)
+    |> Enum.map(fn [{at, _length}] -> at end)
+    |> Enum.reduce([], fn at, kept ->
+      if Enum.any?(kept, &(abs(&1 - at) < 3_000)), do: kept, else: kept ++ [at]
+    end)
+    |> Enum.take(3)
+    |> Enum.map(fn at ->
+      from = max(at - 600, 0)
+      rest |> binary_part(from, min(3_600, byte_size(rest) - from)) |> String.replace_invalid("")
+    end)
   end
 
   @doc """
@@ -57,51 +98,610 @@ defmodule Aethrion.Bridge.AutoCast do
   (an app may change its prompt from turn to turn; the first message stays),
   else its prompt.
   """
-  @spec key(%{prompt: String.t(), greeting: String.t() | nil}) :: String.t()
-  def key(%{greeting: greeting}) when is_binary(greeting), do: "card:" <> sha("g\0" <> greeting)
-  def key(%{prompt: prompt}), do: "card:" <> sha("p\0" <> prompt)
+  @spec key(map()) :: String.t()
+  def key(%{greeting: greeting}) when is_binary(greeting), do: sha("g\0" <> greeting)
+  def key(%{prompt: prompt}), do: sha("p\0" <> prompt)
+
+  @typedoc """
+  What a card was read as: the `cast`, the card's status `window` (its
+  opening and closing text and its arithmetic, or nil), the `key` it is
+  kept under, and the name the card gives the `player`, if any.
+  """
+  @type read :: %{
+          cast: State.t(),
+          window: Aethrion.Bridge.Ledger.spec() | nil,
+          key: String.t(),
+          player: String.t() | nil
+        }
 
   @doc """
-  The cast this chat already has, or nil: the one a reply's checkpoint was
-  made from (the latest reply that has one), else the one kept for the
-  card. `casts` and `checkpoints` are `%{get: fun, put: fun}`
-  (`Aethrion.Bridge.Store`).
+  What this chat's card was read as, or nil: by the key a reply's status
+  block carries (the latest reply that has one), else by the cast a
+  reply's checkpoint was made from, else by the card's own key. `casts`
+  and `checkpoints` are `%{get: fun, put: fun}` (`Aethrion.Bridge.Store`).
   """
-  @spec find([map()], map(), %{casts: map(), checkpoints: map()}) :: State.t() | nil
+  @spec find([map()], map(), %{casts: map(), checkpoints: map()}) :: read() | nil
   def find(chat, card, %{casts: casts, checkpoints: checkpoints}) do
-    by_checkpoint =
-      chat
-      |> Enum.reverse()
-      |> Enum.find_value(fn
+    replies = Enum.reverse(chat)
+
+    by_key =
+      Enum.find_value(replies, fn
+        %{"card" => key} when is_binary(key) -> kept(casts.get.("card:" <> key), key)
+        _message -> nil
+      end)
+
+    by_checkpoint = fn ->
+      Enum.find_value(replies, fn
         %{"checkpoint" => id} when is_binary(id) ->
           case checkpoints.get.(id) do
-            %{"root" => root} when is_binary(root) -> parsed(casts.get.("root:" <> root))
+            %{"root" => root} when is_binary(root) -> kept(casts.get.("root:" <> root), key(card))
             _none -> nil
           end
 
         _message ->
           nil
       end)
+    end
 
-    by_checkpoint || parsed(casts.get.(key(card)))
+    by_key || by_checkpoint.() || kept(casts.get.("card:" <> key(card)), key(card))
   end
 
-  @doc """
-  Reads the card with the model and keeps the cast: `{:ok, state}`. A model
-  that fails or answers something else gives `{:error, reason}`, and
-  nothing is kept. Options are the adapter's.
-  """
-  @spec read(map(), map(), module(), keyword()) :: {:ok, State.t()} | {:error, term()}
-  def read(card, casts, adapter, opts \\ []) do
-    with {:ok, answer} <- Aethrion.LLM.chat(adapter, question(card), opts),
-         {:ok, people} <- people(answer),
-         data = cast_data(people, card),
-         {:ok, state} <- State.parse(data) do
-      casts.put.(key(card), data)
-      casts.put.("root:" <> Bridge.root(state), data)
-      {:ok, state}
+  # What is kept under a key, read back: the cast with the card's window,
+  # or (as an older server kept it) the cast alone.
+  defp kept(%{"cast" => data} = kept, key) do
+    case State.parse(data) do
+      {:ok, state} ->
+        player = if is_binary(kept["player"]), do: kept["player"]
+        %{cast: state, window: kept_window(kept["window"]), key: key, player: player}
+
+      {:error, _error} ->
+        nil
     end
   end
+
+  defp kept(%{"characters" => _} = data, key), do: kept(%{"cast" => data}, key)
+  defp kept(_none, _key), do: nil
+
+  # A window someone has turned off (`cards/1`, `revise/2`) is none: the
+  # model keeps it, as before there was a ledger.
+  defp kept_window(%{"off" => true}), do: nil
+
+  defp kept_window(%{"open" => open, "close" => close} = window)
+       when is_binary(open) and is_binary(close),
+       do: %{open: open, close: close, rules: kept_rules(window["rules"])}
+
+  defp kept_window(_none), do: nil
+
+  defp kept_rules(rules) when is_list(rules), do: Enum.filter(rules, &is_binary/1)
+  defp kept_rules(_none), do: []
+
+  # How many times a card is read.
+  @readings 3
+  # How long the later readings may take before the first is made do with.
+  @reading_timeout 240_000
+
+  @doc """
+  Reads the card with the model and keeps what it was read as:
+  `{:ok, read}`. A model that fails or answers something else gives
+  `{:error, reason}`, and nothing is kept.
+
+  One reading of a card may leave a rule out, take the window's opening
+  text wrongly, or miss the window. So the card is read `:readings` times
+  (three unless said), at once: who is in it is as the first reading that
+  could be used has it, the window's opening and closing text are what
+  most readings say, and the rules are the ones the card bears out, of
+  all the readings together. Other options are the adapter's.
+  """
+  @spec read(map(), map(), module(), keyword()) :: {:ok, read()} | {:error, term()}
+  def read(card, casts, adapter, opts \\ []) do
+    {readings, opts} = Keyword.pop(opts, :readings, @readings)
+
+    # A rule is kept when the card says it: a formula made up from
+    # somewhere else would bend every window after it.
+    stated = Enum.join([card.prompt, Map.get(card, :rules, ""), card.greeting || ""], "\n")
+
+    {gather, stop} = later(readings - 1, fn -> reading(card, adapter, opts) end)
+
+    # (Whatever becomes of the first reading, the others are not left behind.)
+    {first, others} =
+      try do
+        first = reading(card, adapter, opts, :told)
+        {first, gather.()}
+      after
+        stop.()
+      end
+
+    with {:ok, people} <- first_of([first | others]),
+         data = cast_data(people, card),
+         {:ok, state} <- State.parse(data) do
+      key = key(card)
+      window = windows_of([first | others], stated)
+
+      kept = %{
+        "cast" => data,
+        "window" =>
+          window && %{"open" => window.open, "close" => window.close, "rules" => window.rules},
+        "player" => people.player,
+        "title" => people.title,
+        "read_at" => DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.to_iso8601()
+      }
+
+      casts.put.("card:" <> key, kept)
+      casts.put.("root:" <> Bridge.root(state), kept)
+      {:ok, %{cast: state, window: window, key: key, player: people.player}}
+    end
+  end
+
+  # One reading: `{:ok, people}` or `{:error, reason}`. A later reading is
+  # a help, not a need: whatever goes wrong in it is no more than an error.
+  defp reading(card, adapter, opts, told \\ :quiet)
+
+  defp reading(card, adapter, opts, :told) do
+    with {:ok, answer} <- Aethrion.LLM.chat(adapter, question(card), opts), do: people(answer)
+  end
+
+  defp reading(card, adapter, opts, :quiet) do
+    case Aethrion.LLM.chat(adapter, question(card), opts) do
+      {:ok, answer} when is_binary(answer) -> people(answer)
+      other -> {:error, other}
+    end
+  rescue
+    error -> {:error, error}
+  catch
+    kind, reason -> {:error, {kind, reason}}
+  end
+
+  # `count` more readings begun at once, each in a process of its own (one
+  # that dies takes nothing with it): a function that waits for them and
+  # gives what they came to.
+  defp later(count, _read) when count < 1, do: {fn -> [] end, fn -> :ok end}
+
+  defp later(count, read) do
+    {parent, ref} = {self(), make_ref()}
+
+    readers =
+      for n <- 1..count do
+        {pid, monitor} = spawn_monitor(fn -> send(parent, {ref, n, read.()}) end)
+        {n, pid, monitor}
+      end
+
+    deadline = System.monotonic_time(:millisecond) + @reading_timeout
+
+    stop = fn ->
+      for {_n, pid, monitor} <- readers do
+        Process.demonitor(monitor, [:flush])
+        Process.exit(pid, :kill)
+      end
+
+      flushed(ref)
+    end
+
+    {fn -> gathered(readers, ref, deadline, %{}) end, stop}
+  end
+
+  # The readers' answers that came and were not waited for.
+  defp flushed(ref) do
+    receive do
+      {^ref, _n, _result} -> flushed(ref)
+    after
+      0 -> :ok
+    end
+  end
+
+  defp gathered([], ref, _deadline, read) do
+    # (An answer that came as its reader went down.)
+    receive do
+      {^ref, _n, _result} -> :ok
+    after
+      0 -> :ok
+    end
+
+    read |> Enum.sort() |> Enum.map(&elem(&1, 1))
+  end
+
+  defp gathered(readers, ref, deadline, read) do
+    receive do
+      {^ref, n, result} ->
+        {[{_n, _pid, monitor}], rest} = Enum.split_with(readers, &(elem(&1, 0) == n))
+        Process.demonitor(monitor, [:flush])
+        gathered(rest, ref, deadline, Map.put(read, n, result))
+
+      {:DOWN, monitor, :process, _pid, _reason} ->
+        gathered(Enum.reject(readers, &(elem(&1, 2) == monitor)), ref, deadline, read)
+    after
+      max(deadline - System.monotonic_time(:millisecond), 0) ->
+        for {_n, pid, monitor} <- readers do
+          Process.demonitor(monitor, [:flush])
+          Process.exit(pid, :kill)
+        end
+
+        gathered([], ref, deadline, read)
+    end
+  end
+
+  # The first reading that could be used; or why the first could not.
+  defp first_of([first | _others] = readings),
+    do: Enum.find(readings, first, &match?({:ok, _people}, &1))
+
+  # The card's window, of all the readings: its opening and closing text
+  # as most of them have it (the shorter of two openings when one begins
+  # the other: "[Day" for "[Day N · Time]"), and the rules the card bears
+  # out (`grounded/2`), put together: those of the reading with the most,
+  # then what the others have that it has not. A rule about what another
+  # already speaks of is not added (two rules for what a level gives would
+  # give it twice).
+  defp windows_of(readings, stated) do
+    windows = for {:ok, %{window: %{} = window}} <- readings, do: window
+
+    case opening(windows) do
+      nil ->
+        nil
+
+      open ->
+        same = Enum.filter(windows, &String.starts_with?(&1.open, open))
+        close = same |> Enum.map(& &1.close) |> most()
+
+        rules =
+          same
+          |> Enum.map(&grounded(%{&1 | open: open, close: close}, stated).rules)
+          |> Enum.sort_by(&length/1, :desc)
+          |> List.flatten()
+          |> Enum.uniq_by(&about/1)
+
+        %{open: open, close: close, rules: rules}
+    end
+  end
+
+  defp opening([]), do: nil
+
+  defp opening(windows) do
+    opens = Enum.map(windows, & &1.open)
+    said = most(opens)
+
+    # An opening text that begins the one most readings give is the part of
+    # it that is the same in every reply.
+    opens
+    |> Enum.filter(fn open ->
+      # (More than a mark: one reading's "◈" is not the part "◈Time" has in every reply.)
+      open != said and String.length(open) >= 2 and String.match?(open, ~r/[\p{L}\p{N}]/u) and
+        String.starts_with?(said, open)
+    end)
+    |> Enum.min_by(&byte_size/1, fn -> said end)
+  end
+
+  # What most say; of two said as often, the one said first.
+  defp most(said) do
+    said
+    |> Enum.with_index()
+    |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
+    |> Enum.max_by(fn {_text, places} -> {length(places), -hd(places)} end)
+    |> elem(0)
+  end
+
+  # What a rule is about, however it is spelled: the number it sets (and
+  # how, when it bounds a number by itself), or when it happens and what
+  # it changes.
+  defp about(rule) do
+    plain = &(&1 |> String.downcase() |> String.replace(~r/[^\p{L}\p{N}]+/u, ""))
+
+    case Regex.run(~r/\A\s*when\s+(.+?)\s*:\s*(.+)\z/isu, rule) do
+      [_all, condition, changes] ->
+        changed =
+          changes
+          |> String.split(";")
+          |> Enum.map(&(&1 |> String.split(~r/[+\-]?=/, parts: 2) |> hd() |> plain.()))
+          |> Enum.sort()
+
+        {:when, condition |> plain.() |> String.replace(~r/increases?\z|rise\z/, "rises"),
+         changed}
+
+      nil ->
+        [target | expression] = String.split(rule, "=", parts: 2)
+        {target, expression} = {plain.(target), plain.(Enum.join(expression))}
+
+        # A number bounded by itself: how far it may move in a turn, or
+        # the range it stays within, one rule of each.
+        cond do
+          String.ends_with?(target, "max") or not String.contains?(expression, target) ->
+            {:always, target}
+
+          String.contains?(expression, "before") ->
+            {:always, target, :step}
+
+          true ->
+            # (A range may be said in two rules, a floor and a ceiling.)
+            {:always, target, :range, expression}
+        end
+    end
+  end
+
+  # The window with the rules the card bears out. The card's own examples
+  # of its window decide first: a rule they contradict is dropped, one they
+  # agree with is kept. Where they cannot say, the sentence the reader
+  # gave for the rule decides (`stated?/3`).
+  defp grounded(window, text) do
+    examples = Aethrion.Bridge.Ledger.windows(text, window)
+
+    verdicts = fn rule ->
+      Enum.map(examples, &Aethrion.Bridge.Ledger.agrees?(&1, rule, window))
+    end
+
+    {kept, dropped} =
+      window.rules
+      |> Enum.map(fn {rule, from} ->
+        cond do
+          borne_out?(rule, from, text, verdicts.(rule)) -> {:kept, rule}
+          mended = mended(rule, verdicts) -> {:kept, mended}
+          true -> {:dropped, rule}
+        end
+      end)
+      |> Enum.split_with(&match?({:kept, _rule}, &1))
+
+    if dropped != [],
+      do:
+        Logger.debug(
+          "Aethrion card: rules the card does not bear out, left out: " <>
+            Enum.map_join(dropped, " | ", &elem(&1, 1))
+        )
+
+    %{window | rules: Enum.map(kept, &elem(&1, 1))}
+  end
+
+  # The examples bear out what a number is worked out from ("HP.max = Vigor
+  # * 10"). A number bounded by itself agrees with any example within the
+  # bounds, so its sentence has to be the card's; and a number set to a
+  # number ("L = 0") is where the examples begin, not a rule (a maximum
+  # that is a number, "EXP.max = 100", is one when the card says so).
+  defp borne_out?(rule, from, text, verdicts) do
+    # (How far a number moves in a turn is often said of several at once,
+    # "their affection changes by 5 at most", naming none: for that the
+    # card's sentence with the rule's numbers in it is enough. A range
+    # has to name its number: a wrong one would hold the number fast.)
+    borne_out? =
+      cond do
+        # A price the card does not number: its sentence is the card's and
+        # names the pool (the numbers it raises it may call "stats").
+        pool = priced(rule) -> stated?(pool <> " = " <> pool, from, text)
+        not bound?(rule) -> true in verdicts or stated?(rule, from, text)
+        String.contains?(rule, ".before") -> stated?(rule, from, text, false)
+        true -> stated?(rule, from, text)
+      end
+
+    (not constant?(rule) or (maximum?(rule) and stated?(rule, from, text))) and
+      false not in verdicts and borne_out?
+  end
+
+  # A small reader writes "HP.max = 100 + Vigor * 10" for "Max HP +10 per
+  # point", with a base the card does not have: the card's example says
+  # otherwise. The rule without the number added to it, when the examples
+  # bear that out.
+  defp mended(rule, verdicts) do
+    with false <- String.match?(rule, ~r/\A\s*when\b/iu),
+         true <- false in verdicts.(rule) do
+      [
+        Regex.replace(~r/=\s*[0-9][0-9.]*\s*\+\s*/u, rule, "= ", global: false),
+        Regex.replace(~r/\s*\+\s*[0-9][0-9.]*\s*\z/u, rule, "")
+      ]
+      |> Enum.reject(&(&1 == rule))
+      |> Enum.find(fn plain ->
+        said = verdicts.(plain)
+        not constant?(plain) and true in said and false not in said
+      end)
+    else
+      _other -> nil
+    end
+  end
+
+  # "L = 0": a number set to a number, with no field or function in it.
+  defp constant?(rule) do
+    case String.split(rule, "=", parts: 2) do
+      [target, value] ->
+        not String.match?(target, ~r/\A\s*when\b/iu) and
+          String.match?(value, ~r/\A[\s0-9.,+\-*\/^%()]*\z/u)
+
+      _other ->
+        false
+    end
+  end
+
+  defp maximum?(rule), do: String.match?(rule, ~r/\A[^=]*\.max\s*=/iu)
+
+  # "Trust = clamp(Trust, 0, 100)": a number worked out from itself. (A
+  # maximum is worked out from other numbers: "HP.max = Base HP + Vigor *
+  # 10" is no bound of HP.)
+  defp bound?(rule) do
+    with false <- String.match?(rule, ~r/\A\s*when\b/iu),
+         false <- maximum?(rule),
+         [target, value] <- String.split(rule, "=", parts: 2) do
+      name = target |> String.trim() |> Regex.escape()
+      name != "" and String.match?(value, ~r/(?<![\p{L}\p{N}_])#{name}(?![\p{L}\p{N}_])/iu)
+    else
+      _other -> false
+    end
+  end
+
+  @piece 16
+
+  @doc false
+  # Whether the card states a rule: the sentence the reader gives for it
+  # is the card's (most of it is there word for word, whatever its spacing
+  # and case, though the reader may have left some of it out), and each
+  # number the rule uses (0 and 1 aside) stands in it with the words
+  # around it as the card has them, and the sentence names the fields the
+  # rule speaks of.
+  def stated?(rule, from, text, named? \\ true) do
+    {quote, card} = {plain(from), plain(text)}
+
+    numbers =
+      ~r/[0-9]+(?:\.[0-9]+)?/
+      |> Regex.scan(rule)
+      |> List.flatten()
+      |> Enum.reject(&(&1 in ["0", "1"] or byte_size(&1) > 16))
+      |> Enum.uniq()
+
+    # (A small reader cuts the sentence short: "Gain 5 points upon
+    # leveling up. Gain an extra 10 points for every fifth level" for a
+    # rule with the 15 that the card's sentence goes on to say. A number
+    # may stand in the rest of that sentence, and no further.)
+    rest = rest_of_sentence(quote, card)
+
+    String.length(quote) >= 8 and quoted?(quote, card) and
+      Enum.all?(numbers, &(in_place?(&1, quote, card) or in_rest?(&1, rest))) and
+      (not named? or named?(rule, quote))
+  end
+
+  # What the card says after the quote, to the end of the sentence the
+  # quote stops in; "" for a quote that ends its sentence, or is not found.
+  defp rest_of_sentence(quote, card) do
+    piece = quote |> String.graphemes() |> Enum.take(-@piece) |> Enum.join()
+
+    with false <- String.length(piece) < 8,
+         false <- String.match?(quote, ~r/[.!?。…]["')\]」』]*\z/u),
+         [_before, after_quote | _more] <- String.split(card, piece, parts: 2) do
+      # (A point between digits is a decimal's, not the sentence's end.)
+      [rest] = Regex.run(~r/\A(?:[^.!?。\n]|\.(?=[0-9]))*/u, after_quote)
+      String.slice(rest, 0, 160)
+    else
+      _other -> ""
+    end
+  end
+
+  defp in_rest?(number, rest) do
+    pattern = Regex.compile!("(?<![0-9.])" <> Regex.escape(number) <> "(?!\\.?[0-9])")
+    Regex.match?(pattern, rest)
+  end
+
+  # The sentence names the fields the rule speaks of: all of two, and all
+  # but one of three or more (a sentence under the heading "Stat Point"
+  # need not say the heading again).
+  defp named?(rule, quote) do
+    words = words(rule)
+    # (A name written as one word, "StatPoint", is the sentence's "Stat Point".)
+    joined = String.replace(quote, ~r/[\s_.\-]+/u, "")
+
+    missing =
+      Enum.count(words, &(not String.contains?(quote, &1) and not String.contains?(joined, &1)))
+
+    missing <= div(length(words) - 1, 2)
+  end
+
+  @rule_words ~w(when rises rise increases increase then and or max maximum now current cur
+                 before was previous prev floor ceil round min clamp if abs)
+
+  # The fields a rule speaks of, as words to look for in its sentence: a
+  # sentence about the inn's price states nothing of HP and Vigor.
+  defp words(rule) do
+    ~r/\p{L}[\p{L}\p{N}]*/u
+    |> Regex.scan(String.downcase(rule))
+    |> List.flatten()
+    |> Enum.reject(&(&1 in @rule_words))
+    |> Enum.uniq()
+  end
+
+  # Most of the quote, taken a piece at a time, is in the card.
+  defp quoted?(quote, card) do
+    letters = String.graphemes(quote)
+
+    pieces =
+      if length(letters) <= @piece,
+        do: [quote],
+        else: letters |> Enum.chunk_every(@piece, 8, :discard) |> Enum.map(&Enum.join/1)
+
+    found = Enum.count(pieces, &String.contains?(card, &1))
+    found * 10 >= length(pieces) * 7
+  end
+
+  # The number stands somewhere in the quote with the few letters on each
+  # side of it as the card has them.
+  defp in_place?(number, quote, card) do
+    pattern = Regex.compile!("(?<![0-9.])" <> Regex.escape(number) <> "(?!\\.?[0-9])")
+
+    pattern
+    |> Regex.scan(quote, return: :index)
+    |> Enum.any?(fn [{at, length}] ->
+      from = max(at - 12, 0)
+      around = binary_part(quote, from, min(at + length + 12, byte_size(quote)) - from)
+      # Cut to whole letters: the reach is counted in bytes.
+      around = around |> String.replace_invalid("") |> String.trim()
+      String.contains?(card, around)
+    end)
+  end
+
+  defp plain(text),
+    do: text |> String.downcase() |> String.replace(~r/[\s*_`]+/u, " ") |> String.trim()
+
+  @doc """
+  The cards read so far, for someone to look over, from everything the
+  casts store keeps (`Aethrion.Bridge.Store.all/1`): each with its key, its
+  title, who is in it, the player's name, and its status window (the
+  opening and closing text, the rules, and whether the ledger is off).
+  The latest read first.
+  """
+  @spec cards([{String.t(), term()}]) :: [map()]
+  def cards(kept) do
+    for {"card:" <> key, %{"cast" => %{"characters" => characters}} = value} <- kept do
+      %{
+        key: key,
+        title: text(value["title"]),
+        read_at: text(value["read_at"]),
+        people: for(%{"name" => name} <- characters, do: name),
+        player: value["player"],
+        window:
+          case value["window"] do
+            %{"open" => open} = window ->
+              %{
+                open: open,
+                close: text(window["close"]),
+                rules: kept_rules(window["rules"]),
+                off: window["off"] == true
+              }
+
+            _none ->
+              nil
+          end
+      }
+    end
+    |> Enum.sort_by(& &1.read_at, :desc)
+  end
+
+  defp text(value) when is_binary(value), do: value
+  defp text(_other), do: ""
+
+  @doc """
+  What is kept for a card with its status window as someone has set it:
+  `{:ok, kept}`, or `{:error, reason}`. `window` is `%{"open" => ...,
+  "close" => ..., "rules" => [...], "off" => boolean}`, or nil for a card
+  with no window. The rules are taken as written: one that does not fit
+  the window is left out when it is used (`Aethrion.Bridge.Ledger.Rules`).
+  """
+  @spec revise(map(), map() | nil) :: {:ok, map()} | {:error, String.t()}
+  def revise(kept, nil), do: {:ok, Map.put(kept, "window", nil)}
+
+  def revise(kept, %{"open" => open} = window) when is_binary(open) do
+    close = text(window["close"])
+    rules = window["rules"] || []
+
+    cond do
+      String.trim(open) == "" or String.length(open) > 60 or String.length(close) > 60 ->
+        {:error, "the window's opening text is 1 to 60 letters, its closing text at most 60"}
+
+      not is_list(rules) or length(rules) > @max_window_rules or
+          not Enum.all?(rules, &(is_binary(&1) and String.length(&1) <= @max_rule)) ->
+        {:error, "rules are at most #{@max_window_rules} lines of at most #{@max_rule} letters"}
+
+      true ->
+        {:ok,
+         Map.put(kept, "window", %{
+           "open" => String.trim(open),
+           "close" => String.trim(close),
+           "rules" => rules |> Enum.map(&String.trim/1) |> Enum.reject(&(&1 == "")),
+           "off" => window["off"] == true
+         })}
+    end
+  end
+
+  def revise(_kept, _other),
+    do: {:error, "window is an object with open, close, and rules, or null"}
 
   @doc false
   # The messages that ask the model who is in the card.
@@ -118,6 +718,9 @@ defmodule Aethrion.Bridge.AutoCast do
         <card>
         #{card.prompt}
         </card>
+        <rules_for_every_reply>
+        #{Map.get(card, :rules, "")}
+        </rules_for_every_reply>
         <first_message>
         #{card.greeting || ""}
         </first_message>
@@ -125,9 +728,21 @@ defmodule Aethrion.Bridge.AutoCast do
         List the characters the player meets and talks to in this card, the main one first, at most #{@max_people}. The player (the user, {{user}}, or the persona the card describes as the player) is not one of them. Do not list characters only mentioned in passing. If the card is a narrator or a world with no fixed characters, list none.
 
         Answer as JSON:
-        {"title": "the card's name", "characters": [{"name": "as the first message writes it, or when it does not name them, as the card does", "profile": "one or two sentences, in the first message's language: who they are and how they treat the player", "affinity": 0, "trust": 0}]}
+        {"title": "the card's name", "characters": [{"name": "as the first message writes it, or when it does not name them, as the card does", "profile": "one or two sentences, in the first message's language: who they are and how they treat the player", "affinity": 0, "trust": 0}], "player": null, "status_window": null}
+
+        player: the name of the player's own character, when the card or the first message gives one (a persona's name, written where the card had {{user}}), else null.
 
         affinity and trust are how the character feels about the player when the story starts, 0 to 100: 0 a stranger, 30 an acquaintance, 50 a close friend, 80 a lover or someone devoted. Use what the card says; when it does not say, 0.
+
+        status_window: if the card tells the model to print a status window with every reply (a block of numbers and facts in a fixed format: level, HP, money, trust, date, place), give {"open": "the text that begins the block", "close": "the text that ends it", "rules": [], "spent": null}. Copy open and close from the card's format, and only characters that are the same in every reply, never a blank the model fills in: for a block between two "[Status Window]" lines, both are "[Status Window]"; for one line such as "[ Trust: 3% | Anger: 5% | ... ]", "[ Trust:" and "]"; for a block that begins with a heading such as "[Day N/30 · Time]", "[Day" as open; for a block of lines such as "◈Time: ..." that ends with the reply, "◈Time" as open and "" as close. If the card prints no such block, or only draws one with its own scripts and tells the model not to write the numbers, or the block has a line for each character who is in the scene at the moment (more lines or fewer as they come and go), null.
+
+        rules: the arithmetic the card states for the window's numbers, [] when the card states none. Go through the card's sentences that give a number for the window (a formula, a gain per point or per level, a range, a limit on change), and for each write {"from": "that sentence, copied word for word", "rule": "what it says, as one line in the small language below"}. A rule is used only when its sentence is found in the card and has the rule's numbers in it. Use the window's field names exactly as its format writes them; `Field.max` is the second number of a pair such as `HP: 30 / 48`, and `Field.before` is what the field was before the turn. There are only two kinds of line (the examples are not from this card):
+        1. `Target = expression`, something that always holds: a maximum that follows a stat, "Stamina.max = Body * 4"; a range a number stays within, "Favor = clamp(Favor, 0, 100)"; a limit on how far a number moves in one turn, "Favor = clamp(Favor, Favor.before - 3, Favor.before + 3)".
+        2. `when condition: change; change`, something that happens, each change being `Field = expression`, `Field += expression`, or `Field -= expression`; a card whose window has a level and experience toward the next one has its level-up line, in the window's own field names: "when EXP >= EXP.max: Level += 1; EXP -= EXP.max". The condition is a comparison, or `Field rises` for what each point gained gives or costs: "when Level rises: Points += if(Level % 10 == 0, 6, 2)", "when Might rises: Points -= 1".
+        An expression has numbers, field names, + - * / ^ %, comparisons (>= <= > < == !=), and, or, and the functions floor, ceil, round, min, max, clamp(x, low, high), if(condition, a, b). No other words, and every line begins with a field name or with `when`.
+        Write only what the card itself states in numbers, for fields of its window, with the card's own numbers: never a guess, never one of the examples above, and nothing about text fields. When the card shows an example of its window, try each rule on the example's numbers before you write it: with Body 12 and Stamina 31 / 48, `Stamina.max = Body * 4` holds and `Stamina.max = 20 + Body * 4` does not, so the first is the card's rule. A rule the card's example does not bear out is thrown away. Where the card gives no number ("the requirement grows with each level", a reputation with no range), there is no rule to write.
+
+        spent: when the card says that a pool of points in the window is what raises other numbers of the window (stat points spent on stats), and gives no price for it, {"points": "the pool's field name", "on": ["each field the points raise, as the window writes it"], "from": "the card's sentence that says the points raise them, copied word for word"}; else null.
         """
       }
     ]
@@ -139,17 +754,133 @@ defmodule Aethrion.Bridge.AutoCast do
     with [json] <- Regex.run(~r/\{.*\}/s, answer),
          {:ok, %{"characters" => characters} = data} when is_list(characters) <-
            Jason.decode(json) do
+      player = player(data["player"])
+
       characters =
         characters
         |> Enum.filter(&(is_map(&1) and is_binary(&1["name"]) and String.trim(&1["name"]) != ""))
+        # The player is not one of the people the player meets, under the
+        # name the card gives or a stand-in for it (the cast keeps "user"
+        # for the player).
+        |> Enum.reject(&player?(&1["name"], player))
         |> Enum.uniq_by(&Card.id_for(String.trim(&1["name"])))
         |> Enum.take(@max_people)
 
-      {:ok, %{title: title(data["title"]), characters: characters}}
+      {:ok,
+       %{
+         title: title(data["title"]),
+         characters: characters,
+         player: player,
+         window: window(data["status_window"])
+       }}
     else
       _other -> {:error, :no_characters_read}
     end
   end
+
+  # The window's opening and closing text as the model gave them: short
+  # texts, the opening one not empty.
+  defp window(%{"open" => open} = window) when is_binary(open) do
+    close = if is_binary(window["close"]), do: window["close"], else: ""
+    {open, close} = {String.trim(open), String.trim(close)}
+
+    if open != "" and String.length(open) <= 60 and String.length(close) <= 60,
+      do: %{
+        open: open,
+        close: close,
+        rules: Enum.take(rules(window["rules"]) ++ spent(window["spent"]), @max_window_rules)
+      }
+  end
+
+  defp window(_none), do: nil
+
+  # A pool of points that the card says raises other numbers, with no
+  # price given: a point costs one in a turn that has points to spend, and
+  # with none the number may still rise another way (by training, say).
+  # One rule for each number, each with the card's sentence.
+  defp spent(%{"points" => pool, "on" => fields, "from" => from})
+       when is_binary(pool) and is_list(fields) and is_binary(from) do
+    pool = String.trim(pool)
+
+    for field <- Enum.take(fields, @max_spent),
+        is_binary(field),
+        field = String.trim(field),
+        pool != "" and field != "" and field != pool and
+          String.length(field) <= 40 and String.length(pool) <= 40 and
+          not String.match?(pool <> field, ~r/[:;=\n]/u) do
+      {price(field, pool), from}
+    end
+  end
+
+  defp spent(_none), do: []
+
+  defp price(field, pool),
+    do: "when #{field} rises: #{pool} -= if(#{pool} > 0 or #{pool}.before > 0, 1, 0)"
+
+  # The pool of a rule that is such a price, or nil.
+  defp priced(rule) do
+    case Regex.run(
+           ~r/\Awhen (.+) rises: (.+) -= if\(\2 > 0 or \2\.before > 0, 1, 0\)\z/u,
+           rule
+         ) do
+      [_all, _field, pool] -> pool
+      nil -> nil
+    end
+  end
+
+  # The card's arithmetic as the model wrote it down: a few short lines
+  # (`Aethrion.Bridge.Ledger.Rules` reads them against the window), each
+  # with the sentence of the card it was taken from.
+  defp rules(rules) when is_list(rules) do
+    rules
+    |> Enum.flat_map(fn
+      %{"rule" => rule, "from" => from} when is_binary(rule) and is_binary(from) ->
+        for line <- lines(rule), do: {line, from}
+
+      _other ->
+        []
+    end)
+    |> Enum.filter(fn {rule, _from} -> rule != "" and String.length(rule) <= @max_rule end)
+    |> Enum.uniq_by(fn {rule, _from} -> rule end)
+    |> Enum.take(@max_window_rules)
+  end
+
+  defp rules(_none), do: []
+
+  # A rule line as the reader wrote it may hold several: "A.max = B * 10;
+  # C.max = D * 10", or one that always holds before "when ...". What
+  # follows a `when` is its changes, to the end.
+  defp lines(rule) do
+    {lines, happening} =
+      rule
+      |> String.split(";")
+      |> Enum.map(&String.trim/1)
+      |> Enum.reject(&(&1 == ""))
+      |> Enum.reduce({[], nil}, fn
+        part, {lines, nil} ->
+          if String.match?(part, ~r/\Awhen\b/i),
+            do: {lines, part},
+            else: {lines ++ [part], nil}
+
+        part, {lines, happening} ->
+          {lines, happening <> "; " <> part}
+      end)
+
+    lines ++ List.wrap(happening)
+  end
+
+  defp player?(name, player) do
+    String.downcase(String.trim(name)) in ["user", "{{user}}", "player", "you"] or
+      (player != nil and Aethrion.Bridge.Scene.same?(name, player))
+  end
+
+  # The player's name as the card gives it, when it is a name.
+  defp player(name) when is_binary(name) do
+    name = name |> String.trim() |> String.slice(0, 40)
+    if name != "" and not String.match?(name, ~r/\A\{\{|\Auser\z|\Aplayer\z/i), do: name
+  end
+
+  defp player(_none), do: nil
 
   defp title(title) when is_binary(title), do: String.trim(title)
   defp title(_other), do: ""
@@ -196,14 +927,6 @@ defmodule Aethrion.Bridge.AutoCast do
   defp level(n) when is_number(n), do: n |> round() |> max(0) |> min(100)
   defp level(_other), do: 0
 
-  defp parsed(nil), do: nil
-
-  defp parsed(data) do
-    case State.parse(data) do
-      {:ok, state} -> state
-      {:error, _error} -> nil
-    end
-  end
-
-  defp sha(text), do: :crypto.hash(:sha256, text) |> Base.encode16(case: :lower)
+  defp sha(text),
+    do: :crypto.hash(:sha256, text) |> Base.encode16(case: :lower) |> binary_part(0, 24)
 end

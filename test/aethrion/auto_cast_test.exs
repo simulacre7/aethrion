@@ -48,6 +48,445 @@ defmodule Aethrion.AutoCastTest do
       assert State.sorted_characters(state) == []
     end
 
+    test "takes the card's status window, and the rules that come with a sentence" do
+      answer =
+        Jason.encode!(%{
+          "characters" => [],
+          "status_window" => %{
+            "open" => " [Status] ",
+            "close" => "[Status]",
+            "rules" => [
+              %{"from" => "Max HP +10 per point of Vigor.", "rule" => "HP.max = Vigor * 10"},
+              %{"rule" => "HP.max = Vigor * 10", "from" => "said twice"},
+              "HP.max = Vigor * 12",
+              %{"rule" => "", "from" => "nothing"}
+            ]
+          }
+        })
+
+      assert {:ok, %{window: window}} = AutoCast.people(answer)
+
+      assert window == %{
+               open: "[Status]",
+               close: "[Status]",
+               rules: [{"HP.max = Vigor * 10", "Max HP +10 per point of Vigor."}]
+             }
+
+      assert {:ok, %{window: nil}} =
+               AutoCast.people(~s({"characters": [], "status_window": null}))
+
+      # A marker too long to be one is no window.
+      long = String.duplicate("=", 80)
+
+      assert {:ok, %{window: nil}} =
+               AutoCast.people(
+                 Jason.encode!(%{"characters" => [], "status_window" => %{"open" => long}})
+               )
+    end
+
+    test "a pool of points and what it raises become a price for each" do
+      from = "Stats can be raised through Stat Points without training."
+
+      answer = fn spent ->
+        Jason.encode!(%{
+          "characters" => [],
+          "status_window" => %{"open" => "[S]", "close" => "[S]", "rules" => [], "spent" => spent}
+        })
+      end
+
+      spent = %{
+        "points" => "Stat Point",
+        "on" => ["Vigor", " Strength ", 7, "Stat Point"],
+        "from" => from
+      }
+
+      assert {:ok, %{window: %{rules: rules}}} = AutoCast.people(answer.(spent))
+
+      assert rules == [
+               {"when Vigor rises: Stat Point -= if(Stat Point > 0 or Stat Point.before > 0, 1, 0)",
+                from},
+               {"when Strength rises: Stat Point -= if(Stat Point > 0 or Stat Point.before > 0, 1, 0)",
+                from}
+             ]
+
+      # Nothing said, or said in another shape: no price.
+      for none <- [
+            nil,
+            "Stat Point",
+            %{"points" => "Stat Point"},
+            %{"points" => "A: B", "on" => ["X"], "from" => from}
+          ] do
+        assert {:ok, %{window: %{rules: []}}} = AutoCast.people(answer.(none))
+      end
+    end
+
+    test "a card with a status window is read again, and the surest reading gives the rules" do
+      card = %{
+        greeting: nil,
+        rules: "",
+        prompt:
+          "Print the status between [Status] lines.\nVigor: Max HP +10 per point.\n" <>
+            "Attunement: Max MP +10 per point.\nA level gives 5 stat points."
+      }
+
+      reading = fn open, rules ->
+        Jason.encode!(%{
+          "characters" => [],
+          "status_window" => %{
+            "open" => open,
+            "close" => "[Status]",
+            "rules" => for({from, rule} <- rules, do: %{"from" => from, "rule" => rule})
+          }
+        })
+      end
+
+      hp = {"Vigor: Max HP +10 per point.", "HP.max = Vigor * 10"}
+      mp = {"Attunement: Max MP +10 per point.", "MP.max = Attunement * 10"}
+      gift = {"A level gives 5 stat points.", "when Level rises: Stat Points += 5"}
+      made_up = {"Luck doubles gold.", "Gold = Gold * 2"}
+
+      read = fn answers ->
+        {:ok, agent} = Agent.start_link(fn -> answers end)
+        casts = %{put: fn _key, _value -> :ok end}
+
+        {:ok, %{window: window}} =
+          AutoCast.read(card, casts, Aethrion.AutoCastTest.Readers, answers: agent)
+
+        {window, Agent.get(agent, &length/1)}
+      end
+
+      # The rules of the reading the card bears out most, then what the
+      # others have besides; the third, of another window, is not this one's.
+      levels =
+        {"A level gives 5 stat points.",
+         "when Level rises: Stat_Points += if(Level % 5 == 0, 5, 5)"}
+
+      assert {%{open: "[Status]", rules: rules}, 0} =
+               read.([
+                 reading.("[Status]", [hp, made_up, levels]),
+                 reading.("[Status]", [mp, gift, {elem(hp, 0), "HP.max = (Vigor * 10)"}]),
+                 reading.("[Other]", [hp, mp, gift, hp, mp])
+               ])
+
+      # (One rule for what a level gives, and one for the maximum of HP,
+      # however they are spelled.)
+      assert rules == [
+               "MP.max = Attunement * 10",
+               "when Level rises: Stat Points += 5",
+               "HP.max = (Vigor * 10)"
+             ]
+
+      # A reading that fails is no loss, and a card with no window is read once.
+      assert {%{rules: ["HP.max = Vigor * 10"]}, 0} =
+               read.([reading.("[Status]", [hp]), "not json"])
+
+      # A card with no window is read three times as well: one reading may miss a window.
+      none = Jason.encode!(%{"characters" => []})
+      assert {nil, 0} = read.([none, none, none])
+      assert {%{open: "[Status]"}, 0} = read.([none, reading.("[Status]", [hp]), none])
+
+      # The opening text most readings give, or the shorter one that begins it.
+      assert {%{open: "[Day", close: ""}, 0} =
+               read.(
+                 [
+                   reading.("[Day N · Time]", []),
+                   reading.("[Day", []),
+                   reading.("[Day N · Time]", [])
+                 ]
+                 |> Enum.map(&String.replace(&1, ~s("close":"[Status]"), ~s("close":"")))
+               )
+
+      # A mark alone, from one reading, is not the opening the others give.
+      mark = fn open ->
+        String.replace(reading.(open, []), ~s("close":"[Status]"), ~s("close":""))
+      end
+
+      assert {%{open: "◈Time"}, 0} = read.([mark.("◈Time"), mark.("◈Time"), mark.("◈")])
+
+      # A range said in two rules is two rules; a maximum that is a number is
+      # a rule when the card says so; a maximum worked out from other numbers
+      # is no bound of its own number.
+      stated = %{
+        card
+        | prompt:
+            card.prompt <>
+              "\nTrust never goes above 100. Trust never goes below 0.\nThe EXP bar is always out of 100 points.\n" <>
+              "Example:\n[Status]\n- HP: 150 / 150\n- Base HP: 20\n- Vigor: 13\n[Status]"
+      }
+
+      {:ok, agent} =
+        Agent.start_link(fn ->
+          List.duplicate(
+            reading.("[Status]", [
+              {"Trust never goes above 100.", "Trust = min(Trust, 100)"},
+              {"Trust never goes below 0.", "Trust = max(Trust, 0)"},
+              {"The EXP bar is always out of 100 points.", "EXP.max = 100"},
+              {"Base HP plus ten a point.", "HP.max = Base HP + Vigor * 10"},
+              {"- Vigor: 13", "Vigor = 13"}
+            ]),
+            3
+          )
+        end)
+
+      assert {:ok, %{window: %{rules: kept}}} =
+               AutoCast.read(
+                 stated,
+                 %{put: fn _key, _value -> :ok end},
+                 Aethrion.AutoCastTest.Readers,
+                 answers: agent
+               )
+
+      assert kept == [
+               "Trust = min(Trust, 100)",
+               "Trust = max(Trust, 0)",
+               "EXP.max = 100",
+               "HP.max = Base HP + Vigor * 10"
+             ]
+
+      # A later reading that exits or throws does not take the caller with it.
+      casts = %{put: fn _key, _value -> :ok end}
+      {:ok, calls} = Agent.start_link(fn -> 0 end)
+
+      first = reading.("[Status]", [hp])
+
+      assert {:ok, %{window: %{rules: ["HP.max = Vigor * 10"]}}} =
+               AutoCast.read(card, casts, Aethrion.AutoCastTest.Exits, calls: calls, first: first)
+
+      # Nor is anything left in the caller's mailbox, whatever the first reading does.
+      {:ok, raises} = Agent.start_link(fn -> 0 end)
+
+      assert_raise RuntimeError, fn ->
+        AutoCast.read(card, casts, Aethrion.AutoCastTest.Raises,
+          calls: raises,
+          first: first,
+          caller: self()
+        )
+      end
+
+      Process.sleep(50)
+      assert {:messages, []} = Process.info(self(), :messages)
+    end
+
+    test "several rules written on one line are taken apart; a card's example windows decide" do
+      card = %{
+        greeting: nil,
+        rules: "",
+        prompt: """
+        Print the status between [Status] lines, like this:
+        [Status]
+        - Level: 8
+        - HP: 121 / 130
+        - EXP: 23 / 266
+        - Vigor: 13
+        [Status]
+        Vigor: Max HP +10 per point. 100 × (1.15)^(Level − 1) = Max EXP.
+        Both stay between 0 and 300. Both change by 4 at most in a turn.
+        """
+      }
+
+      answer =
+        Jason.encode!(%{
+          "characters" => [],
+          "status_window" => %{
+            "open" => "[Status]",
+            "close" => "[Status]",
+            "rules" => [
+              # A sentence that is not the card's, for a rule its example bears out.
+              %{"from" => "HP: Health Points.", "rule" => "HP.max = Vigor * 10"},
+              # A base the card does not have, which its example says so: the rule without it.
+              %{
+                "from" => "Vigor: Max HP +10 per point.",
+                "rule" => "HP.max = 100 + (Vigor * 10)"
+              },
+              # Where the example begins is no rule; nor is a bound the card does not state,
+              # though the example is within it.
+              %{"from" => "- Level: 8", "rule" => "Level = 8"},
+              %{"from" => "Level stays low.", "rule" => "Level = clamp(Level, 0, 10)"},
+              # Nor one whose numbers are not in the sentence it is said to come from.
+              %{
+                "from" => "Print the status between [Status] lines",
+                "rule" => "Vigor = clamp(Vigor, 0, 99)"
+              },
+              # A range has to name its number; how far a number moves in a turn,
+              # said of several at once, need not.
+              %{
+                "from" => "Both stay between 0 and 300.",
+                "rule" => "Vigor = clamp(Vigor, 0, 300)"
+              },
+              %{
+                "from" => "Both change by 4 at most in a turn.",
+                "rule" => "Vigor = clamp(Vigor, Vigor.before - 4, Vigor.before + 4)"
+              },
+              # The card's sentence, for a rule its example contradicts.
+              %{"from" => "Vigor: Max HP +10 per point.", "rule" => "HP.max = 10 + Vigor * 10"},
+              %{
+                "from" => "100 × (1.15)^(Level − 1) = Max EXP.",
+                "rule" =>
+                  "EXP.max = floor(100 * 1.15 ^ (Level - 1)); when EXP >= EXP.max: Level += 1; EXP -= EXP.max"
+              }
+            ]
+          }
+        })
+
+      adapter = Aethrion.AutoCastTest.Reader
+      Process.put(:reader_answer, answer)
+      casts = %{put: fn _key, _value -> :ok end}
+
+      assert {:ok, %{window: %{rules: rules}}} = AutoCast.read(card, casts, adapter)
+
+      assert rules == [
+               "HP.max = Vigor * 10",
+               "Vigor = clamp(Vigor, Vigor.before - 4, Vigor.before + 4)",
+               "EXP.max = floor(100 * 1.15 ^ (Level - 1))",
+               "when EXP >= EXP.max: Level += 1; EXP -= EXP.max"
+             ]
+    end
+
+    test "a price is kept when the card's sentence names the pool, and dropped when it does not" do
+      card = %{
+        greeting: nil,
+        rules: "",
+        prompt: """
+        Print the status between [Status] lines, like this:
+        [Status]
+        - Stat Point: 2
+        - Vigor: 13
+        - Luck: 4
+        [Status]
+        Stats can be raised through Stat Points without training. Luck brings better loot.
+        """
+      }
+
+      read = fn from ->
+        answer =
+          Jason.encode!(%{
+            "characters" => [],
+            "status_window" => %{
+              "open" => "[Status]",
+              "close" => "[Status]",
+              "rules" => [],
+              "spent" => %{"points" => "Stat Point", "on" => ["Vigor", "Luck"], "from" => from}
+            }
+          })
+
+        Process.put(:reader_answer, answer)
+        casts = %{put: fn _key, _value -> :ok end}
+
+        assert {:ok, %{window: %{rules: rules}}} =
+                 AutoCast.read(card, casts, Aethrion.AutoCastTest.Reader)
+
+        rules
+      end
+
+      assert read.("Stats can be raised through Stat Points without training.") == [
+               "when Vigor rises: Stat Point -= if(Stat Point > 0 or Stat Point.before > 0, 1, 0)",
+               "when Luck rises: Stat Point -= if(Stat Point > 0 or Stat Point.before > 0, 1, 0)"
+             ]
+
+      # A sentence of the card's that says nothing of the points, or one that is not the card's.
+      assert read.("Luck brings better loot.") == []
+      assert read.("Each stat point raises a stat by one.") == []
+    end
+
+    test "a rule is kept when the card states it, with its numbers where the card has them" do
+      card = """
+      - EXP: Experience points required to reach the next level. Current EXP = Max EXP → Level Up. 100 × (1.15)^(Level − 1) = Max EXP (truncate decimal points).
+      - Vigor (생명력): Max HP +10 per point. HP/SP recovery rate increases.
+      - Stat Point: Gain 5 points upon leveling up. Gain an extra 10 points for every level ending in 5 or 0 (a multiple of 5, gaining 15 points in total). A potion costs 100G.
+      """
+
+      stated = [
+        {"HP.max = Vigor * 10", "Vigor (생명력): Max HP +10 per point."},
+        # A sentence the reader shortened is still the card's.
+        {"EXP.max = floor(100 * 1.15 ^ (Level - 1))",
+         "EXP: Current EXP = Max EXP → Level Up. 100 × (1.15)^(Level − 1) = Max EXP (truncate decimal points)"},
+        {"when EXP >= EXP.max: Level += 1; EXP -= EXP.max", "current exp = max exp → level up."},
+        {"when Level rises: Stat Point += if(Level % 5 == 0, 15, 5)",
+         "Gain 5 points upon leveling up. Gain an extra 10 points for every level ending in 5 or 0 (a multiple of 5, gaining 15 points in total)."}
+      ]
+
+      for {rule, from} <- stated, do: assert(AutoCast.stated?(rule, from, card), rule)
+
+      # A sentence cut short of a number that the card's line goes on to say.
+      assert AutoCast.stated?(
+               "when Level rises: Stat_Point += if(Level % 5 == 0, 15, 5)",
+               "Gain 5 points upon leveling up. Gain an extra 10 points for every level ending in 5 or 0",
+               card
+             )
+
+      made_up = [
+        # A number the sentence does not have, or has only because the reader put it there.
+        {"HP.max = 100 + Vigor * 10", "Vigor (생명력): Max HP +10 per point."},
+        {"HP.max = 100 + Vigor * 10", "Vigor (생명력): Max HP +10 per point, base 100."},
+        # A sentence that is not the card's: the rule itself, or a guess.
+        {"when EXP >= EXP.max: Level += 1; EXP -= EXP.max",
+         "when EXP >= EXP.max: Level += 1; EXP -= EXP.max"},
+        {"when EXP >= 100: Level += 1; EXP -= 100", "EXP requirement increases with each level"},
+        {"HP.max = Vigor * 10", ""},
+        # A sentence of the card's that says nothing of the rule's fields.
+        {"HP.max = Vigor * 10", "A potion costs 100G."},
+        {"Stat Point = 0", "HP/SP recovery rate increases."},
+        {"HP.max = Stat Point", "Gain 5 points upon leveling up."}
+      ]
+
+      for {rule, from} <- made_up, do: refute(AutoCast.stated?(rule, from, card), rule)
+    end
+
+    test "a price of one point is the card's when its sentence says the points raise the number" do
+      card = """
+      - Status Window: Displays Level, Class, Stats, etc. Stats can be raised through Stat Points without training.
+      - Vigor (생명력): Max HP +10 per point. A potion costs 100G.
+      """
+
+      rule =
+        "when Strength rises: Stat Point -= if(Stat Point > 0 or Stat Point.before > 0, 1, 0)"
+
+      # (The price is the card's when its sentence names the pool.)
+      pool = "Stat Point = Stat Point"
+
+      assert AutoCast.stated?(
+               pool,
+               "Stats can be raised through Stat Points without training.",
+               card
+             )
+
+      # A sentence that is not the card's, or says nothing of the points.
+      refute AutoCast.stated?(pool, "Each stat point raises one stat by one.", card)
+      refute AutoCast.stated?(pool, "A potion costs 100G.", card)
+
+      # In a turn that has points, a point is paid for each, and no more
+      # is had than was paid for; in a turn with none the number rises
+      # all the same (by training, say).
+      spec = %{open: "[S]", close: "[S]", rules: [rule]}
+
+      after_raise = fn window ->
+        {kept, _applied, _refused} =
+          Aethrion.Bridge.Ledger.apply(window, [{"Strength", "+3"}], spec)
+
+        {kept, _ruled} = Aethrion.Bridge.Ledger.settle(kept, spec, window)
+        kept
+      end
+
+      assert after_raise.("[S]\n- Stat Point: 5\n- Strength: 12\n[S]") ==
+               "[S]\n- Stat Point: 2\n- Strength: 15\n[S]"
+
+      assert after_raise.("[S]\n- Stat Point: 2\n- Strength: 12\n[S]") ==
+               "[S]\n- Stat Point: 0\n- Strength: 14\n[S]"
+
+      assert after_raise.("[S]\n- Stat Point: 0\n- Strength: 12\n[S]") ==
+               "[S]\n- Stat Point: 0\n- Strength: 15\n[S]"
+    end
+
+    test "the player the card names is not one of its people" do
+      answer =
+        ~s|{"characters": [{"name": "무명"}, {"name": "기환 (Kihwan)"}], "player": " 기환 "}|
+
+      assert {:ok, %{player: "기환", characters: [%{"name" => "무명"}]}} = AutoCast.people(answer)
+      # A name that is none.
+      assert {:ok, %{player: nil}} = AutoCast.people(~s({"characters": [], "player": "{{user}}"}))
+      assert {:ok, %{player: nil}} = AutoCast.people(~s({"characters": [], "player": null}))
+    end
+
     test "an answer that is not the JSON asked for is refused" do
       assert AutoCast.people("I cannot read this card.") == {:error, :no_characters_read}
       assert AutoCast.people(~s({"characters": "none"})) == {:error, :no_characters_read}
@@ -63,6 +502,39 @@ defmodule Aethrion.AutoCastTest do
     end
   end
 
+  # Answers what the test put in its process dictionary.
+  defmodule Exits do
+    # The first reading answers; the later ones exit or throw.
+    def chat(_messages, opts) do
+      case Agent.get_and_update(opts[:calls], &{&1, &1 + 1}) do
+        0 -> {:ok, opts[:first]}
+        1 -> exit(:timeout)
+        _later -> throw(:oops)
+      end
+    end
+  end
+
+  defmodule Raises do
+    # The caller's own reading raises; the others answer.
+    def chat(_messages, opts) do
+      if self() == opts[:caller], do: raise("no model"), else: {:ok, opts[:first]}
+    end
+  end
+
+  defmodule Readers do
+    # One answer a reading, in turn (the later readings run in tasks).
+    def chat(_messages, opts) do
+      Agent.get_and_update(opts[:answers], fn
+        [answer | rest] -> {{:ok, answer}, rest}
+        [] -> {{:error, :no_more}, []}
+      end)
+    end
+  end
+
+  defmodule Reader do
+    def chat(_messages, _opts), do: {:ok, Process.get(:reader_answer)}
+  end
+
   # Reads a card when asked to, narrates otherwise; every call is noted.
   defmodule Model do
     @behaviour Aethrion.LLM.Adapter
@@ -71,12 +543,44 @@ defmodule Aethrion.AutoCastTest do
     @impl true
     def complete(_system, _user, _opts), do: {:ok, "(narration)"}
 
-    def chat(messages, _opts) do
+    def chat(messages, opts) do
       Agent.update(Aethrion.AutoCastTest.Calls, &(&1 ++ [messages]))
 
       cond do
         Enum.any?(messages, &(&1["content"] =~ "FAILING CARD")) ->
           {:error, :boom}
+
+        hd(messages)["content"] =~ "You read a role-play character card" and
+            Enum.any?(messages, &(&1["content"] =~ "LEDGER CARD")) ->
+          Agent.update(
+            Aethrion.AutoCastTest.Calls,
+            &(&1 ++ [[%{"content" => "reader model: #{inspect(opts[:model])}"}]])
+          )
+
+          {:ok,
+           Jason.encode!(%{
+             "title" => "Tower",
+             "characters" => [],
+             "status_window" => %{
+               "open" => "[Status]",
+               "close" => "[Status]",
+               "rules" => [
+                 %{"from" => "Max HP +10 per point of Vigor.", "rule" => "HP.max = Vigor * 10"},
+                 %{
+                   "from" => "Current EXP = Max EXP → Level Up.",
+                   "rule" => "when EXP >= EXP.max: Level += 1; EXP -= EXP.max"
+                 },
+                 %{
+                   "from" => "Max HP +10 per point of Vigor.",
+                   "rule" => "HP.max = 50 + Vigor * 10"
+                 },
+                 %{"from" => "not in the card at all", "rule" => "Level = Level + 1"}
+               ]
+             }
+           })}
+
+        Enum.any?(messages, &(&1["content"] =~ "LEDGER CARD")) ->
+          {:ok, ledger_narration(messages)}
 
         hd(messages)["content"] =~ "You read a role-play character card" and
             Enum.any?(messages, &(&1["content"] =~ "NARRATOR CARD")) ->
@@ -99,6 +603,39 @@ defmodule Aethrion.AutoCastTest do
       # In pieces that cut the scene line's tag in two.
       for piece <- Regex.scan(~r/.{1,7}/su, text), do: on_delta.(hd(piece))
       {:ok, text}
+    end
+
+    # A card with a status window: the model prints the first one, then
+    # writes what changed, and once prints a window where changes were
+    # asked for.
+    defp ledger_narration(messages) do
+      case Enum.count(messages, &(&1["role"] == "user")) do
+        1 ->
+          "문이 열린다.\n\n[Status]\n- Level: 1\n- HP: 30 / 30\n- EXP: 90 / 100\n- Vigor: 5\n- Item: 물약 × 2\n[Status]\n<aethrion-scene></aethrion-scene>"
+
+        2 ->
+          # Asked again for a turn already answered, it tells it otherwise
+          # and would change other numbers.
+          if List.last(messages)["content"] =~ "This turn was played before",
+            do:
+              "이번엔 단칼에 벤다.\n\n<aethrion-ledger>\nHP: -40\nEXP: +900\n</aethrion-ledger>\n<aethrion-scene></aethrion-scene>",
+            else:
+              "고블린을 벤다.\n\n<aethrion-ledger>\nHP: -12\nEXP: +25\nItem: -물약 × 1\nMana: +1\n</aethrion-ledger>\n<aethrion-scene></aethrion-scene>"
+
+        3 ->
+          "곤봉이 어깨를 친다.\n\n[Status]\n- Level: 2\n- HP: 20 / 50\n- EXP: 15 / 100\n- Vigor: 5\n- Item: 물약 × 1\n[Status]"
+
+        _more ->
+          # The first answer to this turn says nothing of the window; asked again, it does.
+          asked =
+            Aethrion.AutoCastTest.Calls
+            |> Agent.get(& &1)
+            |> Enum.count(fn call -> Enum.count(call, &(&1["role"] == "user")) >= 4 end)
+
+          if asked <= 1,
+            do: "숲은 잠잠하다.",
+            else: "늑대가 문다.\n\n<aethrion-ledger>\nHP: -5\n</aethrion-ledger>"
+      end
     end
 
     # A narrator: Haruka is there from the first reply, Kenji joins when
@@ -144,7 +681,7 @@ defmodule Aethrion.AutoCastTest do
         [
           %{"role" => "system", "content" => Keyword.get(opts, :card, @card)},
           %{"role" => "system", "content" => "[Start a new chat]"},
-          %{"role" => "assistant", "content" => @greeting}
+          %{"role" => "assistant", "content" => Keyword.get(opts, :greeting, @greeting)}
         ] ++ chat
 
       body =
@@ -171,15 +708,19 @@ defmodule Aethrion.AutoCastTest do
     defp user(line), do: %{"role" => "user", "content" => line}
     defp reply(text), do: %{"role" => "assistant", "content" => text}
 
-    defp card_reads,
-      do: Enum.count(calls(), &(hd(&1)["content"] =~ "You read a role-play character card"))
+    # How many times a card was read: each time is three readings by the model.
+    defp card_reads do
+      calls = Enum.count(calls(), &(hd(&1)["content"] =~ "You read a role-play character card"))
+      assert rem(calls, 3) == 0
+      div(calls, 3)
+    end
 
     test "plays the card in the request, read once", %{base: base} do
       {200, first} = ask(base, [user("세라, 고마워. 덕분에 살았어.")])
 
       # The people are the card's, not the server's cast (a wolf den).
       assert first =~
-               ~r/<aethrion-status id="[0-9a-f]+">세라 · 호감 3\d \(\+\d\) · 신뢰 2\d \(\+\d\)\n도윤 · 호감 10 · 신뢰 10\n/
+               ~r/<aethrion-status id="[0-9a-f]+" card="[0-9a-f]{24}">세라 · 호감 3\d \(\+\d\) · 신뢰 2\d \(\+\d\)\n도윤 · 호감 10 · 신뢰 10\n/
 
       refute first =~ "울프"
       assert card_reads() == 1
@@ -268,7 +809,7 @@ defmodule Aethrion.AutoCastTest do
       # No one to track yet; the scene line is taken out of the reply and
       # kept in the status block's tag.
       assert one =~
-               ~r/\A버스가 멈춘다. 옆자리의 하루카가 고개를 든다.\n\n<aethrion-status id="[0-9a-f]+" scene="하루카\|조용한 도서부원">/
+               ~r/\A버스가 멈춘다. 옆자리의 하루카가 고개를 든다.\n\n<aethrion-status id="[0-9a-f]+" card="[0-9a-f]+" scene="하루카\|조용한 도서부원">/
 
       refute one =~ "<aethrion-scene"
       refute one =~ "호감"
@@ -329,9 +870,243 @@ defmodule Aethrion.AutoCastTest do
             do: content
 
       assert text =~
-               ~r/\A버스가 멈춘다. 옆자리의 하루카가 고개를 든다.\s+<aethrion-status id="[0-9a-f]+" scene="하루카\|조용한 도서부원">/
+               ~r/\A버스가 멈춘다. 옆자리의 하루카가 고개를 든다.\s+<aethrion-status id="[0-9a-f]+" card="[0-9a-f]+" scene="하루카\|조용한 도서부원">/
 
       refute text =~ "<aethrion-scene"
+    end
+
+    @ledger_card "LEDGER CARD: a tower. Print the status between [Status] lines. Max HP +10 per point of Vigor. Current EXP = Max EXP → Level Up."
+
+    test "a card's status window is kept by the ledger, with the card's arithmetic", %{base: base} do
+      card = [card: @ledger_card]
+      first = user("탑에 들어간다.")
+      {200, one} = ask(base, [first], card)
+
+      # The first window is the model's, put right by the rule the card
+      # states (the two it does not state are not used).
+      assert one =~ ~r/\A문이 열린다.\n\n\[Status\]\n- Level: 1\n- HP: 50 \/ 50\n- EXP: 90 \/ 100\n/
+      assert one =~ "규칙 · HP 30 / 30 → 50 / 50"
+      refute one =~ "<aethrion-scene"
+
+      # From then on the model is asked for what changed, and told the rules.
+      second = user("고블린을 벤다.")
+      {200, two} = ask(base, [first, reply(one), second], card)
+      note = calls() |> List.last() |> List.last() |> Map.fetch!("content")
+      assert note =~ "do not print it yourself"
+      assert note =~ "(Level, HP, EXP, Vigor, Item)"
+
+      assert note =~
+               "the maximum of HP, Level (HP.max = Vigor * 10 | when EXP >= EXP.max: Level += 1; EXP -= EXP.max)."
+
+      assert two =~
+               ~r/\A고블린을 벤다.\n\n\[Status\]\n- Level: 2\n- HP: 38 \/ 50\n- EXP: 15 \/ 100\n- Vigor: 5\n- Item: 물약 × 1\n\[Status\]\n\n<aethrion-status /
+
+      refute two =~ "<aethrion-ledger"
+
+      assert two =~
+               "기록 · HP 50 / 50 → 38 / 50 · EXP 90 / 100 → 115 / 100 · Item −물약\n기록 · Mana: +1 (없는 칸)\n규칙 · Level 1 → 2 · EXP 115 / 100 → 15 / 100"
+
+      # A reroll tells the turn anew, and its numbers stand: the model is
+      # told what the first answer settled, and what it would change now is
+      # not taken.
+      {200, again} = ask(base, [first, reply(one), second], card)
+      note = calls() |> List.last() |> List.last() |> Map.fetch!("content")
+
+      # What the first answer came to, without what was refused of it.
+      assert note =~
+               "what it does to the window is settled: 기록 · HP 50 / 50 → 38 / 50 · EXP 90 / 100 → 115 / 100 · Item −물약; 규칙 · Level 1 → 2 · EXP 115 / 100 → 15 / 100. Narrate"
+
+      refute note =~ "one line for each field"
+
+      assert again =~
+               ~r/\A이번엔 단칼에 벤다.\n\n\[Status\]\n- Level: 2\n- HP: 38 \/ 50\n- EXP: 15 \/ 100\n/
+
+      assert String.replace(again, "이번엔 단칼에 벤다.", "고블린을 벤다.") == two
+
+      # A window printed where changes were asked for: its differences are the changes.
+      third = user("버틴다.")
+      {200, three} = ask(base, [first, reply(one), second, reply(two), third], card)
+      assert three =~ ~r/\A곤봉이 어깨를 친다.\n\n\[Status\]\n- Level: 2\n- HP: 20 \/ 50\n/
+      assert length(String.split(three, "[Status]")) == 3
+      assert three =~ "기록 · HP 38 / 50 → 20 / 50"
+
+      # An answer that says nothing of the window settles nothing: the
+      # window stays, and a reroll may still say what changed.
+      chat = [first, reply(one), second, reply(two), third, reply(three), user("숲으로 간다.")]
+      {200, four} = ask(base, chat, card)
+      assert four =~ ~r/\A숲은 잠잠하다.\n\n\[Status\]\n- Level: 2\n- HP: 20 \/ 50\n/
+      {200, again} = ask(base, chat, card)
+      assert again =~ ~r/\A늑대가 문다.\n\n\[Status\]\n- Level: 2\n- HP: 15 \/ 50\n/
+      # That one settled it.
+      {200, third_time} = ask(base, chat, card)
+      assert third_time == again
+      # The card was read at its first turn only.
+      assert card_reads() == 1
+    end
+
+    test "the ledger's lines and a window printed anyway are held back from a stream", %{
+      base: base
+    } do
+      card = [card: @ledger_card]
+      first = user("탑에 들어간다.")
+      {200, one} = ask(base, [first], card)
+      second = user("고블린을 벤다.")
+      {200, two} = ask(base, [first, reply(one), second], card)
+
+      stream = fn chat ->
+        body =
+          Jason.encode!(%{
+            "model" => "aethrion-auto",
+            "stream" => true,
+            "messages" =>
+              [
+                %{"role" => "system", "content" => @ledger_card},
+                %{"role" => "system", "content" => "[Start a new chat]"},
+                %{"role" => "assistant", "content" => @greeting}
+              ] ++ chat
+          })
+
+        {:ok, {{_v, 200, _r}, _headers, events}} =
+          :httpc.request(
+            :post,
+            {String.to_charlist(base <> "/v1/chat/completions"), [], ~c"application/json", body},
+            [],
+            body_format: :binary
+          )
+
+        for "data: " <> data <- String.split(events, "\n\n", trim: true),
+            data != "[DONE]",
+            %{"choices" => [%{"delta" => %{"content" => content}}]} <- [Jason.decode!(data)],
+            into: "",
+            do: content
+      end
+
+      # What is streamed comes to what an unstreamed reply is (the turn
+      # was answered once: its numbers stand).
+      assert stream.([first, reply(one), second]) ==
+               String.replace(two, "고블린을 벤다.", "이번엔 단칼에 벤다.")
+
+      third = user("버틴다.")
+      streamed = stream.([first, reply(one), second, reply(two), third])
+      assert streamed =~ ~r/\A곤봉이 어깨를 친다.\s+\[Status\]\n- Level: 2\n- HP: 20 \/ 50\n/
+      assert length(String.split(streamed, "[Status]")) == 3
+    end
+
+    defp call(method, url, body \\ nil) do
+      request =
+        if body,
+          do: {String.to_charlist(url), [], ~c"application/json", Jason.encode!(body)},
+          else: {String.to_charlist(url), []}
+
+      {:ok, {{_v, status, _r}, _headers, answer}} =
+        :httpc.request(method, request, [], body_format: :binary)
+
+      {status, Jason.decode!(answer)}
+    end
+
+    test "what was read from a card can be looked over, set right, and forgotten", %{base: base} do
+      card = [card: @ledger_card]
+      first = user("탑에 들어간다.")
+      {200, one} = ask(base, [first], card)
+
+      {:ok, {{_v, 200, _r}, _headers, page}} =
+        :httpc.request(:get, {String.to_charlist(base <> "/cards"), []}, [], body_format: :binary)
+
+      assert page =~ "읽은 카드"
+
+      assert {200, %{"cards" => [read]}} = call(:get, base <> "/casts/cards")
+
+      assert %{
+               "key" => key,
+               "title" => "Tower",
+               "people" => [],
+               "window" => %{
+                 "open" => "[Status]",
+                 "close" => "[Status]",
+                 "off" => false,
+                 "rules" => [
+                   "HP.max = Vigor * 10",
+                   "when EXP >= EXP.max: Level += 1; EXP -= EXP.max"
+                 ]
+               }
+             } = read
+
+      assert read["read_at"] =~ ~r/\A\d{4}-\d\d-\d\dT/
+
+      # A rule set right holds from the next turn.
+      window = %{"open" => "[Status]", "close" => "[Status]", "rules" => ["HP.max = Vigor * 20"]}
+
+      assert {200, %{"ok" => true}} =
+               call(:put, base <> "/casts/cards/" <> key, %{"window" => window})
+
+      second = user("고블린을 벤다.")
+      {200, two} = ask(base, [first, reply(one), second], card)
+      assert two =~ "- HP: 38 / 100\n"
+      assert two =~ "HP 38 / 50 → 38 / 100"
+
+      # With the ledger off, the window is the model's again.
+      assert {200, _ok} =
+               call(:put, base <> "/casts/cards/" <> key, %{
+                 "window" => Map.put(window, "off", true)
+               })
+
+      {200, _three} = ask(base, [first, reply(one), second, reply(two), user("버틴다.")], card)
+      note = calls() |> List.last() |> List.last() |> Map.fetch!("content")
+      assert note =~ "If the card asks for a status window or a format of its own, keep it"
+
+      assert {200, %{"cards" => [%{"window" => %{"off" => true}}]}} =
+               call(:get, base <> "/casts/cards")
+
+      # What cannot be kept is refused, and a key nothing was read under is not found.
+      assert {400, %{"error" => %{"message" => message}}} =
+               call(:put, base <> "/casts/cards/" <> key, %{"window" => %{"open" => ""}})
+
+      assert message =~ "opening text"
+      assert {400, _error} = call(:put, base <> "/casts/cards/" <> key, %{})
+      assert {404, _error} = call(:delete, base <> "/casts/cards/nothing")
+
+      # Forgotten, the card is read again when it is next played.
+      reads = card_reads()
+      assert {200, %{"ok" => true}} = call(:delete, base <> "/casts/cards/" <> key)
+      assert {200, %{"cards" => []}} = call(:get, base <> "/casts/cards")
+      {200, _again} = ask(base, [user("탑에 들어간다.")], card)
+      assert card_reads() == reads + 1
+      # Read once more and kept: listed again, and not read a third time.
+      assert {200, %{"cards" => [%{"title" => "Tower"}]}} = call(:get, base <> "/casts/cards")
+      {200, _again} = ask(base, [user("탑에 들어간다.")], card)
+      assert card_reads() == reads + 1
+    end
+
+    test "another model may read the card, while the server's narrates", %{base: base} do
+      reader = fn ->
+        Enum.find_value(calls(), &(hd(&1)["content"] =~ "reader model" && hd(&1)["content"]))
+      end
+
+      {200, _reply} = ask(base, [user("탑에 들어간다.")], card: @ledger_card)
+      assert reader.() == "reader model: nil"
+
+      {:ok, den} = "priv/casts/den.json" |> File.read!() |> Jason.decode!() |> State.parse()
+
+      pid =
+        start_supervised!(
+          {API,
+           worlds: Worlds.Test.AutoCast,
+           port: 0,
+           locale: :ko,
+           cast: den,
+           intent: [adapter: Model],
+           card_opts: [model: "a-stronger-one"],
+           interpreter: Aethrion.Interpreter.Rules},
+          id: :with_card_model
+        )
+
+      Agent.update(Aethrion.AutoCastTest.Calls, fn _calls -> [] end)
+      other = "http://127.0.0.1:#{API.port(pid)}"
+      # Another first message: another card to read.
+      {200, _reply} =
+        ask(other, [user("탑에 들어간다.")], card: @ledger_card, greeting: "다른 시작.")
+
+      assert reader.() == ~s(reader model: "a-stronger-one")
     end
 
     test "is listed among the models", %{base: base} do

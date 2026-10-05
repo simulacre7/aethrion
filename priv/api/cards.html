@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Aethrion · 읽은 카드</title>
+<style>
+:root{color-scheme:light;--page:#f6f5f2;--surface:#ffffff;--text:#151515;--muted:#6b6a66;--border:rgba(0,0,0,.12);--accent:#2a78d6;--accent-text:#fff;--good:#2f7d4f;--bad:#c23b3b;--soft:#f0efeb}
+@media (prefers-color-scheme:dark){:root{color-scheme:dark;--page:#0f0f0f;--surface:#1a1a19;--text:#f2f2f0;--muted:#a3a29c;--border:rgba(255,255,255,.14);--accent:#3987e5;--accent-text:#fff;--good:#5bbf85;--bad:#e66767;--soft:#232321}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--page);color:var(--text);font:14px/1.5 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:860px;margin:0 auto;padding:16px}
+header{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px}
+header h1{font-size:18px;margin:0 auto 0 0}
+input,button,textarea{font:inherit;color:inherit;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:5px 8px}
+textarea{width:100%;resize:vertical;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px}
+button{cursor:pointer}
+button.primary{background:var(--accent);color:var(--accent-text);border-color:transparent}
+button.remove{color:var(--bad)}
+#status{position:sticky;top:0;z-index:5;padding:8px 12px;border-radius:10px;background:var(--surface);border:1px solid var(--border);margin-bottom:10px;font-size:13px}
+#status.ok{border-color:var(--good);color:var(--good)}
+#status.bad{border-color:var(--bad);color:var(--bad)}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:10px}
+.card h2{font-size:15px;margin:0 0 2px}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:end;margin:8px 0}
+.row > label{display:flex;flex-direction:column;font-size:12px;color:var(--muted);gap:2px}
+.check{flex-direction:row !important;align-items:center;font-size:13px !important;color:var(--text) !important}
+.grow{flex:1;min-width:160px}
+.hint{font-size:12px;color:var(--muted)}
+code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;background:var(--soft);padding:1px 4px;border-radius:4px}
+details{margin-top:6px}
+details pre{white-space:pre-wrap;font-size:12px;background:var(--soft);padding:8px;border-radius:8px;margin:6px 0 0}
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>읽은 카드</h1>
+    <button id="reload" type="button">다시 불러오기</button>
+    <label class="hint">Token <input id="token" type="password" size="8"></label>
+  </header>
+  <div id="status" role="status" aria-live="polite">불러오는 중입니다.</div>
+  <p class="hint">요청 모델 <code>aethrion-auto</code>로 플레이한 카드를 처음 읽었을 때 모델이 잡은 내용입니다. 상태창의 시작·끝 글자와 카드에 적힌 계산(규칙)이 맞는지 확인하고, 다르면 여기서 고칩니다. 고친 내용은 다음 턴부터 적용됩니다.</p>
+  <div id="cards"></div>
+  <details>
+    <summary class="hint">규칙을 적는 법</summary>
+    <pre>한 줄에 규칙 하나. 칸 이름은 상태창에 나오는 그대로 적습니다.
+
+항상 성립하는 것      HP.max = Vigor * 10
+                      EXP.max = floor(100 * 1.15 ^ (Level - 1))
+수치의 범위           Trust = clamp(Trust, 0, 100)
+한 턴에 움직이는 폭   Trust = clamp(Trust, Trust.before - 2, Trust.before + 2)
+일어나는 일           when EXP >= EXP.max: Level += 1; EXP -= EXP.max
+1 오를 때마다         when Level rises: Stat Point += if(Level % 5 == 0, 15, 5)
+
+Field.max는 "30 / 48" 같은 쌍의 뒤쪽 숫자, Field.before는 이번 턴 전의 값입니다.
+쓸 수 있는 것: 숫자, 칸 이름, + - * / ^ %, 비교(>= <= > < == !=), and, or,
+floor, ceil, round, min, max, clamp(x, 최소, 최대), if(조건, 참, 거짓).
+상태창에 없는 칸을 가리키거나 읽을 수 없는 줄은 쓰이지 않습니다.</pre>
+  </details>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+const store = {
+  get(key, fallback) { try { return localStorage.getItem(key) ?? fallback; } catch { return fallback; } },
+  set(key, value) { try { localStorage.setItem(key, value); } catch {} }
+};
+$("token").value = store.get("aethrion.token", "");
+
+async function call(method, path, body) {
+  const headers = {"content-type": "application/json"};
+  if ($("token").value) headers.authorization = "Bearer " + $("token").value;
+  const response = await fetch(path, {method, headers, body: body ? JSON.stringify(body) : undefined});
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error ? data.error.message : response.statusText);
+  return data;
+}
+
+function say(text, kind) {
+  $("status").textContent = text;
+  $("status").className = kind || "";
+}
+
+function el(tag, attrs = {}, ...children) {
+  const node = document.createElement(tag);
+  for (const [key, value] of Object.entries(attrs)) {
+    if (key.startsWith("on")) node.addEventListener(key.slice(2), value);
+    else if (key === "value") node.value = value;
+    else if (key === "checked") node.checked = value;
+    else node.setAttribute(key, value);
+  }
+  for (const child of children.flat()) if (child != null) node.append(child.nodeType ? child : document.createTextNode(child));
+  return node;
+}
+
+function view(card) {
+  const window_ = card.window || {open: "", close: "", rules: [], off: false};
+  const open = el("input", {value: window_.open, size: 18});
+  const close = el("input", {value: window_.close, size: 18});
+  const rules = el("textarea", {rows: Math.max(3, window_.rules.length + 1), spellcheck: "false"});
+  rules.value = window_.rules.join("\n");
+  const on = el("input", {type: "checkbox", checked: card.window != null && !window_.off});
+
+  const save = el("button", {type: "button", class: "primary", onclick: async () => {
+    const body = open.value.trim() === ""
+      ? {window: null}
+      : {window: {open: open.value, close: close.value, off: !on.checked,
+                  rules: rules.value.split("\n").map((line) => line.trim()).filter(Boolean)}};
+    try { await call("PUT", "/casts/cards/" + card.key, body); say("저장했습니다: " + (card.title || card.key), "ok"); }
+    catch (error) { say(error.message, "bad"); }
+  }}, "저장");
+
+  const forget = el("button", {type: "button", class: "remove", onclick: async () => {
+    if (!confirm("이 카드에서 읽은 내용을 지웁니다. 다음에 플레이할 때 카드를 다시 읽습니다. 진행 중인 대화의 인물 수치는 새로 시작됩니다.")) return;
+    try { await call("DELETE", "/casts/cards/" + card.key); await load(); say("지웠습니다.", "ok"); }
+    catch (error) { say(error.message, "bad"); }
+  }}, "지우고 다시 읽게 하기");
+
+  return el("div", {class: "card"},
+    el("h2", {}, card.title || "(제목 없음)"),
+    el("div", {class: "hint"},
+      "인물: " + (card.people.length ? card.people.join(", ") : "없음(이야기가 데려옴)") +
+      (card.player ? " · 플레이어: " + card.player : "") +
+      (card.read_at ? " · 읽은 때: " + card.read_at.replace("T", " ").replace("Z", " UTC") : "")),
+    el("div", {class: "row"},
+      el("label", {}, "상태창 시작 글자", open),
+      el("label", {}, "상태창 끝 글자 (비우면 응답 끝까지)", close),
+      el("label", {class: "check"}, on, "상태창을 규칙이 관리")),
+    el("label", {class: "hint"}, "카드에 적힌 계산 (한 줄에 하나)", rules),
+    el("div", {class: "row"}, save, forget));
+}
+
+async function load() {
+  store.set("aethrion.token", $("token").value);
+  try {
+    const {cards} = await call("GET", "/casts/cards");
+    $("cards").replaceChildren(...cards.map(view));
+    say(cards.length ? "카드 " + cards.length + "개를 읽었습니다." : "아직 읽은 카드가 없습니다. 채팅 앱에서 요청 모델을 aethrion-auto로 두고 한 턴 플레이하면 여기에 나옵니다.");
+  } catch (error) { say(error.message, "bad"); }
+}
+
+$("reload").addEventListener("click", load);
+$("token").addEventListener("change", load);
+load();
+</script>
+</body>
+</html>

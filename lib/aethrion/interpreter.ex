@@ -67,40 +67,57 @@ defmodule Aethrion.Interpreter do
     }
 
     interpreter = Keyword.get(opts, :interpreter, __MODULE__.Rules)
-    min = Keyword.get(opts, :min_confidence, 0.5)
 
     result =
       try do
-        interpreter.interpret(request, Keyword.get(opts, :interpreter_opts, []) ++ intent(opts))
+        interpreter.interpret(
+          request,
+          Keyword.get(opts, :interpreter_opts, []) ++
+            intent(opts) ++ [allow_none: Keyword.get(opts, :allow_none, false)]
+        )
       rescue
         exception -> {:error, {:exception, Exception.message(exception)}}
       end
 
     case result do
+      # The line does nothing the rules track (`:allow_none`): the player
+      # walks on, or fights something the cast does not have.
+      {:ok, []} when interpreter != __MODULE__.Rules ->
+        if Keyword.get(opts, :allow_none, false),
+          do: {:ok, [], %{interpreter: interpreter, status: :ok}},
+          else: fallback(request, opts, {:invalid_response, []})
+
       {:ok, [_ | _] = readings} ->
-        cond do
-          not Enum.all?(readings, &reading?/1) ->
-            fallback(request, opts, {:invalid_readings, readings})
-
-          Enum.any?(readings, &(&1.confidence < min)) ->
-            fallback(request, opts, :unsure)
-
-          true ->
-            # The rules standing in for themselves would read the same.
-            case interpreter != __MODULE__.Rules and invalid(state, readings) do
-              problem when is_binary(problem) ->
-                fallback(request, opts, {:invalid_event, problem})
-
-              _valid ->
-                {:ok, readings, %{interpreter: interpreter, status: :ok}}
-            end
-        end
+        taken(readings, request, interpreter, opts)
 
       {:error, reason} ->
         fallback(request, opts, reason)
 
       other ->
         fallback(request, opts, {:invalid_response, other})
+    end
+  end
+
+  # The interpreter's readings when they can be taken, the rules' otherwise.
+  defp taken(readings, %Request{state: state} = request, interpreter, opts) do
+    min = Keyword.get(opts, :min_confidence, 0.5)
+
+    cond do
+      not Enum.all?(readings, &reading?/1) ->
+        fallback(request, opts, {:invalid_readings, readings})
+
+      Enum.any?(readings, &(&1.confidence < min)) ->
+        fallback(request, opts, :unsure)
+
+      true ->
+        # The rules standing in for themselves would read the same.
+        case interpreter != __MODULE__.Rules and invalid(state, readings) do
+          problem when is_binary(problem) ->
+            fallback(request, opts, {:invalid_event, problem})
+
+          _valid ->
+            {:ok, readings, %{interpreter: interpreter, status: :ok}}
+        end
     end
   end
 

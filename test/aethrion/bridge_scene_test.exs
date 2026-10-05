@@ -40,6 +40,17 @@ defmodule Aethrion.BridgeSceneTest do
                Scene.take("<aethrion-scene>{{user}}\nThe Player\n나\nHaruka</aethrion-scene>")
     end
 
+    test "the player the card names is not in the scene; a scene of the player alone says nothing" do
+      reply = "끝.\n<aethrion-scene>무명\n기환 | 무명의 스승</aethrion-scene>"
+      assert {"끝.", [%{name: "무명"}]} = Scene.take(reply, "기환")
+      assert {"끝.", [%{name: "무명"}, %{name: "기환"}]} = Scene.take(reply)
+
+      # The model listed who the player is, not who is with them: as if it wrote no line.
+      alone = "끝.\n<aethrion-scene>기환 (Kihwan) | 무명의 스승</aethrion-scene>"
+      assert Scene.take(alone, "기환") == {"끝.", nil}
+      assert Scene.take("끝.\n<aethrion-scene></aethrion-scene>", "기환") == {"끝.", []}
+    end
+
     test "an empty line is a scene with no one; no line is no scene" do
       assert Scene.take("Alone.<aethrion-scene></aethrion-scene>") == {"Alone.", []}
       assert Scene.take("Alone.") == {"Alone.", nil}
@@ -104,6 +115,36 @@ defmodule Aethrion.BridgeSceneTest do
       assert State.stat(back, "haruka", "away") == 1
       assert State.stat(back, kenji.id, "away") == 1
       assert length(State.sorted_characters(back)) == 3
+    end
+
+    test "a name in the other script is the same person" do
+      # A card written in English and played in Korean has both.
+      same = [
+        {"최승규", "Choi Seung-gyu"},
+        {"에르웬", "Erwen"},
+        {"김태민", "Kim Tae-min"},
+        {"한솔", "Hansol"},
+        {"미샤", "Misha"},
+        {"이윤슬", "Lee Yun-seul"},
+        {"연희", "Yeon-hee"},
+        {"최승규 (Choi Seung-gyu)", "최승규"}
+      ]
+
+      for {a, b} <- same do
+        assert Scene.same?(a, b), "#{a} and #{b}"
+        assert Scene.same?(b, a), "#{b} and #{a}"
+      end
+
+      # A name of one consonant is too little to go by.
+      different = [
+        {"레오", "Remi"},
+        {"한솔", "Hansen"},
+        {"시온", "Misha"},
+        {"미샤", "Mina"},
+        {"노아", "Noah"}
+      ]
+
+      for {a, b} <- different, do: refute(Scene.same?(a, b), "#{a} and #{b}")
     end
 
     test "the cast stops growing at sixteen" do

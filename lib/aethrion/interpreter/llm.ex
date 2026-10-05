@@ -36,9 +36,14 @@ defmodule Aethrion.Interpreter.LLM do
   - attack, defend, heal, flee only while a fight is on; otherwise such words are talk.
   - In a fight, a line that does nothing in the fight (cheering, thanks, insults, orders to others) is talk.
   - activity only when the player suggests doing one of the story's activities ("오늘은 같이 그림 그리자"); talking about it is talk.
-  - gift when the player hands something over ("너 주려고 쿠키 사 왔어").
+  - gift when the player hands something over as a present ("너 주려고 쿠키 사 왔어"). Paying a price, buying, selling, or handing over what was asked for in a trade is no gift: such a line is talk, or none.
   - apology when the player apologizes.
   - Thanks, praise, comfort, and invitations are warm; plain questions and remarks are neutral; brush-offs are cold; insults and contempt are hostile.
+  """
+
+  @none """
+
+  - "does" may also be none: the line does none of these to anyone in the list. The player moves, looks around, waits, or fights, takes, buys, or uses something that is not in the list. A line that is only that is {"readings": [{"does": "none", "confidence": 1}]}.
   """
 
   @impl true
@@ -46,8 +51,14 @@ defmodule Aethrion.Interpreter.LLM do
     adapter = Keyword.fetch!(opts, :adapter)
     adapter_opts = Keyword.get(opts, :adapter_opts, [])
 
-    with {:ok, text} <- adapter.complete(@system, prompt(request), adapter_opts),
-         {:ok, %{"readings" => [_ | _] = readings}} <- decode(text) do
+    # With `:allow_none`, the model may say the line does none of these.
+    none? = Keyword.get(opts, :allow_none, false)
+    system = if none?, do: @system <> @none, else: @system
+
+    with {:ok, text} <- adapter.complete(system, prompt(request), adapter_opts),
+         {:ok, %{"readings" => readings}} when is_list(readings) <- decode(text),
+         readings = if(none?, do: Enum.reject(readings, &(&1["does"] == "none")), else: readings),
+         true <- none? or readings != [] do
       readings
       |> Enum.map(&Interpreter.from_answers(request, defaults(&1)))
       |> Enum.reduce_while({:ok, []}, fn
@@ -55,6 +66,7 @@ defmodule Aethrion.Interpreter.LLM do
         error, _acc -> {:halt, error}
       end)
     else
+      false -> {:error, {:invalid_response, %{"readings" => []}}}
       {:ok, other} -> {:error, {:invalid_response, other}}
       error -> error
     end
