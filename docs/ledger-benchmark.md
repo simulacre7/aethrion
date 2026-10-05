@@ -90,7 +90,7 @@ Four turns of that session, each played again twelve times from the same history
 | stories that tell of a level-up the window does not have | 10 of 48 | 5 of 48 |
 | stories that say how much EXP is still needed | 0 of 48 | 3 of 48 |
 
-Half as often, not never. In the twelve full sessions the small model narrated after that, 1 turn of 360 had such a story (6 of 60 in the two before).
+Half as often, not never. In the thirteen full sessions the small model narrated after that, 1 turn of 390 had such a story (6 of 60 in the two before).
 
 ## Other Cards
 
