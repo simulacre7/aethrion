@@ -40,6 +40,7 @@ defmodule Aethrion.Bridge.Reply do
           required(:player) => String.t() | nil,
           optional(:line?) => boolean(),
           optional(:first?) => boolean(),
+          optional(:numbers?) => boolean(),
           optional(:mode) => String.t() | nil,
           optional(:place) => :first | :last,
           optional(:early) => String.t() | nil,
@@ -139,7 +140,7 @@ defmodule Aethrion.Bridge.Reply do
   # a small model leaves it out of its first reply one time in eight.
   def instruction(%{ledger: nil, first?: true, spec: %{open: open}} = plan, _messages)
       when is_binary(open) and open != "" do
-    if plan[:line?] != false, do: Ledger.first_instruction()
+    if plan[:line?] != false, do: Ledger.first_instruction(plan[:numbers?] != false)
   end
 
   def instruction(_plan, _messages), do: nil
@@ -346,6 +347,31 @@ defmodule Aethrion.Bridge.Reply do
   def filter(emit, %{spec: spec}) do
     {on_delta, _flush} = Ledger.filter(emit, spec && spec.open)
     on_delta
+  end
+
+  @doc """
+  Whether Aethrion's own affinity and trust numbers are shown and told
+  for this cast: as the card's settings say, and otherwise not when the
+  card's window has relationship numbers of its own (its examples, or the
+  window that stands in the chat; `names` are the cast's, for rows named
+  after them). Two counts of one thing, moving apart,
+  are worse than one.
+  """
+  @spec numbers?(map(), plan(), [String.t()]) :: boolean()
+  def numbers?(auto, plan, names \\ []) do
+    case auto[:numbers] do
+      "show" ->
+        true
+
+      "hide" ->
+        false
+
+      _by_the_card ->
+        window = plan[:ledger] || plan[:own]
+
+        not (auto[:relations] == true or
+               (is_binary(window) and Ledger.relations?(window, plan.spec, names)))
+    end
   end
 
   @doc """

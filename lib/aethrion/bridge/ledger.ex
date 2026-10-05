@@ -443,6 +443,28 @@ defmodule Aethrion.Bridge.Ledger do
 
   def place(_chat, _spec), do: :last
 
+  # A field's name that says how someone feels about the player.
+  @relation ~r/호감|친밀|신뢰|애정|유대|affinity|affection|trust|favou?r|intimacy|relationship|bond|好感|信頼|親密/iu
+
+  @doc """
+  Whether the card's window has relationship numbers of its own: a number
+  under a name that says how someone feels (`Trust: 3%`, `호감도: 30`), a
+  number in a row named for one of the cast (`names`), or a table of rows
+  with labelled numbers. Such a card keeps its own count of what Aethrion
+  counts as affinity and trust.
+  """
+  @spec relations?(String.t(), spec() | nil, [String.t()]) :: boolean()
+  def relations?(window, spec, names \\ []) do
+    fields = fields(window, spec)
+    names = MapSet.new(names, &key/1)
+    numbered? = fn field -> figure(field) != nil or Cells.labelled(field.value) != [] end
+
+    Enum.any?(fields, fn field ->
+      numbered?.(field) and
+        (String.match?(field.name, @relation) or MapSet.member?(names, key(field.name)))
+    end) or Enum.count(fields, &(Cells.read(&1.value) != [])) >= 2
+  end
+
   @doc "The window as it stood: the one in the last reply of the chat that has one."
   @spec current([map()], spec() | nil) :: String.t() | nil
   def current(_chat, nil), do: nil
@@ -2486,9 +2508,13 @@ defmodule Aethrion.Bridge.Ledger do
     do: String.match?(line, ~r/\A(?:기록|Ledger) · [^·→]+: .*\([^()]*\)\s*\z/u)
 
   @doc "What the note says of the window before there is one in the chat."
-  @spec first_instruction() :: String.t()
-  def first_instruction do
-    "The card has a status window shown with every reply, and the chat has none yet: print the whole window in this reply, where the card says and in the card's own format, filled in for where the story stands. Where it shows something listed here (how a character feels about the player), it shows these numbers, fitted to the card's scale. A separate window shows these rules' numbers, so do not print them a second time on your own."
+  @spec first_instruction(boolean()) :: String.t()
+  def first_instruction(numbers? \\ true) do
+    "The card has a status window shown with every reply, and the chat has none yet: print the whole window in this reply, where the card says and in the card's own format, filled in for where the story stands." <>
+      if numbers?,
+        do:
+          " Where it shows something listed here (how a character feels about the player), it shows these numbers, fitted to the card's scale. A separate window shows these rules' numbers, so do not print them a second time on your own.",
+        else: ""
   end
 
   @doc "What the note says of the window when a reply is only continued."

@@ -745,10 +745,17 @@ defmodule Aethrion.API do
     end
   end
 
-  defp revised(kept, %{"window" => window}) do
+  defp revised(kept, %{"window" => window} = data) do
     case Aethrion.Bridge.AutoCast.revise(kept, window) do
-      {:ok, revised} -> {:ok, revised}
-      {:error, message} -> {:error, 400, Error.new(:invalid_request, message)}
+      # (Whether Aethrion's own numbers are shown is set with it, when said.)
+      {:ok, revised} when is_map_key(data, "numbers") ->
+        {:ok, Aethrion.Bridge.AutoCast.with_numbers(revised, data["numbers"])}
+
+      {:ok, revised} ->
+        {:ok, revised}
+
+      {:error, message} ->
+        {:error, 400, Error.new(:invalid_request, message)}
     end
   end
 
@@ -888,12 +895,25 @@ defmodule Aethrion.API do
               store: turn_opts.readings
             })
 
+      # A card that counts how its people feel in its own window is not
+      # shown, nor its model told, Aethrion's count beside it.
+      numbers? =
+        not auto? or
+          Aethrion.Bridge.Reply.numbers?(
+            auto,
+            plan,
+            for(character <- State.sorted_characters(now), do: character.name)
+          )
+
+      plan = if plan, do: Map.put(plan, :numbers?, numbers?)
+
       note = %{
         "role" => "system",
         "content" =>
           Aethrion.Bridge.note(before, now, turn, locale,
             card_status: auto?,
             scene: auto?,
+            numbers: numbers?,
             ledger: Aethrion.Bridge.Reply.instruction(plan, messages)
           )
       }
@@ -905,7 +925,9 @@ defmodule Aethrion.API do
 
       status =
         if turn_opts.status? and turn.line != nil do
-          block = Aethrion.Bridge.status(now, turn, locale, before, scene: auto?)
+          block =
+            Aethrion.Bridge.status(now, turn, locale, before, scene: auto?, numbers: numbers?)
+
           if auto?, do: Aethrion.Bridge.put_attr(block, "card", auto.key), else: block
         end
 

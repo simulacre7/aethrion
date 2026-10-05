@@ -1239,4 +1239,61 @@ defmodule Aethrion.BridgeLedgerCardsTest do
       assert {^gone, nil} = Reply.finish("A blow lands.", nil, after_plan)
     end
   end
+
+  describe "a card with relationship numbers of its own" do
+    alias Aethrion.Bridge.Reply
+
+    test "is one whose window counts how someone feels" do
+      one_line = %{open: "[ Trust:", close: "]", rules: []}
+      assert Ledger.relations?("[ Trust: 3% | Anger: 5% | a thought of hers ]", one_line)
+
+      spec = %{open: "[S]", close: "[S]", rules: []}
+      assert Ledger.relations?("[S]\n- 날짜: 3일\n- 호감도: 30\n[S]", spec)
+      assert Ledger.relations?("[S]\n- HP: 10 / 20\n- 친밀: 10%\n[S]", spec)
+
+      # A row named for one of the cast, with a number; a table of labelled numbers.
+      table = %{open: "[Day", close: "", rules: []}
+
+      assert Ledger.relations?("[Day 3 · noon]\nTyler | 62 | calm\nRae | 28 | wary", table, [
+               "Tyler",
+               "Rae"
+             ])
+
+      refute Ledger.relations?("[Day 3 · noon]\nTyler | 62 | calm\nRae | 28 | wary", table, [
+               "Mina"
+             ])
+
+      assert Ledger.relations?(
+               "[Day 1 · night]\nHansol | Rank 10 | L 0 | C 0\nRemi | Rank 10 | L 1 | C 3",
+               table
+             )
+
+      # An RPG sheet has none; nor is a word under such a name a number.
+      refute Ledger.relations?(
+               "[S]\n- Level: 3\n- HP: 10 / 20\n- Gold: 5\n- Item: Potion × 2\n[S]",
+               spec
+             )
+
+      refute Ledger.relations?("[S]\n- HP: 10 / 20\n- Bond: none yet\n- Trust: wary\n[S]", spec)
+    end
+
+    test "has Aethrion's own numbers hidden, unless its settings say otherwise" do
+      spec = %{open: "[S]", close: "[S]", rules: []}
+      turn = %{line?: true, locale: :ko}
+      said = fn window -> [%{"role" => "assistant", "content" => "비.\n\n" <> window}] end
+
+      own = Reply.plan(%{window: spec}, said.("[S]\n- HP: 10 / 20\n- 호감도: 30\n[S]"), turn)
+      none = Reply.plan(%{window: spec}, said.("[S]\n- HP: 10 / 20\n- Gold: 5\n[S]"), turn)
+
+      refute Reply.numbers?(%{window: spec}, own)
+      assert Reply.numbers?(%{window: spec}, none)
+      # (As the card's examples of its window had it, before any window is in the chat.)
+      refute Reply.numbers?(%{window: spec, relations: true}, none)
+
+      assert Reply.numbers?(%{window: spec, numbers: "show"}, own)
+      refute Reply.numbers?(%{window: spec, numbers: "hide"}, none)
+      # A card with no window has none of its own.
+      assert Reply.numbers?(%{window: nil}, Reply.plan(%{window: nil}, [], turn))
+    end
+  end
 end

@@ -152,7 +152,17 @@ defmodule Aethrion.Bridge.AutoCast do
     case State.parse(data) do
       {:ok, state} ->
         player = if is_binary(kept["player"]), do: kept["player"]
-        %{cast: state, window: kept_window(kept["window"]), key: key, player: player}
+
+        %{
+          cast: state,
+          window: kept_window(kept["window"]),
+          key: key,
+          player: player,
+          # Aethrion's own affinity and trust numbers: shown, hidden, or
+          # (nil) hidden when the card's window has such numbers of its own.
+          numbers: numbers(kept["numbers"]),
+          relations: is_map(kept["window"]) and kept["window"]["relations"] == true
+        }
 
       {:error, _error} ->
         nil
@@ -226,10 +236,25 @@ defmodule Aethrion.Bridge.AutoCast do
       key = key(card)
       window = windows_of([first | others], stated)
 
+      # Whether the card's own examples of its window count how people feel.
+      names = for %{"name" => name} <- data["characters"], do: name
+
+      relations =
+        window != nil and
+          stated
+          |> Aethrion.Bridge.Ledger.windows(window)
+          |> Enum.any?(&Aethrion.Bridge.Ledger.relations?(&1, window, names))
+
       kept = %{
         "cast" => data,
         "window" =>
-          window && %{"open" => window.open, "close" => window.close, "rules" => window.rules},
+          window &&
+            %{
+              "open" => window.open,
+              "close" => window.close,
+              "rules" => window.rules,
+              "relations" => relations
+            },
         "player" => people.player,
         "title" => people.title,
         "read_at" => DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.to_iso8601()
@@ -237,7 +262,16 @@ defmodule Aethrion.Bridge.AutoCast do
 
       casts.put.("card:" <> key, kept)
       casts.put.("root:" <> Bridge.root(state), kept)
-      {:ok, %{cast: state, window: window, key: key, player: people.player}}
+
+      {:ok,
+       %{
+         cast: state,
+         window: window,
+         key: key,
+         player: people.player,
+         numbers: nil,
+         relations: relations
+       }}
     end
   end
 
@@ -655,6 +689,7 @@ defmodule Aethrion.Bridge.AutoCast do
         read_at: text(value["read_at"]),
         people: for(%{"name" => name} <- characters, do: name),
         player: value["player"],
+        numbers: numbers(value["numbers"]),
         window:
           case value["window"] do
             %{"open" => open} = window ->
@@ -673,6 +708,17 @@ defmodule Aethrion.Bridge.AutoCast do
     end
     |> Enum.sort_by(& &1.read_at, :desc)
   end
+
+  @doc """
+  What is kept for a card with Aethrion's own affinity and trust numbers
+  shown (`"show"`), hidden (`"hide"`), or left to what the card's window
+  has (anything else).
+  """
+  @spec with_numbers(map(), term()) :: map()
+  def with_numbers(kept, setting), do: Map.put(kept, "numbers", numbers(setting))
+
+  defp numbers(setting) when setting in ["show", "hide"], do: setting
+  defp numbers(_by_the_card), do: nil
 
   # "first" or "last", as someone set it; nil for where the card has it.
   defp placed(place) when place in ["first", "last"], do: place
@@ -711,7 +757,8 @@ defmodule Aethrion.Bridge.AutoCast do
            "close" => String.trim(close),
            "rules" => rules |> Enum.map(&String.trim/1) |> Enum.reject(&(&1 == "")),
            "off" => window["off"] == true,
-           "place" => placed(window["place"])
+           "place" => placed(window["place"]),
+           "relations" => is_map(kept["window"]) and kept["window"]["relations"] == true
          })}
     end
   end
