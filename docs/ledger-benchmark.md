@@ -109,7 +109,7 @@ The other sixteen are left to the model, as before the ledger:
 
 - six print no window;
 - three draw theirs with their own scripts, the model being told not to write the numbers;
-- three have a window that is mostly prose (no number to keep and a line of prose, or more lines of prose than numbers and one): a line for what each of five people is thinking, the day's news. Kept, with only the named fields changed, those lines stayed as they were for turns (the news of one card for all eight); the model alone writes them anew with every reply;
+- three have a window that is mostly prose (no number to keep and a line of prose, or more lines of prose than numbers and one; settled with the chat's first window, and kept to): a line for what each of five people is thinking, the day's news. Kept, with only the named fields changed, those lines stayed as they were for turns (the news of one card for all eight); the model alone writes them anew with every reply;
 - one has cells with no names, told apart by their place (`[Status:image|title|summary|Time: 22:10|place|...]`);
 - one has a line for each character now in the scene, more or fewer as they come and go;
 - in two the model prints another window than the format the card describes, which is then not found, and nothing is done to it.
