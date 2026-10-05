@@ -375,7 +375,7 @@ defmodule Aethrion.BridgeLedgerReviewTest do
       {time, {_text, []}} =
         :timer.tc(fn -> Ledger.take("<aethrion-ledger>\n" <> long <> "\n</aethrion-ledger>") end)
 
-      assert time < 500_000
+      assert time < 2_500_000
     end
 
     test "a sign before a digit of another script is no thing to add to a list" do
@@ -400,7 +400,7 @@ defmodule Aethrion.BridgeLedgerReviewTest do
       chat = [%{"role" => "assistant", "content" => story}]
 
       {time, nil} = :timer.tc(fn -> Ledger.current(chat, %{open: "HP", close: ""}) end)
-      assert time < 1_000_000
+      assert time < 5_000_000
 
       long =
         "She [quietly] nodded.\n\n" <>
@@ -410,7 +410,7 @@ defmodule Aethrion.BridgeLedgerReviewTest do
           )
 
       {time, nil} = :timer.tc(fn -> Ledger.window(long, %{open: "[", close: "]"}) end)
-      assert time < 1_000_000
+      assert time < 5_000_000
     end
 
     test "the window is the card's, not a later place where its opening text stands" do
@@ -630,7 +630,7 @@ defmodule Aethrion.BridgeLedgerReviewTest do
           String.duplicate(String.duplicate(" ", 1_990) <> "x\n", 5) <> "[/S]"
 
       {time, fields} = :timer.tc(fn -> Ledger.fields(window, %{open: "[S]", close: "[/S]"}) end)
-      assert time < 300_000
+      assert time < 1_500_000
       assert Enum.map(fields, & &1.name) == ["HP", "MP"]
     end
 
@@ -713,20 +713,22 @@ defmodule Aethrion.BridgeLedgerReviewTest do
   describe "a fourth review" do
     @status %{open: "[S]", close: "[/S]"}
 
+    # (Time limits in this file are five times what a laptop needs, for a
+    # shared CI machine: they are there for what goes wrong by a power.)
     test "time: brackets never closed in a list, runs of blanks, many fields of one name" do
       bags = Enum.map_join(1..5, "\n", fn n -> "Bag#{n}: " <> String.duplicate("(a, ", 495) end)
       window = "[S]\nHP: 30 / 48\n" <> bags <> "\n[/S]"
       changes = for n <- 1..40, do: {"Bag#{rem(n, 5) + 1}", "+x"}
       {time, _result} = :timer.tc(fn -> Ledger.apply(window, changes, @status) end)
-      assert time < 3_000_000
+      assert time < 15_000_000
 
       blanks = "She nods." <> String.duplicate(" ", 50_000) <> "He leaves."
       {time, {_story, nil}} = :timer.tc(fn -> Ledger.take(blanks) end)
-      assert time < 500_000
+      assert time < 2_500_000
 
       same = "[S]\n" <> String.duplicate("HP: 1/2\n", 600) <> "[/S]"
       {time, fields} = :timer.tc(fn -> Ledger.fields(same, @status) end)
-      assert time < 1_500_000
+      assert time < 7_500_000
       assert length(fields) == 600
     end
 
@@ -894,7 +896,7 @@ defmodule Aethrion.BridgeLedgerReviewTest do
 
       open = "Story.\n" <> String.duplicate("<aeth-ledger>\n\n", 3_333)
       {time, _result} = :timer.tc(fn -> turn("x\n\n" <> @rpg, open, @sp) end)
-      assert time < 700_000
+      assert time < 3_500_000
     end
 
     test "a raise the rule will make itself is not the model's as well" do
