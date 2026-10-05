@@ -375,6 +375,41 @@ defmodule Aethrion.Bridge.Ledger do
     end
   end
 
+  @doc """
+  Whose the card's window is in this chat, as the last reply's status tag
+  says: `"kept"` (the ledger's), `"own"` (the model's), or nil when no
+  reply says.
+  """
+  @spec mode([map()]) :: String.t() | nil
+  def mode(chat) do
+    chat
+    |> Enum.reverse()
+    |> Enum.find_value(fn
+      %{"role" => "assistant", "content" => content} when is_binary(content) ->
+        case Regex.run(~r/<aethrion-status\b[^>]*?\sledger="(kept|own)"/, content) do
+          [_all, mode] -> mode
+          nil -> false
+        end
+
+      _other ->
+        nil
+    end)
+    |> case do
+      mode when is_binary(mode) -> mode
+      _none -> nil
+    end
+  end
+
+  @doc "The status block with whose the window is written in its tag."
+  @spec mark(String.t(), String.t() | nil) :: String.t()
+  def mark(status, mode) when mode in ["kept", "own"] do
+    String.replace(status, ~r/\A<aethrion-status\b[^>]*/, &(&1 <> ~s( ledger="#{mode}")),
+      global: false
+    )
+  end
+
+  def mark(status, _none), do: status
+
   @doc "The window as it stood: the one in the last reply of the chat that has one."
   @spec current([map()], spec() | nil) :: String.t() | nil
   def current(_chat, nil), do: nil

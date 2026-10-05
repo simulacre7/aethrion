@@ -1017,4 +1017,88 @@ defmodule Aethrion.BridgeLedgerCardsTest do
       assert Enum.any?(names, &String.contains?(&1, "Mina"))
     end
   end
+
+  describe "whose the window is, through a chat" do
+    alias Aethrion.Bridge.Reply
+
+    @news %{open: "<status>", close: "</status>", rules: []}
+    @turn %{line?: true, locale: :ko}
+
+    test "is settled with the first window and written in the status tag" do
+      plan = Reply.plan(%{window: @news}, [%{"role" => "assistant", "content" => "시작."}], @turn)
+      assert plan.mode == nil
+
+      # A window of news and no number: the model's.
+      reply = "회의장이 흔들린다.\n\n<status>\nTIME=09:42\nNEWS=국회의사당 본회의장서 소규모 폭발물 사건 발생\n</status>"
+      {_text, status} = Reply.finish(reply, "<aethrion-status id=\"a\"></aethrion-status>", plan)
+      assert status =~ ~s(<aethrion-status id="a" ledger="own">)
+
+      # One with numbers: the ledger's.
+      spec = %{open: "[S]", close: "[S]", rules: []}
+      plan = Reply.plan(%{window: spec}, [%{"role" => "assistant", "content" => "시작."}], @turn)
+
+      {_text, status} =
+        Reply.finish(
+          "칼을 뽑는다.\n\n[S]\n- HP: 10 / 20\n- Gold: 5\n[S]",
+          "<aethrion-status id=\"a\"></aethrion-status>",
+          plan
+        )
+
+      assert status =~ ~s(ledger="kept")
+    end
+
+    test "a line of news that comes to read as a list does not hand the window to the ledger" do
+      listed = "<status>\nTIME=09:45\nNEWS=본회의장 붕괴 시작 / 국방부 장관 실종 / 총리 행방 불명\n</status>"
+      assert Ledger.keeps?(listed, @news)
+
+      said = fn tag ->
+        [%{"role" => "assistant", "content" => "연기.\n\n" <> listed <> "\n\n" <> tag}]
+      end
+
+      # The chat's first window settled it as the model's.
+      plan =
+        Reply.plan(
+          %{window: @news},
+          said.(~s(<aethrion-status id="b" ledger="own"></aethrion-status>)),
+          @turn
+        )
+
+      assert plan.ledger == nil and plan.mode == "own"
+      assert Reply.instruction(plan, []) == nil
+
+      {_text, status} =
+        Reply.finish("대피한다.\n\n" <> listed, "<aethrion-status id=\"c\"></aethrion-status>", plan)
+
+      assert status =~ ~s(ledger="own")
+
+      # With no tag to go by (a chat from before this), the window speaks for itself.
+      plan =
+        Reply.plan(%{window: @news}, said.("<aethrion-status id=\"b\"></aethrion-status>"), @turn)
+
+      assert plan.mode == "kept"
+    end
+
+    test "a kept window whose lines grow into prose stays the ledger's" do
+      spec = %{open: "[S]", close: "[S]", rules: []}
+
+      window =
+        "[S]\n- HP: 10 / 20\n- Mina: I wonder what he wants from me\n- Jun: she never looks at me now\n- Sera: the rain will not stop tonight\n[S]"
+
+      refute Ledger.keeps?(window, spec)
+
+      chat = [
+        %{
+          "role" => "assistant",
+          "content" =>
+            "Rain.\n\n" <>
+              window <> ~s(\n\n<aethrion-status id="x" ledger="kept"></aethrion-status>)
+        }
+      ]
+
+      plan = Reply.plan(%{window: spec}, chat, %{line?: true, locale: :en})
+      assert plan.ledger == window
+      assert Ledger.mode(chat) == "kept"
+      assert Ledger.mode([%{"role" => "user", "content" => ~s(ledger="own")}]) == nil
+    end
+  end
 end

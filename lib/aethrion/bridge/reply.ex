@@ -40,6 +40,7 @@ defmodule Aethrion.Bridge.Reply do
           required(:player) => String.t() | nil,
           optional(:line?) => boolean(),
           optional(:first?) => boolean(),
+          optional(:mode) => String.t() | nil,
           optional(:own) => String.t() | nil,
           optional(:settled) => settled() | nil,
           optional(:keep) => (settled() -> any())
@@ -61,8 +62,12 @@ defmodule Aethrion.Bridge.Reply do
   def plan(auto, chat, %{line?: line?, locale: locale} = turn) do
     spec = auto[:window]
     found = if spec, do: Ledger.current(chat, spec)
-    # A window that is mostly prose stays the model's to write.
-    ledger = if found && Ledger.keeps?(found, spec), do: found
+    # A window that is mostly prose stays the model's to write. Whose it
+    # is was settled with the chat's first window and is carried in each
+    # reply's status tag: a value that grows into a sentence, or a line of
+    # news written with slashes, does not hand the window over mid-chat.
+    mode = whose(found, chat, spec)
+    ledger = if mode == "kept", do: found
     key = if ledger && line? && is_binary(turn[:id]) && turn[:store], do: key(turn.id, chat)
 
     %{
@@ -72,6 +77,7 @@ defmodule Aethrion.Bridge.Reply do
       player: auto[:player],
       line?: line?,
       first?: spec != nil and found == nil,
+      mode: mode,
       own: if(ledger == nil, do: found),
       settled: key && settled(turn.store.get.(key)),
       keep: if(key, do: &turn.store.put.(key, kept(&1)))
@@ -141,9 +147,26 @@ defmodule Aethrion.Bridge.Reply do
     {text, changes, cut_off?} = Ledger.taken(text)
     {text, lines} = window(text, changes, Map.put(plan, :whole?, not cut_off?))
 
-    status = status && status |> Scene.mark(scene) |> Ledger.note(lines, title(locale))
+    # Whose the window is, for the turns after: as it was, or as the
+    # first window of the chat (printed in this reply) says.
+    mode =
+      plan[:mode] ||
+        case plan[:spec] && Ledger.window(text, plan.spec) do
+          {_before, printed, _after} -> mode_of(printed, plan.spec)
+          _none -> nil
+        end
+
+    status =
+      status &&
+        status |> Scene.mark(scene) |> Ledger.mark(mode) |> Ledger.note(lines, title(locale))
+
     {text, status}
   end
+
+  defp whose(nil, _chat, _spec), do: nil
+  defp whose(found, chat, spec), do: Ledger.mode(chat) || mode_of(found, spec)
+
+  defp mode_of(window, spec), do: if(Ledger.keeps?(window, spec), do: "kept", else: "own")
 
   defp title(:ko), do: "이번 턴 판정"
   defp title(_en), do: "This turn"
