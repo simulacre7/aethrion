@@ -34,7 +34,7 @@ Thirty turns a session. Where a row has several sessions, each is given.
 |---|---|---|---|---|---|---|---|
 | Claude Opus 5.5 | the model | 3 of 30 | 0 / 0 / 0 | 0 | 3 | 10 of 10 | 5 |
 | Claude Haiku 4.5 | the model | 30 of 30 | 30 / 22 / 0 | 0 | 18 | 10 of 10 | 44 |
-| Claude Haiku 4.5 | Aethrion, the card read by Haiku | 0 of 30, three times | 0 / 0 / 0 | 0 | 0 | 0 of 30 | 10, 7 and 16 |
+| Claude Haiku 4.5 | Aethrion, the card read by Haiku | 0 of 30, four times | 0 / 0 / 0 | 0 | 0 | 0 of 40 | 10, 7, 16 and 3 |
 | Claude Haiku 4.5 | Aethrion, the card read by Opus (`--card-model`) | 0 of 30, four times | 0 / 0 / 0 | 0 | 0 | 0 of 40 | 4, 2, 5 and 6 |
 | Claude Opus 5.5 | Aethrion | 0 of 30 | 0 / 0 / 0 | 0 | 0 | 0 of 10 | 3 |
 
@@ -90,7 +90,7 @@ Four turns of that session, each played again twelve times from the same history
 | stories that tell of a level-up the window does not have | 10 of 48 | 5 of 48 |
 | stories that say how much EXP is still needed | 0 of 48 | 3 of 48 |
 
-Half as often, not never. In the eleven full sessions the small model narrated after that, 1 turn of 330 had such a story (6 of 60 in the two before).
+Half as often, not never. In the twelve full sessions the small model narrated after that, 1 turn of 360 had such a story (6 of 60 in the two before).
 
 ## Other Cards
 
