@@ -1044,6 +1044,32 @@ defmodule Aethrion.AutoCastTest do
       assert two =~ "- HP: 38 / 100\n"
       assert two =~ "HP 38 / 50 → 38 / 100"
 
+      # Where the window goes in a reply can be said: from then on the
+      # model is asked for its lines first, and the reply begins with the window.
+      assert {200, %{"cards" => [%{"window" => %{"place" => nil}}]}} =
+               call(:get, base <> "/casts/cards")
+
+      assert {200, _ok} =
+               call(:put, base <> "/casts/cards/" <> key, %{
+                 "window" => Map.put(window, "place", "first")
+               })
+
+      assert {200, %{"cards" => [%{"window" => %{"place" => "first"}}]}} =
+               call(:get, base <> "/casts/cards")
+
+      {200, placed} = ask(base, [first, reply(one), second, reply(two), user("숨을 고른다.")], card)
+      assert String.starts_with?(placed, "[Status]\n")
+      note = calls() |> List.last() |> List.last() |> Map.fetch!("content")
+      assert note =~ "before anything else"
+
+      assert {200, _ok} =
+               call(:put, base <> "/casts/cards/" <> key, %{
+                 "window" => Map.put(window, "place", "anywhere")
+               })
+
+      assert {200, %{"cards" => [%{"window" => %{"place" => nil}}]}} =
+               call(:get, base <> "/casts/cards")
+
       # With the ledger off, the window is the model's again.
       assert {200, _ok} =
                call(:put, base <> "/casts/cards/" <> key, %{

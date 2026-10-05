@@ -100,11 +100,16 @@ function view(card) {
   const rules = el("textarea", {rows: Math.max(3, window_.rules.length + 1), spellcheck: "false"});
   rules.value = window_.rules.join("\n");
   const on = el("input", {type: "checkbox", checked: card.window != null && !window_.off});
+  const place = el("select", {},
+    el("option", {value: ""}, "카드가 두는 자리 (자동)"),
+    el("option", {value: "first"}, "응답 맨 앞"),
+    el("option", {value: "last"}, "응답 끝"));
+  place.value = window_.place || "";
 
   const save = el("button", {type: "button", class: "primary", onclick: async () => {
     const body = open.value.trim() === ""
       ? {window: null}
-      : {window: {open: open.value, close: close.value, off: !on.checked,
+      : {window: {open: open.value, close: close.value, off: !on.checked, place: place.value || null,
                   rules: rules.value.split("\n").map((line) => line.trim()).filter(Boolean)}};
     try { await call("PUT", "/casts/cards/" + card.key, body); say("저장했습니다: " + (card.title || card.key), "ok"); }
     catch (error) { say(error.message, "bad"); }
@@ -125,6 +130,7 @@ function view(card) {
     el("div", {class: "row"},
       el("label", {}, "상태창 시작 글자", open),
       el("label", {}, "상태창 끝 글자 (비우면 응답 끝까지)", close),
+      el("label", {}, "상태창 위치", place),
       el("label", {class: "check"}, on, "상태창을 규칙이 관리")),
     el("label", {class: "hint"}, "카드에 적힌 계산 (한 줄에 하나)", rules),
     el("div", {class: "row"}, save, forget));

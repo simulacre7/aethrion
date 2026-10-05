@@ -981,6 +981,8 @@ defmodule Aethrion.API do
     on_delta = Aethrion.Bridge.Reply.filter(send_delta, plan)
     replied = Aethrion.LLM.stream_chat(adapter, messages, opts, on_delta)
     gone = Process.delete(sent)
+    # (With the window that went out before the story, when one did.)
+    plan = Aethrion.Bridge.Reply.streamed(plan)
     # The reply is made before the turn is kept: what it settles is kept with it.
     finished = finished(replied, status, plan)
     done.(replied)

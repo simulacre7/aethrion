@@ -41,6 +41,8 @@ defmodule Aethrion.Bridge.Reply do
           optional(:line?) => boolean(),
           optional(:first?) => boolean(),
           optional(:mode) => String.t() | nil,
+          optional(:place) => :first | :last,
+          optional(:early) => String.t() | nil,
           optional(:own) => String.t() | nil,
           optional(:settled) => settled() | nil,
           optional(:keep) => (settled() -> any())
@@ -51,6 +53,11 @@ defmodule Aethrion.Bridge.Reply do
   their values after the rules, and the record's lines.
   """
   @type settled :: %{fields: [{String.t(), String.t()}], lines: [String.t()]}
+
+  # Where a window sent before the story is remembered, for the stream's end.
+  @early {__MODULE__, :early}
+  # How long the model's lines at the beginning of a reply may be.
+  @max_lead 6_000
 
   @doc """
   The plan for a turn of a card read as `auto` (its `window` and `player`):
@@ -78,6 +85,8 @@ defmodule Aethrion.Bridge.Reply do
       line?: line?,
       first?: spec != nil and found == nil,
       mode: mode,
+      # Where the card has its window in a reply: before the story, or after.
+      place: if(ledger, do: Ledger.place(chat, spec), else: :last),
       own: if(ledger == nil, do: found),
       settled: key && settled(turn.store.get.(key)),
       keep: if(key, do: &turn.store.put.(key, kept(&1)))
@@ -123,8 +132,8 @@ defmodule Aethrion.Bridge.Reply do
   def instruction(%{ledger: ledger, settled: %{} = settled}, _messages) when is_binary(ledger),
     do: Ledger.settled_instruction(settled.lines, settled.fields)
 
-  def instruction(%{ledger: ledger, spec: spec}, messages) when is_binary(ledger),
-    do: Ledger.instruction(ledger, spec, Ledger.recorded(messages))
+  def instruction(%{ledger: ledger, spec: spec} = plan, messages) when is_binary(ledger),
+    do: Ledger.instruction(ledger, spec, Ledger.recorded(messages), plan[:place] || :last)
 
   # No window in the chat yet: the first one is the model's to print, and
   # a small model leaves it out of its first reply one time in eight.
@@ -202,10 +211,10 @@ defmodule Aethrion.Bridge.Reply do
   end
 
   # A turn answered before: the window and the record it came to then.
-  defp window(text, _changes, %{ledger: window, spec: spec, settled: %{} = settled}) do
+  defp window(text, _changes, %{ledger: window, spec: spec, settled: %{} = settled} = plan) do
     {text, _printed} = without_window(text, spec)
     Logger.info("Aethrion ledger: as the turn's first answer settled it")
-    {String.trim(text) <> "\n\n" <> Ledger.put(window, settled.fields, spec), settled.lines}
+    {placed(String.trim(text), Ledger.put(window, settled.fields, spec), plan), settled.lines}
   end
 
   defp window(text, changes, %{ledger: window, spec: spec, locale: locale} = plan) do
@@ -242,7 +251,21 @@ defmodule Aethrion.Bridge.Reply do
     if said? and is_function(plan[:keep], 1),
       do: plan.keep.(%{fields: Ledger.differences(window, kept, spec), lines: lines})
 
-    {String.trim(text) <> "\n\n" <> kept, lines}
+    {placed(String.trim(text), kept, plan), lines}
+  end
+
+  # The story and the kept window, in the card's order. A window that
+  # went out first while the reply was being written (`plan.early`) stays
+  # where it went: when the rest of the reply came to change it after
+  # all, the window as it now is follows the story as well, and the next
+  # turn goes on from that one.
+  defp placed(story, kept, plan) do
+    case {plan[:place], Map.get(plan, :early, :whole)} do
+      {:first, :whole} -> kept <> "\n\n" <> story
+      {:first, ^kept} -> kept <> "\n\n" <> story
+      {:first, early} when is_binary(early) -> early <> "\n\n" <> story <> "\n\n" <> kept
+      _last_or_nothing_went_out_first -> story <> "\n\n" <> kept
+    end
   end
 
   defp without_window(text, spec) do
@@ -276,9 +299,100 @@ defmodule Aethrion.Bridge.Reply do
   @spec filter((String.t() -> any()), plan() | nil) :: (String.t() -> any())
   def filter(emit, nil), do: emit
 
+  # A window that goes before the story is sent before it: the turn was
+  # settled before (a reroll) and the window is known, or the model was
+  # asked to begin with its lines, which are held until they are whole.
+  # What went out is remembered for `streamed/1`.
+  def filter(emit, %{place: :first, ledger: window, spec: spec} = plan) when is_binary(window) do
+    {story, _flush} = Ledger.filter(emit, spec.open)
+    key = {__MODULE__, :lead}
+    Process.delete(key)
+    Process.delete(@early)
+
+    first = fn kept, rest ->
+      Process.put(@early, kept)
+      Process.put(key, :story)
+      emit.(kept <> "\n\n")
+      rest = String.trim_leading(rest)
+      if rest != "", do: story.(rest)
+    end
+
+    fn delta ->
+      case {Process.get(key, ""), plan[:settled]} do
+        {:story, _settled} ->
+          story.(delta)
+
+        {"", %{fields: fields}} ->
+          first.(Ledger.put(window, fields, spec), delta)
+
+        {held, _none} ->
+          case lead(held <> delta) do
+            {:lines, changes, rest} ->
+              first.(kept(window, changes, spec), rest)
+
+            :wait ->
+              Process.put(key, held <> delta)
+
+            :none ->
+              Process.put(key, :story)
+              story.(held <> delta)
+          end
+      end
+
+      :ok
+    end
+  end
+
   def filter(emit, %{spec: spec}) do
     {on_delta, _flush} = Ledger.filter(emit, spec && spec.open)
     on_delta
+  end
+
+  @doc """
+  The plan after a reply was streamed: with the window that went out
+  before the story (`filter/2`), or nil when none did.
+  """
+  @spec streamed(plan() | nil) :: plan() | nil
+  def streamed(nil), do: nil
+
+  def streamed(plan) do
+    Process.delete({__MODULE__, :lead})
+    Map.put(plan, :early, Process.delete(@early))
+  end
+
+  # The model's lines at the very beginning of a reply, once they are
+  # whole: `{:lines, changes, rest}`. `:wait` while they may still be
+  # coming, `:none` for a reply that begins otherwise.
+  defp lead(text) do
+    begun = String.trim_leading(text)
+    tag = "<aethrion-ledger"
+    lowered = String.downcase(binary_part(begun, 0, min(byte_size(begun), byte_size(tag))))
+
+    cond do
+      not String.starts_with?(tag, lowered) ->
+        :none
+
+      byte_size(lowered) < byte_size(tag) ->
+        :wait
+
+      true ->
+        case Regex.run(~r/\A(.*?<\/aethrion-ledger\s*>)(.*)\z/is, begun) do
+          [_all, block, rest] ->
+            {_story, changes, _cut?} = Ledger.taken(block)
+            {:lines, changes || [], rest}
+
+          # (Lines that never end are no lead: the story is not held for them.)
+          nil ->
+            if byte_size(begun) > @max_lead, do: :none, else: :wait
+        end
+    end
+  end
+
+  # The window after the model's lines, as `window/3` comes to it.
+  defp kept(window, changes, spec) do
+    {kept, _applied, _refused} = Ledger.apply(window, changes, spec)
+    {kept, _ruled} = Ledger.settle(kept, spec, window)
+    kept
   end
 
   @doc """
