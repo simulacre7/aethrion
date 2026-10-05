@@ -1103,6 +1103,44 @@ defmodule Aethrion.AutoCastTest do
       assert card_reads() == reads + 1
     end
 
+    test "Aethrion's own affinity and trust numbers can be hidden for a card, and shown again", %{
+      base: base
+    } do
+      line = user("세라, 고마워. 덕분에 살았어.")
+      {200, shown} = ask(base, [line])
+      assert shown =~ "세라 · 호감"
+      note = calls() |> List.last() |> List.last() |> Map.fetch!("content")
+      assert note =~ "- 세라: affinity"
+
+      assert {200, %{"cards" => [%{"key" => key, "numbers" => nil, "window" => nil}]}} =
+               call(:get, base <> "/casts/cards")
+
+      assert {200, _ok} =
+               call(:put, base <> "/casts/cards/" <> key, %{"window" => nil, "numbers" => "hide"})
+
+      assert {200, %{"cards" => [%{"numbers" => "hide"}]}} = call(:get, base <> "/casts/cards")
+
+      {200, hidden} = ask(base, [line, reply(shown), user("세라, 같이 가자.")])
+      refute hidden =~ "호감"
+      refute hidden =~ "신뢰"
+      # What the turn was read as, and who is there, are still said.
+      assert hidden =~ "<aethrion-status"
+      note = calls() |> List.last() |> List.last() |> Map.fetch!("content")
+      refute note =~ "affinity"
+      assert note =~ "- 세라"
+      refute note =~ "it shows these numbers"
+
+      # Setting the window alone leaves the choice as it was.
+      assert {200, _ok} = call(:put, base <> "/casts/cards/" <> key, %{"window" => nil})
+      assert {200, %{"cards" => [%{"numbers" => "hide"}]}} = call(:get, base <> "/casts/cards")
+
+      assert {200, _ok} =
+               call(:put, base <> "/casts/cards/" <> key, %{"window" => nil, "numbers" => "show"})
+
+      {200, again} = ask(base, [line, reply(shown), user("세라, 같이 가자.")])
+      assert again =~ "세라 · 호감"
+    end
+
     test "another model may read the card, while the server's narrates", %{base: base} do
       reader = fn ->
         Enum.find_value(calls(), &(hd(&1)["content"] =~ "reader model" && hd(&1)["content"]))

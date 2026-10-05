@@ -105,12 +105,18 @@ function view(card) {
     el("option", {value: "first"}, "응답 맨 앞"),
     el("option", {value: "last"}, "응답 끝"));
   place.value = window_.place || "";
+  const numbers = el("select", {},
+    el("option", {value: ""}, "카드에 관계 수치가 있으면 숨김 (자동)"),
+    el("option", {value: "show"}, "항상 표시"),
+    el("option", {value: "hide"}, "항상 숨김"));
+  numbers.value = card.numbers || "";
 
   const save = el("button", {type: "button", class: "primary", onclick: async () => {
     const body = open.value.trim() === ""
-      ? {window: null}
+      ? {window: null, numbers: numbers.value || null}
       : {window: {open: open.value, close: close.value, off: !on.checked, place: place.value || null,
-                  rules: rules.value.split("\n").map((line) => line.trim()).filter(Boolean)}};
+                  rules: rules.value.split("\n").map((line) => line.trim()).filter(Boolean)},
+         numbers: numbers.value || null};
     try { await call("PUT", "/casts/cards/" + card.key, body); say("저장했습니다: " + (card.title || card.key), "ok"); }
     catch (error) { say(error.message, "bad"); }
   }}, "저장");
@@ -131,6 +137,7 @@ function view(card) {
       el("label", {}, "상태창 시작 글자", open),
       el("label", {}, "상태창 끝 글자 (비우면 응답 끝까지)", close),
       el("label", {}, "상태창 위치", place),
+      el("label", {}, "Aethrion 호감·신뢰 숫자", numbers),
       el("label", {class: "check"}, on, "상태창을 규칙이 관리")),
     el("label", {class: "hint"}, "카드에 적힌 계산 (한 줄에 하나)", rules),
     el("div", {class: "row"}, save, forget));

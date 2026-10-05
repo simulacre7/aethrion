@@ -557,12 +557,18 @@ defmodule Aethrion.Bridge do
   """
   @spec note(State.t(), State.t(), map(), :ko | :en, keyword()) :: String.t()
   def note(%State{} = before, %State{} = now, turn, locale \\ :ko, opts \\ []) do
-    happened = happened(before, now, turn, locale)
+    # (A card that counts how its people feel in its own window is not
+    # told a second count: `numbers: false`.)
+    numbers? = Keyword.get(opts, :numbers, true)
+    happened = happened(before, now, turn, locale, numbers?)
 
     window =
       cond do
         ledger = Keyword.get(opts, :ledger) ->
           "and do not invent hits, heals, or endings beyond these. " <> ledger
+
+        Keyword.get(opts, :card_status, false) and not numbers? ->
+          "and do not invent hits, heals, or endings beyond these. If the card asks for a status window or a format of its own, keep it as the card says."
 
         Keyword.get(opts, :card_status, false) ->
           "and do not invent hits, heals, or endings beyond these. If the card asks for a status window or a format of its own, keep it as the card says; where it shows something listed here (how a character feels about the player), it shows these numbers, fitted to the card's scale. A separate window shows these rules' numbers, so do not print them a second time on your own."
@@ -572,7 +578,7 @@ defmodule Aethrion.Bridge do
       end
 
     scene? = Keyword.get(opts, :scene, false)
-    standing = standing(now, locale, scene?)
+    standing = standing(now, locale, scene?, numbers?)
 
     """
     [Aethrion: the game's rules, not the story, decide these. Narrate the next reply so it agrees with them; do not change any number, #{window}#{if scene?, do: " " <> Aethrion.Bridge.Scene.instruction()}]
@@ -583,7 +589,7 @@ defmodule Aethrion.Bridge do
     |> String.trim()
   end
 
-  defp happened(before, now, %{readings: readings, outputs: outputs} = turn, locale) do
+  defp happened(before, now, %{readings: readings, outputs: outputs} = turn, locale, numbers?) do
     read =
       for %{as: as, event: event} <- readings, as != :talk do
         "- The player's line was read as #{as}#{target(now, event)}."
@@ -595,7 +601,7 @@ defmodule Aethrion.Bridge do
     read ++
       scenes(now, turn) ++
       told ++
-      changes(before, now) ++
+      if(numbers?, do: changes(before, now), else: []) ++
       between_lines(now, turn) ++
       moods(before, now) ++
       remembered(before, now)
@@ -759,14 +765,19 @@ defmodule Aethrion.Bridge do
     end
   end
 
-  defp standing(state, locale, scene?) do
+  defp standing(state, locale, scene?, numbers?) do
     people =
       for character <- State.sorted_characters(state),
           rel = State.get_relationship(state, character.id, "user"),
           not State.stat?(state, character.id, "enemy") or
             State.stat(state, character.id, "enemy") == 0 do
-        "- #{character.name}: affinity #{rel.affinity}, trust #{rel.trust}, tension #{rel.tension}, " <>
-          "#{Aethrion.Rules.Bond.derive(rel, state)}" <>
+        "- #{character.name}" <>
+          if(numbers?,
+            do:
+              ": affinity #{rel.affinity}, trust #{rel.trust}, tension #{rel.tension}, " <>
+                "#{Aethrion.Rules.Bond.derive(rel, state)}",
+            else: ""
+          ) <>
           hp(state, character.id) <>
           if(scene? and State.stat(state, character.id, "away") > 0,
             do: " (not with the player)",
@@ -807,12 +818,21 @@ defmodule Aethrion.Bridge do
   @spec status(State.t(), map(), :ko | :en, State.t() | nil, keyword()) :: String.t()
   def status(%State{} = state, turn, locale \\ :ko, before \\ nil, opts \\ []) do
     words = words(locale)
+    # (`numbers: false`: the card counts how its people feel in its own
+    # window, and these counts are not shown beside it.)
+    numbers? = Keyword.get(opts, :numbers, true)
+
+    people =
+      if numbers?,
+        do: people_lines(state, before, words, locale, Keyword.get(opts, :scene, false)),
+        else: []
+
+    between = if numbers?, do: between_status(state, turn, words), else: []
 
     lines =
       day(state, locale) ++
         player_line(state, before, words) ++
-        people_lines(state, before, words, locale, Keyword.get(opts, :scene, false)) ++
-        foe_lines(state, before) ++ between_status(state, turn, words) ++ story_events(turn)
+        people ++ foe_lines(state, before) ++ between ++ story_events(turn)
 
     open = if turn[:id], do: ~s(<aethrion-status id="#{turn.id}">), else: "<aethrion-status>"
 
