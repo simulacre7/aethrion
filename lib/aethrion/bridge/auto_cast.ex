@@ -167,8 +167,17 @@ defmodule Aethrion.Bridge.AutoCast do
   defp kept_window(%{"off" => true}), do: nil
 
   defp kept_window(%{"open" => open, "close" => close} = window)
-       when is_binary(open) and is_binary(close),
-       do: %{open: open, close: close, rules: kept_rules(window["rules"])}
+       when is_binary(open) and is_binary(close) do
+    spec = %{open: open, close: close, rules: kept_rules(window["rules"])}
+
+    # Where the window goes in a reply, when someone has said so
+    # (`revise/2`): else it goes where the card has it.
+    case window["place"] do
+      "first" -> Map.put(spec, :place, :first)
+      "last" -> Map.put(spec, :place, :last)
+      _as_the_card_has_it -> spec
+    end
+  end
 
   defp kept_window(_none), do: nil
 
@@ -653,7 +662,8 @@ defmodule Aethrion.Bridge.AutoCast do
                 open: open,
                 close: text(window["close"]),
                 rules: kept_rules(window["rules"]),
-                off: window["off"] == true
+                off: window["off"] == true,
+                place: placed(window["place"])
               }
 
             _none ->
@@ -664,13 +674,18 @@ defmodule Aethrion.Bridge.AutoCast do
     |> Enum.sort_by(& &1.read_at, :desc)
   end
 
+  # "first" or "last", as someone set it; nil for where the card has it.
+  defp placed(place) when place in ["first", "last"], do: place
+  defp placed(_as_the_card_has_it), do: nil
+
   defp text(value) when is_binary(value), do: value
   defp text(_other), do: ""
 
   @doc """
   What is kept for a card with its status window as someone has set it:
   `{:ok, kept}`, or `{:error, reason}`. `window` is `%{"open" => ...,
-  "close" => ..., "rules" => [...], "off" => boolean}`, or nil for a card
+  "close" => ..., "rules" => [...], "off" => boolean, "place" => "first" |
+  "last" | nil}`, or nil for a card
   with no window. The rules are taken as written: one that does not fit
   the window is left out when it is used (`Aethrion.Bridge.Ledger.Rules`).
   """
@@ -695,7 +710,8 @@ defmodule Aethrion.Bridge.AutoCast do
            "open" => String.trim(open),
            "close" => String.trim(close),
            "rules" => rules |> Enum.map(&String.trim/1) |> Enum.reject(&(&1 == "")),
-           "off" => window["off"] == true
+           "off" => window["off"] == true,
+           "place" => placed(window["place"])
          })}
     end
   end

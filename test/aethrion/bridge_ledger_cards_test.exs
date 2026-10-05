@@ -1101,4 +1101,142 @@ defmodule Aethrion.BridgeLedgerCardsTest do
       assert Ledger.mode([%{"role" => "user", "content" => ~s(ledger="own")}]) == nil
     end
   end
+
+  describe "a window that the card has before the story" do
+    alias Aethrion.Bridge.Reply
+
+    @first %{open: "[S]", close: "[S]", rules: []}
+    @sheet "[S]\n- HP: 10 / 20\n- Gold: 5\n[S]"
+    @chat [
+      %{
+        "role" => "assistant",
+        "content" =>
+          "[S]\n- HP: 10 / 20\n- Gold: 5\n[S]\n\nThe gate stands open.\n\n<aethrion-status id=\"a\" ledger=\"kept\"></aethrion-status>"
+      }
+    ]
+    @turn %{line?: true, locale: :en}
+
+    # A reply streamed in `pieces`: what went out, and the plan after it.
+    defp stream(plan, pieces) do
+      Process.put(:went_out, "")
+      on_delta = Reply.filter(&Process.put(:went_out, Process.get(:went_out) <> &1), plan)
+      Enum.each(pieces, on_delta)
+      {Process.delete(:went_out), Reply.streamed(plan)}
+    end
+
+    test "is found by where the last reply has it, unless the card's settings say" do
+      assert Ledger.place(@chat, @first) == :first
+      last = [%{"role" => "assistant", "content" => "The gate stands open.\n\n" <> @sheet}]
+      assert Ledger.place(last, @first) == :last
+      assert Ledger.place([%{"role" => "assistant", "content" => @sheet}], @first) == :last
+      assert Ledger.place([], @first) == :last
+      assert Ledger.place(last, Map.put(@first, :place, :first)) == :first
+      assert Ledger.place(@chat, Map.put(@first, :place, :last)) == :last
+    end
+
+    test "the model is asked for its lines first, and a whole reply begins with the window" do
+      plan = Reply.plan(%{window: @first}, @chat, @turn)
+      assert plan.place == :first
+      note = Reply.instruction(plan, @chat)
+      assert note =~ "before anything else"
+      refute note =~ "after everything else"
+
+      reply = "<aethrion-ledger>\nHP: -3\n</aethrion-ledger>\nA blow lands."
+
+      assert {"[S]\n- HP: 7 / 20\n- Gold: 5\n[S]\n\nA blow lands.", nil} =
+               Reply.finish(reply, nil, plan)
+
+      # Lines written after the story are taken all the same.
+      reply = "A blow lands.\n<aethrion-ledger>\nHP: -3\n</aethrion-ledger>"
+
+      assert {"[S]\n- HP: 7 / 20\n- Gold: 5\n[S]\n\nA blow lands.", nil} =
+               Reply.finish(reply, nil, plan)
+
+      # A card that has its window last is told as before.
+      last = [%{"role" => "assistant", "content" => "Open.\n\n" <> @sheet}]
+      plan = Reply.plan(%{window: @first}, last, @turn)
+      assert plan.place == :last
+      assert Reply.instruction(plan, last) =~ "after everything else"
+    end
+
+    test "in a stream the window goes out first, once the model's lines are whole" do
+      plan = Reply.plan(%{window: @first}, @chat, @turn)
+      kept = "[S]\n- HP: 7 / 20\n- Gold: 5\n[S]"
+
+      for pieces <- [
+            ["<aethrion-ledger>\nHP: -3\n</aethrion-ledger>\nA blow ", "lands.\n\nHe ", "falls."],
+            [
+              "<aeth",
+              "rion-ledger>\nHP:",
+              " -3\n</aethrion-",
+              "ledger>\n\nA blow lands.\n\nHe falls."
+            ],
+            ["\n<Aethrion-Ledger>HP: -3</Aethrion-Ledger>", "A blow lands.\n\nHe falls."]
+          ] do
+        {gone, after_plan} = stream(plan, pieces)
+        assert gone == kept <> "\n\nA blow lands.\n\nHe falls."
+        assert after_plan.early == kept
+        {text, nil} = Reply.finish(Enum.join(pieces), nil, after_plan)
+        assert text == gone
+        assert Reply.unsent(text, gone) == ""
+      end
+
+      # Nothing changes: the window as it stood goes out first.
+      {gone, after_plan} = stream(plan, ["<aethrion-ledger></aethrion-ledger>", "Quiet."])
+      assert gone == @sheet <> "\n\nQuiet."
+
+      assert {^gone, nil} =
+               Reply.finish("<aethrion-ledger></aethrion-ledger>Quiet.", nil, after_plan)
+    end
+
+    test "a reply that begins with the story has its window after it" do
+      plan = Reply.plan(%{window: @first}, @chat, @turn)
+      pieces = ["A blow lands.", "\n<aethrion-ledger>\nHP: -3\n</aethrion-ledger>"]
+      {gone, after_plan} = stream(plan, pieces)
+      assert gone == "A blow lands.\n"
+      assert after_plan.early == nil
+      {text, nil} = Reply.finish(Enum.join(pieces), nil, after_plan)
+      assert text == "A blow lands.\n\n[S]\n- HP: 7 / 20\n- Gold: 5\n[S]"
+      # What is sent at the end completes what went out.
+      assert gone <> Reply.unsent(text, gone) == text
+    end
+
+    test "lines after the story that change the window again bring it once more, as it now is" do
+      plan = Reply.plan(%{window: @first}, @chat, @turn)
+
+      pieces = [
+        "<aethrion-ledger>\nHP: -3\n</aethrion-ledger>\nA blow lands.",
+        "\n<aethrion-ledger>\nGold: +2\n</aethrion-ledger>"
+      ]
+
+      {gone, after_plan} = stream(plan, pieces)
+      assert gone == "[S]\n- HP: 7 / 20\n- Gold: 5\n[S]\n\nA blow lands.\n"
+      {text, nil} = Reply.finish(Enum.join(pieces), nil, after_plan)
+
+      assert text ==
+               "[S]\n- HP: 7 / 20\n- Gold: 5\n[S]\n\nA blow lands.\n\n[S]\n- HP: 7 / 20\n- Gold: 7\n[S]"
+
+      assert gone <> Reply.unsent(text, gone) == text
+
+      # The next turn goes on from the last one, and still has the window first.
+      chat = [%{"role" => "assistant", "content" => text}]
+      assert Ledger.current(chat, @first) == "[S]\n- HP: 7 / 20\n- Gold: 7\n[S]"
+      assert Ledger.place(chat, @first) == :first
+    end
+
+    test "a turn settled before sends its window first without waiting for the model" do
+      store = %{
+        get: fn _key ->
+          %{"fields" => [["HP", "7 / 20"]], "lines" => ["Ledger · HP 10 / 20 → 7 / 20"]}
+        end,
+        put: fn _key, _value -> :ok end
+      }
+
+      plan = Reply.plan(%{window: @first}, @chat, Map.merge(@turn, %{id: "t1", store: store}))
+      assert plan.settled
+      {gone, after_plan} = stream(plan, ["A blow ", "lands."])
+      assert gone == "[S]\n- HP: 7 / 20\n- Gold: 5\n[S]\n\nA blow lands."
+      assert {^gone, nil} = Reply.finish("A blow lands.", nil, after_plan)
+    end
+  end
 end

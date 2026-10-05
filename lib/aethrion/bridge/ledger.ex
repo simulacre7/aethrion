@@ -68,7 +68,8 @@ defmodule Aethrion.Bridge.Ledger do
   @type spec :: %{
           required(:open) => String.t(),
           required(:close) => String.t(),
-          optional(:rules) => [String.t()]
+          optional(:rules) => [String.t()],
+          optional(:place) => :first | :last | nil
         }
 
   @typedoc "A field of a window: its name, its value, and where the value is."
@@ -409,6 +410,38 @@ defmodule Aethrion.Bridge.Ledger do
   end
 
   def mark(status, _none), do: status
+
+  @doc """
+  Where the card has its window in a reply: `:first` (before the story)
+  or `:last`. As the card's settings say (`spec.place`), or else as the
+  last reply that has one has it: the first window of a chat is the
+  model's, printed where the card told it to.
+  """
+  @spec place([map()], spec() | nil) :: :first | :last
+  def place(_chat, %{place: place}) when place in [:first, :last], do: place
+
+  def place(chat, spec) when is_map(spec) do
+    chat
+    |> Enum.reverse()
+    |> Enum.filter(&(&1["role"] == "assistant" and is_binary(&1["content"])))
+    |> Enum.take(@max_replies)
+    |> Enum.find_value(:last, fn %{"content" => content} ->
+      text =
+        content
+        |> String.replace("\r\n", "\n")
+        |> String.replace(~r/<aethrion-status\b.*?<\/aethrion-status>/s, "")
+
+      # (A reply may have its window twice; where the first one stands says.)
+      with [first | _more] <- windows(text, spec),
+           [before, rest] <- String.split(text, first, parts: 2) do
+        if String.trim(before) == "" and String.trim(rest) != "", do: :first, else: :last
+      else
+        _none -> nil
+      end
+    end)
+  end
+
+  def place(_chat, _spec), do: :last
 
   @doc "The window as it stood: the one in the last reply of the chat that has one."
   @spec current([map()], spec() | nil) :: String.t() | nil
@@ -2223,13 +2256,23 @@ defmodule Aethrion.Bridge.Ledger do
   the chat, is apt to grant it again, and has no other way to learn that a
   line of its own was not read.
   """
-  @spec instruction(String.t(), spec() | nil, {[String.t()], [String.t()]}) :: String.t()
-  def instruction(window, spec \\ nil, recorded \\ {[], []}) do
+  @spec instruction(String.t(), spec() | nil, {[String.t()], [String.t()]}, :first | :last) ::
+          String.t()
+  def instruction(window, spec \\ nil, recorded \\ {[], []}, place \\ :last) do
     fields = fields(window, spec)
     names = Enum.map_join(fields, ", ", & &1.name)
 
-    "The status window is kept by the game's rules and shown by them: do not print it yourself, whatever the card says. Instead, after everything else, write <aethrion-ledger>...</aethrion-ledger> with one line for each field of the window that this reply changes: `Field: +N` or `Field: -N`, always with its sign, for a number that goes up or down (damage taken is `HP: -N`, experience gained `EXP: +N`), `Field: N / M` to set both numbers of a pair, `Field: =N` to set a number outright, or the field's new words as they should read (a place moved to is `Location: the east gate`, in the story's language).#{lists_note(fields)}#{rows_note(fields)} Use the window's field names (#{names}).#{headings_note(fields)}#{notes_note(fields)}#{prose_note(fields)}#{scene_note(fields)}#{ruled_note(fields, spec)}#{already_note(recorded)}#{waiting_note(fields, spec)} Leave out every field that stays as it is, and write the tags with nothing between them when nothing changes. What is listed under This turn and Now (how each character feels) is the rules' own and shown apart from the window: none of it goes in these lines. It is not shown to the player."
+    "The status window is kept by the game's rules and shown by them: do not print it yourself, whatever the card says. Instead, #{where(place)}, write <aethrion-ledger>...</aethrion-ledger> with one line for each field of the window that this reply changes: `Field: +N` or `Field: -N`, always with its sign, for a number that goes up or down (damage taken is `HP: -N`, experience gained `EXP: +N`), `Field: N / M` to set both numbers of a pair, `Field: =N` to set a number outright, or the field's new words as they should read (a place moved to is `Location: the east gate`, in the story's language).#{lists_note(fields)}#{rows_note(fields)} Use the window's field names (#{names}).#{headings_note(fields)}#{notes_note(fields)}#{prose_note(fields)}#{scene_note(fields)}#{ruled_note(fields, spec)}#{already_note(recorded)}#{waiting_note(fields, spec)} Leave out every field that stays as it is, and write the tags with nothing between them when nothing changes. What is listed under This turn and Now (how each character feels) is the rules' own and shown apart from the window: none of it goes in these lines. It is not shown to the player."
   end
+
+  # Where the model's lines go. For a card that has its window before the
+  # story they come first, so that the window can be shown first while
+  # the story is still being written.
+  defp where(:first),
+    do:
+      "before anything else (the card shows its window first: settle what this reply will change, then tell it), as the very beginning of your reply"
+
+  defp where(_last), do: "after everything else"
 
   # Last turn's record, so that it is not written twice, and what was not
   # taken of it.
