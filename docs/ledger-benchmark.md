@@ -123,7 +123,7 @@ What unit tests had not found, these sessions and the thirty-turn ones did: an i
 - The price of a stat point is read from a card that names none. A stat that rises while points are waiting is paid for with them, also when the story meant training.
 - Nor does anything in the card price loot. The small model is generous with it: by the end of some sessions it had sold monster cores for hundreds of millions. The ledger added those sums up correctly.
 - Time. With the ledger the model no longer writes the 37 lines of the window with every reply, and a turn took about 30 to 45 seconds where the small model alone took 42; but the sessions shared one machine, several at a time, so the seconds are not a measurement.
-- The checks in RisuAI's own app are still to do for the ledger; it was checked in SillyTavern and through the API.
+- In chat apps the ledger was checked with one card each: in SillyTavern with the example card, and in RisuAI's desktop app with a community card that has its window before the story (the window as the card's script draws it, a reroll with the same numbers). The rest was played through the API.
 
 ## Running It Again
 
